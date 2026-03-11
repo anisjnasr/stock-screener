@@ -1,0 +1,26 @@
+# Render Blueprint: Stock Scanner
+# Connect this repo in Render Dashboard (New > Blueprint) to create the web service.
+# Then add MASSIVE_API_KEY in the service Environment and run DB setup (see docs/DEPLOY.md).
+
+services:
+  - type: web
+    name: stock-scanner
+    runtime: node
+    region: oregon
+    plan: starter
+
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+
+    # Next.js uses PORT from env; Render sets PORT=10000
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MASSIVE_API_KEY
+        sync: false
+
+    # Persistent disk for data/screener.db (init and refresh scripts write here)
+    disk:
+      name: screener-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5

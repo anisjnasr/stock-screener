@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Font samples – numerical values</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600&family=IBM+Plex+Sans:wght@400;600&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Noto+Sans:wght@400;600&family=Roboto+Mono:wght@400;600&family=Source+Sans+3:opsz,wght@8..60,400;8..60,600&family=Work+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-size: 14px; padding: 24px; background: #0a0a0a; color: #ededed; }
+    h1 { font-family: system-ui, sans-serif; margin-bottom: 24px; }
+    section { margin-bottom: 28px; }
+    .font-name { font-family: system-ui, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 6px; }
+    .sample { font-size: 15px; font-variant-numeric: tabular-nums; }
+    .sample.numbers { font-size: 16px; }
+    .green { color: #22c55e; }
+    .red { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>Font samples for numerical values</h1>
+  <p style="font-family: system-ui; font-size: 13px; color: #22c55e; margin-bottom: 24px;">To view with fonts loading correctly: run <strong>npm run dev</strong>, then open <strong><a href="http://localhost:3000/font-samples.html" style="color: #6b8cff;">http://localhost:3000/font-samples.html</a></strong> in your browser. (Opening this file directly can block Google Fonts.)</p>
+  <p style="font-family: system-ui; color: #888;">Same content in each font: ticker, price, change %, volume. Tabular numerals where applicable.</p>
+
+  <section>
+    <div class="font-name">Source Sans 3</div>
+    <div class="sample numbers" style="font-family: 'Source Sans 3', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'Source Sans 3', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">IBM Plex Sans</div>
+    <div class="sample numbers" style="font-family: 'IBM Plex Sans', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'IBM Plex Sans', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">JetBrains Mono</div>
+    <div class="sample numbers" style="font-family: 'JetBrains Mono', monospace;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'JetBrains Mono', monospace;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">Roboto Mono</div>
+    <div class="sample numbers" style="font-family: 'Roboto Mono', monospace;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'Roboto Mono', monospace;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">Noto Sans</div>
+    <div class="sample numbers" style="font-family: 'Noto Sans', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'Noto Sans', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">Work Sans</div>
+    <div class="sample numbers" style="font-family: 'Work Sans', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'Work Sans', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">DM Sans</div>
+    <div class="sample numbers" style="font-family: 'DM Sans', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'DM Sans', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+
+  <section>
+    <div class="font-name">Inter (current)</div>
+    <div class="sample numbers" style="font-family: 'Inter', sans-serif;">AAPL  $182.45  <span class="green">+2.34%</span>  52.1M  Avg 48.2M</div>
+    <div class="sample" style="font-family: 'Inter', sans-serif;">1,234.56  0.00  —  Off 52W: <span class="red">-5.2%</span></div>
+  </section>
+</body>
+</html>

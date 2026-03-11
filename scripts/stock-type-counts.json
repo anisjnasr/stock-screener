@@ -1,0 +1,39 @@
+{
+  "fetchedAt": "2026-02-26T18:37:29.535Z",
+  "total": 12323,
+  "commonStock": 5256,
+  "adr": 378,
+  "byType": {
+    "CS": 5256,
+    "ETF": 4773,
+    "RIGHT": 91,
+    "UNIT": 246,
+    "ADRC": 378,
+    "WARRANT": 413,
+    "ETS": 100,
+    "PFD": 434,
+    "SP": 159,
+    "FUND": 342,
+    "ETV": 82,
+    "ETN": 49
+  },
+  "summary": {
+    "commonStock": 5256,
+    "adr": 378,
+    "other": 6689,
+    "adrc": 378,
+    "otherByType": {
+      "ETF": 4773,
+      "RIGHT": 91,
+      "UNIT": 246,
+      "ADRC": 378,
+      "WARRANT": 413,
+      "ETS": 100,
+      "PFD": 434,
+      "SP": 159,
+      "FUND": 342,
+      "ETV": 82,
+      "ETN": 49
+    }
+  }
+}

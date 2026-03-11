@@ -1,28 +1,50 @@
 {
-  "name": "stock-tool",
+  "name": "stock-scanner",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "count-stocks": "node scripts/count-us-stocks.mjs",
+    "build-stocks-db": "node scripts/build-stocks-db.mjs",
+    "build-index-constituents": "node scripts/build-index-constituents.mjs",
+    "enrich-stocks": "node scripts/enrich-stocks-yfinance.mjs",
+    "check-gics-coverage": "node scripts/check-gics-coverage.mjs",
+    "check-and-enrich-gics": "node scripts/check-and-enrich-gics.mjs",
+    "enrich-companies-gics": "node scripts/enrich-companies-gics.mjs",
+    "init-screener-db": "node scripts/init-screener-db.mjs",
+    "migrate-add-is-etf": "node scripts/migrate-add-is-etf.mjs",
+    "migrate-add-rs-percentile": "node scripts/migrate-add-rs-percentile.mjs",
+    "seed-companies": "node scripts/seed-companies.mjs",
+    "refresh-daily": "node scripts/refresh-daily.mjs",
+    "refresh-financials": "node scripts/refresh-financials.mjs",
+    "refresh-ownership": "node scripts/refresh-ownership.mjs",
+    "refresh-companies": "node scripts/refresh-companies.mjs",
+    "backfill-daily-history": "node scripts/backfill-daily-history.mjs",
+    "sample-tables": "node scripts/sample-tables.mjs",
+    "backfill-historical-massive": "node scripts/backfill-historical-massive.mjs",
+    "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
+    "compute-indicators": "node scripts/compute-indicators-from-bars.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.47.0",
-    "lightweight-charts": "^4.2.0",
+    "adm-zip": "^0.5.16",
+    "lightweight-charts": "^5.1.0",
     "next": "16.1.6",
-    "openai": "^4.73.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sql.js": "^1.11.0",
+    "yahoo-finance2": "^3.13.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "better-sqlite3": "^12.6.2",
+    "eslint": "^10.0.2",
+    "eslint-config-next": "^12.0.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -1,0 +1,24 @@
+# Dependencies and build
+node_modules
+.next
+out
+build
+
+# Data: do not bundle DB; use a volume at runtime
+data/*.db
+data/screener.db
+
+# Git and env
+.git
+.gitignore
+.env*
+!.env.example
+
+# Misc
+.DS_Store
+*.md
+!docs/*.md
+.vercel
+coverage
+*.log
+.cursor

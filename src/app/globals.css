@@ -1,17 +1,56 @@
 @import "tailwindcss";
 
 :root {
-  --background: #18181b;
-  --foreground: #fafafa;
+  --background: #ffffff;
+  --foreground: #171717;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  /* Base 1.125rem; scaled by --font-scale (set by header control, default 1) */
+  font-size: calc(1.125rem * var(--font-scale, 1));
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* Dark-themed scrollbars (vertical and horizontal) */
+@media (prefers-color-scheme: dark) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #52525b #27272a;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #27272a;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #52525b;
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #71717a;
+  }
+  *::-webkit-scrollbar-corner {
+    background: #27272a;
+  }
 }
