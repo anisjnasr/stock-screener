@@ -2,7 +2,9 @@ Stock Scanner – CANSLIM-style stock research inspired by MarketSurge. Built wi
 
 ## Deploy to production (go live)
 
-Push your repo to **GitHub**, then deploy in one of these ways:
+Push your repo to **GitHub**, then deploy. **Step-by-step:** [docs/GO_LIVE.md](docs/GO_LIVE.md).
+
+Deploy in one of these ways:
 
 | Platform | How |
 |----------|-----|
