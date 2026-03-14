@@ -1,0 +1,113 @@
+# Daily data refresh: fetch latest market data, recompute indicators.
+# Runs at 2am ET (7am UTC during EST / 6am UTC during EDT).
+# Uses GitHub Actions cache to persist the SQLite DB between runs.
+#
+# FIRST-TIME SETUP:
+#   1. Add MASSIVE_API_KEY in Settings → Secrets → Actions (done).
+#   2. Add a self-hosted runner (Settings → Actions → Runners → New self-hosted).
+#   3. Manually run this workflow with "Seed DB path" set to your local screener.db path.
+#   4. After that run, cache is populated; scheduled runs use ubuntu-latest and the cache.
+
+name: Daily Data Refresh
+
+on:
+  schedule:
+    # 7am UTC = 2am EST / 3am EDT — runs Tue-Sat (covers Mon-Fri market closes)
+    - cron: "0 7 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      seed_db_path:
+        description: "Path to screener.db on runner (first-time seed only; use with self-hosted runner)"
+        required: false
+        type: string
+      run_financials:
+        description: "Also refresh financials (quarterly)"
+        type: boolean
+        default: false
+      skip_daily:
+        description: "Skip daily bars refresh"
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-refresh
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  DB_CACHE_PREFIX: screener-db-v1
+
+jobs:
+  refresh:
+    # Use self-hosted runner when seeding so we can copy the local DB
+    runs-on: ${{ github.event.inputs.seed_db_path && 'self-hosted' || 'ubuntu-latest' }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Restore DB from cache (most recent available)
+      - name: Restore DB from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: data/screener.db
+          key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ env.DB_CACHE_PREFIX }}-
+
+      # First-time only: copy DB from runner machine into repo (requires self-hosted runner)
+      - name: Copy seed DB (first-time only)
+        if: ${{ github.event.inputs.seed_db_path }}
+        run: |
+          New-Item -ItemType Directory -Force -Path data | Out-Null
+          Copy-Item -Path "${{ github.event.inputs.seed_db_path }}" -Destination "data/screener.db" -Force
+          Get-Item "data/screener.db" | Select-Object FullName, @{N='SizeMB';E={[math]::Round($_.Length/1MB,1)}}
+        shell: pwsh
+
+      - name: Verify DB exists
+        run: node -e "const fs=require('fs'); const p='data/screener.db'; if(!fs.existsSync(p)) { console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set (e.g. C:\\\\Users\\\\USER\\\\stock-tool\\\\data\\\\screener.db) and use a self-hosted runner.'); process.exit(1); } console.log('DB size:', Math.round(fs.statSync(p).size/1024/1024), 'MB');"
+
+      # Daily bars + indicators refresh
+      - name: Refresh daily bars & indicators
+        if: ${{ github.event.inputs.skip_daily != 'true' }}
+        run: node scripts/refresh-daily.mjs
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        timeout-minutes: 90
+
+      # Financials refresh (optional, for quarterly runs)
+      - name: Refresh financials
+        if: ${{ github.event.inputs.run_financials == 'true' }}
+        run: node scripts/refresh-financials.mjs
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        timeout-minutes: 60
+
+      # Optimize after refresh
+      - name: Optimize database
+        run: node scripts/optimize-db.mjs
+
+      # Save updated DB to cache
+      - name: Save DB to cache
+        uses: actions/cache/save@v4
+        with:
+          path: data/screener.db
+          key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+
+      # Upload as artifact for deployment pipeline to pick up
+      - name: Upload DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screener-db-${{ github.run_id }}
+          path: data/screener.db
+          retention-days: 3
+          compression-level: 1
