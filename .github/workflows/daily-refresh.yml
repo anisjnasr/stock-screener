@@ -74,7 +74,16 @@ jobs:
         shell: pwsh
 
       - name: Verify DB exists
-        run: node -e "const fs=require('fs'); const p='data/screener.db'; if(!fs.existsSync(p)) { console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set (e.g. C:\\\\Users\\\\USER\\\\stock-tool\\\\data\\\\screener.db) and use a self-hosted runner.'); process.exit(1); } console.log('DB size:', Math.round(fs.statSync(p).size/1024/1024), 'MB');"
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = 'data/screener.db';
+          if (!fs.existsSync(p)) {
+            console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set and use a self-hosted runner.');
+            process.exit(1);
+          }
+          console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
+          "
 
       # Daily bars + indicators refresh
       - name: Refresh daily bars & indicators
