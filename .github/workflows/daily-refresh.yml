@@ -41,7 +41,7 @@ env:
 jobs:
   refresh:
     # Use self-hosted runner when seeding so we can copy the local DB
-    runs-on: ${{ github.event.inputs.seed_db_path && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -66,13 +66,37 @@ jobs:
             ${{ env.DB_CACHE_PREFIX }}-
 
       # First-time only: copy DB from runner machine into repo (requires self-hosted runner)
+      - name: Validate seed runner context
+        if: ${{ github.event.inputs.seed_db_path }}
+        run: |
+          node -e "
+          const os = process.platform;
+          if (os !== 'win32') {
+            console.error('::error::Seed DB path was provided, but this job is not running on a Windows self-hosted runner.');
+            console.error('::error::Open Run workflow, set Seed DB path, and ensure a Windows self-hosted runner is Online.');
+            process.exit(1);
+          }
+          "
+
       - name: Copy seed DB (first-time only)
         if: ${{ github.event.inputs.seed_db_path }}
         run: |
-          New-Item -ItemType Directory -Force -Path data | Out-Null
-          Copy-Item -Path "${{ github.event.inputs.seed_db_path }}" -Destination "data/screener.db" -Force
-          Get-Item "data/screener.db" | Select-Object FullName, @{N='SizeMB';E={[math]::Round($_.Length/1MB,1)}}
-        shell: pwsh
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const src = process.env.SEED_DB_PATH;
+          const dest = path.join('data', 'screener.db');
+          fs.mkdirSync('data', { recursive: true });
+          if (!src || !fs.existsSync(src)) {
+            console.error('::error::Seed DB path does not exist on this runner: ' + (src || '<empty>'));
+            process.exit(1);
+          }
+          fs.copyFileSync(src, dest);
+          const mb = Math.round(fs.statSync(dest).size / 1024 / 1024);
+          console.log('Copied seed DB to', dest, '| Size', mb, 'MB');
+          "
+        env:
+          SEED_DB_PATH: ${{ github.event.inputs.seed_db_path }}
 
       - name: Verify DB exists
         run: |
