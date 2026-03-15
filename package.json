@@ -26,10 +26,16 @@
     "sample-tables": "node scripts/sample-tables.mjs",
     "backfill-historical-massive": "node scripts/backfill-historical-massive.mjs",
     "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
-    "compute-indicators": "node scripts/compute-indicators-from-bars.mjs"
+    "compute-indicators": "node scripts/compute-indicators-from-bars.mjs",
+    "optimize-db": "node scripts/optimize-db.mjs",
+    "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
+    "market-monitor:stats": "node scripts/market-monitor-stats.mjs",
+    "setup-daily-update": "powershell -ExecutionPolicy Bypass -File scripts/setup-daily-update.ps1",
+    "setup-github-runner": "powershell -ExecutionPolicy Bypass -File scripts/setup-github-runner.ps1"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
     "lightweight-charts": "^5.1.0",
     "next": "16.1.6",
     "react": "19.2.3",
@@ -42,9 +48,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "better-sqlite3": "^12.6.2",
-    "eslint": "^10.0.2",
-    "eslint-config-next": "^12.0.4",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

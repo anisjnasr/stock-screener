@@ -34,6 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   NODE_VERSION: "24"
   DB_CACHE_PREFIX: screener-db-v1
 
