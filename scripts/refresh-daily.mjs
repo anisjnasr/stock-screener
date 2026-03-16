@@ -41,6 +41,49 @@ const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
 const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80);
 const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
+const REQUIRED_ETF_SYMBOLS = [
+  "SPY",
+  "QQQ",
+  "IWM",
+  "BOTZ",
+  "SMH",
+  "SKYY",
+  "CIBR",
+  "DTCR",
+  "SNSR",
+  "QTUM",
+  "ARKX",
+  "ARKK",
+  "XOP",
+  "ICLN",
+  "TAN",
+  "URA",
+  "HYDR",
+  "PHO",
+  "LIT",
+  "PAVE",
+  "ITA",
+  "GRID",
+  "GDX",
+  "SIL",
+  "COPX",
+  "REMX",
+  "MOO",
+  "IBIT",
+  "BLOK",
+  "FINX",
+  "XBI",
+  "OZEM",
+  "MSOS",
+  "BETZ",
+  "ESPO",
+  "ITB",
+  "JETS",
+  "SOCL",
+  "IBUY",
+  "KWEB",
+  "INDA",
+];
 
 const BASE = "https://api.polygon.io";
 function url(path, params = {}) {
@@ -159,7 +202,8 @@ async function main() {
     CREATE INDEX IF NOT EXISTS idx_indicators_daily_date_symbol ON indicators_daily(date, symbol);
   `);
 
-  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
+  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => String(r.symbol));
+  symbols = Array.from(new Set([...symbols.map((s) => s.toUpperCase()), ...REQUIRED_ETF_SYMBOLS]));
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
@@ -179,10 +223,6 @@ async function main() {
       upsertBar.run(sym, b.date, b.open, b.high, b.low, b.close, b.volume);
     }
   });
-
-  console.log("Fetching SPY bars...");
-  const spyBars = await fetchDailyBars("SPY", fromStr, toStr);
-  upsertBarsTx("SPY", spyBars);
 
   let fetchOkCount = 0;
   let fetchEmptyCount = 0;
