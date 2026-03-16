@@ -39,9 +39,66 @@ env:
   DB_CACHE_PREFIX: screener-db-v1
 
 jobs:
+  seed_db:
+    # First-time seed only: copy local DB from Windows self-hosted runner.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' }}
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Validate seed runner context
+        run: |
+          node -e "
+          const os = process.platform;
+          if (os !== 'win32') {
+            console.error('::error::Seed DB path was provided, but this job is not running on a Windows self-hosted runner.');
+            console.error('::error::Open Run workflow, set Seed DB path, and ensure a Windows self-hosted runner is Online.');
+            process.exit(1);
+          }
+          "
+
+      - name: Copy seed DB
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const src = process.env.SEED_DB_PATH;
+          const dest = path.join('data', 'screener.db');
+          fs.mkdirSync('data', { recursive: true });
+          if (!src || !fs.existsSync(src)) {
+            console.error('::error::Seed DB path does not exist on this runner: ' + (src || '<empty>'));
+            process.exit(1);
+          }
+          fs.copyFileSync(src, dest);
+          const mb = Math.round(fs.statSync(dest).size / 1024 / 1024);
+          console.log('Copied seed DB to', dest, '| Size', mb, 'MB');
+          "
+        env:
+          SEED_DB_PATH: ${{ github.event.inputs.seed_db_path }}
+
+      - name: Verify seeded DB exists
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = 'data/screener.db';
+          if (!fs.existsSync(p)) {
+            console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set and use a self-hosted runner.');
+            process.exit(1);
+          }
+          console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
+          "
+
+      - name: Upload seeded DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seeded-db-${{ github.run_id }}
+          path: data/screener.db
+          retention-days: 1
+          compression-level: 1
+
   refresh:
-    # Use self-hosted runner when seeding so we can copy the local DB
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: [seed_db]
+    if: ${{ always() && (needs.seed_db.result == 'success' || needs.seed_db.result == 'skipped') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -66,38 +123,13 @@ jobs:
             ${{ env.DB_CACHE_PREFIX }}-
           enableCrossOsArchive: true
 
-      # First-time only: copy DB from runner machine into repo (requires self-hosted runner)
-      - name: Validate seed runner context
-        if: ${{ github.event.inputs.seed_db_path }}
-        run: |
-          node -e "
-          const os = process.platform;
-          if (os !== 'win32') {
-            console.error('::error::Seed DB path was provided, but this job is not running on a Windows self-hosted runner.');
-            console.error('::error::Open Run workflow, set Seed DB path, and ensure a Windows self-hosted runner is Online.');
-            process.exit(1);
-          }
-          "
-
-      - name: Copy seed DB (first-time only)
-        if: ${{ github.event.inputs.seed_db_path }}
-        run: |
-          node -e "
-          const fs = require('fs');
-          const path = require('path');
-          const src = process.env.SEED_DB_PATH;
-          const dest = path.join('data', 'screener.db');
-          fs.mkdirSync('data', { recursive: true });
-          if (!src || !fs.existsSync(src)) {
-            console.error('::error::Seed DB path does not exist on this runner: ' + (src || '<empty>'));
-            process.exit(1);
-          }
-          fs.copyFileSync(src, dest);
-          const mb = Math.round(fs.statSync(dest).size / 1024 / 1024);
-          console.log('Copied seed DB to', dest, '| Size', mb, 'MB');
-          "
-        env:
-          SEED_DB_PATH: ${{ github.event.inputs.seed_db_path }}
+      # If this is a seed run, use seeded DB artifact (overrides cache restore)
+      - name: Download seeded DB artifact
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: seeded-db-${{ github.run_id }}
+          path: data
 
       - name: Verify DB exists
         run: |
@@ -105,7 +137,7 @@ jobs:
           const fs = require('fs');
           const p = 'data/screener.db';
           if (!fs.existsSync(p)) {
-            console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set and use a self-hosted runner.');
+            console.error('::error::No screener.db found from cache or seed artifact.');
             process.exit(1);
           }
           console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
