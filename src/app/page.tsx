@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import Header from "@/components/Header";
+import Header, { HeaderPage } from "@/components/Header";
 import StockChart from "@/components/StockChart";
 import LeftSidebar from "@/components/LeftSidebar";
 import QuarterlyBox from "@/components/QuarterlyBox";
 import NewsSidebar from "@/components/NewsSidebar";
 import WatchlistPanel from "@/components/WatchlistPanel";
+import MarketMonitorTable from "@/components/MarketMonitorTable";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
 
 const DEFAULT_SYMBOL = "AAPL";
@@ -53,6 +54,7 @@ type StockData = {
 
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
+  const [page, setPage] = useState<HeaderPage>("home");
   const [searchValue, setSearchValue] = useState("");
   const [data, setData] = useState<StockData | null>(null);
   const [candles, setCandles] = useState<Candle[] | null>(null);
@@ -364,8 +366,14 @@ export default function Home() {
         onSearchChange={setSearchValue}
         onSearchSubmit={handleSearchSubmit}
         loading={loading}
+        currentPage={page}
+        onPageChange={setPage}
       />
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden p-0 gap-0 bg-white dark:bg-zinc-900">
+        {page === "market-monitor" ? (
+          <MarketMonitorTable />
+        ) : (
+          <>
         <div className="min-w-0 flex-1 min-h-0 overflow-hidden border-b border-zinc-200 dark:border-zinc-800 flex flex-col">
           <div className="flex flex-1 min-h-0 min-w-0 gap-0 overflow-hidden">
             <LeftSidebar
@@ -461,6 +469,8 @@ export default function Home() {
             openToRelatedListTrigger={openToRelatedListTrigger ?? undefined}
           />
         </div>
+          </>
+        )}
       </main>
     </div>
   );
