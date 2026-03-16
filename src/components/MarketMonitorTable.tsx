@@ -30,9 +30,9 @@ function fmtRatio(n: number | null | undefined): string {
   return n.toFixed(2);
 }
 
-function fmtPct(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(0)}%`;
+function fmtPctCell(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "";
+  return `${n.toFixed(1)}%`;
 }
 
 function formatDateDmy(input: string): string {
@@ -58,7 +58,6 @@ export default function MarketMonitorTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestDate, setLatestDate] = useState<string | null>(null);
-  const [breadth, setBreadth] = useState<ApiResponse["breadth"]>(undefined);
   const [netNewHighs, setNetNewHighs] = useState<ApiResponse["netNewHighs"]>(undefined);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
 
@@ -76,7 +75,6 @@ export default function MarketMonitorTable() {
           setError(null);
           setData(json.rows ?? []);
           setLatestDate(json.latestDate ?? null);
-          setBreadth(json.breadth);
           setNetNewHighs(json.netNewHighs);
           const all = json.rows ?? [];
           if (all.length > 0) {
@@ -175,38 +173,15 @@ export default function MarketMonitorTable() {
           </span>
         </p>
       </div>
-      <div className="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
-            % Stocks Above Moving Averages
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">50-Day MA</p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-300">S&P 500</p>
-              <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(breadth?.sp500PctAbove50d)}</p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">Nasdaq</p>
-              <p className="text-lg font-semibold text-amber-500 dark:text-amber-400">{fmtPct(breadth?.nasdaqPctAbove50d)}</p>
-            </div>
-            <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">200-Day MA</p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-300">S&P 500</p>
-              <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(breadth?.sp500PctAbove200d)}</p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">Nasdaq</p>
-              <p className="text-lg font-semibold text-amber-500 dark:text-amber-400">{fmtPct(breadth?.nasdaqPctAbove200d)}</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
-            Net New Highs (Highs - Lows)
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <MiniBarSeries title="1M" series={netNewHighs?.oneMonth ?? []} />
-            <MiniBarSeries title="3M" series={netNewHighs?.threeMonths ?? []} />
-            <MiniBarSeries title="6M" series={netNewHighs?.sixMonths ?? []} />
-            <MiniBarSeries title="52W" series={netNewHighs?.fiftyTwoWeek ?? []} />
-          </div>
+      <div className="mb-4 rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900">
+        <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
+          Net New Highs (Highs - Lows)
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+          <MiniBarSeries title="1M" series={netNewHighs?.oneMonth ?? []} />
+          <MiniBarSeries title="3M" series={netNewHighs?.threeMonths ?? []} />
+          <MiniBarSeries title="6M" series={netNewHighs?.sixMonths ?? []} />
+          <MiniBarSeries title="52W" series={netNewHighs?.fiftyTwoWeek ?? []} />
         </div>
       </div>
       <div className="max-w-full overflow-auto border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-900 shadow-sm">
@@ -226,44 +201,76 @@ export default function MarketMonitorTable() {
               >
                 Secondary Breadth Indicators
               </th>
+              <th
+                className="sticky top-0 z-10 bg-violet-100/80 dark:bg-violet-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold border-l border-zinc-300 dark:border-zinc-700 text-violet-900 dark:text-violet-100"
+                colSpan={4}
+              >
+                Index Breadth (% Above MAs)
+              </th>
               <th className="sticky top-0 z-10 bg-zinc-900 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-zinc-300 dark:border-zinc-700" />
             </tr>
             <tr>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-r border-zinc-300 dark:border-zinc-700">
+              <th
+                rowSpan={2}
+                className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-r border-zinc-300 dark:border-zinc-700"
+              >
                 Date
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up %
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down %
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 5D Ratio
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 10D Ratio
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up 25% (Q)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 25% (Q)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
                 Up 25% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 25% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up 50% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th rowSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 50% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              <th colSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-semibold border-l border-zinc-300 dark:border-zinc-700">
+                S&amp;P 500
+              </th>
+              <th colSpan={2} className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-semibold">
+                Nasdaq
+              </th>
+              <th
+                rowSpan={2}
+                className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700"
+              >
                 Stock Universe
+              </th>
+            </tr>
+            <tr>
+              <th className="sticky top-[66px] z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+                % &gt; 50 SMA
+              </th>
+              <th className="sticky top-[66px] z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+                % &gt; 200 SMA
+              </th>
+              <th className="sticky top-[66px] z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+                % &gt; 50 SMA
+              </th>
+              <th className="sticky top-[66px] z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+                % &gt; 200 SMA
               </th>
             </tr>
           </thead>
@@ -314,6 +321,18 @@ export default function MarketMonitorTable() {
                 </td>
                 <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>
                   {fmtInt(row.down50pct_month)}
+                </td>
+                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
+                  {fmtPctCell(row.sp500PctAbove50d)}
+                </td>
+                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                  {fmtPctCell(row.sp500PctAbove200d)}
+                </td>
+                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                  {fmtPctCell(row.nasdaqPctAbove50d)}
+                </td>
+                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                  {fmtPctCell(row.nasdaqPctAbove200d)}
                 </td>
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
                   {fmtInt(row.universe)}

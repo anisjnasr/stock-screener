@@ -5,6 +5,7 @@ import {
   getLatestCompletedTradingDate,
   getMarketMonitorBaseRowsFromDailyBars,
   getIndexBreadthSnapshot,
+  getIndexBreadthSeries,
   getNetNewHighSeries,
 } from "@/lib/screener-db-native";
 
@@ -20,6 +21,10 @@ export type MarketMonitorRow = {
   down25pct_month: number;
   up50pct_month: number;
   down50pct_month: number;
+  sp500PctAbove50d: number | null;
+  sp500PctAbove200d: number | null;
+  nasdaqPctAbove50d: number | null;
+  nasdaqPctAbove200d: number | null;
   universe: number;
 };
 
@@ -43,7 +48,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 
 export async function GET() {
   try {
@@ -132,6 +137,11 @@ export async function GET() {
       return up / down;
     }
 
+    const sp500BreadthSeries = getIndexBreadthSeries("sp500", startDate, latestDate);
+    const nasdaqBreadthSeries = getIndexBreadthSeries("nasdaq100", startDate, latestDate);
+    const sp500ByDate = new Map(sp500BreadthSeries.rows.map((r) => [r.date, r]));
+    const nasdaqByDate = new Map(nasdaqBreadthSeries.rows.map((r) => [r.date, r]));
+
     const withRatiosAsc: MarketMonitorRow[] = rowsAsc.map((r, idx) => ({
       date: r.date,
       up4pct: r.up4pct,
@@ -144,6 +154,10 @@ export async function GET() {
       down25pct_month: r.down25pct_month,
       up50pct_month: r.up50pct_month,
       down50pct_month: r.down50pct_month,
+      sp500PctAbove50d: sp500ByDate.get(r.date)?.pctAbove50d ?? null,
+      sp500PctAbove200d: sp500ByDate.get(r.date)?.pctAbove200d ?? null,
+      nasdaqPctAbove50d: nasdaqByDate.get(r.date)?.pctAbove50d ?? null,
+      nasdaqPctAbove200d: nasdaqByDate.get(r.date)?.pctAbove200d ?? null,
       universe: r.universe,
     }));
 

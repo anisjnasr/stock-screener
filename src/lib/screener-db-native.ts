@@ -309,6 +309,14 @@ export type IndexBreadthRow = {
   count200d: number;
 };
 
+export type IndexBreadthSeriesRow = {
+  date: string;
+  pctAbove50d: number | null;
+  pctAbove200d: number | null;
+  count50d: number;
+  count200d: number;
+};
+
 export type NetNewHighRow = {
   date: string;
   highs: number;
@@ -728,6 +736,140 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
   const sp500 = computeForSymbols("sp500", "S&P 500", sp500Symbols);
   const nasdaq = computeForSymbols("nasdaq100", "Nasdaq", nasdaqSymbols);
   return { rows: [sp500, nasdaq], date: asOfDate };
+}
+
+export function getIndexBreadthSeries(
+  indexId: "sp500" | "nasdaq100",
+  startDate: string,
+  endDate: string
+): { rows: IndexBreadthSeriesRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+
+  const fallbackSymbolsForIndex = (
+    id: "sp500" | "nasdaq100",
+    desiredCount: number
+  ): string[] => {
+    if (id === "nasdaq100") {
+      const rows = db
+        .prepare(
+          `
+          SELECT q.symbol
+          FROM quote_daily q
+          INNER JOIN (
+            SELECT symbol, MAX(date) AS max_date
+            FROM quote_daily
+            WHERE date <= ?
+            GROUP BY symbol
+          ) x ON x.symbol = q.symbol AND x.max_date = q.date
+          INNER JOIN companies c ON c.symbol = q.symbol
+          WHERE q.market_cap IS NOT NULL
+            AND c.exchange IS NOT NULL
+            AND UPPER(c.exchange) LIKE '%NASDAQ%'
+          ORDER BY q.market_cap DESC
+          LIMIT ?
+          `
+        )
+        .all(endDate, desiredCount) as Array<{ symbol: string }>;
+      return rows.map((r) => String(r.symbol));
+    }
+    const rows = db
+      .prepare(
+        `
+        SELECT q.symbol
+        FROM quote_daily q
+        INNER JOIN (
+          SELECT symbol, MAX(date) AS max_date
+          FROM quote_daily
+          WHERE date <= ?
+          GROUP BY symbol
+        ) x ON x.symbol = q.symbol AND x.max_date = q.date
+        INNER JOIN companies c ON c.symbol = q.symbol
+        WHERE q.market_cap IS NOT NULL
+          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
+        ORDER BY q.market_cap DESC
+        LIMIT ?
+        `
+      )
+      .all(endDate, desiredCount) as Array<{ symbol: string }>;
+    return rows.map((r) => String(r.symbol));
+  };
+
+  const list = loadIndexSymbols(indexId);
+  const symbols = list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 100);
+  if (symbols.length === 0) return { rows: [], date: endDate };
+
+  const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
+  const from = new Date(`${startDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 260);
+  const bufferStartDate = from.toISOString().slice(0, 10);
+
+  const rows = db
+    .prepare(
+      `
+      WITH base AS (
+        SELECT
+          d.date,
+          d.symbol,
+          d.close,
+          AVG(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN 49 PRECEDING AND CURRENT ROW
+          ) AS ma50,
+          AVG(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN 199 PRECEDING AND CURRENT ROW
+          ) AS ma200,
+          COUNT(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN 49 PRECEDING AND CURRENT ROW
+          ) AS c50,
+          COUNT(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN 199 PRECEDING AND CURRENT ROW
+          ) AS c200
+        FROM daily_bars d
+        WHERE d.symbol IN (${symbolFilter})
+          AND d.date BETWEEN ? AND ?
+      )
+      SELECT
+        date,
+        SUM(CASE WHEN c50 = 50 AND close > ma50 THEN 1 ELSE 0 END) AS above50,
+        SUM(CASE WHEN c50 = 50 THEN 1 ELSE 0 END) AS count50,
+        SUM(CASE WHEN c200 = 200 AND close > ma200 THEN 1 ELSE 0 END) AS above200,
+        SUM(CASE WHEN c200 = 200 THEN 1 ELSE 0 END) AS count200
+      FROM base
+      WHERE date BETWEEN ? AND ?
+      GROUP BY date
+      ORDER BY date ASC
+      `
+    )
+    .all(bufferStartDate, endDate, startDate, endDate) as Array<{
+      date: string;
+      above50: number;
+      count50: number;
+      above200: number;
+      count200: number;
+    }>;
+
+  return {
+    rows: rows.map((r) => {
+      const count50 = Number(r.count50 ?? 0);
+      const count200 = Number(r.count200 ?? 0);
+      return {
+        date: String(r.date),
+        pctAbove50d: count50 > 0 ? (Number(r.above50 ?? 0) * 100) / count50 : null,
+        pctAbove200d: count200 > 0 ? (Number(r.above200 ?? 0) * 100) / count200 : null,
+        count50d: count50,
+        count200d: count200,
+      };
+    }),
+    date: endDate,
+  };
 }
 
 export function getNetNewHighSeries(
