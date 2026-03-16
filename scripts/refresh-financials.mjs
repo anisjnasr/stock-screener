@@ -5,8 +5,8 @@
  * Requires: MASSIVE_API_KEY, data/screener.db
  */
 
-import initSqlJs from "sql.js";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import Database from "better-sqlite3";
+import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -76,12 +76,12 @@ async function main() {
     process.exit(1);
   }
 
-  const SQL = await initSqlJs();
-  const buf = readFileSync(DB_PATH);
-  const db = new SQL.Database(buf);
+  const db = new Database(DB_PATH);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = OFF");
+  db.pragma("busy_timeout = 10000");
 
-  const symbolRows = db.exec("SELECT symbol FROM companies ORDER BY symbol");
-  let symbols = symbolRows.length && symbolRows[0].values ? symbolRows[0].values.map((r) => r[0]) : [];
+  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
@@ -106,7 +106,7 @@ async function main() {
         const prev = annual[j + 1];
         const epsGrowth = prev != null ? computeGrowth(row.eps, prev.eps) : null;
         const salesGrowth = prev != null ? computeGrowth(row.revenue, prev.revenue) : null;
-        upsert.bind([
+        upsert.run(
           sym,
           "annual",
           row.period_end,
@@ -114,17 +114,15 @@ async function main() {
           epsGrowth,
           row.revenue ?? null,
           salesGrowth,
-          now,
-        ]);
-        upsert.step();
-        upsert.reset();
+          now
+        );
       }
       for (let j = 0; j < quarterly.length; j++) {
         const row = quarterly[j];
         const prev = quarterly[j + 1];
         const epsGrowth = prev != null ? computeGrowth(row.eps, prev.eps) : null;
         const salesGrowth = prev != null ? computeGrowth(row.revenue, prev.revenue) : null;
-        upsert.bind([
+        upsert.run(
           sym,
           "quarterly",
           row.period_end,
@@ -132,10 +130,8 @@ async function main() {
           epsGrowth,
           row.revenue ?? null,
           salesGrowth,
-          now,
-        ]);
-        upsert.step();
-        upsert.reset();
+          now
+        );
       }
     } catch (e) {
       console.warn("Skip", sym, e.message);
@@ -146,8 +142,7 @@ async function main() {
     await sleep(150);
   }
 
-  upsert.free();
-  writeFileSync(DB_PATH, Buffer.from(db.export()));
+  db.pragma("optimize");
   db.close();
   console.log("\nFinancials refresh done.");
 }

@@ -7,8 +7,8 @@
  * Requires: data/screener.db (companies table). Creates data/13f/, data/cusip-to-symbol.json.
  */
 
-import initSqlJs from "sql.js";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import Database from "better-sqlite3";
+import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
@@ -96,18 +96,17 @@ async function main() {
     symbolsToSave = new Set(SYMBOLS_ARG.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean));
     console.log("   Limiting to symbols:", [...symbolsToSave].join(", "));
   } else if (LIMIT != null && LIMIT > 0) {
-    const SQL = await initSqlJs();
-    const buf = readFileSync(DB_PATH);
-    const db = new SQL.Database(buf);
-    const r = db.exec("SELECT symbol FROM companies ORDER BY symbol LIMIT " + LIMIT);
+    const db = new Database(DB_PATH, { readonly: true });
+    const r = db.prepare("SELECT symbol FROM companies ORDER BY symbol LIMIT ?").all(LIMIT);
     db.close();
-    symbolsToSave = r.length && r[0].values ? new Set(r[0].values.map((v) => v[0])) : null;
+    symbolsToSave = new Set(r.map((v) => v.symbol));
     console.log("   Limiting to", LIMIT, "symbols");
   }
 
-  const SQL = await initSqlJs();
-  const buf = readFileSync(DB_PATH);
-  const db = new SQL.Database(buf);
+  const db = new Database(DB_PATH);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = OFF");
+  db.pragma("busy_timeout = 10000");
 
   const now = new Date().toISOString();
   const upsert = db.prepare(`
@@ -116,24 +115,23 @@ async function main() {
   `);
 
   let inserted = 0;
-  for (const row of rows) {
-    if (symbolsToSave != null && !symbolsToSave.has(row.symbol)) continue;
-    const topHoldersJson = JSON.stringify(row.top_holders || []);
-    upsert.bind([
-      row.symbol,
-      row.report_date,
-      row.num_funds,
-      row.num_funds_change,
-      topHoldersJson,
-      now,
-    ]);
-    upsert.step();
-    upsert.reset();
-    inserted++;
-  }
-  upsert.free();
-
-  writeFileSync(DB_PATH, Buffer.from(db.export()));
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      if (symbolsToSave != null && !symbolsToSave.has(row.symbol)) continue;
+      const topHoldersJson = JSON.stringify(row.top_holders || []);
+      upsert.run(
+        row.symbol,
+        row.report_date,
+        row.num_funds,
+        row.num_funds_change,
+        topHoldersJson,
+        now
+      );
+      inserted++;
+    }
+  });
+  tx();
+  db.pragma("optimize");
   db.close();
   console.log("4. Wrote", inserted, "ownership rows. Done.");
 }
