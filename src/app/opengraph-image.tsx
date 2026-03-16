@@ -23,7 +23,7 @@ export default function OpenGraphImage() {
           padding: "80px",
         }}
       >
-        <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1.1 }}>Stock Scanner</div>
+        <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1.1 }}>Stock Stalker</div>
         <div style={{ fontSize: 32, opacity: 0.92, marginTop: 20 }}>
           Fundamentals, charts, screener, and market insights
         </div>

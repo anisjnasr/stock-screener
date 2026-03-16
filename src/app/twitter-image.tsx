@@ -23,7 +23,7 @@ export default function TwitterImage() {
           padding: "64px",
         }}
       >
-        <div style={{ fontSize: 64, fontWeight: 800, lineHeight: 1.1 }}>Stock Scanner</div>
+        <div style={{ fontSize: 64, fontWeight: 800, lineHeight: 1.1 }}>Stock Stalker</div>
         <div style={{ fontSize: 28, opacity: 0.92, marginTop: 16 }}>
           Fundamentals, charts, screener, and market insights
         </div>

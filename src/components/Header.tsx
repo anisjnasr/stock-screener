@@ -74,6 +74,7 @@ export default function Header({
   currentPage,
   onPageChange,
 }: HeaderProps) {
+  const brandName = "Stock Stalker";
   const name = quote?.name ?? profile?.companyName ?? symbol;
   const price = quote?.price;
   const chgPct = quote?.changesPercentage;
@@ -161,8 +162,13 @@ export default function Header({
       <div className="px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex flex-wrap items-center gap-3 min-w-0">
+            <img
+              src="/brand/stockstalker-lockup.svg"
+              alt={brandName}
+              className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
+            />
             <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
-              {currentPage === "home" ? (loading ? "…" : name) : "Stock Scanner"}
+              {currentPage === "home" ? (loading ? "…" : name) : brandName}
             </h1>
             {currentPage === "home" && (
             <div ref={searchContainerRef} className="relative">
