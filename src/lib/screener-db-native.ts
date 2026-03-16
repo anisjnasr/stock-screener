@@ -409,33 +409,53 @@ export function getWeightedCategoryPerformance(
     ),
     latest AS (
       SELECT
-        b.symbol,
-        b.close,
-        b.prev_close
+        b.symbol AS symbol,
+        b.close AS close,
+        b.prev_close AS prev_close
       FROM base b
-      WHERE b.date = ?
+      WHERE b.date <= ?
         AND b.prev_close > 0
+        AND b.close > 0
+        AND b.prev_close > 0
+        AND b.date = (
+          SELECT MAX(b2.date)
+          FROM base b2
+          WHERE b2.symbol = b.symbol
+            AND b2.date <= ?
+            AND b2.prev_close > 0
+            AND b2.close > 0
+        )
+    ),
+    latest_cap AS (
+      SELECT q.symbol, q.market_cap
+      FROM quote_daily q
+      INNER JOIN (
+        SELECT symbol, MAX(date) AS max_date
+        FROM quote_daily
+        WHERE date <= ?
+        GROUP BY symbol
+      ) x ON x.symbol = q.symbol AND x.max_date = q.date
     )
     SELECT
       c.${groupBy} AS name,
       SUM(
-        q.market_cap * ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0))
-      ) / SUM(q.market_cap) AS change_pct,
-      SUM(q.market_cap) AS total_market_cap,
+        lc.market_cap * ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0))
+      ) / SUM(lc.market_cap) AS change_pct,
+      SUM(lc.market_cap) AS total_market_cap,
       COUNT(*) AS stock_count
     FROM latest l
     INNER JOIN companies c ON c.symbol = l.symbol
-    LEFT JOIN quote_daily q ON q.symbol = l.symbol AND q.date = ?
+    LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
     WHERE c.${groupBy} IS NOT NULL
       AND TRIM(c.${groupBy}) <> ''
       AND c.${groupBy} <> 'NA'
-      AND q.market_cap IS NOT NULL
-      AND q.market_cap > 0
+      AND lc.market_cap IS NOT NULL
+      AND lc.market_cap > 0
     GROUP BY c.${groupBy}
-    HAVING SUM(q.market_cap) > 0
+    HAVING SUM(lc.market_cap) > 0
     ORDER BY change_pct DESC
   `;
-  const rows = db.prepare(sql).all(startDate, asOfDate, asOfDate, asOfDate) as Array<{
+  const rows = db.prepare(sql).all(startDate, asOfDate, asOfDate, asOfDate, asOfDate) as Array<{
     name: string;
     change_pct: number;
     total_market_cap: number;
@@ -479,17 +499,43 @@ export function getTickerPerformance(
       FROM daily_bars d
       WHERE d.symbol IN (${placeholders})
         AND d.date BETWEEN ? AND ?
+    ),
+    latest AS (
+      SELECT
+        b.symbol AS symbol,
+        b.close AS close,
+        b.prev_close AS prev_close
+      FROM base b
+      WHERE b.date <= ?
+        AND b.prev_close > 0
+        AND b.close > 0
+        AND b.date = (
+          SELECT MAX(b2.date)
+          FROM base b2
+          WHERE b2.symbol = b.symbol
+            AND b2.date <= ?
+            AND b2.prev_close > 0
+            AND b2.close > 0
+        )
+    ),
+    latest_cap AS (
+      SELECT q.symbol, q.market_cap
+      FROM quote_daily q
+      INNER JOIN (
+        SELECT symbol, MAX(date) AS max_date
+        FROM quote_daily
+        WHERE date <= ?
+        GROUP BY symbol
+      ) x ON x.symbol = q.symbol AND x.max_date = q.date
     )
     SELECT
-      b.symbol AS symbol,
-      ((b.close - b.prev_close) * 100.0 / NULLIF(b.prev_close, 0)) AS change_pct,
-      q.market_cap AS market_cap
-    FROM base b
-    LEFT JOIN quote_daily q ON q.symbol = b.symbol AND q.date = ?
-    WHERE b.date = ?
-      AND b.prev_close > 0
+      l.symbol AS symbol,
+      ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0)) AS change_pct,
+      lc.market_cap AS market_cap
+    FROM latest l
+    LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
   `;
-  const rows = db.prepare(sql).all(...unique, startDate, asOfDate, asOfDate, asOfDate) as Array<{
+  const rows = db.prepare(sql).all(...unique, startDate, asOfDate, asOfDate, asOfDate, asOfDate) as Array<{
     symbol: string;
     change_pct: number;
     market_cap: number | null;
@@ -507,7 +553,7 @@ export function getTickerPerformance(
 export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-  const asOfDate = date ?? getLatestScreenerDate();
+  const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate) return { rows: [], date: null };
 
   const fallbackSymbolsForIndex = (
@@ -520,11 +566,16 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
           `
           SELECT q.symbol
           FROM quote_daily q
+          INNER JOIN (
+            SELECT symbol, MAX(date) AS max_date
+            FROM quote_daily
+            WHERE date <= ?
+            GROUP BY symbol
+          ) x ON x.symbol = q.symbol AND x.max_date = q.date
           INNER JOIN companies c ON c.symbol = q.symbol
-          WHERE q.date = ?
+          WHERE q.market_cap IS NOT NULL
             AND c.exchange IS NOT NULL
             AND UPPER(c.exchange) LIKE '%NASDAQ%'
-            AND q.market_cap IS NOT NULL
           ORDER BY q.market_cap DESC
           LIMIT ?
           `
@@ -537,10 +588,15 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
         `
         SELECT q.symbol
         FROM quote_daily q
+        INNER JOIN (
+          SELECT symbol, MAX(date) AS max_date
+          FROM quote_daily
+          WHERE date <= ?
+          GROUP BY symbol
+        ) x ON x.symbol = q.symbol AND x.max_date = q.date
         INNER JOIN companies c ON c.symbol = q.symbol
-        WHERE q.date = ?
-          AND c.is_etf = 0
-          AND q.market_cap IS NOT NULL
+        WHERE q.market_cap IS NOT NULL
+          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
         ORDER BY q.market_cap DESC
         LIMIT ?
         `
@@ -639,14 +695,14 @@ export function getNetNewHighSeries(
 ): { rows: NetNewHighRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-  const asOfDate = date ?? getLatestScreenerDate();
+  const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate) return { rows: [], date: null };
 
   const displayDateRows = db
     .prepare(
       `
       SELECT date
-      FROM quote_daily
+      FROM daily_bars
       WHERE date <= ?
       GROUP BY date
       ORDER BY date DESC
@@ -662,7 +718,7 @@ export function getNetNewHighSeries(
     .prepare(
       `
       SELECT date
-      FROM quote_daily
+      FROM daily_bars
       WHERE date <= ?
       GROUP BY date
       ORDER BY date DESC
