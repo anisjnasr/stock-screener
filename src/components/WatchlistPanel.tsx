@@ -128,6 +128,8 @@ type WatchlistPanelProps = {
   relatedStocksList?: { title: string; symbols: string[] } | null;
   /** When this value changes, panel switches to Watchlists and selects the related list (e.g. Date.now() from parent). */
   openToRelatedListTrigger?: number;
+  /** When this changes, switch to a specific watchlist collection (sector/industry). */
+  openToCollectionTrigger?: { kind: "sector" | "industry"; name: string; nonce: number } | null;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -434,6 +436,7 @@ export default function WatchlistPanel({
   onSymbolSelect,
   relatedStocksList,
   openToRelatedListTrigger,
+  openToCollectionTrigger,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
@@ -842,6 +845,23 @@ export default function WatchlistPanel({
     setSelectedCollectionId(RELATED_LIST_ID);
     setActiveListId(null);
   }, [openToRelatedListTrigger]);
+
+  useEffect(() => {
+    if (!openToCollectionTrigger?.name?.trim()) return;
+    const collectionId =
+      openToCollectionTrigger.kind === "sector"
+        ? `${SECTOR_LIST_PREFIX}${openToCollectionTrigger.name}`
+        : `${INDUSTRY_LIST_PREFIX}${openToCollectionTrigger.name}`;
+    setSidebarTab("watchlists");
+    setSelectedCollectionId(collectionId);
+    setActiveListId(null);
+    setExpandedListFolderIds((prev) => {
+      const next = new Set(prev);
+      if (openToCollectionTrigger.kind === "sector") next.add("sectors");
+      else next.add("industries");
+      return next;
+    });
+  }, [openToCollectionTrigger]);
 
   useEffect(() => {
     if (!selectedCollectionId) return;

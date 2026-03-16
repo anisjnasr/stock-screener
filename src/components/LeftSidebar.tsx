@@ -35,6 +35,10 @@ type LeftSidebarProps = {
   onSymbolSelect?: (symbol: string) => void;
   /** Called when the "Related Stocks" section title is clicked; e.g. open watchlists with this list. */
   onOpenRelatedStocksInWatchlist?: () => void;
+  /** Open a sector list in Watchlists. */
+  onOpenSectorInWatchlist?: (sector: string) => void;
+  /** Open an industry list in Watchlists. */
+  onOpenIndustryInWatchlist?: (industry: string) => void;
   loading?: boolean;
 };
 
@@ -64,6 +68,8 @@ export default function LeftSidebar({
   relatedStocks = [],
   onSymbolSelect,
   onOpenRelatedStocksInWatchlist,
+  onOpenSectorInWatchlist,
+  onOpenIndustryInWatchlist,
   loading,
 }: LeftSidebarProps) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -142,13 +148,35 @@ export default function LeftSidebar({
             {profile?.sector != null && profile.sector !== "" && (
               <>
                 <span className="text-zinc-500 dark:text-zinc-400">Sector</span>
-                <span className="text-zinc-900 dark:text-zinc-100">{profile.sector}</span>
+                {onOpenSectorInWatchlist ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSectorInWatchlist(profile.sector as string)}
+                    className="text-left text-blue-600 dark:text-blue-400 hover:underline focus:outline-none focus:underline"
+                    title={`Open ${profile.sector} in Watchlists`}
+                  >
+                    {profile.sector}
+                  </button>
+                ) : (
+                  <span className="text-zinc-900 dark:text-zinc-100">{profile.sector}</span>
+                )}
               </>
             )}
             {profile?.industry != null && profile.industry !== "" && (
               <>
                 <span className="text-zinc-500 dark:text-zinc-400">Industry</span>
-                <span className="text-zinc-900 dark:text-zinc-100">{toTitleCase(profile.industry)}</span>
+                {onOpenIndustryInWatchlist ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenIndustryInWatchlist(profile.industry as string)}
+                    className="text-left text-blue-600 dark:text-blue-400 hover:underline focus:outline-none focus:underline"
+                    title={`Open ${profile.industry} in Watchlists`}
+                  >
+                    {toTitleCase(profile.industry)}
+                  </button>
+                ) : (
+                  <span className="text-zinc-900 dark:text-zinc-100">{toTitleCase(profile.industry)}</span>
+                )}
               </>
             )}
             {profile?.country != null && profile.country !== "" && (

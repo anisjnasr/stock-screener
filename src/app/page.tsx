@@ -78,6 +78,11 @@ export default function Home() {
   const [relatedStocks, setRelatedStocks] = useState<Array<{ symbol: string; name: string }>>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [openToRelatedListTrigger, setOpenToRelatedListTrigger] = useState<number | null>(null);
+  const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<{
+    kind: "sector" | "industry";
+    name: string;
+    nonce: number;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -399,6 +404,30 @@ export default function Home() {
                     }
                   : undefined
               }
+              onOpenSectorInWatchlist={(sector) => {
+                const trimmed = String(sector ?? "").trim();
+                if (!trimmed) return;
+                setWatchlistHeightPx((h) => {
+                  if (h <= 32) {
+                    savePanelHeightPx(320);
+                    return 320;
+                  }
+                  return h;
+                });
+                setOpenToCollectionTrigger({ kind: "sector", name: trimmed, nonce: Date.now() });
+              }}
+              onOpenIndustryInWatchlist={(industry) => {
+                const trimmed = String(industry ?? "").trim();
+                if (!trimmed) return;
+                setWatchlistHeightPx((h) => {
+                  if (h <= 32) {
+                    savePanelHeightPx(320);
+                    return 320;
+                  }
+                  return h;
+                });
+                setOpenToCollectionTrigger({ kind: "industry", name: trimmed, nonce: Date.now() });
+              }}
               loading={sidebarLoading}
             />
             <div className="flex flex-1 min-w-0 min-h-0 border-l border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -467,6 +496,7 @@ export default function Home() {
                 : null
             }
             openToRelatedListTrigger={openToRelatedListTrigger ?? undefined}
+            openToCollectionTrigger={openToCollectionTrigger}
           />
         </div>
           </>
