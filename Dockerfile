@@ -8,7 +8,8 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+# Build stage needs devDependencies (TypeScript/Next tooling).
+RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
