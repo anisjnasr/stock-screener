@@ -308,8 +308,10 @@ function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
 }
 
 function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
-  const p = join(process.cwd(), "data", `${indexId}.json`);
-  if (!existsSync(p)) return [];
+  const directPath = join(process.cwd(), "data", `${indexId}.json`);
+  const bootstrapPath = join(process.cwd(), "bootstrap-data", `${indexId}.json`);
+  const p = existsSync(directPath) ? directPath : existsSync(bootstrapPath) ? bootstrapPath : null;
+  if (!p) return [];
   try {
     const raw = readFileSync(p, "utf8");
     const arr = JSON.parse(raw) as string[];
@@ -317,6 +319,43 @@ function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
   } catch {
     return [];
   }
+}
+
+function getTodayDateInNewYork(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const year = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
+export function getLatestCompletedTradingDate(): string | null {
+  const db = getDb();
+  if (!db) return null;
+  const nyToday = getTodayDateInNewYork();
+  const companyCountRow = db.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number } | undefined;
+  const companyCount = Number(companyCountRow?.c ?? 0);
+  const minCoverage = companyCount > 0 ? Math.max(200, Math.floor(companyCount * 0.8)) : 200;
+  const recent = db
+    .prepare(
+      `
+      SELECT date, COUNT(DISTINCT symbol) AS cnt
+      FROM daily_bars
+      WHERE date < ?
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 30
+      `
+    )
+    .all(nyToday) as Array<{ date: string; cnt: number }>;
+  if (recent.length === 0) return null;
+  const reliable = recent.find((r) => Number(r.cnt ?? 0) >= minCoverage);
+  return String(reliable?.date ?? recent[0].date);
 }
 
 export function getWeightedCategoryPerformance(
@@ -410,6 +449,45 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
   const asOfDate = date ?? getLatestScreenerDate();
   if (!asOfDate) return { rows: [], date: null };
 
+  const fallbackSymbolsForIndex = (
+    indexId: "sp500" | "nasdaq100",
+    desiredCount: number
+  ): string[] => {
+    if (indexId === "nasdaq100") {
+      const rows = db
+        .prepare(
+          `
+          SELECT q.symbol
+          FROM quote_daily q
+          INNER JOIN companies c ON c.symbol = q.symbol
+          WHERE q.date = ?
+            AND c.exchange IS NOT NULL
+            AND UPPER(c.exchange) LIKE '%NASDAQ%'
+            AND q.market_cap IS NOT NULL
+          ORDER BY q.market_cap DESC
+          LIMIT ?
+          `
+        )
+        .all(asOfDate, desiredCount) as Array<{ symbol: string }>;
+      return rows.map((r) => String(r.symbol));
+    }
+    const rows = db
+      .prepare(
+        `
+        SELECT q.symbol
+        FROM quote_daily q
+        INNER JOIN companies c ON c.symbol = q.symbol
+        WHERE q.date = ?
+          AND c.is_etf = 0
+          AND q.market_cap IS NOT NULL
+        ORDER BY q.market_cap DESC
+        LIMIT ?
+        `
+      )
+      .all(asOfDate, desiredCount) as Array<{ symbol: string }>;
+    return rows.map((r) => String(r.symbol));
+  };
+
   const computeForSymbols = (
     indexId: "sp500" | "nasdaq100",
     indexName: string,
@@ -479,8 +557,17 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
     };
   };
 
-  const sp500 = computeForSymbols("sp500", "S&P 500", loadIndexSymbols("sp500"));
-  const nasdaq = computeForSymbols("nasdaq100", "Nasdaq", loadIndexSymbols("nasdaq100"));
+  const sp500Symbols = (() => {
+    const list = loadIndexSymbols("sp500");
+    return list.length > 0 ? list : fallbackSymbolsForIndex("sp500", 500);
+  })();
+  const nasdaqSymbols = (() => {
+    const list = loadIndexSymbols("nasdaq100");
+    return list.length > 0 ? list : fallbackSymbolsForIndex("nasdaq100", 100);
+  })();
+
+  const sp500 = computeForSymbols("sp500", "S&P 500", sp500Symbols);
+  const nasdaq = computeForSymbols("nasdaq100", "Nasdaq", nasdaqSymbols);
   return { rows: [sp500, nasdaq], date: asOfDate };
 }
 
@@ -727,5 +814,101 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
       up13pct_34d: Number(r.up13pct_34d ?? 0),
       down13pct_34d: Number(r.down13pct_34d ?? 0),
     }));
+}
+
+export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate?: string): MarketMonitorBaseRow[] {
+  const db = getDb();
+  if (!db) return [];
+  let toDate = endDate ?? null;
+  if (!toDate) toDate = getLatestCompletedTradingDate();
+  if (!toDate) return [];
+
+  const from = new Date(`${startDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 320);
+  const bufferStartDate = from.toISOString().slice(0, 10);
+
+  const rows = db
+    .prepare(
+      `
+      WITH base AS (
+        SELECT
+          d.symbol,
+          d.date,
+          d.close,
+          d.volume,
+          AVG(d.volume) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
+          ) AS avg_vol_30d,
+          LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1d,
+          LAG(d.close, 21) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1m,
+          LAG(d.close, 34) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_34d,
+          LAG(d.close, 63) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_3m
+        FROM daily_bars d
+        INNER JOIN companies c ON c.symbol = d.symbol
+        WHERE d.date BETWEEN ? AND ?
+      ),
+      eligible AS (
+        SELECT
+          symbol,
+          date,
+          close,
+          avg_vol_30d,
+          CASE WHEN close > 5 AND COALESCE(avg_vol_30d, 0) >= 100000 THEN 1 ELSE 0 END AS in_universe,
+          CASE WHEN close_1d > 0 THEN (close - close_1d) * 100.0 / close_1d ELSE NULL END AS chg_1d,
+          CASE WHEN close_1m > 0 THEN (close - close_1m) * 100.0 / close_1m ELSE NULL END AS chg_1m,
+          CASE WHEN close_34d > 0 THEN (close - close_34d) * 100.0 / close_34d ELSE NULL END AS chg_34d,
+          CASE WHEN close_3m > 0 THEN (close - close_3m) * 100.0 / close_3m ELSE NULL END AS chg_3m
+        FROM base
+      )
+      SELECT
+        date,
+        SUM(CASE WHEN in_universe = 1 THEN 1 ELSE 0 END) AS universe,
+        SUM(CASE WHEN in_universe = 1 AND chg_1d >= 4 THEN 1 ELSE 0 END) AS up4pct,
+        SUM(CASE WHEN in_universe = 1 AND chg_1d <= -4 THEN 1 ELSE 0 END) AS down4pct,
+        SUM(CASE WHEN in_universe = 1 AND chg_3m >= 25 THEN 1 ELSE 0 END) AS up25pct_qtr,
+        SUM(CASE WHEN in_universe = 1 AND chg_3m <= -25 THEN 1 ELSE 0 END) AS down25pct_qtr,
+        SUM(CASE WHEN in_universe = 1 AND chg_1m >= 25 THEN 1 ELSE 0 END) AS up25pct_month,
+        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
+        SUM(CASE WHEN in_universe = 1 AND chg_1m >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
+        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -50 THEN 1 ELSE 0 END) AS down50pct_month,
+        SUM(CASE WHEN in_universe = 1 AND chg_34d >= 13 THEN 1 ELSE 0 END) AS up13pct_34d,
+        SUM(CASE WHEN in_universe = 1 AND chg_34d <= -13 THEN 1 ELSE 0 END) AS down13pct_34d
+      FROM eligible
+      WHERE date BETWEEN ? AND ?
+      GROUP BY date
+      ORDER BY date ASC
+      `
+    )
+    .all(bufferStartDate, toDate, startDate, toDate) as Array<{
+      date: string;
+      universe: number;
+      up4pct: number;
+      down4pct: number;
+      up25pct_qtr: number;
+      down25pct_qtr: number;
+      up25pct_month: number;
+      down25pct_month: number;
+      up50pct_month: number;
+      down50pct_month: number;
+      up13pct_34d: number;
+      down13pct_34d: number;
+    }>;
+
+  return rows.map((r) => ({
+    date: String(r.date),
+    universe: Number(r.universe ?? 0),
+    up4pct: Number(r.up4pct ?? 0),
+    down4pct: Number(r.down4pct ?? 0),
+    up25pct_qtr: Number(r.up25pct_qtr ?? 0),
+    down25pct_qtr: Number(r.down25pct_qtr ?? 0),
+    up25pct_month: Number(r.up25pct_month ?? 0),
+    down25pct_month: Number(r.down25pct_month ?? 0),
+    up50pct_month: Number(r.up50pct_month ?? 0),
+    down50pct_month: Number(r.down50pct_month ?? 0),
+    up13pct_34d: Number(r.up13pct_34d ?? 0),
+    down13pct_34d: Number(r.down13pct_34d ?? 0),
+  }));
 }
 

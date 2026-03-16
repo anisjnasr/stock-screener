@@ -52,6 +52,7 @@ export default function MarketMonitorTable() {
   const [latestDate, setLatestDate] = useState<string | null>(null);
   const [breadth, setBreadth] = useState<ApiResponse["breadth"]>(undefined);
   const [netNewHighs, setNetNewHighs] = useState<ApiResponse["netNewHighs"]>(undefined);
+  const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +70,16 @@ export default function MarketMonitorTable() {
           setLatestDate(json.latestDate ?? null);
           setBreadth(json.breadth);
           setNetNewHighs(json.netNewHighs);
+          const all = json.rows ?? [];
+          if (all.length > 0) {
+            const latest = new Date(`${all[0].date}T00:00:00Z`);
+            const cutoff = new Date(latest);
+            cutoff.setUTCMonth(cutoff.getUTCMonth() - 6);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            setTableRowsToShow(all.filter((r) => r.date >= cutoffStr));
+          } else {
+            setTableRowsToShow([]);
+          }
         }
       })
       .catch(() => {
@@ -255,7 +266,7 @@ export default function MarketMonitorTable() {
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => (
+            {tableRowsToShow.map((row) => (
               <tr key={row.date} className="odd:bg-white even:bg-zinc-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-900/60 border-b border-zinc-100 dark:border-zinc-800">
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 whitespace-nowrap text-right tabular-nums border-l border-r border-zinc-300 dark:border-zinc-700">
                   {formatDateDmy(row.date)}

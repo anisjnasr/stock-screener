@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
-  getLatestScreenerDate,
-  getMarketMonitorBaseRows,
+  getLatestCompletedTradingDate,
+  getMarketMonitorBaseRowsFromDailyBars,
   getIndexBreadthSnapshot,
   getNetNewHighSeries,
 } from "@/lib/screener-db-native";
@@ -45,11 +45,11 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 export async function GET() {
   try {
-    const latest = getLatestScreenerDate();
+    const latest = getLatestCompletedTradingDate();
     if (!latest) {
       return NextResponse.json({ rows: [], latestDate: null, startDate: null });
     }
@@ -77,7 +77,40 @@ export async function GET() {
       }
     }
 
-    const baseRows = getMarketMonitorBaseRows(startDate, latestDate);
+    let baseRows: ReturnType<typeof getMarketMonitorBaseRowsFromDailyBars> = [];
+    let cachedRowsAsc: MarketMonitorRow[] = [];
+    let canIncremental = false;
+    if (existsSync(CACHE_PATH)) {
+      try {
+        const raw = readFileSync(CACHE_PATH, "utf8");
+        const cached = JSON.parse(raw) as CachePayload;
+        if (
+          cached.version === CACHE_VERSION &&
+          cached.startDate === startDate &&
+          Array.isArray(cached.rows) &&
+          cached.rows.length > 0
+        ) {
+          cachedRowsAsc = [...cached.rows].sort((a, b) => a.date.localeCompare(b.date));
+          const cachedLatest = cachedRowsAsc[cachedRowsAsc.length - 1]?.date;
+          if (cachedLatest && cachedLatest < latestDate) {
+            const nextStart = new Date(`${cachedLatest}T00:00:00Z`);
+            nextStart.setUTCDate(nextStart.getUTCDate() + 1);
+            const nextStartDate = nextStart.toISOString().slice(0, 10);
+            const missing = getMarketMonitorBaseRowsFromDailyBars(nextStartDate, latestDate);
+            baseRows = [...cachedRowsAsc, ...missing];
+            canIncremental = true;
+          } else if (cachedLatest === latestDate) {
+            baseRows = cachedRowsAsc;
+            canIncremental = true;
+          }
+        }
+      } catch {
+        // ignore and full recompute below
+      }
+    }
+    if (!canIncremental) {
+      baseRows = getMarketMonitorBaseRowsFromDailyBars(startDate, latestDate);
+    }
     if (baseRows.length === 0) {
       return NextResponse.json({ rows: [], latestDate, startDate });
     }
@@ -123,10 +156,10 @@ export async function GET() {
     const breadthSnapshot = getIndexBreadthSnapshot(latestDate);
     const breadthById = new Map(breadthSnapshot.rows.map((r) => [r.indexId, r]));
 
-    const nnh1m = getNetNewHighSeries(21, 60, latestDate);
-    const nnh3m = getNetNewHighSeries(63, 60, latestDate);
-    const nnh6m = getNetNewHighSeries(126, 60, latestDate);
-    const nnh52w = getNetNewHighSeries(252, 60, latestDate);
+    const nnh1m = getNetNewHighSeries(21, 126, latestDate);
+    const nnh3m = getNetNewHighSeries(63, 126, latestDate);
+    const nnh6m = getNetNewHighSeries(126, 126, latestDate);
+    const nnh52w = getNetNewHighSeries(252, 126, latestDate);
 
     const payload: CachePayload = {
       version: CACHE_VERSION,
