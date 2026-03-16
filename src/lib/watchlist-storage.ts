@@ -1,10 +1,11 @@
 /**
  * Watchlist and stock flags persisted in localStorage.
  * Lists: id -> { name, symbolIds }
- * Flags: symbol -> 'red' | 'yellow' | 'green' (global across lists)
+ * Flags: symbol -> 'red' | 'yellow' | 'green' | 'blue' (global across lists)
  */
 
 const STORAGE_KEY_LISTS = "stock-research-watchlists";
+const STORAGE_KEY_LIST_FOLDERS = "stock-research-watchlist-folders";
 const STORAGE_KEY_FLAGS = "stock-research-stock-flags";
 const STORAGE_KEY_PANEL = "stock-research-watchlist-panel";
 const STORAGE_KEY_PANEL_HEIGHT = "stock-research-watchlist-panel-height-px";
@@ -17,9 +18,15 @@ export type Watchlist = {
   id: string;
   name: string;
   symbols: string[];
+  folderId?: string;
 };
 
-export type StockFlag = "red" | "yellow" | "green";
+export type StockFlag = "red" | "yellow" | "green" | "blue";
+
+export type WatchlistFolder = {
+  id: string;
+  name: string;
+};
 
 export type WatchlistPanelMode = "minimized" | "medium" | "full";
 
@@ -27,16 +34,17 @@ export function loadWatchlists(): Watchlist[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LISTS);
-    if (!raw) return [{ id: "default", name: "My List", symbols: [] }];
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
     const list = Array.isArray(parsed) ? parsed : [];
     return list.map((l: { id?: string; name?: string; symbols?: string[] }) => ({
       id: typeof l.id === "string" ? l.id : crypto.randomUUID(),
       name: typeof l.name === "string" ? l.name : "Unnamed",
       symbols: Array.isArray(l.symbols) ? l.symbols : [],
+      folderId: typeof (l as { folderId?: unknown }).folderId === "string" ? String((l as { folderId?: string }).folderId) : undefined,
     }));
   } catch {
-    return [{ id: "default", name: "My List", symbols: [] }];
+    return [];
   }
 }
 
@@ -44,6 +52,33 @@ export function saveWatchlists(lists: Watchlist[]): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY_LISTS, JSON.stringify(lists));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadWatchlistFolders(): WatchlistFolder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LIST_FOLDERS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : [];
+    return list
+      .map((f: { id?: string; name?: string }) => ({
+        id: typeof f.id === "string" ? f.id : crypto.randomUUID(),
+        name: typeof f.name === "string" ? f.name : "Unnamed Folder",
+      }))
+      .filter((f) => f.name.trim() !== "");
+  } catch {
+    return [];
+  }
+}
+
+export function saveWatchlistFolders(folders: WatchlistFolder[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LIST_FOLDERS, JSON.stringify(folders));
   } catch {
     /* ignore */
   }
@@ -226,7 +261,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   industry: "Industry",
   sector: "Sector",
   date: "Date",
-  marketCap: "Market Cap",
+  marketCap: "Market Cap (bn)",
   lastPrice: "Last Price",
   changePct: "Change %",
   volume: "Volume",

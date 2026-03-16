@@ -10,6 +10,8 @@ import {
 import {
   loadWatchlists,
   saveWatchlists,
+  loadWatchlistFolders,
+  saveWatchlistFolders,
   loadFlags,
   saveFlags,
   loadColumnWidths,
@@ -22,6 +24,7 @@ import {
   loadSidebarWidthPx,
   saveSidebarWidthPx,
   type Watchlist,
+  type WatchlistFolder,
   type StockFlag,
   type ColumnId,
   type ColumnSet,
@@ -48,6 +51,7 @@ import {
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { toTitleCase } from "@/lib/text-format";
 import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
+import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
 import NinoScriptEditor from "@/components/NinoScriptEditor";
 import NinoScriptHelp from "@/components/NinoScriptHelp";
 
@@ -95,12 +99,19 @@ type WatchlistRow = {
 
 const MIN_PANEL_HEIGHT_PX = 32;
 
-/** Predefined index lists (read-only in the Lists tab). Symbols loaded from API when selected. */
-const PREDEFINED_LISTS: { id: string; name: string }[] = [
+/** Predefined index lists (read-only in Watchlists). */
+const INDEX_LISTS: { id: string; name: string }[] = [
   { id: "nasdaq100", name: "Nasdaq 100" },
   { id: "sp500", name: "S&P 500" },
   { id: "russell2000", name: "Russell 2000" },
 ];
+
+const MY_LISTS_ROOT_ID = "__my_lists_root__";
+const RELATED_LIST_ID = "__related__";
+const INDEX_LIST_PREFIX = "index:";
+const SECTOR_LIST_PREFIX = "sector:";
+const INDUSTRY_LIST_PREFIX = "industry:";
+const THEME_ETF_PREFIX = "theme-etf:";
 
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
 
@@ -109,24 +120,19 @@ function getMaxPanelHeightPx(): number {
   return Math.max(200, window.innerHeight - 120);
 }
 
-const RELATED_LIST_ID = "__related__";
-
 type WatchlistPanelProps = {
   panelHeightPx: number;
   onHeightChange: (px: number) => void;
   onSymbolSelect?: (symbol: string) => void;
-  /** When set, "Related Stocks" appears in the Lists tab; clicking the title in the sidebar opens this list. */
+  /** When set, "Related Stocks" appears in Watchlists; clicking the title in the sidebar opens this list. */
   relatedStocksList?: { title: string; symbols: string[] } | null;
-  /** When this value changes, panel switches to Lists tab and selects the related list (e.g. Date.now() from parent). */
+  /** When this value changes, panel switches to Watchlists and selects the related list (e.g. Date.now() from parent). */
   openToRelatedListTrigger?: number;
 };
 
-function fmtNum(n: number | undefined): string {
+function fmtBillions(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return "NA";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
-  return n.toLocaleString();
+  return (n / 1e9).toFixed(2);
 }
 
 function fmtPct(n: number | undefined): string {
@@ -142,21 +148,30 @@ function getRowValue(row: WatchlistRow, col: TableColumnId): unknown {
   return row[col];
 }
 
+/** Format script column value by label: price 2 decimals, volume/USD whole, ratio/percent as %. */
+function formatScriptColumnValue(label: string, v: number): string {
+  const L = label.toUpperCase();
+  if (L.includes("ATRP")) return `${Number(v).toFixed(2)}%`;
+  if (L.includes("ROC(") || L.includes("PCT")) return `${Number(v).toFixed(2)}%`;
+  if (L.includes("(V)") || L.includes("(V,") || L.includes("RVOL")) return Math.round(v).toLocaleString();
+  return Number(v).toFixed(2);
+}
+
 function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?: boolean): string {
   const v = getRowValue(row, col);
   if (v == null || v === "") return "NA";
   if (isScriptColumn && typeof v === "number") {
-    if (String(col).includes("ATRP") || String(col).includes("Pct")) return `${(v * 100).toFixed(2)}%`;
-    return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4);
+    return formatScriptColumnValue(String(col), v);
   }
-  if (col === "lastPrice") return typeof v === "number" ? `$${v.toFixed(2)}` : String(v);
+  if (col === "lastPrice") return typeof v === "number" ? `$${Number(v).toFixed(2)}` : String(v);
   if (col === "date") return formatDisplayDate(String(v));
   if (col === "industry") return toTitleCase(String(v));
   if (col === "changePct" || col === "atrPct" || (typeof v === "number" && String(col).includes("Pct")))
-    return typeof v === "number" ? (col === "changePct" ? fmtPct(v) : `${v.toFixed(2)}%`) : String(v);
+    return typeof v === "number" ? (col === "changePct" ? fmtPct(v) : `${Number(v).toFixed(2)}%`) : String(v);
   if (typeof v === "number") {
-    if (col === "marketCap" || col === "volume" || col === "avgVolume") return fmtNum(v);
-    return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2);
+    if (col === "marketCap") return fmtBillions(Number(v));
+    if (col === "volume" || col === "avgVolume") return Math.round(Number(v)).toLocaleString();
+    return Number.isInteger(v) ? v.toLocaleString() : Number(v).toFixed(2);
   }
   return String(v);
 }
@@ -438,10 +453,17 @@ export default function WatchlistPanel({
   const [colDropIndex, setColDropIndex] = useState<number | null>(null);
   const [showAddToListMenu, setShowAddToListMenu] = useState(false);
   const [flagPickerSymbol, setFlagPickerSymbol] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"watchlists" | "lists" | "screener">("watchlists");
-  const [selectedPredefinedListId, setSelectedPredefinedListId] = useState<string | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<"watchlists" | "screener">("watchlists");
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [predefinedListSymbols, setPredefinedListSymbols] = useState<Record<string, string[]>>({});
   const [predefinedListSymbolsLoading, setPredefinedListSymbolsLoading] = useState(false);
+  const [sectorListSymbols, setSectorListSymbols] = useState<Record<string, string[]>>({});
+  const [industryListSymbols, setIndustryListSymbols] = useState<Record<string, string[]>>({});
+  const [classificationListsLoading, setClassificationListsLoading] = useState(false);
+  const [listFolders, setListFolders] = useState<WatchlistFolder[]>([]);
+  const [expandedListFolderIds, setExpandedListFolderIds] = useState<Set<string>>(
+    () => new Set([MY_LISTS_ROOT_ID, "indices", "sectors", "industries", "thematic-etfs"])
+  );
   const [screens, setScreens] = useState<SavedScreen[]>([]);
   const [folders, setFolders] = useState<ScreenerFolder[]>([]);
   /** Folder ids that are expanded in the screener sidebar. */
@@ -449,7 +471,7 @@ export default function WatchlistPanel({
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
   const [editingScreenId, setEditingScreenId] = useState<string | null>(null);
   const [showNewScreenerModal, setShowNewScreenerModal] = useState(false);
-  const [showScreenerAddMenu, setShowScreenerAddMenu] = useState(false);
+  const [showWatchlistAddMenu, setShowWatchlistAddMenu] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -458,7 +480,7 @@ export default function WatchlistPanel({
   /** When set, New Script modal is in edit mode for this screen id. */
   const [editingScriptScreenId, setEditingScriptScreenId] = useState<string | null>(null);
   const [showNinoScriptHelp, setShowNinoScriptHelp] = useState(false);
-  const screenerAddMenuRef = useRef<HTMLDivElement>(null);
+  const watchlistAddMenuRef = useRef<HTMLDivElement>(null);
   /** When dragging a screen to move it between folders. */
   const [draggedScreenId, setDraggedScreenId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -540,7 +562,7 @@ export default function WatchlistPanel({
   const moveScreenToFolder = useCallback((screenId: string, folderId: string | null) => {
     updateScreen(screenId, { folderId: folderId ?? undefined });
     setScreens(loadScreens());
-  }, []);
+  }, [selectedCollectionId]);
 
   const toggleFolderExpanded = useCallback((folderId: string) => {
     setExpandedFolderIds((prev) => {
@@ -554,6 +576,7 @@ export default function WatchlistPanel({
   // Persist lists and flags from localStorage on mount and when changed
   useEffect(() => {
     setLists(loadWatchlists());
+    setListFolders(loadWatchlistFolders());
     setFlags(loadFlags());
     setColumnWidths(loadColumnWidths());
     seedDefaultScreensIfEmpty();
@@ -563,17 +586,17 @@ export default function WatchlistPanel({
     setSidebarWidthPx(loadSidebarWidthPx());
   }, []);
 
-  // Close screener add menu when clicking outside
+  // Close add menus when clicking outside.
   useEffect(() => {
-    if (!showScreenerAddMenu) return;
+    if (!showWatchlistAddMenu) return;
     const handleClick = (e: MouseEvent) => {
-      if (screenerAddMenuRef.current && !screenerAddMenuRef.current.contains(e.target as Node)) {
-        setShowScreenerAddMenu(false);
+      if (watchlistAddMenuRef.current && !watchlistAddMenuRef.current.contains(e.target as Node)) {
+        setShowWatchlistAddMenu(false);
       }
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [showScreenerAddMenu]);
+  }, [showWatchlistAddMenu]);
 
   const MIN_SIDEBAR_WIDTH_PX = 160;
   const MAX_SIDEBAR_WIDTH_PX = 420;
@@ -605,6 +628,48 @@ export default function WatchlistPanel({
     [lists, activeListId]
   );
 
+  const rootWatchlists = useMemo(
+    () => lists.filter((l) => !l.folderId).sort((a, b) => a.name.localeCompare(b.name)),
+    [lists]
+  );
+  const watchlistsByFolderId = useMemo(() => {
+    const out: Record<string, Watchlist[]> = {};
+    for (const list of lists) {
+      if (!list.folderId) continue;
+      if (!out[list.folderId]) out[list.folderId] = [];
+      out[list.folderId].push(list);
+    }
+    for (const arr of Object.values(out)) arr.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }, [lists]);
+
+  const sortedSectorNames = useMemo(
+    () => Object.keys(sectorListSymbols).sort((a, b) => a.localeCompare(b)),
+    [sectorListSymbols]
+  );
+  const sortedIndustryNames = useMemo(
+    () => Object.keys(industryListSymbols).sort((a, b) => a.localeCompare(b)),
+    [industryListSymbols]
+  );
+  const sortedThematicEtfs = useMemo(
+    () =>
+      [...THEMATIC_ETFS].sort((a, b) => {
+        const c = a.category.localeCompare(b.category);
+        if (c !== 0) return c;
+        return a.theme.localeCompare(b.theme);
+      }),
+    []
+  );
+
+  const toggleListFolderExpanded = useCallback((folderId: string) => {
+    setExpandedListFolderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
     else if (activeListId && !lists.find((l) => l.id === activeListId))
@@ -615,18 +680,23 @@ export default function WatchlistPanel({
     saveWatchlists(lists);
   }, [lists]);
 
-  // Fetch predefined index constituents when user selects a list and we don't have them yet
   useEffect(() => {
+    saveWatchlistFolders(listFolders);
+  }, [listFolders]);
+
+  // Fetch predefined index constituents when user selects an index list and we don't have it yet.
+  useEffect(() => {
+    if (!selectedCollectionId?.startsWith(INDEX_LIST_PREFIX)) return;
+    const indexId = selectedCollectionId.slice(INDEX_LIST_PREFIX.length);
     if (
-      selectedPredefinedListId == null ||
-      !PREDEFINED_LISTS.some((p) => p.id === selectedPredefinedListId) ||
-      predefinedListSymbols[selectedPredefinedListId] != null
+      !INDEX_LISTS.some((p) => p.id === indexId) ||
+      predefinedListSymbols[indexId] != null
     ) {
       return;
     }
     let cancelled = false;
     setPredefinedListSymbolsLoading(true);
-    fetch(`/api/index-constituents?index=${encodeURIComponent(selectedPredefinedListId)}`)
+    fetch(`/api/index-constituents?index=${encodeURIComponent(indexId)}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load constituents");
         return res.json();
@@ -635,12 +705,12 @@ export default function WatchlistPanel({
         if (!cancelled && Array.isArray(symbols)) {
           setPredefinedListSymbols((prev) => ({
             ...prev,
-            [selectedPredefinedListId]: symbols.map((s) => String(s).toUpperCase()),
+            [indexId]: symbols.map((s) => String(s).toUpperCase()),
           }));
         }
       })
       .catch(() => {
-        if (!cancelled) setPredefinedListSymbols((prev) => ({ ...prev, [selectedPredefinedListId]: [] }));
+        if (!cancelled) setPredefinedListSymbols((prev) => ({ ...prev, [indexId]: [] }));
       })
       .finally(() => {
         if (!cancelled) setPredefinedListSymbolsLoading(false);
@@ -648,34 +718,143 @@ export default function WatchlistPanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedPredefinedListId, predefinedListSymbols]);
+  }, [selectedCollectionId, predefinedListSymbols]);
+
+  // Build sector + industry top lists from screener snapshot once.
+  useEffect(() => {
+    if (Object.keys(sectorListSymbols).length > 0 && Object.keys(industryListSymbols).length > 0) return;
+    let cancelled = false;
+    setClassificationListsLoading(true);
+    fetch("/api/screener?limit=20000")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load screener snapshot");
+        return res.json() as Promise<{ rows?: Array<Record<string, unknown>> }>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const screenerRows = Array.isArray(data.rows) ? data.rows : [];
+        const sectors: Record<string, Array<{ symbol: string; marketCap: number }>> = {};
+        const industries: Record<string, Array<{ symbol: string; marketCap: number }>> = {};
+        for (const r of screenerRows) {
+          const symbol = String(r.symbol ?? "").toUpperCase();
+          if (!symbol) continue;
+          const marketCap = typeof r.market_cap === "number" ? r.market_cap : 0;
+          const sector = String(r.sector ?? "").trim();
+          const industry = String(r.industry ?? "").trim();
+          if (sector && sector.toUpperCase() !== "NA") {
+            if (!sectors[sector]) sectors[sector] = [];
+            sectors[sector].push({ symbol, marketCap });
+          }
+          if (industry && industry.toUpperCase() !== "NA") {
+            if (!industries[industry]) industries[industry] = [];
+            industries[industry].push({ symbol, marketCap });
+          }
+        }
+        const toTopSymbols = (rows: Array<{ symbol: string; marketCap: number }>): string[] =>
+          [...rows]
+            .sort((a, b) => b.marketCap - a.marketCap)
+            .slice(0, 50)
+            .map((x) => x.symbol);
+        setSectorListSymbols(
+          Object.fromEntries(Object.entries(sectors).map(([name, rows]) => [name, toTopSymbols(rows)]))
+        );
+        setIndustryListSymbols(
+          Object.fromEntries(Object.entries(industries).map(([name, rows]) => [name, toTopSymbols(rows)]))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSectorListSymbols({});
+          setIndustryListSymbols({});
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setClassificationListsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sectorListSymbols, industryListSymbols]);
 
   const tableSource = useMemo(() => {
-    if (sidebarTab === "watchlists") {
-      return { symbols: activeList?.symbols ?? [], title: activeList?.name ?? "—", fromScreener: false, screen: null as SavedScreen | null };
-    }
     if (sidebarTab === "screener") {
       if (selectedScreen) return { symbols: [], title: selectedScreen.name, fromScreener: true, screen: selectedScreen };
       return { symbols: [], title: "Screener", fromScreener: false, screen: null };
     }
-    if (selectedPredefinedListId === RELATED_LIST_ID && relatedStocksList) {
+    if (selectedCollectionId === RELATED_LIST_ID && relatedStocksList) {
       return { symbols: relatedStocksList.symbols, title: relatedStocksList.title, fromScreener: false, screen: null };
     }
-    const pre = PREDEFINED_LISTS.find((p) => p.id === selectedPredefinedListId);
-    if (pre) {
-      const symbols = predefinedListSymbols[pre.id] ?? [];
-      return { symbols, title: pre.name, fromScreener: false, screen: null };
+    if (selectedCollectionId?.startsWith(INDEX_LIST_PREFIX)) {
+      const indexId = selectedCollectionId.slice(INDEX_LIST_PREFIX.length);
+      const pre = INDEX_LISTS.find((p) => p.id === indexId);
+      if (pre) {
+        const symbols = predefinedListSymbols[indexId] ?? [];
+        return { symbols, title: pre.name, fromScreener: false, screen: null };
+      }
     }
-    return { symbols: [] as string[], title: "Select a list", fromScreener: false, screen: null };
-  }, [sidebarTab, activeList, selectedPredefinedListId, relatedStocksList, predefinedListSymbols, selectedScreen]);
+    if (selectedCollectionId?.startsWith(SECTOR_LIST_PREFIX)) {
+      const sectorName = selectedCollectionId.slice(SECTOR_LIST_PREFIX.length);
+      return {
+        symbols: sectorListSymbols[sectorName] ?? [],
+        title: `${sectorName} (Top 50)`,
+        fromScreener: false,
+        screen: null,
+      };
+    }
+    if (selectedCollectionId?.startsWith(INDUSTRY_LIST_PREFIX)) {
+      const industryName = selectedCollectionId.slice(INDUSTRY_LIST_PREFIX.length);
+      return {
+        symbols: industryListSymbols[industryName] ?? [],
+        title: `${industryName} (Top 50)`,
+        fromScreener: false,
+        screen: null,
+      };
+    }
+    if (selectedCollectionId?.startsWith(THEME_ETF_PREFIX)) {
+      const etfId = selectedCollectionId.slice(THEME_ETF_PREFIX.length);
+      const item = THEMATIC_ETFS.find((x) => x.id === etfId);
+      if (item) {
+        return {
+          symbols: [item.ticker],
+          title: `${item.theme} (${item.ticker})`,
+          fromScreener: false,
+          screen: null,
+        };
+      }
+    }
+    const selectedFolder = selectedCollectionId
+      ? listFolders.find((f) => f.id === selectedCollectionId)
+      : null;
+    if (selectedFolder) {
+      return { symbols: [], title: selectedFolder.name, fromScreener: false, screen: null };
+    }
+    if (activeList) {
+      return { symbols: activeList.symbols ?? [], title: activeList.name, fromScreener: false, screen: null };
+    }
+    return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
+  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, listFolders, selectedScreen]);
 
-  // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Lists tab and select related list.
+  // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
   useEffect(() => {
     if (openToRelatedListTrigger == null) return;
-    setSidebarTab("lists");
-    setSelectedPredefinedListId(RELATED_LIST_ID);
+    setSidebarTab("watchlists");
+    setSelectedCollectionId(RELATED_LIST_ID);
+    setActiveListId(null);
   }, [openToRelatedListTrigger]);
+
+  useEffect(() => {
+    if (!selectedCollectionId) return;
+    if (
+      selectedCollectionId.startsWith(INDEX_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(SECTOR_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(INDUSTRY_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(THEME_ETF_PREFIX)
+    ) {
+      setSortKey("marketCap");
+      setSortDir("desc");
+    }
+  }, [selectedCollectionId]);
 
   const mapItemToRow = useCallback(
     (item: {
@@ -908,8 +1087,25 @@ export default function WatchlistPanel({
     const name = prompt("List name", "New List");
     if (!name?.trim()) return;
     const id = crypto.randomUUID();
-    setLists((prev) => [...prev, { id, name: name.trim(), symbols: [] }]);
+    const currentFolderId =
+      selectedCollectionId && selectedCollectionId !== RELATED_LIST_ID && !selectedCollectionId.includes(":")
+        ? selectedCollectionId
+        : undefined;
+    setLists((prev) => [...prev, { id, name: name.trim(), symbols: [], folderId: currentFolderId }]);
     setActiveListId(id);
+    setSelectedCollectionId(null);
+    setSidebarTab("watchlists");
+  }, []);
+
+  const addListFolder = useCallback(() => {
+    const name = prompt("Folder name", "New Folder");
+    if (!name?.trim()) return;
+    const id = crypto.randomUUID();
+    setListFolders((prev) => [...prev, { id, name: name.trim() }]);
+    setExpandedListFolderIds((prev) => new Set(prev).add(id));
+    setSelectedCollectionId(id);
+    setActiveListId(null);
+    setSidebarTab("watchlists");
   }, []);
 
   const addSymbolToList = useCallback(
@@ -1337,14 +1533,18 @@ export default function WatchlistPanel({
 
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
   const tableColumns = useMemo((): TableColumnId[] => {
+    const alwaysFirst = ["ticker", "lastPrice"];
     if (sidebarTab === "screener" && selectedScreen) {
       if (selectedScreen.type === "script" && scriptColumns.length > 0) {
-        return ["ticker", "lastPrice", ...scriptColumns];
+        const rest = scriptColumns.filter((c) => c !== "ticker" && c !== "lastPrice");
+        return [...alwaysFirst, ...rest];
       }
       if (selectedScreen.type !== "script") {
-        const filterCols = getFilterCriteriaColumns(selectedScreen.filters);
+        const filterCols = getFilterCriteriaColumns(selectedScreen.filters).filter(
+          (c) => c !== "ticker" && c !== "lastPrice"
+        );
         if (filterCols.length > 0) {
-          return ["ticker", "lastPrice", ...filterCols];
+          return [...alwaysFirst, ...filterCols];
         }
       }
     }
@@ -1611,16 +1811,6 @@ export default function WatchlistPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSidebarTab("lists");
-                    clearSelection();
-                  }}
-                  className={`flex-1 py-1 px-1.5 text-xs font-medium rounded ${sidebarTab === "lists" ? "bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
-                >
-                  Lists
-                </button>
-                <button
-                  type="button"
                   onClick={() => setSidebarTab("screener")}
                   className={`flex-1 py-1 px-1.5 text-xs font-medium rounded ${sidebarTab === "screener" ? "bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                 >
@@ -1628,30 +1818,21 @@ export default function WatchlistPanel({
                 </button>
               </div>
               {sidebarTab === "watchlists" && (
-                <button
-                  type="button"
-                  onClick={addList}
-                  className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
-                >
-                  New List
-                </button>
-              )}
-              {sidebarTab === "screener" && (
-                <div className="relative flex items-center" ref={screenerAddMenuRef}>
+                <div className="relative flex items-center" ref={watchlistAddMenuRef}>
                   <button
                     type="button"
-                    onClick={() => setShowScreenerAddMenu((v) => !v)}
+                    onClick={() => setShowWatchlistAddMenu((v) => !v)}
                     className="flex items-center justify-center w-8 h-8 rounded border border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500"
-                    title="Add screener, script, or folder"
-                    aria-label="Add"
-                    aria-expanded={showScreenerAddMenu}
+                    title="Add watchlist or folder"
+                    aria-label="Add watchlist or folder"
+                    aria-expanded={showWatchlistAddMenu}
                     aria-haspopup="true"
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                       <path d="M8 3a.5.5 0 0 1 .5.5v4h4a.5.5 0 0 1 0 1h-4v4a.5.5 0 0 1-1 0v-4h-4a.5.5 0 0 1 0-1h4v-4A.5.5 0 0 1 8 3z" />
                     </svg>
                   </button>
-                  {showScreenerAddMenu && (
+                  {showWatchlistAddMenu && (
                     <div
                       className="absolute left-0 top-full mt-1 z-50 min-w-[11rem] py-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg"
                       role="menu"
@@ -1660,35 +1841,19 @@ export default function WatchlistPanel({
                         type="button"
                         role="menuitem"
                         onClick={() => {
-                          setShowScreenerAddMenu(false);
-                          openNewScreenerModal();
+                          setShowWatchlistAddMenu(false);
+                          addList();
                         }}
                         className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
                       >
-                        New Screener
+                        New Watchlist
                       </button>
                       <button
                         type="button"
                         role="menuitem"
                         onClick={() => {
-                          setShowScreenerAddMenu(false);
-                          setEditingScriptScreenId(null);
-                          setNewScriptName("");
-                          setNewScriptBody("");
-                          setShowNewScriptModal(true);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                      >
-                        New Script
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setShowScreenerAddMenu(false);
-                          setEditingScriptScreenId(null);
-                          setNewFolderName("");
-                          setShowNewFolderModal(true);
+                          setShowWatchlistAddMenu(false);
+                          addListFolder();
                         }}
                         className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
                       >
@@ -1697,6 +1862,15 @@ export default function WatchlistPanel({
                     </div>
                   )}
                 </div>
+              )}
+              {sidebarTab === "screener" && (
+                <button
+                  type="button"
+                  onClick={openNewScreenerModal}
+                  className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
+                >
+                  New Screener
+                </button>
               )}
             </div>
               {sidebarTab === "screener" ? (
@@ -1731,7 +1905,7 @@ export default function WatchlistPanel({
                         onClick={() => setSelectedScreenId(s.id)}
                         className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                       >
-                        {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Script">⌘</span>}
+                        {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Custom script (Nino)">⌘</span>}
                         <span className="truncate min-w-0">{s.name}</span>
                         {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && (
                           <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
@@ -1776,7 +1950,7 @@ export default function WatchlistPanel({
                             <li key={s.id} className="flex items-center gap-0 min-w-0">
                               <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`flex-1 flex items-center gap-0 min-w-0 rounded ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
                                 <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                                  {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Script">⌘</span>}
+                                  {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Custom script (Nino)">⌘</span>}
                                   <span className="truncate min-w-0">{s.name}</span>
                                   {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id])!.toLocaleString()})</span>}
                                 </button>
@@ -1797,84 +1971,158 @@ export default function WatchlistPanel({
                   </li>
                 )}
               </ul>
-            ) : sidebarTab === "watchlists" ? (
-              <ul className="flex-1 overflow-y-auto py-1">
-                {lists.map((l) => (
-                  <li key={l.id} className="flex items-center gap-0 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => setActiveListId(l.id)}
-                      className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
-                    >
-                      <span className="truncate min-w-0">{l.name}</span>
-                      <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openAddPopup(l.id);
-                      }}
-                      className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100"
-                      title={`Edit ${l.name}`}
-                      aria-label={`Edit ${l.name}`}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                        <path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextLists = lists.filter((list) => list.id !== l.id);
-                        setLists(nextLists);
-                        saveWatchlists(nextLists);
-                        if (activeListId === l.id) {
-                          setActiveListId(nextLists[0]?.id ?? null);
-                          setRows([]);
-                        }
-                      }}
-                      className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400"
-                      title={`Delete ${l.name}`}
-                      aria-label={`Delete ${l.name}`}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-                      </svg>
-                    </button>
-                  </li>
-                ))}
-              </ul>
             ) : (
               <ul className="flex-1 overflow-y-auto py-1">
                 {relatedStocksList && relatedStocksList.symbols.length > 0 && (
                   <li key={RELATED_LIST_ID}>
                     <button
                       type="button"
-                      onClick={() => setSelectedPredefinedListId(RELATED_LIST_ID)}
-                      className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedPredefinedListId === RELATED_LIST_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                      onClick={() => {
+                        setSelectedCollectionId(RELATED_LIST_ID);
+                        setActiveListId(null);
+                      }}
+                      className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === RELATED_LIST_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                     >
                       <span className="truncate min-w-0">{relatedStocksList.title}</span>
                       <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({relatedStocksList.symbols.length})</span>
                     </button>
                   </li>
                 )}
-                {PREDEFINED_LISTS.map((pl) => {
-                  const count = predefinedListSymbols[pl.id]?.length;
+                <li className="mt-1">
+                  <button type="button" onClick={() => toggleListFolderExpanded(MY_LISTS_ROOT_ID)} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has(MY_LISTS_ROOT_ID) ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>My Lists</span>
+                  </button>
+                  {expandedListFolderIds.has(MY_LISTS_ROOT_ID) && (
+                    <ul>
+                      {rootWatchlists.map((l) => (
+                        <li key={l.id} className="flex items-center gap-0 min-w-0">
+                          <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                            <span className="truncate min-w-0">{l.name}</span>
+                            <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
+                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+                {listFolders.map((folder) => {
+                  const folderLists = watchlistsByFolderId[folder.id] ?? [];
+                  const expanded = expandedListFolderIds.has(folder.id);
                   return (
-                    <li key={pl.id} className="min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPredefinedListId(pl.id)}
-                        className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedPredefinedListId === pl.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
-                      >
-                        <span className="truncate min-w-0">{pl.name}</span>
-                        <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({count ?? "…"})</span>
-                      </button>
+                    <li key={folder.id} className="mt-1">
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expanded ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                          <span className="truncate">{folder.name}</span>
+                          <span className="text-zinc-400">({folderLists.length})</span>
+                        </button>
+                        <button type="button" onClick={() => { const nextFolders = listFolders.filter((f) => f.id !== folder.id); setListFolders(nextFolders); setLists((prev) => prev.map((l) => (l.folderId === folder.id ? { ...l, folderId: undefined } : l))); setExpandedListFolderIds((prev) => { const next = new Set(prev); next.delete(folder.id); return next; }); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete folder ${folder.name}`} aria-label={`Delete folder ${folder.name}`}><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                      </div>
+                      {expanded && (
+                        <ul>
+                          {folderLists.map((l) => (
+                            <li key={l.id} className="flex items-center gap-0 min-w-0">
+                              <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                                <span className="truncate min-w-0">{l.name}</span>
+                                <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
+                              </button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   );
                 })}
+                <li className="mt-1">
+                  <button type="button" onClick={() => toggleListFolderExpanded("indices")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("indices") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>Indices</span>
+                  </button>
+                  {expandedListFolderIds.has("indices") && (
+                    <ul>
+                      {INDEX_LISTS.map((pl) => {
+                        const id = `${INDEX_LIST_PREFIX}${pl.id}`;
+                        const count = predefinedListSymbols[pl.id]?.length;
+                        return (
+                          <li key={pl.id}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                              <span className="truncate min-w-0">{pl.name}</span>
+                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({count ?? "..."})</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+                <li className="mt-1">
+                  <button type="button" onClick={() => toggleListFolderExpanded("sectors")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("sectors") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>Sectors</span>
+                  </button>
+                  {expandedListFolderIds.has("sectors") && (
+                    <ul>
+                      {sortedSectorNames.map((name) => {
+                        const id = `${SECTOR_LIST_PREFIX}${name}`;
+                        return (
+                          <li key={name}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                              <span className="truncate min-w-0">{name}</span>
+                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(sectorListSymbols[name] ?? []).length})</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+                <li className="mt-1">
+                  <button type="button" onClick={() => toggleListFolderExpanded("industries")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("industries") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>Industries</span>
+                  </button>
+                  {expandedListFolderIds.has("industries") && (
+                    <ul>
+                      {sortedIndustryNames.map((name) => {
+                        const id = `${INDUSTRY_LIST_PREFIX}${name}`;
+                        return (
+                          <li key={name}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                              <span className="truncate min-w-0">{name}</span>
+                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(industryListSymbols[name] ?? []).length})</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+                <li className="mt-1">
+                  <button type="button" onClick={() => toggleListFolderExpanded("thematic-etfs")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("thematic-etfs") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>Thematic ETFs</span>
+                  </button>
+                  {expandedListFolderIds.has("thematic-etfs") && (
+                    <ul>
+                      {sortedThematicEtfs.map((item) => {
+                        const id = `${THEME_ETF_PREFIX}${item.id}`;
+                        return (
+                          <li key={item.id}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                              <span className="truncate min-w-0">{item.theme}</span>
+                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({item.ticker})</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
               </ul>
             )}
           </aside>
@@ -2182,10 +2430,13 @@ export default function WatchlistPanel({
                     type="button"
                     onClick={() => {
                       const name = newScriptName.trim() || "Unnamed script";
+                      let savedScreen: SavedScreen;
                       if (editingScriptScreenId) {
                         updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
+                        const updated = loadScreens().find((s) => s.id === editingScriptScreenId);
+                        savedScreen = updated!;
                       } else {
-                        addScreen({
+                        savedScreen = addScreen({
                           name,
                           universe: "all",
                           filters: {},
@@ -2197,6 +2448,10 @@ export default function WatchlistPanel({
                       setShowNewScriptModal(false);
                       setNewScriptName("");
                       setNewScriptBody("");
+                      if (selectedScreenId === (editingScriptScreenId ?? savedScreen?.id)) {
+                        setSelectedScreenId(savedScreen.id);
+                        fetchScreenerResults(savedScreen);
+                      }
                       setEditingScriptScreenId(null);
                     }}
                     className="px-3 py-1.5 text-sm rounded bg-zinc-800 dark:bg-zinc-600 text-white hover:bg-zinc-700 dark:hover:bg-zinc-500"
@@ -2681,7 +2936,7 @@ export default function WatchlistPanel({
                       const isNumericCol = NUMERIC_COLUMN_IDS.has(col as ColumnId) || isScriptCol;
                       return (
                         <th
-                          key={col}
+                          key={`col-${colIndex}`}
                           draggable={!isScriptCol}
                           onDragStart={!isScriptCol ? handleColumnHeaderDragStart(colIndex) : undefined}
                           onDragOver={!isScriptCol ? handleColumnHeaderDragOver(colIndex) : undefined}
@@ -2740,11 +2995,17 @@ export default function WatchlistPanel({
                   ) : sortedRows.length === 0 ? (
                     <tr>
                       <td colSpan={tableColumns.length + 2} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
-                        {sidebarTab === "lists" &&
-                        selectedPredefinedListId != null &&
-                        PREDEFINED_LISTS.some((p) => p.id === selectedPredefinedListId) &&
+                        {sidebarTab === "watchlists" &&
+                        selectedCollectionId != null &&
+                        selectedCollectionId.startsWith(INDEX_LIST_PREFIX) &&
                         predefinedListSymbolsLoading
                           ? "Loading constituents…"
+                          : sidebarTab === "watchlists" &&
+                            selectedCollectionId != null &&
+                            (selectedCollectionId.startsWith(SECTOR_LIST_PREFIX) ||
+                              selectedCollectionId.startsWith(INDUSTRY_LIST_PREFIX)) &&
+                            classificationListsLoading
+                            ? "Loading lists…"
                           : sidebarTab === "screener" && !selectedScreenId
                             ? "Select a screen or create a new screener."
                             : sidebarTab === "screener" && selectedScreen?.type === "script" && screenerError
@@ -2753,8 +3014,8 @@ export default function WatchlistPanel({
                                 ? "No results match your script."
                                 : sidebarTab === "screener" && sortedRows.length === 0 && !loading
                                   ? "No screener data or no results match. Run npm run refresh-daily to populate the database."
-                                  : sidebarTab === "lists" && tableSource.symbols.length === 0
-                                ? "Select a predefined list from the sidebar."
+                                  : sidebarTab === "watchlists" && tableSource.symbols.length === 0
+                                ? "Select a watchlist or folder list from the sidebar."
                                 : "No stocks. Add from search in the left panel."}
                       </td>
                     </tr>
@@ -2794,7 +3055,13 @@ export default function WatchlistPanel({
                                   </svg>
                                 ) : (
                                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={
-                                    flag === "red" ? "text-red-500" : flag === "yellow" ? "text-yellow-500" : "text-green-500"
+                                    flag === "red"
+                                      ? "text-red-500"
+                                      : flag === "yellow"
+                                        ? "text-yellow-500"
+                                        : flag === "green"
+                                          ? "text-green-500"
+                                          : "text-blue-500"
                                   }>
                                     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                                     <line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" strokeWidth="1.5" />
@@ -2813,7 +3080,7 @@ export default function WatchlistPanel({
                                     title="No flag"
                                     aria-label={`Remove flag from ${row.symbol}`}
                                   />
-                                  {(["red", "yellow", "green"] as const).map((c) => (
+                                  {(["red", "yellow", "green", "blue"] as const).map((c) => (
                                     <button
                                       key={c}
                                       type="button"
@@ -2821,7 +3088,15 @@ export default function WatchlistPanel({
                                         setFlag(row.symbol, flag === c ? null : c);
                                         setFlagPickerSymbol(null);
                                       }}
-                                      className={`w-5 h-5 rounded border-2 ${c === "red" ? "bg-red-500 border-red-600" : c === "yellow" ? "bg-yellow-500 border-yellow-600" : "bg-green-500 border-green-600"} hover:opacity-90`}
+                                      className={`w-5 h-5 rounded border-2 ${
+                                        c === "red"
+                                          ? "bg-red-500 border-red-600"
+                                          : c === "yellow"
+                                            ? "bg-yellow-500 border-yellow-600"
+                                            : c === "green"
+                                              ? "bg-green-500 border-green-600"
+                                              : "bg-blue-500 border-blue-600"
+                                      } hover:opacity-90`}
                                       title={`Flag ${c}`}
                                       aria-label={`Flag ${row.symbol} ${c}`}
                                     />
@@ -2830,7 +3105,7 @@ export default function WatchlistPanel({
                               )}
                             </div>
                           </td>
-                          {tableColumns.map((col) => {
+                          {tableColumns.map((col, colIndex) => {
                             const isScriptCol = scriptColumnSet.has(col as string);
                             const isNumeric = NUMERIC_COLUMN_IDS.has(col as ColumnId) || isScriptCol;
                             const isChangePct = col === "changePct";
@@ -2857,7 +3132,7 @@ export default function WatchlistPanel({
                               );
                             return (
                               <td
-                                key={col}
+                                key={`cell-${colIndex}`}
                                 className={cellClass}
                                 style={{
                                   width: getColWidth(col),

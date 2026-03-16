@@ -33,7 +33,7 @@ type LeftSidebarProps = {
   yearly: YearlyRow[];
   relatedStocks?: RelatedStock[];
   onSymbolSelect?: (symbol: string) => void;
-  /** Called when the "Related Stocks" section title is clicked; e.g. open watchlist Lists tab with this list. */
+  /** Called when the "Related Stocks" section title is clicked; e.g. open watchlists with this list. */
   onOpenRelatedStocksInWatchlist?: () => void;
   loading?: boolean;
 };
@@ -145,16 +145,16 @@ export default function LeftSidebar({
                 <span className="text-zinc-900 dark:text-zinc-100">{profile.sector}</span>
               </>
             )}
-            {profile?.country != null && profile.country !== "" && (
-              <>
-                <span className="text-zinc-500 dark:text-zinc-400">Country</span>
-                <span className="text-zinc-900 dark:text-zinc-100">{profile.country}</span>
-              </>
-            )}
             {profile?.industry != null && profile.industry !== "" && (
               <>
                 <span className="text-zinc-500 dark:text-zinc-400">Industry</span>
                 <span className="text-zinc-900 dark:text-zinc-100">{toTitleCase(profile.industry)}</span>
+              </>
+            )}
+            {profile?.country != null && profile.country !== "" && (
+              <>
+                <span className="text-zinc-500 dark:text-zinc-400">Country</span>
+                <span className="text-zinc-900 dark:text-zinc-100">{profile.country}</span>
               </>
             )}
             {profile?.ipoDate != null && profile.ipoDate !== "" && (
