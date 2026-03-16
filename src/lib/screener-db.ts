@@ -72,14 +72,59 @@ export async function getLatestScreenerDate(): Promise<string | null> {
   const db = await openScreenerDb();
   if (!db) return null;
   try {
-    const r = db.exec("SELECT MAX(date) AS d FROM quote_daily");
-    if (r.length && r[0].values?.length && r[0].values[0][0]) {
-      return String(r[0].values[0][0]);
-    }
-    return null;
+    return getLatestReliableScreenerDateFromDb(db);
   } finally {
     db.close();
   }
+}
+
+function getLatestReliableScreenerDateFromDb(
+  db: InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>
+): string | null {
+  const latest = db.exec("SELECT MAX(date) AS d FROM quote_daily");
+  const latestDate =
+    latest.length && latest[0].values?.length && latest[0].values[0][0] ? String(latest[0].values[0][0]) : null;
+  if (!latestDate) return null;
+
+  const companyCountExec = db.exec("SELECT COUNT(*) AS c FROM companies");
+  const companyCount =
+    companyCountExec.length && companyCountExec[0].values?.length && companyCountExec[0].values[0][0] != null
+      ? Number(companyCountExec[0].values[0][0])
+      : 0;
+  const minCoverage = companyCount > 0 ? Math.max(200, Math.floor(companyCount * 0.8)) : 200;
+
+  const coverageExec = db.exec(`
+    WITH recent_dates AS (
+      SELECT date
+      FROM quote_daily
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 40
+    )
+    SELECT rd.date AS date, COUNT(q.symbol) AS cnt
+    FROM recent_dates rd
+    LEFT JOIN quote_daily q ON q.date = rd.date
+    GROUP BY rd.date
+    ORDER BY rd.date DESC
+  `);
+
+  if (coverageExec.length && coverageExec[0].values?.length) {
+    const rows = coverageExec[0].values.map((v) => ({
+      date: String(v[0] ?? ""),
+      cnt: Number(v[1] ?? 0),
+    }));
+    const reliable = rows.find((r) => r.cnt >= minCoverage);
+    if (reliable?.date) return reliable.date;
+    const best = rows.reduce<{ date: string; cnt: number } | null>((acc, r) => {
+      if (!acc) return r;
+      if (r.cnt > acc.cnt) return r;
+      if (r.cnt === acc.cnt && r.date > acc.date) return r;
+      return acc;
+    }, null);
+    if (best && best.cnt > 0) return best.date;
+  }
+
+  return latestDate;
 }
 
 export type ScreenerFilters = Record<string, string | number | undefined>;
@@ -277,10 +322,7 @@ export async function getScreenerCount(options: {
   try {
     let date = options.date ?? null;
     if (!date) {
-      const dr = db.exec("SELECT MAX(date) AS d FROM quote_daily");
-      if (dr.length && dr[0].values?.length && dr[0].values[0][0]) {
-        date = String(dr[0].values[0][0]);
-      }
+      date = getLatestReliableScreenerDateFromDb(db);
     }
     if (!date) return { count: 0, date: null };
 
@@ -323,10 +365,7 @@ export async function getScreenerSnapshot(options: {
   try {
     let date = options.date ?? null;
     if (!date) {
-      const dr = db.exec("SELECT MAX(date) AS d FROM quote_daily");
-      if (dr.length && dr[0].values?.length && dr[0].values[0][0]) {
-        date = String(dr[0].values[0][0]);
-      }
+      date = getLatestReliableScreenerDateFromDb(db);
     }
     if (!date) return { rows: [], date: null };
 
