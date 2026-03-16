@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getLatestScreenerDate, getMarketMonitorBaseRows } from "@/lib/screener-db-native";
+import {
+  getLatestScreenerDate,
+  getMarketMonitorBaseRows,
+  getIndexBreadthSnapshot,
+  getNetNewHighSeries,
+} from "@/lib/screener-db-native";
 
 export type MarketMonitorRow = {
   date: string;
@@ -25,10 +30,22 @@ type CachePayload = {
   rows: MarketMonitorRow[];
   latestDate: string | null;
   startDate: string | null;
+  breadth: {
+    sp500PctAbove50d: number | null;
+    nasdaqPctAbove50d: number | null;
+    sp500PctAbove200d: number | null;
+    nasdaqPctAbove200d: number | null;
+  };
+  netNewHighs: {
+    oneMonth: Array<{ date: string; highs: number; lows: number; net: number }>;
+    threeMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
+    sixMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
+    fiftyTwoWeek: Array<{ date: string; highs: number; lows: number; net: number }>;
+  };
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 export async function GET() {
   try {
@@ -103,7 +120,32 @@ export async function GET() {
 
     const rows = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
 
-    const payload: CachePayload = { version: CACHE_VERSION, rows, latestDate, startDate };
+    const breadthSnapshot = getIndexBreadthSnapshot(latestDate);
+    const breadthById = new Map(breadthSnapshot.rows.map((r) => [r.indexId, r]));
+
+    const nnh1m = getNetNewHighSeries(21, 60, latestDate);
+    const nnh3m = getNetNewHighSeries(63, 60, latestDate);
+    const nnh6m = getNetNewHighSeries(126, 60, latestDate);
+    const nnh52w = getNetNewHighSeries(252, 60, latestDate);
+
+    const payload: CachePayload = {
+      version: CACHE_VERSION,
+      rows,
+      latestDate,
+      startDate,
+      breadth: {
+        sp500PctAbove50d: breadthById.get("sp500")?.pctAbove50d ?? null,
+        nasdaqPctAbove50d: breadthById.get("nasdaq100")?.pctAbove50d ?? null,
+        sp500PctAbove200d: breadthById.get("sp500")?.pctAbove200d ?? null,
+        nasdaqPctAbove200d: breadthById.get("nasdaq100")?.pctAbove200d ?? null,
+      },
+      netNewHighs: {
+        oneMonth: nnh1m.rows,
+        threeMonths: nnh3m.rows,
+        sixMonths: nnh6m.rows,
+        fiftyTwoWeek: nnh52w.rows,
+      },
+    };
     try {
       writeFileSync(CACHE_PATH, JSON.stringify(payload), "utf8");
     } catch {

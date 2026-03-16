@@ -5,7 +5,7 @@
  */
 
 import Database from "better-sqlite3";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import { buildFilterClauses, type ScreenerFilters, type ScreenerRow } from "@/lib/screener-db";
@@ -274,6 +274,22 @@ export type TickerPerformanceRow = {
   market_cap: number | null;
 };
 
+export type IndexBreadthRow = {
+  indexId: "sp500" | "nasdaq100";
+  indexName: string;
+  pctAbove50d: number | null;
+  pctAbove200d: number | null;
+  count50d: number;
+  count200d: number;
+};
+
+export type NetNewHighRow = {
+  date: string;
+  highs: number;
+  lows: number;
+  net: number;
+};
+
 function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
   switch (timeframe) {
     case "day":
@@ -288,6 +304,18 @@ function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
       return "i.price_change_12m_pct";
     default:
       return "q.change_pct";
+  }
+}
+
+function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
+  const p = join(process.cwd(), "data", `${indexId}.json`);
+  if (!existsSync(p)) return [];
+  try {
+    const raw = readFileSync(p, "utf8");
+    const arr = JSON.parse(raw) as string[];
+    return Array.isArray(arr) ? arr.map((s) => String(s).toUpperCase()).filter(Boolean) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -372,6 +400,186 @@ export function getTickerPerformance(
       change_pct: Number(r.change_pct ?? 0),
       market_cap: typeof r.market_cap === "number" ? Number(r.market_cap) : null,
     })),
+    date: asOfDate,
+  };
+}
+
+export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+  const asOfDate = date ?? getLatestScreenerDate();
+  if (!asOfDate) return { rows: [], date: null };
+
+  const computeForSymbols = (
+    indexId: "sp500" | "nasdaq100",
+    indexName: string,
+    symbols: string[]
+  ): IndexBreadthRow => {
+    if (symbols.length === 0) {
+      return { indexId, indexName, pctAbove50d: null, pctAbove200d: null, count50d: 0, count200d: 0 };
+    }
+    const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
+    const sql = `
+      SELECT
+        SUM(CASE WHEN close_now > ma50 THEN 1 ELSE 0 END) AS above50,
+        SUM(CASE WHEN ma50 IS NOT NULL THEN 1 ELSE 0 END) AS count50,
+        SUM(CASE WHEN close_now > ma200 THEN 1 ELSE 0 END) AS above200,
+        SUM(CASE WHEN ma200 IS NOT NULL THEN 1 ELSE 0 END) AS count200
+      FROM (
+        SELECT
+          s.symbol AS symbol,
+          (
+            SELECT close
+            FROM daily_bars d
+            WHERE d.symbol = s.symbol AND d.date <= ?
+            ORDER BY d.date DESC
+            LIMIT 1
+          ) AS close_now,
+          (
+            SELECT AVG(close)
+            FROM (
+              SELECT close
+              FROM daily_bars d
+              WHERE d.symbol = s.symbol AND d.date <= ?
+              ORDER BY d.date DESC
+              LIMIT 50
+            )
+          ) AS ma50,
+          (
+            SELECT AVG(close)
+            FROM (
+              SELECT close
+              FROM daily_bars d
+              WHERE d.symbol = s.symbol AND d.date <= ?
+              ORDER BY d.date DESC
+              LIMIT 200
+            )
+          ) AS ma200
+        FROM (
+          SELECT symbol
+          FROM companies
+          WHERE symbol IN (${symbolFilter})
+        ) s
+      ) x
+    `;
+    const row = db.prepare(sql).get(asOfDate, asOfDate, asOfDate) as
+      | { above50: number; count50: number; above200: number; count200: number }
+      | undefined;
+    const count50 = Number(row?.count50 ?? 0);
+    const count200 = Number(row?.count200 ?? 0);
+    const above50 = Number(row?.above50 ?? 0);
+    const above200 = Number(row?.above200 ?? 0);
+    return {
+      indexId,
+      indexName,
+      pctAbove50d: count50 > 0 ? (above50 / count50) * 100 : null,
+      pctAbove200d: count200 > 0 ? (above200 / count200) * 100 : null,
+      count50d: count50,
+      count200d: count200,
+    };
+  };
+
+  const sp500 = computeForSymbols("sp500", "S&P 500", loadIndexSymbols("sp500"));
+  const nasdaq = computeForSymbols("nasdaq100", "Nasdaq", loadIndexSymbols("nasdaq100"));
+  return { rows: [sp500, nasdaq], date: asOfDate };
+}
+
+export function getNetNewHighSeries(
+  lookbackDays: number,
+  displayDays = 60,
+  date?: string
+): { rows: NetNewHighRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+  const asOfDate = date ?? getLatestScreenerDate();
+  if (!asOfDate) return { rows: [], date: null };
+
+  const displayDateRows = db
+    .prepare(
+      `
+      SELECT date
+      FROM quote_daily
+      WHERE date <= ?
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT ?
+      `
+    )
+    .all(asOfDate, Math.max(5, displayDays)) as Array<{ date: string }>;
+  const displayDatesAsc = displayDateRows.map((r) => String(r.date)).reverse();
+  if (displayDatesAsc.length === 0) return { rows: [], date: asOfDate };
+
+  const earliestDisplayDate = displayDatesAsc[0];
+  const startRow = db
+    .prepare(
+      `
+      SELECT date
+      FROM quote_daily
+      WHERE date <= ?
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 1 OFFSET ?
+      `
+    )
+    .get(earliestDisplayDate, Math.max(0, lookbackDays + 20)) as { date?: string } | undefined;
+  const startDate = startRow?.date ? String(startRow.date) : earliestDisplayDate;
+
+  const rows = db
+    .prepare(
+      `
+      WITH universe AS (
+        SELECT DISTINCT symbol
+        FROM companies
+      ),
+      base AS (
+        SELECT
+          d.symbol,
+          d.date,
+          d.close,
+          MAX(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
+          ) AS rolling_high,
+          MIN(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
+          ) AS rolling_low,
+          COUNT(d.close) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
+          ) AS window_count
+        FROM daily_bars d
+        INNER JOIN universe u ON u.symbol = d.symbol
+        WHERE d.date BETWEEN ? AND ?
+      )
+      SELECT
+        date,
+        SUM(CASE WHEN window_count = ${lookbackDays} AND close >= rolling_high THEN 1 ELSE 0 END) AS highs,
+        SUM(CASE WHEN window_count = ${lookbackDays} AND close <= rolling_low THEN 1 ELSE 0 END) AS lows
+      FROM base
+      GROUP BY date
+      ORDER BY date ASC
+      `
+    )
+    .all(startDate, asOfDate) as Array<{ date: string; highs: number; lows: number }>;
+
+  const displayDateSet = new Set(displayDatesAsc);
+  return {
+    rows: rows
+      .filter((r) => displayDateSet.has(String(r.date)))
+      .map((r) => {
+        const highs = Number(r.highs ?? 0);
+        const lows = Number(r.lows ?? 0);
+        return {
+          date: String(r.date),
+          highs,
+          lows,
+          net: highs - lows,
+        };
+      }),
     date: asOfDate,
   };
 }

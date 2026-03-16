@@ -5,6 +5,18 @@ type ApiResponse = {
   rows: MarketMonitorRow[];
   latestDate: string | null;
   startDate: string | null;
+  breadth?: {
+    sp500PctAbove50d: number | null;
+    nasdaqPctAbove50d: number | null;
+    sp500PctAbove200d: number | null;
+    nasdaqPctAbove200d: number | null;
+  };
+  netNewHighs?: {
+    oneMonth: Array<{ date: string; highs: number; lows: number; net: number }>;
+    threeMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
+    sixMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
+    fiftyTwoWeek: Array<{ date: string; highs: number; lows: number; net: number }>;
+  };
   error?: string;
 };
 
@@ -16,6 +28,11 @@ function fmtInt(n: number | null | undefined): string {
 function fmtRatio(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
   return n.toFixed(2);
+}
+
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(0)}%`;
 }
 
 function formatDateDmy(input: string): string {
@@ -33,6 +50,8 @@ export default function MarketMonitorTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestDate, setLatestDate] = useState<string | null>(null);
+  const [breadth, setBreadth] = useState<ApiResponse["breadth"]>(undefined);
+  const [netNewHighs, setNetNewHighs] = useState<ApiResponse["netNewHighs"]>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +67,8 @@ export default function MarketMonitorTable() {
           setError(null);
           setData(json.rows ?? []);
           setLatestDate(json.latestDate ?? null);
+          setBreadth(json.breadth);
+          setNetNewHighs(json.netNewHighs);
         }
       })
       .catch(() => {
@@ -71,6 +92,49 @@ export default function MarketMonitorTable() {
     );
   }
 
+  const MiniBarSeries = ({
+    title,
+    series,
+  }: {
+    title: string;
+    series: Array<{ date: string; net: number }>;
+  }) => {
+    if (!series || series.length === 0) {
+      return (
+        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
+          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{title}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">No data</p>
+        </div>
+      );
+    }
+    const maxAbs = Math.max(1, ...series.map((s) => Math.abs(s.net)));
+    const latest = series[series.length - 1]?.net ?? 0;
+    return (
+      <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{title}</p>
+          <p className={`text-xs tabular-nums ${latest >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+            {latest >= 0 ? "+" : ""}{latest}
+          </p>
+        </div>
+        <div className="mt-2 h-16 flex items-end gap-[2px]">
+          {series.map((s) => {
+            const hPct = Math.max(4, Math.round((Math.abs(s.net) / maxAbs) * 100));
+            const positive = s.net >= 0;
+            return (
+              <div
+                key={s.date}
+                className={`w-1 flex-1 rounded-sm ${positive ? "bg-emerald-500" : "bg-rose-500"}`}
+                style={{ height: `${hPct}%` }}
+                title={`${formatDateDmy(s.date)}: ${s.net >= 0 ? "+" : ""}${s.net}`}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   if (error) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-zinc-900">
@@ -91,6 +155,40 @@ export default function MarketMonitorTable() {
             {latestDate ? formatDateDmy(latestDate) : "—"}
           </span>
         </p>
+      </div>
+      <div className="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
+            % Stocks Above Moving Averages
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">50-Day MA</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300">S&P 500</p>
+              <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(breadth?.sp500PctAbove50d)}</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">Nasdaq</p>
+              <p className="text-lg font-semibold text-amber-500 dark:text-amber-400">{fmtPct(breadth?.nasdaqPctAbove50d)}</p>
+            </div>
+            <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">200-Day MA</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300">S&P 500</p>
+              <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(breadth?.sp500PctAbove200d)}</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">Nasdaq</p>
+              <p className="text-lg font-semibold text-amber-500 dark:text-amber-400">{fmtPct(breadth?.nasdaqPctAbove200d)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
+            Net New Highs (Highs - Lows)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <MiniBarSeries title="1M" series={netNewHighs?.oneMonth ?? []} />
+            <MiniBarSeries title="3M" series={netNewHighs?.threeMonths ?? []} />
+            <MiniBarSeries title="6M" series={netNewHighs?.sixMonths ?? []} />
+            <MiniBarSeries title="52W" series={netNewHighs?.fiftyTwoWeek ?? []} />
+          </div>
+        </div>
       </div>
       <div className="max-w-full overflow-auto border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-900 shadow-sm">
         <table className="min-w-full text-sm text-center border-collapse">
