@@ -41,10 +41,16 @@ const COMPARISON_OPS = new Set([">", "<", ">=", "<=", "=", "<>"]);
 function collectFromExpression(expr: AstNode): Array<{ label: string; node: AstNode }> {
   if (expr.kind === "binary") {
     if (COMPARISON_OPS.has(expr.op)) {
-      return [
-        { label: astToString(expr.left), node: expr.left },
-        { label: astToString(expr.right), node: expr.right },
-      ];
+      const out: Array<{ label: string; node: AstNode }> = [];
+      if (expr.left.kind !== "number") {
+        const label = astToString(expr.left);
+        if (label) out.push({ label, node: expr.left });
+      }
+      if (expr.right.kind !== "number") {
+        const label = astToString(expr.right);
+        if (label) out.push({ label, node: expr.right });
+      }
+      return out;
     }
     if (expr.op === "AND" || expr.op === "OR") {
       return [...collectFromExpression(expr.left), ...collectFromExpression(expr.right)];
@@ -64,17 +70,18 @@ export function collectDisplayExpressions(ast: ScriptAst): DisplayExpression[] {
   const out: DisplayExpression[] = [];
 
   for (const { name, expr } of ast.assignments) {
+    if (expr.kind === "number") continue;
     if (!seen.has(name)) {
       seen.add(name);
       out.push({ label: name, node: expr });
     }
   }
 
+  const REDUNDANT_WITH_LAST_PRICE = new Set(["P", "C"]);
   for (const { label, node } of collectFromExpression(ast.expression)) {
-    if (label && !seen.has(label)) {
-      seen.add(label);
-      out.push({ label, node });
-    }
+    if (!label || seen.has(label) || REDUNDANT_WITH_LAST_PRICE.has(label)) continue;
+    seen.add(label);
+    out.push({ label, node });
   }
 
   return out;

@@ -235,13 +235,15 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
     params.push(filters.is_etf === "1" || filters.is_etf === 1 ? 1 : 0);
   }
   const ipoFrom = str(filters.ipo_date_from);
+  const effectiveIpoDateExpr =
+    "COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol))";
   if (ipoFrom != null) {
-    conditions.push(" AND c.ipo_date >= ?");
+    conditions.push(` AND ${effectiveIpoDateExpr} >= ?`);
     params.push(ipoFrom);
   }
   const ipoTo = str(filters.ipo_date_to);
   if (ipoTo != null) {
-    conditions.push(" AND c.ipo_date <= ?");
+    conditions.push(` AND ${effectiveIpoDateExpr} <= ?`);
     params.push(ipoTo);
   }
   if (num(filters.shares_outstanding_min) != null) {

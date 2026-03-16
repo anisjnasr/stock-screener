@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchHistoricalDaily } from "@/lib/massive";
+import { getBarsForSymbol } from "@/lib/nino-script";
 
 type Candle = {
   date: string;
@@ -48,19 +48,48 @@ function aggregateCandles(daily: Candle[], interval: "weekly" | "monthly"): Cand
   return result;
 }
 
+async function getLatestScreenerDateFromDb(): Promise<string | null> {
+  try {
+    const { getLatestScreenerDate } = await import("@/lib/screener-db-native");
+    return getLatestScreenerDate();
+  } catch {
+    const { getLatestScreenerDate } = await import("@/lib/screener-db");
+    return getLatestScreenerDate();
+  }
+}
+
 export async function GET(request: NextRequest) {
-  const symbol = request.nextUrl.searchParams.get("symbol") || "AAPL";
-  const from = request.nextUrl.searchParams.get("from") || undefined;
-  const to = request.nextUrl.searchParams.get("to") || undefined;
+  const symbol = (request.nextUrl.searchParams.get("symbol") || "AAPL").toUpperCase();
   const interval = request.nextUrl.searchParams.get("interval") || "daily";
   try {
-    let data = await fetchHistoricalDaily(symbol, from, to);
+    const latest = await getLatestScreenerDateFromDb();
+    if (!latest) {
+      return NextResponse.json({ error: "No screener date available" }, { status: 200 });
+    }
+    // Load up to ~10 years of daily history from screener DB (newest-first)
+    const DAILY_LIMIT = 2500;
+    const bars = await getBarsForSymbol(symbol, latest, DAILY_LIMIT);
+    if (!bars.length) {
+      return NextResponse.json([] as Candle[]);
+    }
+    const dailyChrono: Candle[] = bars
+      .slice()
+      .reverse()
+      .map((b) => ({
+        date: b.date,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
+      }));
+    let data: Candle[] = dailyChrono;
     if (interval === "weekly" || interval === "monthly") {
-      data = aggregateCandles(data, interval);
+      data = aggregateCandles(dailyChrono, interval as "weekly" | "monthly");
     }
     return NextResponse.json(data);
   } catch (e) {
-    const message = e instanceof Error ? e.message : "API error";
+    const message = e instanceof Error ? e.message : "Candles error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

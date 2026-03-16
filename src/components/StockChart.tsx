@@ -802,6 +802,49 @@ export default function StockChart({
               </button>
             ))}
         </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setDrawMode((m) => (m === "ray" ? "none" : "ray"));
+              setPendingTrendStart(null);
+            }}
+            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              drawMode === "ray"
+                ? "bg-amber-500 text-zinc-900"
+                : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+            title="Draw horizontal ray"
+          >
+            Ray
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawMode((m) => (m === "trend" ? "none" : "trend"));
+              setPendingTrendStart(null);
+            }}
+            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              drawMode === "trend"
+                ? "bg-violet-500 text-white"
+                : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+            title="Draw trend line"
+          >
+            Trend
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawings((prev) => prev.slice(0, -1));
+              if (drawings.length <= 1) setSelectedDrawingId(null);
+            }}
+            className="px-2 py-0.5 text-xs font-medium rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            title="Undo last drawing"
+          >
+            Undo
+          </button>
+        </div>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">TradingView Lightweight Charts</span>
       </div>
       {loading ? (

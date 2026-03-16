@@ -33,6 +33,24 @@ export default function NinoScriptEditor({
     return () => ta.removeEventListener("scroll", syncScroll);
   }, []);
 
+  const handleChange = (raw: string) => {
+    const lines = raw.split("\n");
+    const normalized = lines
+      .map((line) => {
+        const tokens = tokenize(line);
+        return tokens
+          .map((t) => {
+            if (t.type === "number" || t.type === "space" || t.type === "punctuation") {
+              return t.value;
+            }
+            return t.value.toUpperCase();
+          })
+          .join("");
+      })
+      .join("\n");
+    onChange(normalized);
+  };
+
   const lines = value.split("\n");
   const highlightedLines = lines.map((line, lineIndex) => {
     const tokens = tokenize(line);
@@ -43,6 +61,8 @@ export default function NinoScriptEditor({
             {t.value}
           </span>
         ))}
+        {/* Invisible trailing glyph so the highlight and caret stay perfectly aligned */}
+        <span className="opacity-0">.</span>
         {lineIndex < lines.length - 1 ? "\n" : null}
       </div>
     );
@@ -63,7 +83,7 @@ export default function NinoScriptEditor({
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
         className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
         style={{ minHeight }}

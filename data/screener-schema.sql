@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS quote_daily (
   off_52w_high_pct REAL,
   atr_pct_21d REAL,
   free_float REAL,
+  prev_close REAL,
   PRIMARY KEY (symbol, date),
   FOREIGN KEY (symbol) REFERENCES companies(symbol)
 );

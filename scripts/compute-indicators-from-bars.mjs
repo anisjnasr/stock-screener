@@ -90,6 +90,7 @@ function computeATR(bars, period) {
 async function runNativeCompute(LIMIT, YEARS) {
   const Database = require("better-sqlite3");
   const db = new Database(DB_PATH);
+  db.pragma("foreign_keys = OFF");
   const toDate = new Date();
   const fromDate = new Date(toDate);
   fromDate.setUTCFullYear(fromDate.getUTCFullYear() - YEARS);

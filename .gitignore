@@ -36,8 +36,15 @@ yarn-error.log*
 
 # screener DB (never commit; use a volume or host storage in production)
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
+data/market-monitor-cache.json
+data/13f/
+
+# logs
+/logs/
 
 # vercel
 .vercel

@@ -35,6 +35,7 @@ import {
 } from "@/lib/watchlist-storage";
 import {
   loadScreens,
+  saveScreens,
   addScreen,
   updateScreen,
   deleteScreen,
@@ -547,7 +548,7 @@ export default function WatchlistPanel({
   );
 
   const rootScreens = useMemo(
-    () => screens.filter((s) => !s.folderId).sort((a, b) => a.name.localeCompare(b.name)),
+    () => screens.filter((s) => !s.folderId),
     [screens]
   );
   const screensByFolderId = useMemo(() => {
@@ -558,7 +559,6 @@ export default function WatchlistPanel({
         map[s.folderId].push(s);
       }
     }
-    for (const arr of Object.values(map)) arr.sort((a, b) => a.name.localeCompare(b.name));
     return map;
   }, [screens]);
   const sortedFolders = useMemo(
@@ -570,6 +570,24 @@ export default function WatchlistPanel({
     updateScreen(screenId, { folderId: folderId ?? undefined });
     setScreens(loadScreens());
   }, [selectedCollectionId]);
+
+  const reorderScreenBefore = useCallback((draggedId: string, targetId: string) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    setScreens((prev) => {
+      const dragIdx = prev.findIndex((s) => s.id === draggedId);
+      const targetIdx = prev.findIndex((s) => s.id === targetId);
+      if (dragIdx < 0 || targetIdx < 0) return prev;
+      const dragged = prev[dragIdx]!;
+      const target = prev[targetIdx]!;
+      const next = [...prev];
+      next.splice(dragIdx, 1);
+      const targetIdxAfterRemoval = next.findIndex((s) => s.id === targetId);
+      const insertIdx = targetIdxAfterRemoval < 0 ? next.length : targetIdxAfterRemoval;
+      next.splice(insertIdx, 0, { ...dragged, folderId: target.folderId ?? undefined });
+      saveScreens(next);
+      return next;
+    });
+  }, []);
 
   const toggleFolderExpanded = useCallback((folderId: string) => {
     setExpandedFolderIds((prev) => {
@@ -1933,7 +1951,19 @@ export default function WatchlistPanel({
                 )}
                 {/* Root-level screens */}
                 {rootScreens.map((s) => (
-                  <li key={s.id} className="flex items-center gap-0 min-w-0 group">
+                  <li
+                    key={s.id}
+                    className="flex items-center gap-0 min-w-0 group"
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData("screenId");
+                      if (id && id !== s.id) reorderScreenBefore(id, s.id);
+                      setDraggedScreenId(null);
+                      setDragOverFolderId(null);
+                      setDragOverRoot(false);
+                    }}
+                  >
                     <div
                       draggable
                       onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }}
@@ -1945,7 +1975,6 @@ export default function WatchlistPanel({
                         onClick={() => setSelectedScreenId(s.id)}
                         className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                       >
-                        {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Custom script (Nino)">⌘</span>}
                         <span className="truncate min-w-0">{s.name}</span>
                         {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && (
                           <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
@@ -1987,10 +2016,21 @@ export default function WatchlistPanel({
                       {isExpanded && (
                         <ul className="pl-4 py-0.5 border-l border-zinc-200 dark:border-zinc-700 ml-2 mt-0.5 space-y-0">
                           {folderScreens.map((s) => (
-                            <li key={s.id} className="flex items-center gap-0 min-w-0">
+                            <li
+                              key={s.id}
+                              className="flex items-center gap-0 min-w-0"
+                              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const id = e.dataTransfer.getData("screenId");
+                                if (id && id !== s.id) reorderScreenBefore(id, s.id);
+                                setDraggedScreenId(null);
+                                setDragOverFolderId(null);
+                                setDragOverRoot(false);
+                              }}
+                            >
                               <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`flex-1 flex items-center gap-0 min-w-0 rounded ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
                                 <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                                  {s.type === "script" && <span className="shrink-0 text-amber-600 dark:text-amber-400" title="Custom script (Nino)">⌘</span>}
                                   <span className="truncate min-w-0">{s.name}</span>
                                   {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id])!.toLocaleString()})</span>}
                                 </button>
