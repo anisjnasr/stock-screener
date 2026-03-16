@@ -15,9 +15,12 @@ const root = join(__dirname, "..");
 const DATA_DIR = join(root, "data");
 const DB_PATH = join(DATA_DIR, "screener.db");
 const STOCKS_PATH = join(DATA_DIR, "all-stocks.json");
+const STOCKS_FALLBACK_PATH = join(root, "bootstrap-data", "all-stocks.json");
 
-if (!existsSync(STOCKS_PATH)) {
+const stocksPath = existsSync(STOCKS_PATH) ? STOCKS_PATH : existsSync(STOCKS_FALLBACK_PATH) ? STOCKS_FALLBACK_PATH : null;
+if (!stocksPath) {
   console.error("Missing data/all-stocks.json. Run: npm run build-stocks-db");
+  console.error("Fallback missing:", STOCKS_FALLBACK_PATH);
   process.exit(1);
 }
 
@@ -26,7 +29,7 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const raw = readFileSync(STOCKS_PATH, "utf8");
+const raw = readFileSync(stocksPath, "utf8");
 const { stocks } = JSON.parse(raw);
 if (!Array.isArray(stocks) || stocks.length === 0) {
   console.error("No stocks in all-stocks.json");
