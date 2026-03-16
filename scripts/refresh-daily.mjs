@@ -40,6 +40,7 @@ if (!API_KEY) {
 const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
 const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80);
+const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
 
 const BASE = "https://api.polygon.io";
 function url(path, params = {}) {
@@ -200,34 +201,62 @@ async function main() {
   console.log(`Fetched bars: ok=${fetchOkCount}, empty_or_failed=${fetchEmptyCount}`);
 
   const latestDateRow = db.prepare("SELECT MAX(date) AS d FROM daily_bars").get();
-  const latestDate = latestDateRow?.d;
-  if (!latestDate) {
+  const rawLatestDate = latestDateRow?.d;
+  if (!rawLatestDate) {
     console.error("No latest date found in daily_bars.");
     db.close();
     process.exit(1);
   }
 
-  // Coverage guard: do not build a new screener snapshot from a partial date.
-  const latestCoverageRow = db
-    .prepare(
-      `
-      SELECT COUNT(*) AS c
-      FROM companies c
-      INNER JOIN daily_bars d ON d.symbol = c.symbol
-      WHERE d.date = ?
-      `
-    )
-    .get(latestDate);
-  const latestCoverage = Number(latestCoverageRow?.c ?? 0);
+  // Coverage guard + date selection:
+  // if the newest date is partial (intraday/incomplete fetch), use the latest reliable recent date.
   const expectedSymbols = symbols.length;
   const minCoverageAbs = Math.max(200, Math.floor((expectedSymbols * MIN_COVERAGE_PCT) / 100));
-  if (latestCoverage < minCoverageAbs) {
-    const pct = expectedSymbols > 0 ? ((latestCoverage / expectedSymbols) * 100).toFixed(2) : "0.00";
+  const recentCoverageRows = db
+    .prepare(
+      `
+      WITH recent_dates AS (
+        SELECT date
+        FROM daily_bars
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?
+      )
+      SELECT rd.date AS date, COUNT(d.symbol) AS c
+      FROM recent_dates rd
+      LEFT JOIN daily_bars d ON d.date = rd.date
+      GROUP BY rd.date
+      ORDER BY rd.date DESC
+      `
+    )
+    .all(COVERAGE_LOOKBACK_DATES);
+
+  if (!recentCoverageRows.length) {
+    console.error("No recent coverage rows found in daily_bars.");
+    db.close();
+    process.exit(1);
+  }
+
+  const reliableRow = recentCoverageRows.find((r) => Number(r.c ?? 0) >= minCoverageAbs);
+  if (!reliableRow) {
+    const summary = recentCoverageRows
+      .map((r) => `${r.date}:${r.c}`)
+      .join(", ");
     console.error(
-      `Coverage too low for ${latestDate}: ${latestCoverage}/${expectedSymbols} (${pct}%). Minimum required: ${minCoverageAbs}/${expectedSymbols} (${MIN_COVERAGE_PCT}%). Aborting to avoid partial screener snapshot.`
+      `Coverage too low across recent dates. Minimum required: ${minCoverageAbs}/${expectedSymbols} (${MIN_COVERAGE_PCT}%). Recent: ${summary}. Aborting to avoid partial screener snapshot.`
     );
     db.close();
     process.exit(1);
+  }
+
+  const latestDate = String(reliableRow.date);
+  const latestCoverage = Number(reliableRow.c ?? 0);
+  const rawLatestCoverage =
+    Number(recentCoverageRows.find((r) => String(r.date) === String(rawLatestDate))?.c ?? 0);
+  if (String(rawLatestDate) !== latestDate) {
+    console.log(
+      `Latest raw date ${rawLatestDate} is partial (${rawLatestCoverage}/${expectedSymbols}); using reliable date ${latestDate} (${latestCoverage}/${expectedSymbols}).`
+    );
   }
   console.log(
     `Coverage check passed for ${latestDate}: ${latestCoverage}/${expectedSymbols} (${((latestCoverage / expectedSymbols) * 100).toFixed(2)}%)`
