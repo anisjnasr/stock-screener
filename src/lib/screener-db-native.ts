@@ -919,9 +919,7 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
               THEN 1
             ELSE 0
           END
-        ) AS down50pct_month,
-        0 AS _unused_up13pct_34d,
-        0 AS _unused_down13pct_34d
+        ) AS down50pct_month
       FROM quote_daily q
       LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
       WHERE q.date BETWEEN ? AND ?
@@ -940,8 +938,6 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
       down25pct_month: number;
       up50pct_month: number;
       down50pct_month: number;
-      _unused_up13pct_34d: number;
-      _unused_down13pct_34d: number;
     }>;
     return rows.map((r) => ({
       date: String(r.date),
@@ -984,7 +980,6 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
           ) AS avg_vol_30d,
           LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1d,
           LAG(d.close, 21) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1m,
-          LAG(d.close, 34) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_34d,
           LAG(d.close, 63) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_3m
         FROM daily_bars d
         INNER JOIN companies c ON c.symbol = d.symbol
@@ -999,7 +994,6 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
           CASE WHEN close > 5 AND COALESCE(avg_vol_30d, 0) >= 100000 THEN 1 ELSE 0 END AS in_universe,
           CASE WHEN close_1d > 0 THEN (close - close_1d) * 100.0 / close_1d ELSE NULL END AS chg_1d,
           CASE WHEN close_1m > 0 THEN (close - close_1m) * 100.0 / close_1m ELSE NULL END AS chg_1m,
-          CASE WHEN close_34d > 0 THEN (close - close_34d) * 100.0 / close_34d ELSE NULL END AS chg_34d,
           CASE WHEN close_3m > 0 THEN (close - close_3m) * 100.0 / close_3m ELSE NULL END AS chg_3m
         FROM base
       )
@@ -1013,9 +1007,7 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
         SUM(CASE WHEN in_universe = 1 AND chg_1m >= 25 THEN 1 ELSE 0 END) AS up25pct_month,
         SUM(CASE WHEN in_universe = 1 AND chg_1m <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
         SUM(CASE WHEN in_universe = 1 AND chg_1m >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
-        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -50 THEN 1 ELSE 0 END) AS down50pct_month,
-        0 AS _unused_up13pct_34d,
-        0 AS _unused_down13pct_34d
+        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -50 THEN 1 ELSE 0 END) AS down50pct_month
       FROM eligible
       WHERE date BETWEEN ? AND ?
       GROUP BY date
@@ -1033,8 +1025,6 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
       down25pct_month: number;
       up50pct_month: number;
       down50pct_month: number;
-      _unused_up13pct_34d: number;
-      _unused_down13pct_34d: number;
     }>;
 
   return rows.map((r) => ({

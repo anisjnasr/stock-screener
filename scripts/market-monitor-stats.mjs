@@ -96,9 +96,7 @@ function main() {
         SUM(CASE WHEN COALESCE(q.last_price, 0) > 5 AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000 AND i.price_change_1m_pct >= 25 THEN 1 ELSE 0 END) AS up25pct_month,
         SUM(CASE WHEN COALESCE(q.last_price, 0) > 5 AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000 AND i.price_change_1m_pct <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
         SUM(CASE WHEN COALESCE(q.last_price, 0) > 5 AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000 AND i.price_change_1m_pct >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
-        SUM(CASE WHEN COALESCE(q.last_price, 0) > 5 AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000 AND i.price_change_1m_pct <= -50 THEN 1 ELSE 0 END) AS down50pct_month,
-        0 AS _unused_up13pct_34d,
-        0 AS _unused_down13pct_34d
+        SUM(CASE WHEN COALESCE(q.last_price, 0) > 5 AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000 AND i.price_change_1m_pct <= -50 THEN 1 ELSE 0 END) AS down50pct_month
       FROM quote_daily q
       LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
       WHERE q.date BETWEEN ? AND ?
