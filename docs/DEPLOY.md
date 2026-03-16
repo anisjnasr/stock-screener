@@ -111,6 +111,17 @@ So the historical DB stays up to date:
 
 All need `MASSIVE_API_KEY` and read/write access to `data/screener.db`.
 
+### Option A: GitHub Actions (recommended)
+
+The repo includes a workflow that runs the daily refresh at **2am ET (Tue–Sat)** in the cloud. No need to keep your PC on.
+
+- **One-time setup:** Add a self-hosted runner, then run the workflow once with **Seed DB path** set so the 4.4GB DB is copied into the workflow and saved to the Actions cache.  
+- **Full steps:** [docs/DATA-REFRESH-SETUP.md](DATA-REFRESH-SETUP.md)
+
+After the cache is seeded, scheduled and manual runs use GitHub-hosted runners and the cached DB.
+
+### Option B: Host cron / worker
+
 **Examples:**
 
 - **Railway**: Add a cron job or a separate worker service that runs `node scripts/refresh-daily.mjs` (and others) on a schedule, with the same env and volume as the app.
@@ -120,6 +131,7 @@ All need `MASSIVE_API_KEY` and read/write access to `data/screener.db`.
   0 18 * * 1-5 cd /app && npm run refresh-daily
   ```
   Adjust path and timezone (e.g. 18:00 UTC weekdays).
+- **Windows (local fallback):** Run `npm run setup-daily-update` to create a Task Scheduler task (e.g. 6pm weekdays). See the script in `scripts/setup-daily-update.ps1`.
 
 ---
 
@@ -130,6 +142,9 @@ All need `MASSIVE_API_KEY` and read/write access to `data/screener.db`.
 - [ ] At least one run of init + seed (and optionally backfill) so the screener has data.
 - [ ] Cron or scheduled job for `refresh-daily` (and optionally `refresh-financials` / `refresh-companies`).
 - [ ] App is reachable over HTTPS at a public URL (platform default or custom domain).
+- [ ] Run preflight checks: `npm run go-live:check`.
+- [ ] Verify health endpoint: `GET /api/health` returns `status: "ok"`.
+- [ ] Enable DB backup workflow (`.github/workflows/db-backup.yml`) or equivalent daily backup on your host.
 
 ---
 

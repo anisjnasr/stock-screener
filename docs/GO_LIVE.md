@@ -86,5 +86,7 @@ Use the URL Render or Railway gives you (e.g. `https://stock-scanner.onrender.co
 - [ ] `MASSIVE_API_KEY` set in the service environment.
 - [ ] One-time DB setup run in the platform Shell (`init-screener-db`, `seed-companies`).
 - [ ] (Optional) Refresh scheduled (e.g. daily) – see [DEPLOY.md](DEPLOY.md#5-schedule-the-screener-refresh-scripts).
+- [ ] Run `npm run go-live:check` locally or on host.
+- [ ] Confirm `GET /api/health` returns `status: "ok"` on the deployed site.
 
 For more detail (Docker, VPS, cron examples), see [DEPLOY.md](DEPLOY.md).

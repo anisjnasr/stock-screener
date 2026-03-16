@@ -28,6 +28,7 @@
     "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
     "compute-indicators": "node scripts/compute-indicators-from-bars.mjs",
     "optimize-db": "node scripts/optimize-db.mjs",
+    "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
     "market-monitor:stats": "node scripts/market-monitor-stats.mjs",
     "setup-daily-update": "powershell -ExecutionPolicy Bypass -File scripts/setup-daily-update.ps1",

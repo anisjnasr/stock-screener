@@ -12,7 +12,15 @@ Deploy in one of these ways:
 | **Railway** | [New → Deploy from GitHub](https://railway.app/new), select this repo. Add a **volume** mounted at `./data`, set **MASSIVE_API_KEY**, then run DB init/seed in the shell. See [docs/DEPLOY.md](docs/DEPLOY.md). |
 | **Docker** | `docker build -t stock-scanner .` then run with a volume for `./data` and `MASSIVE_API_KEY`. See [docs/DEPLOY.md](docs/DEPLOY.md#4-docker-optional-but-portable). |
 
-The app needs a **persistent `data/` directory** (for `screener.db`) and **scheduled refresh** (e.g. daily). Full checklist and alternatives (VPS, Fly.io, Vercel + hosted DB) are in **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+The app needs a **persistent `data/` directory** (for `screener.db`) and **scheduled refresh** (e.g. daily). Full checklist and alternatives (VPS, Fly.io, Vercel + hosted DB) are in **[docs/DEPLOY.md](docs/DEPLOY.md)**. To use **GitHub Actions** for daily refresh at 2am ET (no server cron needed), see **[docs/DATA-REFRESH-SETUP.md](docs/DATA-REFRESH-SETUP.md)**.
+
+Before launch, run:
+
+```bash
+npm run go-live:check
+```
+
+Operational health endpoint: `GET /api/health`.
 
 ---
 

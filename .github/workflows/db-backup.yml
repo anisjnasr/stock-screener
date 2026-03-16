@@ -1,0 +1,47 @@
+# Backup cached screener.db as workflow artifact.
+# This provides an easy rollback point independent from cache keys.
+name: DB Backup
+
+on:
+  schedule:
+    # 09:30 UTC Tue-Sat (after daily refresh window)
+    - cron: "30 9 * * 2-6"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  DB_CACHE_PREFIX: screener-db-v1
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Restore DB from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: data/screener.db
+          key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ env.DB_CACHE_PREFIX }}-
+
+      - name: Verify DB exists
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = 'data/screener.db';
+          if (!fs.existsSync(p)) {
+            console.error('::error::No cached DB found to back up.');
+            process.exit(1);
+          }
+          console.log('Backup source size MB', Math.round(fs.statSync(p).size/1024/1024));
+          "
+
+      - name: Upload DB backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screener-db-backup-${{ github.run_id }}
+          path: data/screener.db
+          retention-days: 14
+          compression-level: 1
