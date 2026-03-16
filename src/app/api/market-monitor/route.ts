@@ -20,8 +20,6 @@ export type MarketMonitorRow = {
   down25pct_month: number;
   up50pct_month: number;
   down50pct_month: number;
-  up13pct_34d: number;
-  down13pct_34d: number;
   universe: number;
 };
 
@@ -45,7 +43,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 
 export async function GET() {
   try {
@@ -146,8 +144,6 @@ export async function GET() {
       down25pct_month: r.down25pct_month,
       up50pct_month: r.up50pct_month,
       down50pct_month: r.down50pct_month,
-      up13pct_34d: r.up13pct_34d,
-      down13pct_34d: r.down13pct_34d,
       universe: r.universe,
     }));
 

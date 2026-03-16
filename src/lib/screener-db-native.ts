@@ -153,6 +153,34 @@ export function getLatestScreenerDate(): string | null {
   return getLatestReliableScreenerDateFromDb(db);
 }
 
+export function getCompanyClassification(symbol: string): {
+  sector?: string;
+  industry?: string;
+  exchange?: string;
+} | null {
+  const db = getDb();
+  if (!db) return null;
+  const row = db
+    .prepare(
+      `
+      SELECT sector, industry, exchange
+      FROM companies
+      WHERE symbol = ?
+      LIMIT 1
+      `
+    )
+    .get(String(symbol).toUpperCase()) as
+    | { sector?: string | null; industry?: string | null; exchange?: string | null }
+    | undefined;
+  if (!row) return null;
+  const sector = row.sector && String(row.sector).trim() !== "" ? String(row.sector).trim() : undefined;
+  const industry =
+    row.industry && String(row.industry).trim() !== "" ? String(row.industry).trim() : undefined;
+  const exchange =
+    row.exchange && String(row.exchange).trim() !== "" ? String(row.exchange).trim() : undefined;
+  return { sector, industry, exchange };
+}
+
 export function getScreenerCount(options: {
   date?: string;
   symbols?: string[];
@@ -254,8 +282,6 @@ export type MarketMonitorBaseRow = {
   down25pct_month: number;
   up50pct_month: number;
   down50pct_month: number;
-  up13pct_34d: number;
-  down13pct_34d: number;
   universe: number;
 };
 
@@ -435,24 +461,32 @@ export function getWeightedCategoryPerformance(
         WHERE date <= ?
         GROUP BY symbol
       ) x ON x.symbol = q.symbol AND x.max_date = q.date
+    ),
+    market_cap_by_symbol AS (
+      SELECT
+        l.symbol AS symbol,
+        COALESCE(lc.market_cap, c.shares_outstanding * l.close) AS market_cap
+      FROM latest l
+      INNER JOIN companies c ON c.symbol = l.symbol
+      LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
     )
     SELECT
       c.${groupBy} AS name,
       SUM(
-        lc.market_cap * ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0))
-      ) / SUM(lc.market_cap) AS change_pct,
-      SUM(lc.market_cap) AS total_market_cap,
+        mc.market_cap * ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0))
+      ) / SUM(mc.market_cap) AS change_pct,
+      SUM(mc.market_cap) AS total_market_cap,
       COUNT(*) AS stock_count
     FROM latest l
     INNER JOIN companies c ON c.symbol = l.symbol
-    LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
+    LEFT JOIN market_cap_by_symbol mc ON mc.symbol = l.symbol
     WHERE c.${groupBy} IS NOT NULL
       AND TRIM(c.${groupBy}) <> ''
       AND c.${groupBy} <> 'NA'
-      AND lc.market_cap IS NOT NULL
-      AND lc.market_cap > 0
+      AND mc.market_cap IS NOT NULL
+      AND mc.market_cap > 0
     GROUP BY c.${groupBy}
-    HAVING SUM(lc.market_cap) > 0
+    HAVING SUM(mc.market_cap) > 0
     ORDER BY change_pct DESC
   `;
   const rows = db.prepare(sql).all(startDate, asOfDate, asOfDate, asOfDate, asOfDate) as Array<{
@@ -527,13 +561,21 @@ export function getTickerPerformance(
         WHERE date <= ?
         GROUP BY symbol
       ) x ON x.symbol = q.symbol AND x.max_date = q.date
+    ),
+    market_cap_by_symbol AS (
+      SELECT
+        l.symbol AS symbol,
+        COALESCE(lc.market_cap, c.shares_outstanding * l.close) AS market_cap
+      FROM latest l
+      LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
+      LEFT JOIN companies c ON c.symbol = l.symbol
     )
     SELECT
       l.symbol AS symbol,
       ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0)) AS change_pct,
-      lc.market_cap AS market_cap
+      mc.market_cap AS market_cap
     FROM latest l
-    LEFT JOIN latest_cap lc ON lc.symbol = l.symbol
+    LEFT JOIN market_cap_by_symbol mc ON mc.symbol = l.symbol
   `;
   const rows = db.prepare(sql).all(...unique, startDate, asOfDate, asOfDate, asOfDate, asOfDate) as Array<{
     symbol: string;
@@ -878,24 +920,8 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
             ELSE 0
           END
         ) AS down50pct_month,
-        SUM(
-          CASE
-            WHEN COALESCE(q.last_price, 0) > 5
-             AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000
-             AND i.price_change_1m_pct >= 13
-              THEN 1
-            ELSE 0
-          END
-        ) AS up13pct_34d,
-        SUM(
-          CASE
-            WHEN COALESCE(q.last_price, 0) > 5
-             AND COALESCE(q.avg_volume_30d_shares, q.volume, 0) >= 100000
-             AND i.price_change_1m_pct <= -13
-              THEN 1
-            ELSE 0
-          END
-        ) AS down13pct_34d
+        0 AS _unused_up13pct_34d,
+        0 AS _unused_down13pct_34d
       FROM quote_daily q
       LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
       WHERE q.date BETWEEN ? AND ?
@@ -914,8 +940,8 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
       down25pct_month: number;
       up50pct_month: number;
       down50pct_month: number;
-      up13pct_34d: number;
-      down13pct_34d: number;
+      _unused_up13pct_34d: number;
+      _unused_down13pct_34d: number;
     }>;
     return rows.map((r) => ({
       date: String(r.date),
@@ -928,8 +954,6 @@ export function getMarketMonitorBaseRows(startDate: string, endDate?: string): M
       down25pct_month: Number(r.down25pct_month ?? 0),
       up50pct_month: Number(r.up50pct_month ?? 0),
       down50pct_month: Number(r.down50pct_month ?? 0),
-      up13pct_34d: Number(r.up13pct_34d ?? 0),
-      down13pct_34d: Number(r.down13pct_34d ?? 0),
     }));
 }
 
@@ -990,8 +1014,8 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
         SUM(CASE WHEN in_universe = 1 AND chg_1m <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
         SUM(CASE WHEN in_universe = 1 AND chg_1m >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
         SUM(CASE WHEN in_universe = 1 AND chg_1m <= -50 THEN 1 ELSE 0 END) AS down50pct_month,
-        SUM(CASE WHEN in_universe = 1 AND chg_34d >= 13 THEN 1 ELSE 0 END) AS up13pct_34d,
-        SUM(CASE WHEN in_universe = 1 AND chg_34d <= -13 THEN 1 ELSE 0 END) AS down13pct_34d
+        0 AS _unused_up13pct_34d,
+        0 AS _unused_down13pct_34d
       FROM eligible
       WHERE date BETWEEN ? AND ?
       GROUP BY date
@@ -1009,8 +1033,8 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
       down25pct_month: number;
       up50pct_month: number;
       down50pct_month: number;
-      up13pct_34d: number;
-      down13pct_34d: number;
+      _unused_up13pct_34d: number;
+      _unused_down13pct_34d: number;
     }>;
 
   return rows.map((r) => ({
@@ -1024,8 +1048,6 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
     down25pct_month: Number(r.down25pct_month ?? 0),
     up50pct_month: Number(r.up50pct_month ?? 0),
     down50pct_month: Number(r.down50pct_month ?? 0),
-    up13pct_34d: Number(r.up13pct_34d ?? 0),
-    down13pct_34d: Number(r.down13pct_34d ?? 0),
   }));
 }
 

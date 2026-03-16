@@ -55,9 +55,7 @@ type MmIndicatorKey =
   | "up25pct_month"
   | "down25pct_month"
   | "up50pct_month"
-  | "down50pct_month"
-  | "up13pct_34d"
-  | "down13pct_34d";
+  | "down50pct_month";
 
 type RegimeRule = {
   q20: number;
@@ -78,8 +76,6 @@ const MM_REGIME_RULES: Record<MmIndicatorKey, RegimeRule> = {
   down25pct_month: { q20: 42, q40: 52, q60: 66, q80: 106, higherIsBullish: false },
   up50pct_month: { q20: 26, q40: 39, q60: 52, q80: 71, higherIsBullish: true },
   down50pct_month: { q20: 6, q40: 8, q60: 10, q80: 14, higherIsBullish: false },
-  up13pct_34d: { q20: 344, q40: 506, q60: 658, q80: 782, higherIsBullish: true },
-  down13pct_34d: { q20: 231, q40: 309, q60: 385, q80: 528, higherIsBullish: false },
 };
 
 function getRegimeScore(value: number | null | undefined, key: MmIndicatorKey): -2 | -1 | 0 | 1 | 2 {
@@ -103,13 +99,13 @@ function getRegimeCellClass(value: number | null | undefined, key: MmIndicatorKe
   const score = getRegimeScore(value, key);
   switch (score) {
     case -2:
-      return "bg-red-800 text-white";
+      return "bg-rose-300 dark:bg-rose-400/60 text-zinc-900";
     case -1:
-      return "bg-red-300 text-zinc-900";
+      return "bg-rose-100 dark:bg-rose-300/30 text-zinc-900 dark:text-zinc-100";
     case 1:
-      return "bg-emerald-300 text-zinc-900";
+      return "bg-emerald-100 dark:bg-emerald-300/30 text-zinc-900 dark:text-zinc-100";
     case 2:
-      return "bg-emerald-800 text-white";
+      return "bg-emerald-300 dark:bg-emerald-400/60 text-zinc-900";
     default:
       return "";
   }
@@ -284,7 +280,7 @@ export default function MarketMonitorTable() {
               </th>
               <th
                 className="sticky top-0 z-10 bg-sky-100/80 dark:bg-sky-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold border-l border-zinc-300 dark:border-zinc-700 text-sky-900 dark:text-sky-100"
-                colSpan={6}
+                colSpan={4}
               >
                 Secondary Breadth Indicators
               </th>
@@ -323,12 +319,6 @@ export default function MarketMonitorTable() {
               </th>
               <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 50% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Up 13% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Down 13% (M)
               </th>
               <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
                 Stock Universe
@@ -370,12 +360,6 @@ export default function MarketMonitorTable() {
                 </td>
                 <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down50pct_month, "down50pct_month")}`}>
                   {fmtInt(row.down50pct_month)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.up13pct_34d, "up13pct_34d")}`}>
-                  {fmtInt(row.up13pct_34d)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down13pct_34d, "down13pct_34d")}`}>
-                  {fmtInt(row.down13pct_34d)}
                 </td>
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
                   {fmtInt(row.universe)}

@@ -145,10 +145,10 @@ export default function LeftSidebar({
                 <span className="text-zinc-900 dark:text-zinc-100">{profile.exchange}</span>
               </>
             )}
-            {profile?.sector != null && profile.sector !== "" && (
-              <>
-                <span className="text-zinc-500 dark:text-zinc-400">Sector</span>
-                {onOpenSectorInWatchlist ? (
+            <>
+              <span className="text-zinc-500 dark:text-zinc-400">Sector</span>
+              {profile?.sector && profile.sector.trim() !== "" ? (
+                onOpenSectorInWatchlist ? (
                   <button
                     type="button"
                     onClick={() => onOpenSectorInWatchlist(profile.sector as string)}
@@ -159,9 +159,11 @@ export default function LeftSidebar({
                   </button>
                 ) : (
                   <span className="text-zinc-900 dark:text-zinc-100">{profile.sector}</span>
-                )}
-              </>
-            )}
+                )
+              ) : (
+                <span className="text-zinc-900 dark:text-zinc-100">NA</span>
+              )}
+            </>
             {profile?.industry != null && profile.industry !== "" && (
               <>
                 <span className="text-zinc-500 dark:text-zinc-400">Industry</span>

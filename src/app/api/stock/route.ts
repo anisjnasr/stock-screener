@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchQuote, fetchProfile } from "@/lib/massive";
 import { fetchNextEarningsDate } from "@/lib/yahoo-earnings";
 import { getStockRecord } from "@/lib/stocks-db";
+import { getCompanyClassification } from "@/lib/screener-db-native";
 
 function pickStr(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
   for (const k of keys) {
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
       quote.symbol;
     const profileNorm = normalizeProfile(profile as Record<string, unknown> | null);
     const stockRecord = getStockRecord(symbol);
+    const companyClass = getCompanyClassification(symbol);
 
     const mergedProfile =
       profileNorm || profile || stockRecord
@@ -54,14 +56,17 @@ export async function GET(request: NextRequest) {
             ...(stockRecord ?? {}),
             sector:
               profileNorm?.sector ??
+              companyClass?.sector ??
               stockRecord?.sector ??
               (profile as { sector?: string } | null | undefined)?.sector,
             industry:
               profileNorm?.industry ??
+              companyClass?.industry ??
               stockRecord?.industry ??
               (profile as { industry?: string } | null | undefined)?.industry,
             exchange:
               profileNorm?.exchange ??
+              companyClass?.exchange ??
               stockRecord?.exchange ??
               (profile as { exchange?: string } | null | undefined)?.exchange,
           }
