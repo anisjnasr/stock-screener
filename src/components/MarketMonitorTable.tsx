@@ -45,6 +45,76 @@ function formatDateDmy(input: string): string {
   return `${day}-${month}-${year}`;
 }
 
+type MmIndicatorKey =
+  | "up4pct"
+  | "down4pct"
+  | "ratio5d"
+  | "ratio10d"
+  | "up25pct_qtr"
+  | "down25pct_qtr"
+  | "up25pct_month"
+  | "down25pct_month"
+  | "up50pct_month"
+  | "down50pct_month"
+  | "up13pct_34d"
+  | "down13pct_34d";
+
+type RegimeRule = {
+  q20: number;
+  q40: number;
+  q60: number;
+  q80: number;
+  higherIsBullish: boolean;
+};
+
+const MM_REGIME_RULES: Record<MmIndicatorKey, RegimeRule> = {
+  up4pct: { q20: 80, q40: 117, q60: 167, q80: 267, higherIsBullish: true },
+  down4pct: { q20: 67, q40: 107, q60: 151, q80: 233, higherIsBullish: false },
+  ratio5d: { q20: 0.68, q40: 0.98, q60: 1.32, q80: 1.74, higherIsBullish: true },
+  ratio10d: { q20: 0.78, q40: 0.99, q60: 1.26, q80: 1.61, higherIsBullish: true },
+  up25pct_qtr: { q20: 235, q40: 365, q60: 457, q80: 596, higherIsBullish: true },
+  down25pct_qtr: { q20: 138, q40: 166, q60: 206, q80: 251, higherIsBullish: false },
+  up25pct_month: { q20: 81, q40: 131, q60: 173, q80: 227, higherIsBullish: true },
+  down25pct_month: { q20: 42, q40: 52, q60: 66, q80: 106, higherIsBullish: false },
+  up50pct_month: { q20: 26, q40: 39, q60: 52, q80: 71, higherIsBullish: true },
+  down50pct_month: { q20: 6, q40: 8, q60: 10, q80: 14, higherIsBullish: false },
+  up13pct_34d: { q20: 344, q40: 506, q60: 658, q80: 782, higherIsBullish: true },
+  down13pct_34d: { q20: 231, q40: 309, q60: 385, q80: 528, higherIsBullish: false },
+};
+
+function getRegimeScore(value: number | null | undefined, key: MmIndicatorKey): -2 | -1 | 0 | 1 | 2 {
+  if (value == null || !Number.isFinite(value)) return 0;
+  const { q20, q40, q60, q80, higherIsBullish } = MM_REGIME_RULES[key];
+  if (higherIsBullish) {
+    if (value < q20) return -2;
+    if (value < q40) return -1;
+    if (value < q60) return 0;
+    if (value <= q80) return 1;
+    return 2;
+  }
+  if (value < q20) return 2;
+  if (value < q40) return 1;
+  if (value < q60) return 0;
+  if (value <= q80) return -1;
+  return -2;
+}
+
+function getRegimeCellClass(value: number | null | undefined, key: MmIndicatorKey): string {
+  const score = getRegimeScore(value, key);
+  switch (score) {
+    case -2:
+      return "bg-red-800 text-white";
+    case -1:
+      return "bg-red-300 text-zinc-900";
+    case 1:
+      return "bg-emerald-300 text-zinc-900";
+    case 2:
+      return "bg-emerald-800 text-white";
+    default:
+      return "";
+  }
+}
+
 export default function MarketMonitorTable() {
   const [data, setData] = useState<MarketMonitorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,40 +341,40 @@ export default function MarketMonitorTable() {
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 whitespace-nowrap text-right tabular-nums border-l border-r border-zinc-300 dark:border-zinc-700">
                   {formatDateDmy(row.date)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.up4pct, "up4pct")}`}>
                   {fmtInt(row.up4pct)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down4pct, "down4pct")}`}>
                   {fmtInt(row.down4pct)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.ratio5d, "ratio5d")}`}>
                   {fmtRatio(row.ratio5d)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.ratio10d, "ratio10d")}`}>
                   {fmtRatio(row.ratio10d)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.up25pct_qtr, "up25pct_qtr")}`}>
                   {fmtInt(row.up25pct_qtr)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down25pct_qtr, "down25pct_qtr")}`}>
                   {fmtInt(row.down25pct_qtr)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700 ${getRegimeCellClass(row.up25pct_month, "up25pct_month")}`}>
                   {fmtInt(row.up25pct_month)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down25pct_month, "down25pct_month")}`}>
                   {fmtInt(row.down25pct_month)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.up50pct_month, "up50pct_month")}`}>
                   {fmtInt(row.up50pct_month)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down50pct_month, "down50pct_month")}`}>
                   {fmtInt(row.down50pct_month)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.up13pct_34d, "up13pct_34d")}`}>
                   {fmtInt(row.up13pct_34d)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getRegimeCellClass(row.down13pct_34d, "down13pct_34d")}`}>
                   {fmtInt(row.down13pct_34d)}
                 </td>
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
