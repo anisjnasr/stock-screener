@@ -39,6 +39,7 @@ if (!API_KEY) {
 
 const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
+const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80);
 
 const BASE = "https://api.polygon.io";
 function url(path, params = {}) {
@@ -182,9 +183,13 @@ async function main() {
   const spyBars = await fetchDailyBars("SPY", fromStr, toStr);
   upsertBarsTx("SPY", spyBars);
 
+  let fetchOkCount = 0;
+  let fetchEmptyCount = 0;
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i];
     const bars = await fetchDailyBars(sym, fromStr, toStr);
+    if (bars.length > 0) fetchOkCount++;
+    else fetchEmptyCount++;
     upsertBarsTx(sym, bars);
     if ((i + 1) % 50 === 0 || i === symbols.length - 1) {
       process.stdout.write(`  daily_bars: ${i + 1}/${symbols.length}\r`);
@@ -192,6 +197,7 @@ async function main() {
     await sleep(120);
   }
   console.log("");
+  console.log(`Fetched bars: ok=${fetchOkCount}, empty_or_failed=${fetchEmptyCount}`);
 
   const latestDateRow = db.prepare("SELECT MAX(date) AS d FROM daily_bars").get();
   const latestDate = latestDateRow?.d;
@@ -200,6 +206,32 @@ async function main() {
     db.close();
     process.exit(1);
   }
+
+  // Coverage guard: do not build a new screener snapshot from a partial date.
+  const latestCoverageRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS c
+      FROM companies c
+      INNER JOIN daily_bars d ON d.symbol = c.symbol
+      WHERE d.date = ?
+      `
+    )
+    .get(latestDate);
+  const latestCoverage = Number(latestCoverageRow?.c ?? 0);
+  const expectedSymbols = symbols.length;
+  const minCoverageAbs = Math.max(200, Math.floor((expectedSymbols * MIN_COVERAGE_PCT) / 100));
+  if (latestCoverage < minCoverageAbs) {
+    const pct = expectedSymbols > 0 ? ((latestCoverage / expectedSymbols) * 100).toFixed(2) : "0.00";
+    console.error(
+      `Coverage too low for ${latestDate}: ${latestCoverage}/${expectedSymbols} (${pct}%). Minimum required: ${minCoverageAbs}/${expectedSymbols} (${MIN_COVERAGE_PCT}%). Aborting to avoid partial screener snapshot.`
+    );
+    db.close();
+    process.exit(1);
+  }
+  console.log(
+    `Coverage check passed for ${latestDate}: ${latestCoverage}/${expectedSymbols} (${((latestCoverage / expectedSymbols) * 100).toFixed(2)}%)`
+  );
 
   const indCols = new Set(db.prepare("PRAGMA table_info(indicators_daily)").all().map((r) => r.name));
   for (const col of ["rs_pct_1w", "rs_pct_1m", "rs_pct_3m", "rs_pct_6m", "rs_pct_12m"]) {
