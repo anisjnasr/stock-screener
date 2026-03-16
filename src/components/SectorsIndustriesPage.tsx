@@ -62,7 +62,8 @@ function HorizontalBars({
           <p className="text-sm text-zinc-500 dark:text-zinc-400">No data</p>
         ) : (
           items.map((item) => {
-            const value = item.changePct ?? 0;
+            const hasValue = item.changePct != null && Number.isFinite(item.changePct);
+            const value = hasValue ? Number(item.changePct) : 0;
             const pctWidth = Math.min(100, (Math.abs(value) / maxAbs) * 100);
             const isUp = value >= 0;
             const clickable = typeof onClick === "function";
@@ -78,20 +79,36 @@ function HorizontalBars({
                     : "cursor-default"
                 }`}
               >
-                <div className="flex items-center justify-between gap-3 text-xs">
+                <div className="grid grid-cols-[minmax(140px,240px)_1fr_auto] items-center gap-3 text-xs">
                   <span className="truncate text-zinc-700 dark:text-zinc-200">
                     {item.name}
                     {item.meta ? <span className="text-zinc-500 dark:text-zinc-400"> ({item.meta})</span> : null}
                   </span>
-                  <span className={isUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                  <div className="relative h-4">
+                    <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-400/70 dark:bg-zinc-500/70" />
+                    <div className="absolute inset-y-0 left-0 right-0 rounded bg-zinc-200 dark:bg-zinc-700/70" />
+                    {hasValue ? (
+                      <div
+                        className={`absolute inset-y-0 rounded ${isUp ? "bg-emerald-500/80" : "bg-red-500/80"}`}
+                        style={
+                          isUp
+                            ? { left: "50%", width: `${pctWidth / 2}%` }
+                            : { left: `${50 - pctWidth / 2}%`, width: `${pctWidth / 2}%` }
+                        }
+                      />
+                    ) : null}
+                  </div>
+                  <span
+                    className={`tabular-nums ${
+                      hasValue
+                        ? isUp
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-red-600 dark:text-red-400"
+                        : "text-zinc-500 dark:text-zinc-400"
+                    }`}
+                  >
                     {fmtPct(item.changePct)}
                   </span>
-                </div>
-                <div className="mt-1 h-2 rounded bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-                  <div
-                    className={`h-full ${isUp ? "bg-green-500" : "bg-red-500"}`}
-                    style={{ width: `${pctWidth}%` }}
-                  />
                 </div>
               </button>
             );

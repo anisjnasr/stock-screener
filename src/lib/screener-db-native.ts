@@ -307,6 +307,29 @@ function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
   }
 }
 
+function getPerformanceLookbackDays(timeframe: PerformanceTimeframe): number {
+  switch (timeframe) {
+    case "day":
+      return 1;
+    case "week":
+      return 5;
+    case "month":
+      return 21;
+    case "quarter":
+      return 63;
+    case "year":
+      return 252;
+    default:
+      return 1;
+  }
+}
+
+function getBufferStartDate(asOfDate: string, lookbackDays: number): string {
+  const d = new Date(`${asOfDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - Math.max(lookbackDays * 2 + 40, lookbackDays + 40));
+  return d.toISOString().slice(0, 10);
+}
+
 function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
   const directPath = join(process.cwd(), "data", `${indexId}.json`);
   const bootstrapPath = join(process.cwd(), "bootstrap-data", `${indexId}.json`);
@@ -365,29 +388,54 @@ export function getWeightedCategoryPerformance(
 ): { rows: WeightedCategoryPerformanceRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-  const asOfDate = date ?? getLatestScreenerDate();
+  const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate) return { rows: [], date: null };
-  const perfCol = getPerformanceColumn(timeframe);
+  const lookbackDays = getPerformanceLookbackDays(timeframe);
+  const startDate = getBufferStartDate(asOfDate, lookbackDays);
+
   const sql = `
+    WITH base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        LAG(d.close, ${lookbackDays}) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+        ) AS prev_close
+      FROM daily_bars d
+      INNER JOIN companies c ON c.symbol = d.symbol
+      WHERE d.date BETWEEN ? AND ?
+    ),
+    latest AS (
+      SELECT
+        b.symbol,
+        b.close,
+        b.prev_close
+      FROM base b
+      WHERE b.date = ?
+        AND b.prev_close > 0
+    )
     SELECT
       c.${groupBy} AS name,
-      SUM(q.market_cap * ${perfCol}) / SUM(q.market_cap) AS change_pct,
+      SUM(
+        q.market_cap * ((l.close - l.prev_close) * 100.0 / NULLIF(l.prev_close, 0))
+      ) / SUM(q.market_cap) AS change_pct,
       SUM(q.market_cap) AS total_market_cap,
       COUNT(*) AS stock_count
-    FROM companies c
-    INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
-    LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
+    FROM latest l
+    INNER JOIN companies c ON c.symbol = l.symbol
+    LEFT JOIN quote_daily q ON q.symbol = l.symbol AND q.date = ?
     WHERE c.${groupBy} IS NOT NULL
       AND TRIM(c.${groupBy}) <> ''
       AND c.${groupBy} <> 'NA'
       AND q.market_cap IS NOT NULL
       AND q.market_cap > 0
-      AND ${perfCol} IS NOT NULL
     GROUP BY c.${groupBy}
     HAVING SUM(q.market_cap) > 0
     ORDER BY change_pct DESC
   `;
-  const rows = db.prepare(sql).all(asOfDate) as Array<{
+  const rows = db.prepare(sql).all(startDate, asOfDate, asOfDate, asOfDate) as Array<{
     name: string;
     change_pct: number;
     total_market_cap: number;
@@ -411,24 +459,37 @@ export function getTickerPerformance(
 ): { rows: TickerPerformanceRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-  const asOfDate = date ?? getLatestScreenerDate();
+  const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate || symbols.length === 0) return { rows: [], date: asOfDate ?? null };
   const unique = Array.from(new Set(symbols.map((s) => String(s).toUpperCase()).filter(Boolean)));
   if (unique.length === 0) return { rows: [], date: asOfDate };
-  const perfCol = getPerformanceColumn(timeframe);
+  const lookbackDays = getPerformanceLookbackDays(timeframe);
+  const startDate = getBufferStartDate(asOfDate, lookbackDays);
   const placeholders = unique.map(() => "?").join(",");
   const sql = `
+    WITH base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        LAG(d.close, ${lookbackDays}) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+        ) AS prev_close
+      FROM daily_bars d
+      WHERE d.symbol IN (${placeholders})
+        AND d.date BETWEEN ? AND ?
+    )
     SELECT
-      q.symbol AS symbol,
-      ${perfCol} AS change_pct,
+      b.symbol AS symbol,
+      ((b.close - b.prev_close) * 100.0 / NULLIF(b.prev_close, 0)) AS change_pct,
       q.market_cap AS market_cap
-    FROM quote_daily q
-    LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
-    WHERE q.date = ?
-      AND q.symbol IN (${placeholders})
-      AND ${perfCol} IS NOT NULL
+    FROM base b
+    LEFT JOIN quote_daily q ON q.symbol = b.symbol AND q.date = ?
+    WHERE b.date = ?
+      AND b.prev_close > 0
   `;
-  const rows = db.prepare(sql).all(asOfDate, ...unique) as Array<{
+  const rows = db.prepare(sql).all(...unique, startDate, asOfDate, asOfDate, asOfDate) as Array<{
     symbol: string;
     change_pct: number;
     market_cap: number | null;
