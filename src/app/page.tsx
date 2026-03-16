@@ -8,6 +8,7 @@ import QuarterlyBox from "@/components/QuarterlyBox";
 import NewsSidebar from "@/components/NewsSidebar";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
+import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
 
 const DEFAULT_SYMBOL = "AAPL";
@@ -79,8 +80,8 @@ export default function Home() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [openToRelatedListTrigger, setOpenToRelatedListTrigger] = useState<number | null>(null);
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<{
-    kind: "sector" | "industry";
-    name: string;
+    kind: "sector" | "industry" | "theme" | "index";
+    value: string;
     nonce: number;
   } | null>(null);
 
@@ -377,6 +378,20 @@ export default function Home() {
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden p-0 gap-0 bg-white dark:bg-zinc-900">
         {page === "market-monitor" ? (
           <MarketMonitorTable />
+        ) : page === "market-breadth" ? (
+          <SectorsIndustriesPage
+            onOpenCollection={(target) => {
+              setWatchlistHeightPx((h) => {
+                if (h <= 32) {
+                  savePanelHeightPx(320);
+                  return 320;
+                }
+                return h;
+              });
+              setPage("home");
+              setOpenToCollectionTrigger({ kind: target.kind, value: target.value, nonce: Date.now() });
+            }}
+          />
         ) : (
           <>
         <div className="min-w-0 flex-1 min-h-0 overflow-hidden border-b border-zinc-200 dark:border-zinc-800 flex flex-col">
@@ -414,7 +429,7 @@ export default function Home() {
                   }
                   return h;
                 });
-                setOpenToCollectionTrigger({ kind: "sector", name: trimmed, nonce: Date.now() });
+                setOpenToCollectionTrigger({ kind: "sector", value: trimmed, nonce: Date.now() });
               }}
               onOpenIndustryInWatchlist={(industry) => {
                 const trimmed = String(industry ?? "").trim();
@@ -426,7 +441,7 @@ export default function Home() {
                   }
                   return h;
                 });
-                setOpenToCollectionTrigger({ kind: "industry", name: trimmed, nonce: Date.now() });
+                setOpenToCollectionTrigger({ kind: "industry", value: trimmed, nonce: Date.now() });
               }}
               loading={sidebarLoading}
             />

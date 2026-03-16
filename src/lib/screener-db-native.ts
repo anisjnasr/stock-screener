@@ -259,6 +259,123 @@ export type MarketMonitorBaseRow = {
   universe: number;
 };
 
+export type PerformanceTimeframe = "day" | "week" | "month" | "quarter" | "year";
+
+export type WeightedCategoryPerformanceRow = {
+  name: string;
+  change_pct: number;
+  total_market_cap: number;
+  stock_count: number;
+};
+
+export type TickerPerformanceRow = {
+  symbol: string;
+  change_pct: number;
+  market_cap: number | null;
+};
+
+function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
+  switch (timeframe) {
+    case "day":
+      return "q.change_pct";
+    case "week":
+      return "i.price_change_1w_pct";
+    case "month":
+      return "i.price_change_1m_pct";
+    case "quarter":
+      return "i.price_change_3m_pct";
+    case "year":
+      return "i.price_change_12m_pct";
+    default:
+      return "q.change_pct";
+  }
+}
+
+export function getWeightedCategoryPerformance(
+  groupBy: "sector" | "industry",
+  timeframe: PerformanceTimeframe,
+  date?: string
+): { rows: WeightedCategoryPerformanceRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+  const asOfDate = date ?? getLatestScreenerDate();
+  if (!asOfDate) return { rows: [], date: null };
+  const perfCol = getPerformanceColumn(timeframe);
+  const sql = `
+    SELECT
+      c.${groupBy} AS name,
+      SUM(q.market_cap * ${perfCol}) / SUM(q.market_cap) AS change_pct,
+      SUM(q.market_cap) AS total_market_cap,
+      COUNT(*) AS stock_count
+    FROM companies c
+    INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+    LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
+    WHERE c.${groupBy} IS NOT NULL
+      AND TRIM(c.${groupBy}) <> ''
+      AND c.${groupBy} <> 'NA'
+      AND q.market_cap IS NOT NULL
+      AND q.market_cap > 0
+      AND ${perfCol} IS NOT NULL
+    GROUP BY c.${groupBy}
+    HAVING SUM(q.market_cap) > 0
+    ORDER BY change_pct DESC
+  `;
+  const rows = db.prepare(sql).all(asOfDate) as Array<{
+    name: string;
+    change_pct: number;
+    total_market_cap: number;
+    stock_count: number;
+  }>;
+  return {
+    rows: rows.map((r) => ({
+      name: String(r.name),
+      change_pct: Number(r.change_pct ?? 0),
+      total_market_cap: Number(r.total_market_cap ?? 0),
+      stock_count: Number(r.stock_count ?? 0),
+    })),
+    date: asOfDate,
+  };
+}
+
+export function getTickerPerformance(
+  symbols: string[],
+  timeframe: PerformanceTimeframe,
+  date?: string
+): { rows: TickerPerformanceRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+  const asOfDate = date ?? getLatestScreenerDate();
+  if (!asOfDate || symbols.length === 0) return { rows: [], date: asOfDate ?? null };
+  const unique = Array.from(new Set(symbols.map((s) => String(s).toUpperCase()).filter(Boolean)));
+  if (unique.length === 0) return { rows: [], date: asOfDate };
+  const perfCol = getPerformanceColumn(timeframe);
+  const placeholders = unique.map(() => "?").join(",");
+  const sql = `
+    SELECT
+      q.symbol AS symbol,
+      ${perfCol} AS change_pct,
+      q.market_cap AS market_cap
+    FROM quote_daily q
+    LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
+    WHERE q.date = ?
+      AND q.symbol IN (${placeholders})
+      AND ${perfCol} IS NOT NULL
+  `;
+  const rows = db.prepare(sql).all(asOfDate, ...unique) as Array<{
+    symbol: string;
+    change_pct: number;
+    market_cap: number | null;
+  }>;
+  return {
+    rows: rows.map((r) => ({
+      symbol: String(r.symbol),
+      change_pct: Number(r.change_pct ?? 0),
+      market_cap: typeof r.market_cap === "number" ? Number(r.market_cap) : null,
+    })),
+    date: asOfDate,
+  };
+}
+
 export function getMarketMonitorBaseRows(startDate: string, endDate?: string): MarketMonitorBaseRow[] {
   const db = getDb();
   if (!db) return [];

@@ -129,7 +129,11 @@ type WatchlistPanelProps = {
   /** When this value changes, panel switches to Watchlists and selects the related list (e.g. Date.now() from parent). */
   openToRelatedListTrigger?: number;
   /** When this changes, switch to a specific watchlist collection (sector/industry). */
-  openToCollectionTrigger?: { kind: "sector" | "industry"; name: string; nonce: number } | null;
+  openToCollectionTrigger?:
+    | { kind: "sector" | "industry"; value: string; nonce: number }
+    | { kind: "theme"; value: string; nonce: number }
+    | { kind: "index"; value: string; nonce: number }
+    | null;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -847,21 +851,37 @@ export default function WatchlistPanel({
   }, [openToRelatedListTrigger]);
 
   useEffect(() => {
-    if (!openToCollectionTrigger?.name?.trim()) return;
+    if (!openToCollectionTrigger?.value?.trim()) return;
+    const trimmedValue = openToCollectionTrigger.value.trim();
+    const normalized = trimmedValue.toLowerCase();
+    const matchedSectorName =
+      openToCollectionTrigger.kind === "sector"
+        ? Object.keys(sectorListSymbols).find((k) => k.toLowerCase() === normalized) ?? trimmedValue
+        : trimmedValue;
+    const matchedIndustryName =
+      openToCollectionTrigger.kind === "industry"
+        ? Object.keys(industryListSymbols).find((k) => k.toLowerCase() === normalized) ?? trimmedValue
+        : trimmedValue;
     const collectionId =
       openToCollectionTrigger.kind === "sector"
-        ? `${SECTOR_LIST_PREFIX}${openToCollectionTrigger.name}`
-        : `${INDUSTRY_LIST_PREFIX}${openToCollectionTrigger.name}`;
+        ? `${SECTOR_LIST_PREFIX}${matchedSectorName}`
+        : openToCollectionTrigger.kind === "industry"
+          ? `${INDUSTRY_LIST_PREFIX}${matchedIndustryName}`
+          : openToCollectionTrigger.kind === "theme"
+            ? `${THEME_ETF_PREFIX}${trimmedValue}`
+            : `${INDEX_LIST_PREFIX}${trimmedValue}`;
     setSidebarTab("watchlists");
     setSelectedCollectionId(collectionId);
     setActiveListId(null);
     setExpandedListFolderIds((prev) => {
       const next = new Set(prev);
       if (openToCollectionTrigger.kind === "sector") next.add("sectors");
-      else next.add("industries");
+      else if (openToCollectionTrigger.kind === "industry") next.add("industries");
+      else if (openToCollectionTrigger.kind === "theme") next.add("thematic-etfs");
+      else next.add("indices");
       return next;
     });
-  }, [openToCollectionTrigger]);
+  }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols]);
 
   useEffect(() => {
     if (!selectedCollectionId) return;

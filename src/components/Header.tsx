@@ -254,7 +254,7 @@ export default function Header({
               {[
                 { id: "home" as HeaderPage, label: "Home" },
                 { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
-                { id: "market-breadth" as HeaderPage, label: "Market Breadth" },
+                { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
               ].map((item) => (
                 <button
                   key={item.id}
