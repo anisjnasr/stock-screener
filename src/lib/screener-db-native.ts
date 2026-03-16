@@ -229,7 +229,16 @@ export function getScreenerSnapshot(options: {
   const sql = `
     SELECT
       c.symbol, c.name, c.exchange, c.industry, c.sector,
-      q.date, q.market_cap, q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
+      q.date,
+      COALESCE(
+        q.market_cap,
+        c.shares_outstanding * COALESCE(
+          q.last_price,
+          q.prev_close,
+          (SELECT close FROM daily_bars WHERE symbol = c.symbol AND date < q.date ORDER BY date DESC LIMIT 1)
+        )
+      ) AS market_cap,
+      q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
       q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
       COALESCE(q.prev_close, (SELECT close FROM daily_bars WHERE symbol = c.symbol AND date < q.date ORDER BY date DESC LIMIT 1)) AS prev_close,
       i.price_change_1w_pct, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct,

@@ -803,7 +803,7 @@ export default function WatchlistPanel({
       const sectorName = selectedCollectionId.slice(SECTOR_LIST_PREFIX.length);
       return {
         symbols: sectorListSymbols[sectorName] ?? [],
-        title: `${sectorName} (Top 50)`,
+        title: `${toTitleCase(sectorName)} (Top 50)`,
         fromScreener: false,
         screen: null,
       };
@@ -812,7 +812,7 @@ export default function WatchlistPanel({
       const industryName = selectedCollectionId.slice(INDUSTRY_LIST_PREFIX.length);
       return {
         symbols: industryListSymbols[industryName] ?? [],
-        title: `${industryName} (Top 50)`,
+        title: `${toTitleCase(industryName)} (Top 50)`,
         fromScreener: false,
         screen: null,
       };
@@ -823,7 +823,7 @@ export default function WatchlistPanel({
       if (item) {
         return {
           symbols: [item.ticker],
-          title: `${item.theme} (${item.ticker})`,
+          title: `${toTitleCase(item.theme)} (${item.ticker})`,
           fromScreener: false,
           screen: null,
         };
@@ -2029,16 +2029,17 @@ export default function WatchlistPanel({
                   </li>
                 )}
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded(MY_LISTS_ROOT_ID)} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                  <button type="button" onClick={() => toggleListFolderExpanded(MY_LISTS_ROOT_ID)} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has(MY_LISTS_ROOT_ID) ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                     <span>My Lists</span>
                   </button>
                   {expandedListFolderIds.has(MY_LISTS_ROOT_ID) && (
-                    <ul>
+                    <ul className="pl-4">
                       {rootWatchlists.map((l) => (
                         <li key={l.id} className="flex items-center gap-0 min-w-0">
                           <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                            <span className="truncate min-w-0">{l.name}</span>
+                            <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                            <span className="truncate min-w-0">{toTitleCase(l.name)}</span>
                             <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
                           </button>
                           <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
@@ -2054,19 +2055,20 @@ export default function WatchlistPanel({
                   return (
                     <li key={folder.id} className="mt-1">
                       <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
+                        <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expanded ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
-                          <span className="truncate">{folder.name}</span>
+                          <span className="truncate">{toTitleCase(folder.name)}</span>
                           <span className="text-zinc-400">({folderLists.length})</span>
                         </button>
                         <button type="button" onClick={() => { const nextFolders = listFolders.filter((f) => f.id !== folder.id); setListFolders(nextFolders); setLists((prev) => prev.map((l) => (l.folderId === folder.id ? { ...l, folderId: undefined } : l))); setExpandedListFolderIds((prev) => { const next = new Set(prev); next.delete(folder.id); return next; }); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete folder ${folder.name}`} aria-label={`Delete folder ${folder.name}`}><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                       </div>
                       {expanded && (
-                        <ul>
+                        <ul className="pl-4">
                           {folderLists.map((l) => (
                             <li key={l.id} className="flex items-center gap-0 min-w-0">
                               <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                                <span className="truncate min-w-0">{l.name}</span>
+                                <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                                <span className="truncate min-w-0">{toTitleCase(l.name)}</span>
                                 <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
                               </button>
                               <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
@@ -2079,19 +2081,20 @@ export default function WatchlistPanel({
                   );
                 })}
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded("indices")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                  <button type="button" onClick={() => toggleListFolderExpanded("indices")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("indices") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                     <span>Indices</span>
                   </button>
                   {expandedListFolderIds.has("indices") && (
-                    <ul>
+                    <ul className="pl-4">
                       {INDEX_LISTS.map((pl) => {
                         const id = `${INDEX_LIST_PREFIX}${pl.id}`;
                         const count = predefinedListSymbols[pl.id]?.length;
                         return (
                           <li key={pl.id}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                              <span className="truncate min-w-0">{pl.name}</span>
+                              <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                              <span className="truncate min-w-0">{toTitleCase(pl.name)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({count ?? "..."})</span>
                             </button>
                           </li>
@@ -2101,18 +2104,19 @@ export default function WatchlistPanel({
                   )}
                 </li>
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded("sectors")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                  <button type="button" onClick={() => toggleListFolderExpanded("sectors")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("sectors") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                     <span>Sectors</span>
                   </button>
                   {expandedListFolderIds.has("sectors") && (
-                    <ul>
+                    <ul className="pl-4">
                       {sortedSectorNames.map((name) => {
                         const id = `${SECTOR_LIST_PREFIX}${name}`;
                         return (
                           <li key={name}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                              <span className="truncate min-w-0">{name}</span>
+                              <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                              <span className="truncate min-w-0">{toTitleCase(name)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(sectorListSymbols[name] ?? []).length})</span>
                             </button>
                           </li>
@@ -2122,18 +2126,19 @@ export default function WatchlistPanel({
                   )}
                 </li>
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded("industries")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                  <button type="button" onClick={() => toggleListFolderExpanded("industries")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("industries") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                     <span>Industries</span>
                   </button>
                   {expandedListFolderIds.has("industries") && (
-                    <ul>
+                    <ul className="pl-4">
                       {sortedIndustryNames.map((name) => {
                         const id = `${INDUSTRY_LIST_PREFIX}${name}`;
                         return (
                           <li key={name}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                              <span className="truncate min-w-0">{name}</span>
+                              <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                              <span className="truncate min-w-0">{toTitleCase(name)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(industryListSymbols[name] ?? []).length})</span>
                             </button>
                           </li>
@@ -2143,18 +2148,19 @@ export default function WatchlistPanel({
                   )}
                 </li>
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded("thematic-etfs")} className="w-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                  <button type="button" onClick={() => toggleListFolderExpanded("thematic-etfs")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("thematic-etfs") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
-                    <span>Thematic ETFs</span>
+                    <span>{toTitleCase("Thematic ETFs")}</span>
                   </button>
                   {expandedListFolderIds.has("thematic-etfs") && (
-                    <ul>
+                    <ul className="pl-4">
                       {sortedThematicEtfs.map((item) => {
                         const id = `${THEME_ETF_PREFIX}${item.id}`;
                         return (
                           <li key={item.id}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                              <span className="truncate min-w-0">{item.theme}</span>
+                              <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                              <span className="truncate min-w-0">{toTitleCase(item.theme)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({item.ticker})</span>
                             </button>
                           </li>
