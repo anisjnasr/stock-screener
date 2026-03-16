@@ -64,6 +64,7 @@ jobs:
           key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
           restore-keys: |
             ${{ env.DB_CACHE_PREFIX }}-
+          enableCrossOsArchive: true
 
       # First-time only: copy DB from runner machine into repo (requires self-hosted runner)
       - name: Validate seed runner context
@@ -136,6 +137,7 @@ jobs:
         with:
           path: data/screener.db
           key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          enableCrossOsArchive: true
 
       # Upload as artifact for deployment pipeline to pick up
       - name: Upload DB artifact
