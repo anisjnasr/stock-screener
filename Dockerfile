@@ -28,6 +28,14 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Include operational scripts and seed/schema data so Render Shell can run
+# init/seed/refresh commands after deploy.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./data/screener-schema.sql
+COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./data/all-stocks.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/nasdaq100.json ./data/nasdaq100.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/sp500.json ./data/sp500.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/russell2000.json ./data/russell2000.json
 # Ensure data directory exists; volume mount will provide screener.db
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 USER nextjs

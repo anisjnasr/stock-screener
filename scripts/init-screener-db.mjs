@@ -3,11 +3,11 @@
  * Create SQLite screener database and apply schema.
  * Run: node scripts/init-screener-db.mjs  or  npm run init-screener-db
  * Creates data/screener.db and runs data/screener-schema.sql.
- * Uses sql.js (no native build required).
+ * Uses better-sqlite3 (works with large on-disk DB).
  */
 
-import initSqlJs from "sql.js";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import Database from "better-sqlite3";
+import { readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -27,14 +27,17 @@ if (!existsSync(SCHEMA_PATH)) {
 }
 
 const schema = readFileSync(SCHEMA_PATH, "utf8");
-const SQL = await initSqlJs();
-const db = new SQL.Database();
 
-try {
-  db.exec(schema);
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
-  console.log("Screener database initialized at", DB_PATH);
-} finally {
-  db.close();
+// Recreate DB from schema for deterministic init.
+if (existsSync(DB_PATH)) {
+  unlinkSync(DB_PATH);
 }
+
+const db = new Database(DB_PATH);
+db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = OFF");
+db.pragma("busy_timeout = 10000");
+db.exec(schema);
+db.close();
+
+console.log("Screener database initialized at", DB_PATH);
