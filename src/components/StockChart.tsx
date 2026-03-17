@@ -33,6 +33,12 @@ type StockChartProps = {
   loading?: boolean;
   timeframe?: ChartTimeframe;
   onTimeframeChange?: (tf: ChartTimeframe) => void;
+  dualModeEnabled?: boolean;
+  onToggleDualMode?: () => void;
+  crosshairSyncEnabled?: boolean;
+  onToggleCrosshairSync?: () => void;
+  showGlobalControls?: boolean;
+  chartInstanceId?: string;
 };
 
 type DrawMode = "none" | "ray" | "trend";
@@ -104,8 +110,65 @@ function normalizeTime(raw: unknown): UTCTimestamp | null {
   return null;
 }
 
-function getDrawingStorageKey(symbol: string, timeframe: ChartTimeframe): string {
-  return `stock-stalker:chart-drawings:v1:${symbol.toUpperCase()}:${timeframe}`;
+function getDrawingStorageKey(symbol: string): string {
+  return `stock-stalker:chart-drawings:v1:${symbol.toUpperCase()}`;
+}
+
+function drawingsEqual(a: ChartDrawing[], b: ChartDrawing[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+type ChartViewportMemory = {
+  barsFromRight: number;
+  visibleBars: number;
+};
+
+function getViewportStorageKey(chartInstanceId: string, timeframe: ChartTimeframe): string {
+  return `stock-stalker:chart-viewport:v1:${chartInstanceId}:${timeframe}`;
+}
+
+function getDefaultLogicalRange(timeframe: ChartTimeframe, barCount: number): { from: number; to: number } {
+  const barsIn12Months = timeframe === "daily" ? 252 : timeframe === "weekly" ? 52 : 12;
+  const visibleFrom = Math.max(0, barCount - barsIn12Months);
+  const visibleTo = Math.max(0, barCount - 1);
+  return { from: visibleFrom, to: visibleTo + 3 };
+}
+
+function loadViewportMemory(key: string): ChartViewportMemory | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ChartViewportMemory>;
+    const barsFromRight = Number(parsed.barsFromRight);
+    const visibleBars = Number(parsed.visibleBars);
+    if (!Number.isFinite(barsFromRight) || !Number.isFinite(visibleBars)) return null;
+    if (visibleBars <= 0) return null;
+    return { barsFromRight, visibleBars };
+  } catch {
+    return null;
+  }
+}
+
+function saveViewportMemory(key: string, value: ChartViewportMemory): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore localStorage write errors.
+  }
+}
+
+function clearViewportMemory(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore localStorage write errors.
+  }
 }
 
 function distanceToSegment(
@@ -176,6 +239,12 @@ export default function StockChart({
   loading,
   timeframe = "daily",
   onTimeframeChange,
+  dualModeEnabled = false,
+  onToggleDualMode,
+  crosshairSyncEnabled = false,
+  onToggleCrosshairSync,
+  showGlobalControls = false,
+  chartInstanceId = "single",
 }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
@@ -202,6 +271,9 @@ export default function StockChart({
   const [showSelectedDrawingSettings, setShowSelectedDrawingSettings] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapToOhlc, setSnapToOhlc] = useState(true);
+  const suppressCrosshairBroadcastRef = useRef(false);
+  const suppressDrawingBroadcastRef = useRef(false);
+  const suppressViewportMemoryRef = useRef(false);
 
   const chronological = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -315,7 +387,7 @@ export default function StockChart({
   );
 
   useEffect(() => {
-    const key = getDrawingStorageKey(symbol, timeframe);
+    const key = getDrawingStorageKey(symbol);
     try {
       const raw = localStorage.getItem(key);
       if (!raw) {
@@ -328,20 +400,46 @@ export default function StockChart({
     } catch {
       setDrawings([]);
     }
-    setPendingTrendStart(null);
-    setDrawMode("none");
     setSelectedDrawingId(null);
     setDragState(null);
-  }, [symbol, timeframe]);
+  }, [symbol]);
 
   useEffect(() => {
-    const key = getDrawingStorageKey(symbol, timeframe);
+    const key = getDrawingStorageKey(symbol);
     try {
       localStorage.setItem(key, JSON.stringify(drawings));
     } catch {
       // Ignore localStorage write errors.
     }
-  }, [symbol, timeframe, drawings]);
+    if (suppressDrawingBroadcastRef.current) {
+      suppressDrawingBroadcastRef.current = false;
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent("stock-chart-drawings", {
+        detail: { symbol: symbol.toUpperCase(), drawings, source: chartInstanceId },
+      })
+    );
+  }, [symbol, drawings, chartInstanceId]);
+
+  useEffect(() => {
+    const onRemoteDrawings = (evt: Event) => {
+      const detail = (evt as CustomEvent).detail as
+        | { symbol?: string; drawings?: ChartDrawing[]; source?: string }
+        | undefined;
+      if (!detail) return;
+      if (detail.source === chartInstanceId) return;
+      if ((detail.symbol ?? "").toUpperCase() !== symbol.toUpperCase()) return;
+      if (!Array.isArray(detail.drawings)) return;
+      setDrawings((prev) => {
+        if (drawingsEqual(prev, detail.drawings as ChartDrawing[])) return prev;
+        suppressDrawingBroadcastRef.current = true;
+        return detail.drawings as ChartDrawing[];
+      });
+    };
+    window.addEventListener("stock-chart-drawings", onRemoteDrawings as EventListener);
+    return () => window.removeEventListener("stock-chart-drawings", onRemoteDrawings as EventListener);
+  }, [symbol, chartInstanceId]);
 
   useEffect(() => {
     if (!containerRef.current || seriesData.length === 0) return;
@@ -378,14 +476,19 @@ export default function StockChart({
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: "rgba(140,140,140,0.28)",
-          labelBackgroundColor: "rgba(140,140,140,0.28)",
+          visible: true,
+          width: 1,
+          style: 1,
+          color: "rgba(233,236,243,0.9)",
+          labelBackgroundColor: "rgba(28,30,34,0.96)",
         },
         horzLine: {
-          visible: false,
+          visible: true,
+          width: 1,
+          style: 1,
           labelVisible: true,
-          color: "rgba(140,140,140,0.28)",
-          labelBackgroundColor: "#22c55e",
+          color: "rgba(233,236,243,0.9)",
+          labelBackgroundColor: "rgba(28,30,34,0.96)",
         },
       },
     });
@@ -522,10 +625,62 @@ export default function StockChart({
       if (param.time != null) {
         const candle = timeToCandle.get(param.time as number);
         setCrosshairCandle(candle ?? null);
+        if (crosshairSyncEnabled && !suppressCrosshairBroadcastRef.current) {
+          const close = candle?.close;
+          if (close != null && Number.isFinite(close)) {
+            window.dispatchEvent(
+              new CustomEvent("stock-chart-crosshair", {
+                detail: {
+                  symbol: symbol.toUpperCase(),
+                  source: chartInstanceId,
+                  time: param.time,
+                  close,
+                },
+              })
+            );
+          }
+        }
       } else {
         setCrosshairCandle(null);
+        if (crosshairSyncEnabled && !suppressCrosshairBroadcastRef.current) {
+          window.dispatchEvent(
+            new CustomEvent("stock-chart-crosshair", {
+              detail: {
+                symbol: symbol.toUpperCase(),
+                source: chartInstanceId,
+                time: null,
+                close: null,
+              },
+            })
+          );
+        }
       }
     });
+
+    const onRemoteCrosshair = (evt: Event) => {
+      if (!crosshairSyncEnabled) return;
+      const detail = (evt as CustomEvent).detail as
+        | { symbol?: string; source?: string; time?: unknown; close?: number | null }
+        | undefined;
+      if (!detail) return;
+      if (detail.source === chartInstanceId) return;
+      if ((detail.symbol ?? "").toUpperCase() !== symbol.toUpperCase()) return;
+      suppressCrosshairBroadcastRef.current = true;
+      try {
+        if (detail.time == null || detail.close == null) {
+          (chart as unknown as { clearCrosshairPosition?: () => void }).clearCrosshairPosition?.();
+        } else {
+          (chart as unknown as {
+            setCrosshairPosition?: (price: number, time: unknown, series: unknown) => void;
+          }).setCrosshairPosition?.(Number(detail.close), detail.time, mainSeries);
+        }
+      } finally {
+        setTimeout(() => {
+          suppressCrosshairBroadcastRef.current = false;
+        }, 0);
+      }
+    };
+    window.addEventListener("stock-chart-crosshair", onRemoteCrosshair as EventListener);
 
     const onChartClick = (param: {
       time?: unknown;
@@ -625,12 +780,31 @@ export default function StockChart({
       if (panes[1]) panes[1].setStretchFactor(1);
     }
 
-    // Default zoom: last 12 months of candles, with 3 bars space from current bar to price axis
-    const barsIn12Months = timeframe === "daily" ? 252 : timeframe === "weekly" ? 52 : 12;
     const barCount = seriesData.length;
-    const visibleFrom = Math.max(0, barCount - barsIn12Months);
-    const visibleTo = barCount - 1;
-    chart.timeScale().setVisibleLogicalRange({ from: visibleFrom, to: visibleTo + 3 });
+    const maxTo = Math.max(0, barCount - 1) + 3;
+    const viewportKey = getViewportStorageKey(chartInstanceId, timeframe);
+    const remembered = loadViewportMemory(viewportKey);
+    if (remembered) {
+      const visibleBars = Math.max(5, Math.min(5000, remembered.visibleBars));
+      const rawTo = maxTo - remembered.barsFromRight;
+      const minTo = -visibleBars + 1;
+      const maxToAllowed = maxTo + 200;
+      const to = Math.max(minTo, Math.min(maxToAllowed, rawTo));
+      const from = to - visibleBars;
+      chart.timeScale().setVisibleLogicalRange({ from, to });
+    } else {
+      chart.timeScale().setVisibleLogicalRange(getDefaultLogicalRange(timeframe, barCount));
+    }
+
+    const onVisibleRangeChange = (range: { from: number; to: number } | null) => {
+      if (!range || suppressViewportMemoryRef.current) return;
+      const visibleBars = Math.max(5, Math.min(5000, Number(range.to) - Number(range.from)));
+      if (!Number.isFinite(visibleBars) || visibleBars <= 0) return;
+      const barsFromRight = Math.max(-200, Math.min(20000, maxTo - Number(range.to)));
+      if (!Number.isFinite(barsFromRight)) return;
+      saveViewportMemory(viewportKey, { barsFromRight, visibleBars });
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
 
     try {
       const rightScale = chart.priceScale("right");
@@ -664,8 +838,10 @@ export default function StockChart({
       } catch {
         /* ignore */
       }
+      window.removeEventListener("stock-chart-crosshair", onRemoteCrosshair as EventListener);
       window.removeEventListener("resize", handleResize);
       resizeObserver.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange);
       chart.remove();
       chartRef.current = null;
       mainSeriesRef.current = null;
@@ -687,6 +863,8 @@ export default function StockChart({
     snapPointToCandle,
     selectedDrawingId,
     timeToCandle,
+    crosshairSyncEnabled,
+    chartInstanceId,
   ]);
 
   const timeframes: ChartTimeframe[] = ["daily", "weekly", "monthly"];
@@ -713,6 +891,18 @@ export default function StockChart({
     },
     [selectedDrawingId]
   );
+
+  const handleResetView = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart || seriesData.length === 0) return;
+    const viewportKey = getViewportStorageKey(chartInstanceId, timeframe);
+    clearViewportMemory(viewportKey);
+    suppressViewportMemoryRef.current = true;
+    chart.timeScale().setVisibleLogicalRange(getDefaultLogicalRange(timeframe, seriesData.length));
+    setTimeout(() => {
+      suppressViewportMemoryRef.current = false;
+    }, 0);
+  }, [chartInstanceId, timeframe, seriesData.length]);
 
   useEffect(() => {
     if (selectedDrawingId && !drawings.some((d) => d.id === selectedDrawingId)) {
@@ -812,23 +1002,27 @@ export default function StockChart({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
-      <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 shrink-0 flex items-center justify-between gap-2 flex-wrap">
+      <div className="px-2 py-1 border-b border-zinc-600/30 bg-[#2A2D31] shrink-0 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
-          {onTimeframeChange &&
-            timeframes.map((tf) => (
-              <button
-                key={tf}
-                type="button"
-                onClick={() => onTimeframeChange(tf)}
-                className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
-                  timeframe === tf
-                    ? "bg-zinc-700 dark:bg-zinc-600 text-white"
-                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {tf.charAt(0).toUpperCase() + tf.slice(1)}
-              </button>
-            ))}
+          <div className="flex items-center gap-1">
+            {onTimeframeChange &&
+              timeframes.map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => onTimeframeChange(tf)}
+                  className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                    timeframe === tf
+                      ? "bg-zinc-200 text-zinc-900"
+                      : "text-zinc-500 hover:bg-zinc-600/35"
+                  }`}
+                >
+                  {tf.charAt(0).toUpperCase() + tf.slice(1)}
+                </button>
+              ))}
+          </div>
+          <span className="mx-1 h-4 w-px bg-zinc-500/70" />
+          <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => {
@@ -837,8 +1031,8 @@ export default function StockChart({
             }}
             className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
               drawMode === "ray"
-                ? "bg-amber-500 text-zinc-900"
-                : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                ? "bg-amber-300 text-zinc-900"
+                : "text-zinc-500 hover:bg-zinc-600/35"
             }`}
             title="Draw horizontal ray"
           >
@@ -852,26 +1046,71 @@ export default function StockChart({
             }}
             className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
               drawMode === "trend"
-                ? "bg-violet-500 text-white"
-                : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                ? "bg-violet-300 text-zinc-900"
+                : "text-zinc-500 hover:bg-zinc-600/35"
             }`}
             title="Draw trend line"
           >
             Trend
           </button>
+          </div>
+          {showGlobalControls && (
+            <span className="mx-1 h-4 w-px bg-zinc-500/70" />
+          )}
+          {showGlobalControls && onToggleDualMode && (
+            <button
+              type="button"
+              onClick={onToggleDualMode}
+              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                dualModeEnabled
+                  ? "bg-zinc-200 text-zinc-900"
+                  : "text-zinc-500 hover:bg-zinc-600/35"
+              }`}
+              title="Toggle dual chart mode"
+              aria-label="Toggle dual chart mode"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                <rect x="1.5" y="2.5" width="5.5" height="11" rx="1" />
+                <rect x="9" y="2.5" width="5.5" height="11" rx="1" />
+              </svg>
+            </button>
+          )}
+          {showGlobalControls && onToggleCrosshairSync && (
+            <button
+              type="button"
+              onClick={onToggleCrosshairSync}
+              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                crosshairSyncEnabled
+                  ? "bg-sky-300 text-zinc-900"
+                  : "text-zinc-500 hover:bg-zinc-600/35"
+              }`}
+              title="Toggle crosshair sync"
+              aria-label="Toggle crosshair sync"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path
+                  d="M8 1.5V4M8 12v2.5M1.5 8H4M12 8h2.5M8 6.2v3.6M6.2 8h3.6"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            </button>
+          )}
+          <span className="mx-1 h-4 w-px bg-zinc-500/70" />
           <button
             type="button"
-            onClick={() => {
-              setDrawings((prev) => prev.slice(0, -1));
-              if (drawings.length <= 1) setSelectedDrawingId(null);
-            }}
-            className="px-2 py-0.5 text-xs font-medium rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            title="Undo last drawing"
+            onClick={handleResetView}
+            className="px-2 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35"
+            title="Reset chart view"
+            aria-label="Reset chart view"
           >
-            Undo
+            Reset
           </button>
         </div>
-        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">TradingView Lightweight Charts</span>
+        <span className="text-[10px] text-zinc-400">TradingView Lightweight Charts</span>
       </div>
       {loading ? (
         <div className="flex-1 min-h-[300px] flex items-center justify-center">

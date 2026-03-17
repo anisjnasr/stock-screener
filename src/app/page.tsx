@@ -75,6 +75,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [watchlistHeightPx, setWatchlistHeightPx] = useState(32);
   const [chartTimeframe, setChartTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [dualChartMode, setDualChartMode] = useState(false);
+  const [syncCrosshair, setSyncCrosshair] = useState(true);
+  const [dualLeftTimeframe, setDualLeftTimeframe] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [dualRightTimeframe, setDualRightTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [dualLeftCandles, setDualLeftCandles] = useState<Candle[] | null>(null);
+  const [dualRightCandles, setDualRightCandles] = useState<Candle[] | null>(null);
+  const [dualLeftLoading, setDualLeftLoading] = useState(true);
+  const [dualRightLoading, setDualRightLoading] = useState(true);
   const [dailyCandlesForAvg, setDailyCandlesForAvg] = useState<Candle[] | null>(null);
   const [relatedStocks, setRelatedStocks] = useState<Array<{ symbol: string; name: string }>>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -193,6 +201,83 @@ export default function Home() {
       .catch(() => setCandles(null))
       .finally(() => setChartLoading(false));
   }, [symbol, chartTimeframe]);
+
+  const fetchCandlesFor = useCallback(
+    async (sym: string, tf: "daily" | "weekly" | "monthly"): Promise<Candle[] | null> => {
+      try {
+        const to = new Date();
+        const from = new Date();
+        from.setFullYear(from.getFullYear() - 20);
+        const fromStr = from.toISOString().slice(0, 10);
+        const toStr = to.toISOString().slice(0, 10);
+        const res = await fetch(
+          `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`
+        );
+        const d = await res.json();
+        return Array.isArray(d) ? d : null;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!dualChartMode || !symbol) return;
+    let cancelled = false;
+    setDualLeftLoading(true);
+    fetchCandlesFor(symbol, dualLeftTimeframe)
+      .then((rows) => {
+        if (!cancelled) setDualLeftCandles(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setDualLeftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dualChartMode, symbol, dualLeftTimeframe, fetchCandlesFor]);
+
+  useEffect(() => {
+    if (!dualChartMode || !symbol) return;
+    let cancelled = false;
+    setDualRightLoading(true);
+    fetchCandlesFor(symbol, dualRightTimeframe)
+      .then((rows) => {
+        if (!cancelled) setDualRightCandles(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setDualRightLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dualChartMode, symbol, dualRightTimeframe, fetchCandlesFor]);
+
+  const handleToggleDualChartMode = useCallback(() => {
+    setDualChartMode((prev) => {
+      const next = !prev;
+      if (next) {
+        // Prime dual panes so chart area never looks "blank" while fetches resolve.
+        const canReuseMain = Array.isArray(candles) && candles.length > 0;
+        if (canReuseMain && chartTimeframe === dualRightTimeframe) {
+          setDualRightCandles(candles);
+          setDualRightLoading(false);
+        } else {
+          setDualRightCandles(null);
+          setDualRightLoading(true);
+        }
+        if (canReuseMain && chartTimeframe === dualLeftTimeframe) {
+          setDualLeftCandles(candles);
+          setDualLeftLoading(false);
+        } else {
+          setDualLeftCandles(null);
+          setDualLeftLoading(true);
+        }
+      }
+      return next;
+    });
+  }, [candles, chartTimeframe, dualLeftTimeframe, dualRightTimeframe]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -508,13 +593,51 @@ export default function Home() {
             </div>
             <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
               <div className="relative flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-                <StockChart
-                  symbol={symbol}
-                  data={candles}
-                  loading={chartLoading}
-                  timeframe={chartTimeframe}
-                  onTimeframeChange={setChartTimeframe}
-                />
+                {dualChartMode ? (
+                  <div className="flex flex-1 min-h-0 min-w-0">
+                    <div className="flex-1 min-w-0 min-h-0 border-r border-zinc-200 dark:border-zinc-700">
+                      <StockChart
+                        symbol={symbol}
+                        data={dualLeftCandles}
+                        loading={dualLeftLoading}
+                        timeframe={dualLeftTimeframe}
+                        onTimeframeChange={setDualLeftTimeframe}
+                        dualModeEnabled={dualChartMode}
+                        onToggleDualMode={handleToggleDualChartMode}
+                        crosshairSyncEnabled={syncCrosshair}
+                        onToggleCrosshairSync={() => setSyncCrosshair((v) => !v)}
+                        showGlobalControls
+                        chartInstanceId="dual-left"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 min-h-0">
+                      <StockChart
+                        symbol={symbol}
+                        data={dualRightCandles}
+                        loading={dualRightLoading}
+                        timeframe={dualRightTimeframe}
+                        onTimeframeChange={setDualRightTimeframe}
+                        dualModeEnabled={dualChartMode}
+                        crosshairSyncEnabled={syncCrosshair}
+                        chartInstanceId="dual-right"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <StockChart
+                    symbol={symbol}
+                    data={candles}
+                    loading={chartLoading}
+                    timeframe={chartTimeframe}
+                    onTimeframeChange={setChartTimeframe}
+                    dualModeEnabled={dualChartMode}
+                    onToggleDualMode={handleToggleDualChartMode}
+                    crosshairSyncEnabled={syncCrosshair}
+                    onToggleCrosshairSync={() => setSyncCrosshair((v) => !v)}
+                    showGlobalControls
+                    chartInstanceId="single"
+                  />
+                )}
                 <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700">
                   <button
                     type="button"

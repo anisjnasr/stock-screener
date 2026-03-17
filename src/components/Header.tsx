@@ -146,9 +146,7 @@ export default function Header({
         .then((data) => {
           const list = Array.isArray(data) ? data.slice(0, 10) : [];
           setSuggestions(list);
-          setSuggestionsOpen(
-            list.length > 0 && searchValue.trim().toUpperCase() !== symbol.toUpperCase()
-          );
+          setSuggestionsOpen(list.length > 0);
           setHighlightedIndex(-1);
         })
         .catch(() => {
@@ -245,10 +243,10 @@ export default function Header({
             className="mt-3 pr-28 relative"
           >
             <div
-              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-x-auto min-w-0 whitespace-nowrap"
+              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-visible min-w-0 whitespace-nowrap"
               style={{ fontSize: "clamp(11px, 0.75vw, 14px)" }}
             >
-              <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1 shrink-0">
+              <div className="inline-flex items-center gap-1 rounded-md bg-transparent p-1 shrink-0">
                 <button
                   type="button"
                   onClick={onLeftSidebarToggle}
@@ -283,7 +281,7 @@ export default function Header({
                       onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
                       onFocus={(e) => {
                         (e.target as HTMLInputElement).select();
-                        if (suggestions.length > 0) setSuggestionsOpen(true);
+                        if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
                       }}
                       onKeyDown={handleKeyDown}
                       placeholder="Search"
@@ -308,7 +306,7 @@ export default function Header({
                     <ul
                       id="search-suggestions"
                       role="listbox"
-                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
+                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[52rem] max-w-[90vw] overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
                     >
                       {suggestionsLoading ? (
                         <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
@@ -321,7 +319,7 @@ export default function Header({
                             id={`suggestion-${i}`}
                             role="option"
                             aria-selected={i === highlightedIndex}
-                            className={`cursor-pointer px-3 py-2 text-sm ${
+                            className={`cursor-pointer px-3 py-2 text-sm flex items-center gap-3 ${
                               i === highlightedIndex
                                 ? "bg-zinc-100 dark:bg-zinc-700"
                                 : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
@@ -332,11 +330,11 @@ export default function Header({
                               selectSymbol(s.symbol);
                             }}
                           >
-                            <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100">
+                            <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100 shrink-0 min-w-[78px]">
                               {s.symbol}
                             </span>
                             {s.name && (
-                              <span className="ml-2 text-zinc-500 dark:text-zinc-400 truncate block">
+                              <span className="text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
                                 {s.name}
                               </span>
                             )}
@@ -395,7 +393,7 @@ export default function Header({
               </span>
               <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
                 ATRP:{" "}
-                <span className="tabular-nums text-blue-600 dark:text-blue-400">
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
                 </span>
               </span>

@@ -147,6 +147,19 @@ function fmtPct(n: number | undefined): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
+function formatListDisplayName(name: string): string {
+  return toTitleCase(name)
+    .replace(/\bEtfs\b/g, "ETFs")
+    .replace(/\bEtf\b/g, "ETF")
+    .replace(/\bS&p\b/g, "S&P");
+}
+
+function formatRelatedTitleWithUpperTicker(title: string): string {
+  const m = title.match(/^(.*\bto\b)\s+([A-Za-z0-9.\-]+)\s*$/i);
+  if (!m) return formatListDisplayName(title);
+  return `${formatListDisplayName(m[1] ?? "Related To")} ${(m[2] ?? "").toUpperCase()}`.trim();
+}
+
 /** Table column id: standard ColumnId or script criterion label (e.g. "MA(C, 21)"). */
 type TableColumnId = ColumnId | string;
 
@@ -521,7 +534,11 @@ export default function WatchlistPanel({
   const [scriptColumns, setScriptColumns] = useState<string[]>([]);
   /** Per-screen result count (for showing next to each screener name in the list). */
   const [screenerCounts, setScreenerCounts] = useState<Record<string, number>>({});
+  const [addPopupMode, setAddPopupMode] = useState<"create" | "edit" | null>(null);
   const [addPopupListId, setAddPopupListId] = useState<string | null>(null);
+  const [addPopupListName, setAddPopupListName] = useState("");
+  const [addPopupSymbols, setAddPopupSymbols] = useState<string[]>([]);
+  const [addPopupTargetFolderId, setAddPopupTargetFolderId] = useState<string | undefined>(undefined);
   const [pendingAdds, setPendingAdds] = useState<Array<{ symbol: string; name: string }>>([]);
   const [popupSearchQuery, setPopupSearchQuery] = useState("");
   const [popupSearchResults, setPopupSearchResults] = useState<Array<{ symbol: string; name?: string }>>([]);
@@ -608,7 +625,7 @@ export default function WatchlistPanel({
     setScreens(loadScreens());
     setFolders(loadFolders());
     setColumnSets(loadColumnSets());
-    setSidebarWidthPx(loadSidebarWidthPx());
+    setSidebarWidthPx(Math.max(240, loadSidebarWidthPx()));
   }, []);
 
   // Close add menus when clicking outside.
@@ -623,7 +640,7 @@ export default function WatchlistPanel({
     return () => document.removeEventListener("click", handleClick, true);
   }, [showWatchlistAddMenu]);
 
-  const MIN_SIDEBAR_WIDTH_PX = 160;
+  const MIN_SIDEBAR_WIDTH_PX = 240;
   const MAX_SIDEBAR_WIDTH_PX = 420;
   const startSidebarResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -841,7 +858,7 @@ export default function WatchlistPanel({
       if (item) {
         return {
           symbols: [item.ticker],
-          title: `${toTitleCase(item.theme)} (${item.ticker})`,
+          title: `${formatListDisplayName(item.theme)} (${item.ticker})`,
           fromScreener: false,
           screen: null,
         };
@@ -1115,7 +1132,7 @@ export default function WatchlistPanel({
 
   // Popup: search autocomplete when add popup is open
   useEffect(() => {
-    if (addPopupListId == null) return;
+    if (addPopupMode == null) return;
     if (!popupSearchQuery.trim()) {
       setPopupSearchResults([]);
       return;
@@ -1128,7 +1145,7 @@ export default function WatchlistPanel({
       setPopupSearchHighlighted(-1);
     }, 200);
     return () => clearTimeout(t);
-  }, [addPopupListId, popupSearchQuery]);
+  }, [addPopupMode, popupSearchQuery]);
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
@@ -1142,18 +1159,22 @@ export default function WatchlistPanel({
   }, [flagPickerSymbol]);
 
   const addList = useCallback(() => {
-    const name = prompt("List name", "New List");
-    if (!name?.trim()) return;
-    const id = crypto.randomUUID();
     const currentFolderId =
       selectedCollectionId && selectedCollectionId !== RELATED_LIST_ID && !selectedCollectionId.includes(":")
         ? selectedCollectionId
         : undefined;
-    setLists((prev) => [...prev, { id, name: name.trim(), symbols: [], folderId: currentFolderId }]);
-    setActiveListId(id);
-    setSelectedCollectionId(null);
+    setAddPopupMode("create");
+    setAddPopupListId(null);
+    setAddPopupListName("New List");
+    setAddPopupSymbols([]);
+    setAddPopupTargetFolderId(currentFolderId);
+    setPendingAdds([]);
+    setPopupSearchQuery("");
+    setPopupSearchResults([]);
+    setPopupSearchHighlighted(-1);
     setSidebarTab("watchlists");
-  }, []);
+    setTimeout(() => popupSearchInputRef.current?.focus(), 0);
+  }, [selectedCollectionId]);
 
   const addListFolder = useCallback(() => {
     const name = prompt("Folder name", "New Folder");
@@ -1184,37 +1205,65 @@ export default function WatchlistPanel({
   );
 
   const openAddPopup = useCallback((listId: string) => {
+    const list = lists.find((l) => l.id === listId);
+    if (!list) return;
+    setAddPopupMode("edit");
     setAddPopupListId(listId);
+    setAddPopupListName(list.name);
+    setAddPopupSymbols([...(list.symbols ?? [])]);
+    setAddPopupTargetFolderId(list.folderId);
     setPendingAdds([]);
     setPopupSearchQuery("");
     setPopupSearchResults([]);
     setPopupSearchHighlighted(-1);
     setTimeout(() => popupSearchInputRef.current?.focus(), 0);
-  }, []);
+  }, [lists]);
 
   const closeAddPopup = useCallback(() => {
+    setAddPopupMode(null);
     setAddPopupListId(null);
+    setAddPopupListName("");
+    setAddPopupSymbols([]);
+    setAddPopupTargetFolderId(undefined);
     setPendingAdds([]);
     setPopupSearchQuery("");
   }, []);
 
   const commitPendingToWatchlist = useCallback(() => {
-    if (!addPopupListId) return;
-    pendingAdds.forEach(({ symbol }) => addSymbolToList(symbol, addPopupListId));
-    closeAddPopup();
-  }, [addPopupListId, pendingAdds, addSymbolToList, closeAddPopup]);
+    const cleanedName = addPopupListName.trim();
+    if (!cleanedName) return;
+    const merged = Array.from(new Set([...addPopupSymbols, ...pendingAdds.map((p) => p.symbol.toUpperCase())]));
+    if (addPopupMode === "create") {
+      const id = crypto.randomUUID();
+      setLists((prev) => [...prev, { id, name: cleanedName, symbols: merged, folderId: addPopupTargetFolderId }]);
+      setActiveListId(id);
+      setSelectedCollectionId(null);
+      closeAddPopup();
+      return;
+    }
+    if (addPopupMode === "edit" && addPopupListId) {
+      setLists((prev) =>
+        prev.map((l) =>
+          l.id === addPopupListId
+            ? { ...l, name: cleanedName, symbols: merged }
+            : l
+        )
+      );
+      closeAddPopup();
+    }
+  }, [addPopupMode, addPopupListId, addPopupListName, addPopupSymbols, pendingAdds, addPopupTargetFolderId, closeAddPopup]);
 
   const addPendingFromSearch = useCallback(
     (symbol: string, name?: string) => {
       const sym = symbol.toUpperCase();
-      if (pendingAdds.some((p) => p.symbol === sym)) return;
+      if (pendingAdds.some((p) => p.symbol === sym) || addPopupSymbols.includes(sym)) return;
       setPendingAdds((prev) => [...prev, { symbol: sym, name: name ?? sym }]);
       setPopupSearchQuery("");
       setPopupSearchResults([]);
       setPopupSearchHighlighted(-1);
       setTimeout(() => popupSearchInputRef.current?.focus(), 0);
     },
-    [pendingAdds]
+    [pendingAdds, addPopupSymbols]
   );
 
   const removePending = useCallback((symbol: string) => {
@@ -1284,6 +1333,14 @@ export default function WatchlistPanel({
       expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
     });
     setShowNewScreenerModal(true);
+  }, []);
+
+  const openNewScriptModal = useCallback(() => {
+    setSidebarTab("screener");
+    setEditingScriptScreenId(null);
+    setNewScriptName("");
+    setNewScriptBody("");
+    setShowNewScriptModal(true);
   }, []);
 
   const startScreenerModalDrag = useCallback((e: React.MouseEvent) => {
@@ -1859,7 +1916,7 @@ export default function WatchlistPanel({
             style={{ width: sidebarWidthPx }}
           >
             <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
-              <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1 mb-2">
+              <div className="relative inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1 mb-2" ref={watchlistAddMenuRef}>
                 <button
                   type="button"
                   onClick={() => setSidebarTab("watchlists")}
@@ -1882,65 +1939,85 @@ export default function WatchlistPanel({
                 >
                   Screener
                 </button>
-              </div>
-              {sidebarTab === "watchlists" && (
-                <div className="relative flex items-center" ref={watchlistAddMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setShowWatchlistAddMenu((v) => !v)}
-                    className="flex items-center justify-center w-8 h-8 rounded border border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500"
-                    title="Add watchlist or folder"
-                    aria-label="Add watchlist or folder"
-                    aria-expanded={showWatchlistAddMenu}
-                    aria-haspopup="true"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                      <path d="M8 3a.5.5 0 0 1 .5.5v4h4a.5.5 0 0 1 0 1h-4v4a.5.5 0 0 1-1 0v-4h-4a.5.5 0 0 1 0-1h4v-4A.5.5 0 0 1 8 3z" />
-                    </svg>
-                  </button>
-                  {showWatchlistAddMenu && (
-                    <div
-                      className="absolute left-0 top-full mt-1 z-50 min-w-[11rem] py-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg"
-                      role="menu"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setShowWatchlistAddMenu(false);
-                          addList();
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                      >
-                        New Watchlist
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setShowWatchlistAddMenu(false);
-                          addListFolder();
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                      >
-                        New Folder
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {sidebarTab === "screener" && (
                 <button
                   type="button"
-                  onClick={openNewScreenerModal}
-                  className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
+                  onClick={() => setShowWatchlistAddMenu((v) => !v)}
+                  className={`ml-1 inline-flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    showWatchlistAddMenu
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  }`}
+                  title={sidebarTab === "watchlists" ? "Add watchlist or folder" : "Add screener or script"}
+                  aria-label={sidebarTab === "watchlists" ? "Add watchlist or folder" : "Add screener or script"}
+                  aria-expanded={showWatchlistAddMenu}
+                  aria-haspopup="true"
                 >
-                  New Screener
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                    <path d="M8 3a.5.5 0 0 1 .5.5v4h4a.5.5 0 0 1 0 1h-4v4a.5.5 0 0 1-1 0v-4h-4a.5.5 0 0 1 0-1h4v-4A.5.5 0 0 1 8 3z" />
+                  </svg>
                 </button>
-              )}
+                {showWatchlistAddMenu && (
+                  <div
+                    className="absolute right-0 top-full mt-1 z-50 min-w-[12rem] py-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg"
+                    role="menu"
+                  >
+                    {sidebarTab === "watchlists" ? (
+                      <>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setShowWatchlistAddMenu(false);
+                            addList();
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        >
+                          New Watchlist
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setShowWatchlistAddMenu(false);
+                            addListFolder();
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        >
+                          New Folder
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setShowWatchlistAddMenu(false);
+                            openNewScreenerModal();
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        >
+                          New Screener
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setShowWatchlistAddMenu(false);
+                            openNewScriptModal();
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        >
+                          New Script
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
               {sidebarTab === "screener" ? (
-              <ul className="flex-1 overflow-y-auto py-1 flex flex-col gap-0 min-h-0">
+              <ul className="flex-1 overflow-y-auto py-1 flex flex-col gap-0 min-h-0 [&_.screener-row>button:not(:first-child)]:hidden [&_.screener-item:hover_.screener-row>button:not(:first-child)]:inline-flex [&_.screener-item:focus-within_.screener-row>button:not(:first-child)]:inline-flex">
                 {/* Root drop zone: move screen out of folder */}
                 {draggedScreenId && (
                   <li
@@ -1961,7 +2038,7 @@ export default function WatchlistPanel({
                 {rootScreens.map((s) => (
                   <li
                     key={s.id}
-                    className="flex items-center gap-0 min-w-0 group"
+                    className="screener-item flex items-center gap-0 min-w-0 group"
                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -1976,23 +2053,32 @@ export default function WatchlistPanel({
                       draggable
                       onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }}
                       onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }}
-                      className={`flex-1 flex items-center gap-0 min-w-0 rounded ${draggedScreenId === s.id ? "opacity-50" : ""}`}
+                      className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}
                     >
                       <button
                         type="button"
                         onClick={() => setSelectedScreenId(s.id)}
                         className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                       >
+                        <span
+                          className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1"
+                          title="Drag to reorder"
+                          aria-hidden
+                        >
+                          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+                            <circle cx="2" cy="2" r="1" />
+                            <circle cx="8" cy="2" r="1" />
+                            <circle cx="2" cy="6" r="1" />
+                            <circle cx="8" cy="6" r="1" />
+                            <circle cx="2" cy="10" r="1" />
+                            <circle cx="8" cy="10" r="1" />
+                          </svg>
+                        </span>
                         <span className="truncate min-w-0">{s.name}</span>
-                        {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && (
-                          <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
-                            ({(selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id])!.toLocaleString()})
-                          </span>
-                        )}
                       </button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                     </div>
                   </li>
                 ))}
@@ -2018,7 +2104,6 @@ export default function WatchlistPanel({
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                         </button>
                         <span className="flex-1 min-w-0 truncate px-2 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">{f.name}</span>
-                        <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400 pr-1">{folderScreens.length}</span>
                         <button type="button" onClick={(e) => { e.stopPropagation(); deleteFolder(f.id); setFolders(loadFolders()); setScreens(loadScreens()); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete folder ${f.name}`} aria-label={`Delete folder ${f.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" /><path fillRule="evenodd" d="M14.5 3a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1V1a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v2zM2 2v1h12V2H2z" /></svg></button>
                       </div>
                       {isExpanded && (
@@ -2026,7 +2111,7 @@ export default function WatchlistPanel({
                           {folderScreens.map((s) => (
                             <li
                               key={s.id}
-                              className="flex items-center gap-0 min-w-0"
+                              className="screener-item flex items-center gap-0 min-w-0 group"
                               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
                               onDrop={(e) => {
                                 e.preventDefault();
@@ -2037,10 +2122,23 @@ export default function WatchlistPanel({
                                 setDragOverRoot(false);
                               }}
                             >
-                              <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`flex-1 flex items-center gap-0 min-w-0 rounded ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
+                              <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
                                 <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                                  <span
+                                    className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1"
+                                    title="Drag to reorder"
+                                    aria-hidden
+                                  >
+                                    <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+                                      <circle cx="2" cy="2" r="1" />
+                                      <circle cx="8" cy="2" r="1" />
+                                      <circle cx="2" cy="6" r="1" />
+                                      <circle cx="8" cy="6" r="1" />
+                                      <circle cx="2" cy="10" r="1" />
+                                      <circle cx="8" cy="10" r="1" />
+                                    </svg>
+                                  </span>
                                   <span className="truncate min-w-0">{s.name}</span>
-                                  {s.type !== "script" && (selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id]) != null && <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(selectedScreenId === s.id ? screenerResultCount : screenerCounts[s.id])!.toLocaleString()})</span>}
                                 </button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
@@ -2061,21 +2159,6 @@ export default function WatchlistPanel({
               </ul>
             ) : (
               <ul className="flex-1 overflow-y-auto py-1">
-                {relatedStocksList && relatedStocksList.symbols.length > 0 && (
-                  <li key={RELATED_LIST_ID}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCollectionId(RELATED_LIST_ID);
-                        setActiveListId(null);
-                      }}
-                      className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === RELATED_LIST_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
-                    >
-                      <span className="truncate min-w-0">{relatedStocksList.title}</span>
-                      <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({relatedStocksList.symbols.length})</span>
-                    </button>
-                  </li>
-                )}
                 <li className="mt-1">
                   <button type="button" onClick={() => toggleListFolderExpanded(MY_LISTS_ROOT_ID)} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has(MY_LISTS_ROOT_ID) ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
@@ -2084,16 +2167,32 @@ export default function WatchlistPanel({
                   {expandedListFolderIds.has(MY_LISTS_ROOT_ID) && (
                     <ul className="pl-4">
                       {rootWatchlists.map((l) => (
-                        <li key={l.id} className="flex items-center gap-0 min-w-0">
+                        <li key={l.id} className="flex items-center gap-0 min-w-0 group">
                           <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                             <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                            <span className="truncate min-w-0">{toTitleCase(l.name)}</span>
-                            <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
+                            <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
                           </button>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                          </div>
                         </li>
                       ))}
+                      {relatedStocksList && relatedStocksList.symbols.length > 0 && (
+                        <li key={RELATED_LIST_ID}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCollectionId(RELATED_LIST_ID);
+                              setActiveListId(null);
+                            }}
+                            className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === RELATED_LIST_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                          >
+                            <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                            <span className="truncate min-w-0">{formatRelatedTitleWithUpperTicker(relatedStocksList.title)}</span>
+                          </button>
+                        </li>
+                      )}
                     </ul>
                   )}
                 </li>
@@ -2101,26 +2200,26 @@ export default function WatchlistPanel({
                   const folderLists = watchlistsByFolderId[folder.id] ?? [];
                   const expanded = expandedListFolderIds.has(folder.id);
                   return (
-                    <li key={folder.id} className="mt-1">
+                    <li key={folder.id} className="mt-1 group">
                       <div className="flex items-center gap-1">
                         <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expanded ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
-                          <span className="truncate">{toTitleCase(folder.name)}</span>
-                          <span className="text-zinc-400">({folderLists.length})</span>
+                          <span className="truncate">{formatListDisplayName(folder.name)}</span>
                         </button>
-                        <button type="button" onClick={() => { const nextFolders = listFolders.filter((f) => f.id !== folder.id); setListFolders(nextFolders); setLists((prev) => prev.map((l) => (l.folderId === folder.id ? { ...l, folderId: undefined } : l))); setExpandedListFolderIds((prev) => { const next = new Set(prev); next.delete(folder.id); return next; }); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete folder ${folder.name}`} aria-label={`Delete folder ${folder.name}`}><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                        <button type="button" onClick={() => { const nextFolders = listFolders.filter((f) => f.id !== folder.id); setListFolders(nextFolders); setLists((prev) => prev.map((l) => (l.folderId === folder.id ? { ...l, folderId: undefined } : l))); setExpandedListFolderIds((prev) => { const next = new Set(prev); next.delete(folder.id); return next; }); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete folder ${folder.name}`} aria-label={`Delete folder ${folder.name}`}><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                       </div>
                       {expanded && (
                         <ul className="pl-4">
                           {folderLists.map((l) => (
-                            <li key={l.id} className="flex items-center gap-0 min-w-0">
+                            <li key={l.id} className="flex items-center gap-0 min-w-0 group">
                               <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                                 <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                                <span className="truncate min-w-0">{toTitleCase(l.name)}</span>
-                                <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({l.symbols.length})</span>
+                                <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
                               </button>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -2137,13 +2236,11 @@ export default function WatchlistPanel({
                     <ul className="pl-4">
                       {INDEX_LISTS.map((pl) => {
                         const id = `${INDEX_LIST_PREFIX}${pl.id}`;
-                        const count = predefinedListSymbols[pl.id]?.length;
                         return (
                           <li key={pl.id}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                              <span className="truncate min-w-0">{toTitleCase(pl.name)}</span>
-                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({count ?? "..."})</span>
+                              <span className="truncate min-w-0">{formatListDisplayName(pl.name)}</span>
                             </button>
                           </li>
                         );
@@ -2165,7 +2262,6 @@ export default function WatchlistPanel({
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{toTitleCase(name)}</span>
-                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(sectorListSymbols[name] ?? []).length})</span>
                             </button>
                           </li>
                         );
@@ -2187,7 +2283,6 @@ export default function WatchlistPanel({
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{toTitleCase(name)}</span>
-                              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({(industryListSymbols[name] ?? []).length})</span>
                             </button>
                           </li>
                         );
@@ -2198,7 +2293,7 @@ export default function WatchlistPanel({
                 <li className="mt-1">
                   <button type="button" onClick={() => toggleListFolderExpanded("thematic-etfs")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("thematic-etfs") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
-                    <span>{toTitleCase("Thematic ETFs")}</span>
+                    <span>Thematic ETFs</span>
                   </button>
                   {expandedListFolderIds.has("thematic-etfs") && (
                     <ul className="pl-4">
@@ -2208,7 +2303,7 @@ export default function WatchlistPanel({
                           <li key={item.id}>
                             <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                              <span className="truncate min-w-0">{toTitleCase(item.theme)}</span>
+                              <span className="truncate min-w-0">{formatListDisplayName(item.theme)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({item.ticker})</span>
                             </button>
                           </li>
@@ -2231,7 +2326,7 @@ export default function WatchlistPanel({
           </button>
 
           {/* Edit watchlist popup (add/remove stocks) */}
-          {addPopupListId != null && (() => {
+          {addPopupMode != null && (() => {
             const list = lists.find((l) => l.id === addPopupListId);
             return (
               <div
@@ -2247,7 +2342,7 @@ export default function WatchlistPanel({
                 >
                   <div className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
                     <h2 id="add-stocks-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
-                      Edit {list?.name ?? "list"}
+                      {addPopupMode === "create" ? "New Watchlist" : `Edit ${list?.name ?? "list"}`}
                     </h2>
                     <button
                       type="button"
@@ -2260,7 +2355,19 @@ export default function WatchlistPanel({
                       </svg>
                     </button>
                   </div>
-                  <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
+                  <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 space-y-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                        List name
+                      </label>
+                      <input
+                        type="text"
+                        value={addPopupListName}
+                        onChange={(e) => setAddPopupListName(e.target.value)}
+                        placeholder="List name"
+                        className="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                      />
+                    </div>
                     <div className="relative">
                       <input
                         ref={popupSearchInputRef}
@@ -2319,9 +2426,9 @@ export default function WatchlistPanel({
                       <h3 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
                         Current stocks
                       </h3>
-                      {list && list.symbols.length > 0 ? (
+                      {addPopupSymbols.length > 0 ? (
                         <ul className="max-h-40 overflow-auto border border-zinc-200 dark:border-zinc-700 rounded">
-                          {list.symbols.map((sym) => (
+                          {addPopupSymbols.map((sym) => (
                             <li
                               key={sym}
                               className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm border-b last:border-b-0 border-zinc-200 dark:border-zinc-700"
@@ -2330,16 +2437,10 @@ export default function WatchlistPanel({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setLists((prev) =>
-                                    prev.map((l) =>
-                                      l.id === list.id
-                                        ? { ...l, symbols: l.symbols.filter((s) => s !== sym) }
-                                        : l
-                                    )
-                                  )
+                                  setAddPopupSymbols((prev) => prev.filter((s) => s !== sym))
                                 }
                                 className="shrink-0 p-0.5 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                                aria-label={`Remove ${sym} from ${list.name}`}
+                                aria-label={`Remove ${sym} from ${addPopupListName || "list"}`}
                               >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                                   <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z" />
@@ -2400,10 +2501,12 @@ export default function WatchlistPanel({
                     <button
                       type="button"
                       onClick={commitPendingToWatchlist}
-                      disabled={pendingAdds.length === 0}
+                      disabled={!addPopupListName.trim()}
                       className="px-3 py-1.5 text-sm rounded bg-zinc-800 dark:bg-zinc-600 text-white hover:bg-zinc-700 dark:hover:bg-zinc-500 disabled:opacity-50 disabled:pointer-events-none"
                     >
-                      Add {pendingAdds.length > 0 ? `${pendingAdds.length} stock${pendingAdds.length === 1 ? "" : "s"} to list` : "Add to list"}
+                      {addPopupMode === "create"
+                        ? `Create list${pendingAdds.length > 0 || addPopupSymbols.length > 0 ? ` (${addPopupSymbols.length + pendingAdds.length} stocks)` : ""}`
+                        : `Save changes${pendingAdds.length > 0 ? ` (+${pendingAdds.length} new)` : ""}`}
                     </button>
                   </div>
                 </div>
@@ -2904,6 +3007,9 @@ export default function WatchlistPanel({
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 uppercase truncate">
                   {tableSource.title}
                 </h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Results: {loading ? "..." : rows.length.toLocaleString()}
+                </p>
                 {tableSource.fromScreener && screenerDbDate && (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
                     As of {formatDisplayDate(screenerDbDate)}
