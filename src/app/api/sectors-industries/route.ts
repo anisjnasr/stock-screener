@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  getLatestCompletedTradingDate,
   getTickerPerformance,
   getWeightedCategoryPerformance,
   type PerformanceTimeframe,
@@ -13,6 +14,19 @@ const INDEX_ITEMS = [
 ] as const;
 
 type TimeframeParam = "day" | "week" | "month" | "quarter" | "year";
+
+type CachedValue =
+  | ReturnType<typeof getWeightedCategoryPerformance>
+  | ReturnType<typeof getTickerPerformance>;
+
+const globalForSiCache = globalThis as unknown as {
+  _siCache?: Map<string, CachedValue>;
+};
+
+function getSiCache(): Map<string, CachedValue> {
+  if (!globalForSiCache._siCache) globalForSiCache._siCache = new Map();
+  return globalForSiCache._siCache;
+}
 
 function parseTimeframe(value: string | null): TimeframeParam {
   if (value === "day" || value === "week" || value === "month" || value === "quarter" || value === "year") {
@@ -31,27 +45,79 @@ function toSlug(input: string): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const timeframe = parseTimeframe(request.nextUrl.searchParams.get("timeframe"));
-    const sectorResult = getWeightedCategoryPerformance("sector", timeframe as PerformanceTimeframe);
-    const industryResult = getWeightedCategoryPerformance("industry", timeframe as PerformanceTimeframe, sectorResult.date ?? undefined);
-
-    const indexPerf = getTickerPerformance(
-      INDEX_ITEMS.map((x) => x.ticker),
-      timeframe as PerformanceTimeframe,
-      sectorResult.date ?? undefined
+    const defaultTimeframe = parseTimeframe(request.nextUrl.searchParams.get("timeframe"));
+    const indicesTimeframe = parseTimeframe(
+      request.nextUrl.searchParams.get("indicesTimeframe") ?? defaultTimeframe
     );
-    const themePerf = getTickerPerformance(
-      THEMATIC_ETFS.map((x) => x.ticker),
-      timeframe as PerformanceTimeframe,
-      sectorResult.date ?? undefined
+    const sectorsTimeframe = parseTimeframe(
+      request.nextUrl.searchParams.get("sectorsTimeframe") ?? defaultTimeframe
+    );
+    const industriesTimeframe = parseTimeframe(
+      request.nextUrl.searchParams.get("industriesTimeframe") ?? defaultTimeframe
+    );
+    const themesTimeframe = parseTimeframe(
+      request.nextUrl.searchParams.get("themesTimeframe") ?? defaultTimeframe
+    );
+    const asOfDate = getLatestCompletedTradingDate();
+    const cache = getSiCache();
+
+    const getOrSet = <T extends CachedValue>(key: string, compute: () => T): T => {
+      const existing = cache.get(key) as T | undefined;
+      if (existing) return existing;
+      const next = compute();
+      cache.set(key, next);
+      return next;
+    };
+
+    const sectorResult = getOrSet(
+      `sector:${sectorsTimeframe}:${asOfDate ?? "na"}`,
+      () =>
+        getWeightedCategoryPerformance(
+          "sector",
+          sectorsTimeframe as PerformanceTimeframe,
+          asOfDate ?? undefined
+        )
+    );
+    const industryResult = getOrSet(
+      `industry:${industriesTimeframe}:${asOfDate ?? "na"}`,
+      () =>
+        getWeightedCategoryPerformance(
+          "industry",
+          industriesTimeframe as PerformanceTimeframe,
+          asOfDate ?? undefined
+        )
+    );
+    const indexPerf = getOrSet(
+      `indices:${indicesTimeframe}:${asOfDate ?? "na"}`,
+      () =>
+        getTickerPerformance(
+          INDEX_ITEMS.map((x) => x.ticker),
+          indicesTimeframe as PerformanceTimeframe,
+          asOfDate ?? undefined
+        )
+    );
+    const themePerf = getOrSet(
+      `themes:${themesTimeframe}:${asOfDate ?? "na"}`,
+      () =>
+        getTickerPerformance(
+          THEMATIC_ETFS.map((x) => x.ticker),
+          themesTimeframe as PerformanceTimeframe,
+          asOfDate ?? undefined
+        )
     );
 
     const indexMap = new Map(indexPerf.rows.map((r) => [r.symbol, r]));
     const themeMap = new Map(themePerf.rows.map((r) => [r.symbol, r]));
 
     return NextResponse.json({
-      timeframe,
-      date: sectorResult.date,
+      timeframe: defaultTimeframe,
+      timeframes: {
+        indices: indicesTimeframe,
+        sectors: sectorsTimeframe,
+        industries: industriesTimeframe,
+        themes: themesTimeframe,
+      },
+      date: asOfDate ?? sectorResult.date,
       indices: INDEX_ITEMS.map((item) => ({
         id: item.id,
         name: item.name,

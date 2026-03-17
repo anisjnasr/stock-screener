@@ -295,7 +295,7 @@ export default function Header({
           </div>
           {/* Center nav: primary pages */}
           <div className="flex-1 flex items-center justify-center">
-            <div className="inline-flex items-center gap-1 rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-1">
+            <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
               {[
                 { id: "home" as HeaderPage, label: "Home" },
                 { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
@@ -305,7 +305,7 @@ export default function Header({
                   key={item.id}
                   type="button"
                   onClick={() => onPageChange?.(item.id)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
                     currentPage === item.id
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                       : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -319,7 +319,7 @@ export default function Header({
                 onClick={() => {
                   /* reserved for future: open add-page dialog */
                 }}
-                className="ml-1 flex items-center justify-center rounded-full border border-dashed border-zinc-400 text-zinc-500 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                className="ml-1 flex items-center justify-center text-zinc-500 dark:text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100"
                 style={{ width: 28, height: 28 }}
                 title="Add page"
                 aria-label="Add page"

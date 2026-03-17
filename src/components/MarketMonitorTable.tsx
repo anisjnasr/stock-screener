@@ -101,7 +101,7 @@ function NetTooltip({
       }}
     >
       <div style={{ color: "#d4d4d8" }}>{formatDateDmy(String(label ?? ""))}</div>
-      <div style={{ color: net >= 0 ? "#34d399" : "#fca5a5" }}>
+      <div style={{ color: net >= 0 ? "#0a8963" : "#a54557" }}>
         Net: {net >= 0 ? "+" : ""}
         {net}
       </div>
@@ -158,8 +158,8 @@ function MiniBarSeries({
               {series.map((entry) => (
                 <Cell
                   key={entry.date}
-                  fill={entry.net >= 0 ? "#34d399" : "#f87171"}
-                  fillOpacity={0.5}
+                  fill={entry.net >= 0 ? "#0a8963" : "#a54557"}
+                  fillOpacity={0.6}
                 />
               ))}
             </Bar>

@@ -38,6 +38,7 @@
   "dependencies": {
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
+    "framer-motion": "^12.38.0",
     "lightweight-charts": "^5.1.0",
     "next": "16.1.6",
     "react": "19.2.3",
