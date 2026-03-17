@@ -125,6 +125,8 @@ type WatchlistPanelProps = {
   panelHeightPx: number;
   onHeightChange: (px: number) => void;
   onSymbolSelect?: (symbol: string) => void;
+  selectedSymbol?: string;
+  onOrderedSymbolsChange?: (symbols: string[]) => void;
   /** When set, "Related Stocks" appears in Watchlists; clicking the title in the sidebar opens this list. */
   relatedStocksList?: { title: string; symbols: string[] } | null;
   /** When this value changes, panel switches to Watchlists and selects the related list (e.g. Date.now() from parent). */
@@ -452,6 +454,8 @@ export default function WatchlistPanel({
   panelHeightPx,
   onHeightChange,
   onSymbolSelect,
+  selectedSymbol,
+  onOrderedSymbolsChange,
   relatedStocksList,
   openToRelatedListTrigger,
   openToCollectionTrigger,
@@ -1645,6 +1649,10 @@ export default function WatchlistPanel({
     });
     return copy;
   }, [rows, sortKey, sortDir]);
+
+  useEffect(() => {
+    onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
+  }, [sortedRows, onOrderedSymbolsChange]);
 
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
   const tableColumns = useMemo((): TableColumnId[] => {
@@ -3223,10 +3231,25 @@ export default function WatchlistPanel({
                     sortedRows.map((row) => {
                       const flag = flags[row.symbol] ?? null;
                       const pickerOpen = flagPickerSymbol === row.symbol;
+                      const isActiveSymbol =
+                        Boolean(selectedSymbol) &&
+                        row.symbol.toUpperCase() === String(selectedSymbol).toUpperCase();
                       return (
                         <tr
                           key={row.symbol}
-                          className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${selectedSymbols.has(row.symbol) ? "bg-blue-50/80 dark:bg-blue-900/20" : ""}`}
+                          className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${onSymbolSelect ? "cursor-pointer" : ""} ${isActiveSymbol ? "bg-blue-100 dark:bg-blue-900/35" : selectedSymbols.has(row.symbol) ? "bg-blue-50/80 dark:bg-blue-900/20" : ""}`}
+                          onClick={(e) => {
+                            if (!onSymbolSelect) return;
+                            const target = e.target as HTMLElement | null;
+                            if (
+                              target?.closest(
+                                "button, a, input, select, textarea, [role='button'], [data-no-row-select='true']"
+                              )
+                            ) {
+                              return;
+                            }
+                            onSymbolSelect(row.symbol);
+                          }}
                         >
                           <td className="w-10 min-w-[2.5rem] py-1.5 pl-2 pr-1 align-middle">
                             <div className="flex items-center justify-start">

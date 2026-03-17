@@ -10,6 +10,23 @@ type Candle = {
   volume: number;
 };
 
+type CandleCacheEntry = {
+  data: Candle[];
+  expiresAt: number;
+};
+
+const API_CANDLES_TTL_MS = 60 * 1000;
+
+function getApiCandlesCache(): Map<string, CandleCacheEntry> {
+  const globalWithCache = globalThis as typeof globalThis & {
+    __stockToolCandlesCache?: Map<string, CandleCacheEntry>;
+  };
+  if (!globalWithCache.__stockToolCandlesCache) {
+    globalWithCache.__stockToolCandlesCache = new Map();
+  }
+  return globalWithCache.__stockToolCandlesCache;
+}
+
 function weekKey(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00Z");
   const start = new Date(d);
@@ -66,6 +83,15 @@ export async function GET(request: NextRequest) {
     if (!latest) {
       return NextResponse.json({ error: "No screener date available" }, { status: 200 });
     }
+    const cacheKey = `${symbol}:${interval}:${latest}`;
+    const cache = getApiCandlesCache();
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json(cached.data);
+    }
+    if (cached && cached.expiresAt <= Date.now()) {
+      cache.delete(cacheKey);
+    }
     // Load up to ~10 years of daily history from screener DB (newest-first)
     const DAILY_LIMIT = 2500;
     const bars = await getBarsForSymbol(symbol, latest, DAILY_LIMIT);
@@ -87,6 +113,10 @@ export async function GET(request: NextRequest) {
     if (interval === "weekly" || interval === "monthly") {
       data = aggregateCandles(dailyChrono, interval as "weekly" | "monthly");
     }
+    cache.set(cacheKey, {
+      data,
+      expiresAt: Date.now() + API_CANDLES_TTL_MS,
+    });
     return NextResponse.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Candles error";

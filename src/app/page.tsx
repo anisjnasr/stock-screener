@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Header, { HeaderPage } from "@/components/Header";
-import StockChart from "@/components/StockChart";
+import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import LeftSidebar from "@/components/LeftSidebar";
 import QuarterlyBox from "@/components/QuarterlyBox";
 import WatchlistPanel from "@/components/WatchlistPanel";
@@ -20,6 +20,19 @@ type Candle = {
   close: number;
   volume: number;
 };
+
+type CachedCandlesEntry = {
+  data: Candle[];
+  expiresAt: number;
+};
+
+const CANDLE_CACHE_TTL_MS = 5 * 60 * 1000;
+const CANDLE_CACHE_MAX_ENTRIES = 100;
+const PREFETCH_NEIGHBOR_COUNT = 3;
+
+function candlesCacheKey(symbol: string, timeframe: ChartTimeframe): string {
+  return `${symbol.toUpperCase()}:${timeframe}`;
+}
 
 type IncomeLine = {
   date: string;
@@ -74,11 +87,11 @@ export default function Home() {
   const [quarterlyLoading, setQuarterlyLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [watchlistHeightPx, setWatchlistHeightPx] = useState(32);
-  const [chartTimeframe, setChartTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("daily");
   const [dualChartMode, setDualChartMode] = useState(false);
   const [syncCrosshair, setSyncCrosshair] = useState(true);
-  const [dualLeftTimeframe, setDualLeftTimeframe] = useState<"daily" | "weekly" | "monthly">("weekly");
-  const [dualRightTimeframe, setDualRightTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [dualLeftTimeframe, setDualLeftTimeframe] = useState<ChartTimeframe>("weekly");
+  const [dualRightTimeframe, setDualRightTimeframe] = useState<ChartTimeframe>("daily");
   const [dualLeftCandles, setDualLeftCandles] = useState<Candle[] | null>(null);
   const [dualRightCandles, setDualRightCandles] = useState<Candle[] | null>(null);
   const [dualLeftLoading, setDualLeftLoading] = useState(true);
@@ -95,6 +108,9 @@ export default function Home() {
   } | null>(null);
   const [leftSidebarHidden, setLeftSidebarHidden] = useState(false);
   const [quarterlyHidden, setQuarterlyHidden] = useState(false);
+  const [scanSymbols, setScanSymbols] = useState<string[]>([]);
+  const candlesCacheRef = useRef<Map<string, CachedCandlesEntry>>(new Map());
+  const prefetchInFlightRef = useRef<Map<string, Promise<Candle[] | null>>>(new Map());
 
   useEffect(() => {
     try {
@@ -157,6 +173,46 @@ export default function Home() {
     });
   }, []);
 
+  const getCachedCandles = useCallback((sym: string, tf: ChartTimeframe): Candle[] | null => {
+    const key = candlesCacheKey(sym, tf);
+    const entry = candlesCacheRef.current.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt < Date.now()) {
+      candlesCacheRef.current.delete(key);
+      return null;
+    }
+    // Refresh LRU order.
+    candlesCacheRef.current.delete(key);
+    candlesCacheRef.current.set(key, entry);
+    return entry.data;
+  }, []);
+
+  const setCachedCandles = useCallback((sym: string, tf: ChartTimeframe, data: Candle[]) => {
+    const key = candlesCacheKey(sym, tf);
+    candlesCacheRef.current.delete(key);
+    candlesCacheRef.current.set(key, {
+      data,
+      expiresAt: Date.now() + CANDLE_CACHE_TTL_MS,
+    });
+    while (candlesCacheRef.current.size > CANDLE_CACHE_MAX_ENTRIES) {
+      const oldest = candlesCacheRef.current.keys().next().value;
+      if (!oldest) break;
+      candlesCacheRef.current.delete(oldest);
+    }
+  }, []);
+
+  const handleSymbolSelect = useCallback((sym: string) => {
+    setSymbol(sym.toUpperCase());
+    setSearchValue("");
+  }, []);
+
+  const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
+    const next = symbols
+      .map((s) => s.toUpperCase())
+      .filter((s) => s.length > 0);
+    setScanSymbols(next);
+  }, []);
+
   const fetchStock = useCallback(async (sym: string) => {
     setLoading(true);
     setError(null);
@@ -181,78 +237,126 @@ export default function Home() {
     fetchStock(symbol);
   }, [symbol, fetchStock]);
 
-  useEffect(() => {
-    if (!symbol) return;
-    setChartLoading(true);
-    const to = new Date();
-    const from = new Date();
-    // Request full history (API returns up to 5000 bars): ~20 years for daily, same range for weekly/monthly
-    const yearsBack = 20;
-    from.setFullYear(from.getFullYear() - yearsBack);
-    const fromStr = from.toISOString().slice(0, 10);
-    const toStr = to.toISOString().slice(0, 10);
-    fetch(
-      `/api/candles?symbol=${encodeURIComponent(symbol)}&from=${fromStr}&to=${toStr}&interval=${chartTimeframe}`
-    )
-      .then((res) => res.json())
-      .then((d) => {
-        setCandles(Array.isArray(d) ? d : null);
-      })
-      .catch(() => setCandles(null))
-      .finally(() => setChartLoading(false));
-  }, [symbol, chartTimeframe]);
-
   const fetchCandlesFor = useCallback(
-    async (sym: string, tf: "daily" | "weekly" | "monthly"): Promise<Candle[] | null> => {
+    async (
+      sym: string,
+      tf: ChartTimeframe,
+      opts?: { signal?: AbortSignal }
+    ): Promise<Candle[] | null> => {
+      const key = candlesCacheKey(sym, tf);
+      const cached = getCachedCandles(sym, tf);
+      if (cached) return cached;
+      if (!opts?.signal) {
+        const inFlight = prefetchInFlightRef.current.get(key);
+        if (inFlight) return inFlight;
+      }
+      const run = async (): Promise<Candle[] | null> => {
+        try {
+          const to = new Date();
+          const from = new Date();
+          from.setFullYear(from.getFullYear() - 20);
+          const fromStr = from.toISOString().slice(0, 10);
+          const toStr = to.toISOString().slice(0, 10);
+          const res = await fetch(
+            `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`,
+            { signal: opts?.signal }
+          );
+          const d = await res.json();
+          if (!Array.isArray(d)) return null;
+          setCachedCandles(sym, tf, d);
+          return d;
+        } catch {
+          return null;
+        } finally {
+          if (!opts?.signal) prefetchInFlightRef.current.delete(key);
+        }
+      };
+      if (!opts?.signal) {
+        const task = run();
+        prefetchInFlightRef.current.set(key, task);
+        return task;
+      }
       try {
-        const to = new Date();
-        const from = new Date();
-        from.setFullYear(from.getFullYear() - 20);
-        const fromStr = from.toISOString().slice(0, 10);
-        const toStr = to.toISOString().slice(0, 10);
-        const res = await fetch(
-          `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`
-        );
-        const d = await res.json();
-        return Array.isArray(d) ? d : null;
+        return await run();
       } catch {
         return null;
       }
     },
-    []
+    [getCachedCandles, setCachedCandles]
   );
 
   useEffect(() => {
-    if (!dualChartMode || !symbol) return;
+    if (!symbol) return;
     let cancelled = false;
-    setDualLeftLoading(true);
-    fetchCandlesFor(symbol, dualLeftTimeframe)
+    const controller = new AbortController();
+    const cached = getCachedCandles(symbol, chartTimeframe);
+    if (cached) {
+      setCandles(cached);
+      setChartLoading(false);
+    } else {
+      setChartLoading(true);
+    }
+    fetchCandlesFor(symbol, chartTimeframe, { signal: controller.signal })
       .then((rows) => {
-        if (!cancelled) setDualLeftCandles(rows);
+        if (cancelled || controller.signal.aborted) return;
+        setCandles(rows);
       })
       .finally(() => {
-        if (!cancelled) setDualLeftLoading(false);
+        if (!cancelled && !controller.signal.aborted) setChartLoading(false);
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [dualChartMode, symbol, dualLeftTimeframe, fetchCandlesFor]);
+  }, [symbol, chartTimeframe, fetchCandlesFor, getCachedCandles]);
 
   useEffect(() => {
     if (!dualChartMode || !symbol) return;
     let cancelled = false;
-    setDualRightLoading(true);
-    fetchCandlesFor(symbol, dualRightTimeframe)
+    const controller = new AbortController();
+    const cached = getCachedCandles(symbol, dualLeftTimeframe);
+    if (cached) {
+      setDualLeftCandles(cached);
+      setDualLeftLoading(false);
+    } else {
+      setDualLeftLoading(true);
+    }
+    fetchCandlesFor(symbol, dualLeftTimeframe, { signal: controller.signal })
       .then((rows) => {
-        if (!cancelled) setDualRightCandles(rows);
+        if (!cancelled && !controller.signal.aborted) setDualLeftCandles(rows);
       })
       .finally(() => {
-        if (!cancelled) setDualRightLoading(false);
+        if (!cancelled && !controller.signal.aborted) setDualLeftLoading(false);
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [dualChartMode, symbol, dualRightTimeframe, fetchCandlesFor]);
+  }, [dualChartMode, symbol, dualLeftTimeframe, fetchCandlesFor, getCachedCandles]);
+
+  useEffect(() => {
+    if (!dualChartMode || !symbol) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const cached = getCachedCandles(symbol, dualRightTimeframe);
+    if (cached) {
+      setDualRightCandles(cached);
+      setDualRightLoading(false);
+    } else {
+      setDualRightLoading(true);
+    }
+    fetchCandlesFor(symbol, dualRightTimeframe, { signal: controller.signal })
+      .then((rows) => {
+        if (!cancelled && !controller.signal.aborted) setDualRightCandles(rows);
+      })
+      .finally(() => {
+        if (!cancelled && !controller.signal.aborted) setDualRightLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [dualChartMode, symbol, dualRightTimeframe, fetchCandlesFor, getCachedCandles]);
 
   const handleToggleDualChartMode = useCallback(() => {
     setDualChartMode((prev) => {
@@ -281,20 +385,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!symbol) return;
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - 45);
-    const fromStr = from.toISOString().slice(0, 10);
-    const toStr = to.toISOString().slice(0, 10);
-    fetch(
-      `/api/candles?symbol=${encodeURIComponent(symbol)}&from=${fromStr}&to=${toStr}&interval=daily`
-    )
-      .then((res) => res.json())
-      .then((d) => {
-        setDailyCandlesForAvg(Array.isArray(d) ? d : null);
+    let cancelled = false;
+    const controller = new AbortController();
+    fetchCandlesFor(symbol, "daily", { signal: controller.signal })
+      .then((rows) => {
+        if (!cancelled && !controller.signal.aborted) setDailyCandlesForAvg(rows);
       })
-      .catch(() => setDailyCandlesForAvg(null));
-  }, [symbol]);
+      .catch(() => {
+        if (!cancelled && !controller.signal.aborted) setDailyCandlesForAvg(null);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [symbol, fetchCandlesFor]);
 
   const avgVolume30d = useMemo(() => {
     if (!dailyCandlesForAvg || dailyCandlesForAvg.length === 0) return undefined;
@@ -303,6 +407,65 @@ export default function Home() {
     const sum = last30.reduce((s, c) => s + c.volume, 0);
     return last30.length > 0 ? Math.round(sum / last30.length) : undefined;
   }, [dailyCandlesForAvg]);
+
+  const scanIndex = useMemo(
+    () => scanSymbols.findIndex((s) => s === symbol.toUpperCase()),
+    [scanSymbols, symbol]
+  );
+
+  useEffect(() => {
+    if (page !== "home" || scanIndex < 0) return;
+    const timeframes = dualChartMode
+      ? Array.from(new Set<ChartTimeframe>([dualLeftTimeframe, dualRightTimeframe]))
+      : [chartTimeframe];
+    const neighbors = new Set<string>();
+    for (let d = 1; d <= PREFETCH_NEIGHBOR_COUNT; d++) {
+      const up = scanSymbols[scanIndex - d];
+      const down = scanSymbols[scanIndex + d];
+      if (up) neighbors.add(up);
+      if (down) neighbors.add(down);
+    }
+    neighbors.forEach((sym) => {
+      timeframes.forEach((tf) => {
+        void fetchCandlesFor(sym, tf);
+      });
+    });
+  }, [
+    page,
+    scanIndex,
+    scanSymbols,
+    dualChartMode,
+    dualLeftTimeframe,
+    dualRightTimeframe,
+    chartTimeframe,
+    fetchCandlesFor,
+  ]);
+
+  useEffect(() => {
+    if (page !== "home") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (scanSymbols.length === 0) return;
+      const idx = scanSymbols.findIndex((s) => s === symbol.toUpperCase());
+      if (idx < 0) return;
+      const nextIdx = e.key === "ArrowDown" ? Math.min(scanSymbols.length - 1, idx + 1) : Math.max(0, idx - 1);
+      if (nextIdx === idx) return;
+      e.preventDefault();
+      handleSymbolSelect(scanSymbols[nextIdx]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [page, scanSymbols, symbol, handleSymbolSelect]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -545,10 +708,7 @@ export default function Home() {
                   nextEarnings={data?.nextEarnings}
                   yearly={yearlyRows}
                   relatedStocks={relatedStocks}
-                  onSymbolSelect={(sym) => {
-                    setSymbol(sym);
-                    setSearchValue("");
-                  }}
+                  onSymbolSelect={handleSymbolSelect}
                   onOpenRelatedStocksInWatchlist={
                     relatedStocks.length > 0
                       ? () => {
@@ -697,10 +857,9 @@ export default function Home() {
           <WatchlistPanel
             panelHeightPx={watchlistHeightPx}
             onHeightChange={handleWatchlistHeightChange}
-            onSymbolSelect={(sym) => {
-              setSymbol(sym);
-              setSearchValue("");
-            }}
+            onSymbolSelect={handleSymbolSelect}
+            selectedSymbol={symbol}
+            onOrderedSymbolsChange={handleOrderedSymbolsChange}
             relatedStocksList={
               relatedStocks.length > 0 && symbol
                 ? { title: `Related to ${symbol}`, symbols: relatedStocks.map((r) => r.symbol) }
