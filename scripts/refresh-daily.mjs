@@ -41,6 +41,8 @@ const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
 const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80);
 const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
+const COMPANY_REFERENCE_ENRICH_LIMIT = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_LIMIT ?? 200);
+const COMPANY_REFERENCE_DELAY_MS = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_DELAY_MS ?? 80);
 const REQUIRED_ETF_SYMBOLS = [
   "SPY",
   "QQQ",
@@ -135,6 +137,13 @@ async function fetchDailyBars(symbol, from, to) {
   }));
 }
 
+async function fetchTickerReference(symbol) {
+  const res = await fetchWithRetry(url(`/v3/reference/tickers/${encodeURIComponent(symbol)}`));
+  if (!res || !res.ok) return null;
+  const data = await res.json();
+  return data?.results ?? null;
+}
+
 function computeEMA(bars, key = "close", period) {
   const k = 2 / (period + 1);
   const out = [];
@@ -207,6 +216,94 @@ async function main() {
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
+  }
+
+  // Keep company reference fields fresh for newly-added symbols and any historical gaps.
+  // Full historical catch-up should be done with: npm run enrich-company-reference
+  if (COMPANY_REFERENCE_ENRICH_LIMIT > 0) {
+    const candidates = db
+      .prepare(
+        `
+        SELECT symbol
+        FROM companies
+        WHERE
+          ipo_date IS NULL OR TRIM(ipo_date) = ''
+          OR shares_outstanding IS NULL OR shares_outstanding <= 0
+        ORDER BY symbol
+        LIMIT ?
+        `
+      )
+      .all(COMPANY_REFERENCE_ENRICH_LIMIT)
+      .map((r) => String(r.symbol).toUpperCase());
+
+    if (candidates.length > 0) {
+      console.log(`Enriching company reference fields for up to ${candidates.length} symbols...`);
+      const updateCompany = db.prepare(
+        `
+        UPDATE companies
+        SET
+          name = COALESCE(?, name),
+          exchange = COALESCE(?, exchange),
+          industry = COALESCE(?, industry),
+          sector = COALESCE(?, sector),
+          ipo_date = COALESCE(?, ipo_date),
+          shares_outstanding = COALESCE(?, shares_outstanding),
+          updated_at = ?
+        WHERE symbol = ?
+        `
+      );
+      const updateCompanyTx = db.transaction((patches) => {
+        for (const p of patches) {
+          updateCompany.run(
+            p.name ?? null,
+            p.exchange ?? null,
+            p.industry ?? null,
+            p.sector ?? null,
+            p.ipoDate ?? null,
+            p.sharesOutstanding ?? null,
+            p.now,
+            p.symbol
+          );
+        }
+      });
+
+      let ok = 0;
+      let emptyOrFailed = 0;
+      const now = new Date().toISOString();
+      const patches = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const sym = candidates[i];
+        const ref = await fetchTickerReference(sym);
+        if (ref) {
+          patches.push({
+            symbol: sym,
+            name: ref.name ?? null,
+            exchange: ref.primary_exchange ?? null,
+            industry: ref.sic_description ?? null,
+            sector: null,
+            ipoDate: ref.list_date ?? null,
+            sharesOutstanding:
+              ref.share_class_shares_outstanding != null
+                ? Number(ref.share_class_shares_outstanding)
+                : ref.weighted_shares_outstanding != null
+                  ? Number(ref.weighted_shares_outstanding)
+                  : null,
+            now,
+          });
+          ok++;
+        } else {
+          emptyOrFailed++;
+        }
+        if (patches.length >= 100) updateCompanyTx(patches.splice(0, patches.length));
+        if ((i + 1) % 50 === 0 || i === candidates.length - 1) {
+          process.stdout.write(`  company_ref: ${i + 1}/${candidates.length}\r`);
+        }
+        await sleep(COMPANY_REFERENCE_DELAY_MS);
+      }
+      if (patches.length > 0) updateCompanyTx(patches);
+      console.log("");
+      console.log(`Company reference enrichment: ok=${ok}, empty_or_failed=${emptyOrFailed}`);
+    }
   }
 
   const toDate = new Date();
@@ -333,6 +430,7 @@ async function main() {
     "SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date <= ? ORDER BY date"
   );
   const getQuoteStmt = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
+  const getSharesStmt = db.prepare("SELECT shares_outstanding FROM companies WHERE symbol = ?");
   const companyMap = new Map(db.prepare("SELECT symbol, industry, sector FROM companies").all().map((r) => [r.symbol, r]));
 
   const spyBarsList = db
@@ -363,7 +461,15 @@ async function main() {
       if (lastBar.date !== latestDate) continue;
 
       const q = getQuoteStmt.get(sym, latestDate);
-      const marketCap = q?.market_cap ?? null;
+      const sharesRow = getSharesStmt.get(sym);
+      const sharesOutstanding =
+        sharesRow?.shares_outstanding != null ? Number(sharesRow.shares_outstanding) : null;
+      const marketCap =
+        q?.market_cap != null && Number(q.market_cap) > 0
+          ? Number(q.market_cap)
+          : sharesOutstanding != null && sharesOutstanding > 0
+            ? sharesOutstanding * lastBar.close
+            : null;
       const lastPrice = q?.last_price ?? lastBar.close;
       const volume = q?.volume ?? lastBar.volume;
       const prevClose = bars.length >= 2 ? bars[bars.length - 2].close : lastBar.close;

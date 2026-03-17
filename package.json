@@ -19,6 +19,7 @@
     "migrate-add-rs-percentile": "node scripts/migrate-add-rs-percentile.mjs",
     "seed-companies": "node scripts/seed-companies.mjs",
     "refresh-daily": "node scripts/refresh-daily.mjs",
+    "enrich-company-reference": "node scripts/enrich-company-reference.mjs",
     "refresh-financials": "node scripts/refresh-financials.mjs",
     "refresh-ownership": "node scripts/refresh-ownership.mjs",
     "refresh-companies": "node scripts/refresh-companies.mjs",

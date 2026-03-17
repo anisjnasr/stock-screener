@@ -78,6 +78,7 @@ export default function Home() {
   const [dailyCandlesForAvg, setDailyCandlesForAvg] = useState<Candle[] | null>(null);
   const [relatedStocks, setRelatedStocks] = useState<Array<{ symbol: string; name: string }>>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [dbUpdateCompletedAt, setDbUpdateCompletedAt] = useState<Date | null>(null);
   const [openToRelatedListTrigger, setOpenToRelatedListTrigger] = useState<number | null>(null);
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<{
     kind: "sector" | "industry" | "theme" | "index";
@@ -93,6 +94,29 @@ export default function Home() {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch("/api/health");
+        const json = (await res.json()) as { dbUpdatedAt?: string | null };
+        if (cancelled) return;
+        if (json?.dbUpdatedAt) {
+          const d = new Date(String(json.dbUpdatedAt));
+          setDbUpdateCompletedAt(Number.isNaN(d.getTime()) ? null : d);
+        } else {
+          setDbUpdateCompletedAt(null);
+        }
+      } catch {
+        if (!cancelled) setDbUpdateCompletedAt(null);
+      }
+    };
+    fetchHealth();
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const handleWatchlistHeightChange = useCallback((px: number) => {
     setWatchlistHeightPx(px);
@@ -374,6 +398,7 @@ export default function Home() {
         loading={loading}
         currentPage={page}
         onPageChange={setPage}
+        dbUpdateCompletedAt={dbUpdateCompletedAt}
       />
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden p-0 gap-0 bg-white dark:bg-zinc-900">
         {page === "market-monitor" ? (

@@ -46,7 +46,44 @@ type HeaderProps = {
   loading?: boolean;
   currentPage?: HeaderPage;
   onPageChange?: (page: HeaderPage) => void;
+  dbUpdateCompletedAt?: Date | null;
 };
+
+function ordinal(day: number): string {
+  const rem10 = day % 10;
+  const rem100 = day % 100;
+  if (rem10 === 1 && rem100 !== 11) return `${day}st`;
+  if (rem10 === 2 && rem100 !== 12) return `${day}nd`;
+  if (rem10 === 3 && rem100 !== 13) return `${day}rd`;
+  return `${day}th`;
+}
+
+function formatDbUpdateTimestamp(input: Date | null | undefined): string {
+  if (!input || Number.isNaN(input.getTime())) return "NA";
+  const d = input;
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const day = ordinal(d.getDate());
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  const h24 = d.getHours();
+  const hour12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  const ampm = h24 < 12 ? "am" : "pm";
+  return `${day} ${month} ${year} ${hour12}:${minutes}${ampm}`;
+}
 
 function fmtNum(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return "NA";
@@ -73,6 +110,7 @@ export default function Header({
   loading,
   currentPage,
   onPageChange,
+  dbUpdateCompletedAt,
 }: HeaderProps) {
   const brandName = "Stock Stalker";
   const name = quote?.name ?? profile?.companyName ?? symbol;
@@ -291,6 +329,12 @@ export default function Header({
           </div>
           {currentPage === "home" && (
           <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 text-sm overflow-x-auto min-w-0">
+            <span className="text-zinc-600 dark:text-zinc-400">
+              DB Update:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {formatDbUpdateTimestamp(dbUpdateCompletedAt)}
+              </span>
+            </span>
             <span className="text-zinc-600 dark:text-zinc-400">
               Last:{" "}
               <span className="tabular-nums text-zinc-900 dark:text-zinc-100">

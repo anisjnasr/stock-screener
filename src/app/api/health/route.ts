@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { join } from "path";
 
 export async function GET() {
   const dbPath = join(process.cwd(), "data", "screener.db");
   const hasDb = existsSync(dbPath);
   let latestScreenerDate: string | null = null;
+  let dbUpdatedAt: string | null = null;
   let dbBackend: "better-sqlite3" | "sql.js-fallback" | "none" = "none";
+
+  if (hasDb) {
+    try {
+      dbUpdatedAt = statSync(dbPath).mtime.toISOString();
+    } catch {
+      dbUpdatedAt = null;
+    }
+  }
 
   if (hasDb) {
     try {
@@ -33,6 +42,7 @@ export async function GET() {
       hasDb,
       dbBackend,
       latestScreenerDate,
+      dbUpdatedAt,
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
       timestamp: new Date().toISOString(),
     },

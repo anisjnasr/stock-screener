@@ -43,8 +43,8 @@ db.pragma("busy_timeout = 10000");
 
 const now = new Date().toISOString();
 const stmt = db.prepare(
-  `INSERT OR REPLACE INTO companies (symbol, name, exchange, industry, sector, is_adr, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`
+  `INSERT OR REPLACE INTO companies (symbol, name, exchange, industry, sector, ipo_date, is_adr, shares_outstanding, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 const insertMany = db.transaction((rows) => {
@@ -55,8 +55,13 @@ const insertMany = db.transaction((rows) => {
     const exchange = s.exchange != null ? String(s.exchange) : null;
     const industry = s.industry != null ? String(s.industry) : null;
     const sector = s.sector != null ? String(s.sector) : null;
+    const ipoDate = s.ipo_date != null ? String(s.ipo_date) : null;
     const isAdr = s.type === "ADRC" ? 1 : 0;
-    stmt.run(symbol, name, exchange, industry, sector, isAdr, now);
+    const sharesOutstanding =
+      s.shares_outstanding != null && Number.isFinite(Number(s.shares_outstanding))
+        ? Number(s.shares_outstanding)
+        : null;
+    stmt.run(symbol, name, exchange, industry, sector, ipoDate, isAdr, sharesOutstanding, now);
     localCount++;
     if (localCount % 500 === 0) process.stdout.write(`  ${localCount}/${stocks.length}...\r`);
   }
