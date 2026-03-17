@@ -403,22 +403,14 @@ export default function SectorsIndustriesPage({
                     <button
                       type="button"
                       onClick={() => setRightTab("industries")}
-                      className={`rounded px-2 py-1 text-xs ${
-                        rightTab === "industries"
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                      }`}
+                      className="rounded px-2 py-1 text-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     >
                       Industries
                     </button>
                     <button
                       type="button"
                       onClick={() => setRightTab("themes")}
-                      className={`rounded px-2 py-1 text-xs ${
-                        rightTab === "themes"
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                      }`}
+                      className="rounded px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                     >
                       Thematic ETFs
                     </button>
@@ -439,22 +431,14 @@ export default function SectorsIndustriesPage({
                     <button
                       type="button"
                       onClick={() => setRightTab("industries")}
-                      className={`rounded px-2 py-1 text-xs ${
-                        rightTab === "industries"
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                      }`}
+                      className="rounded px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                     >
                       Industries
                     </button>
                     <button
                       type="button"
                       onClick={() => setRightTab("themes")}
-                      className={`rounded px-2 py-1 text-xs ${
-                        rightTab === "themes"
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                      }`}
+                      className="rounded px-2 py-1 text-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     >
                       Thematic ETFs
                     </button>

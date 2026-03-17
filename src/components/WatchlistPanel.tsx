@@ -470,7 +470,7 @@ export default function WatchlistPanel({
   const [classificationListsLoading, setClassificationListsLoading] = useState(false);
   const [listFolders, setListFolders] = useState<WatchlistFolder[]>([]);
   const [expandedListFolderIds, setExpandedListFolderIds] = useState<Set<string>>(
-    () => new Set([MY_LISTS_ROOT_ID, "indices", "sectors", "industries", "thematic-etfs"])
+    () => new Set()
   );
   const [screens, setScreens] = useState<SavedScreen[]>([]);
   const [folders, setFolders] = useState<ScreenerFolder[]>([]);
@@ -1859,18 +1859,26 @@ export default function WatchlistPanel({
             style={{ width: sidebarWidthPx }}
           >
             <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
-              <div className="flex rounded border border-zinc-200 dark:border-zinc-600 p-0.5 mb-2">
+              <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1 mb-2">
                 <button
                   type="button"
                   onClick={() => setSidebarTab("watchlists")}
-                  className={`flex-1 py-1 px-1.5 text-xs font-medium rounded ${sidebarTab === "watchlists" ? "bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                    sidebarTab === "watchlists"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  }`}
                 >
                   Watchlists
                 </button>
                 <button
                   type="button"
                   onClick={() => setSidebarTab("screener")}
-                  className={`flex-1 py-1 px-1.5 text-xs font-medium rounded ${sidebarTab === "screener" ? "bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                    sidebarTab === "screener"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  }`}
                 >
                   Screener
                 </button>

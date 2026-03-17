@@ -5,7 +5,6 @@ import Header, { HeaderPage } from "@/components/Header";
 import StockChart from "@/components/StockChart";
 import LeftSidebar from "@/components/LeftSidebar";
 import QuarterlyBox from "@/components/QuarterlyBox";
-import NewsSidebar from "@/components/NewsSidebar";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
@@ -43,6 +42,8 @@ type StockData = {
     yearLow?: number;
     avgVolume?: number;
     marketCap?: number;
+    atrPct21d?: number | null;
+    off52WHighPct?: number | null;
   };
   profile?: {
     companyName: string;
@@ -72,7 +73,6 @@ export default function Home() {
   const [sidebarLoading, setSidebarLoading] = useState(true);
   const [quarterlyLoading, setQuarterlyLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newsOpen, setNewsOpen] = useState(true);
   const [watchlistHeightPx, setWatchlistHeightPx] = useState(32);
   const [chartTimeframe, setChartTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
   const [dailyCandlesForAvg, setDailyCandlesForAvg] = useState<Candle[] | null>(null);
@@ -85,12 +85,16 @@ export default function Home() {
     value: string;
     nonce: number;
   } | null>(null);
+  const [leftSidebarHidden, setLeftSidebarHidden] = useState(false);
+  const [quarterlyHidden, setQuarterlyHidden] = useState(false);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("stock-research-news-sidebar-open");
-      if (stored !== null) setNewsOpen(stored === "true");
       setWatchlistHeightPx(loadPanelHeightPx());
+      const storedLeft = localStorage.getItem("stock-research-left-sidebar-hidden");
+      if (storedLeft !== null) setLeftSidebarHidden(storedLeft === "true");
+      const storedQuarterly = localStorage.getItem("stock-research-quarterly-hidden");
+      if (storedQuarterly !== null) setQuarterlyHidden(storedQuarterly === "true");
     } catch {
       /* ignore */
     }
@@ -122,11 +126,22 @@ export default function Home() {
     setWatchlistHeightPx(px);
     savePanelHeightPx(px);
   }, []);
-  const handleNewsToggle = useCallback(() => {
-    setNewsOpen((prev) => {
+  const handleLeftSidebarToggle = useCallback(() => {
+    setLeftSidebarHidden((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem("stock-research-news-sidebar-open", String(next));
+        localStorage.setItem("stock-research-left-sidebar-hidden", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+  const handleQuarterlyToggle = useCallback(() => {
+    setQuarterlyHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("stock-research-quarterly-hidden", String(next));
       } catch {
         /* ignore */
       }
@@ -351,6 +366,9 @@ export default function Home() {
     if (!latestClose) return undefined;
     return (atr21 / latestClose) * 100;
   }, [candles]);
+  const computed52WHighEffective = data?.quote?.yearHigh ?? computed52WHigh;
+  const avgVolume30dEffective = data?.quote?.avgVolume ?? avgVolume30d;
+  const atrPctEffective = data?.quote?.atrPct21d ?? atrPct;
 
   const ownershipData = ownership && typeof ownership === "object" && "quarters" in ownership ? ownership : null;
   const fundCount = ownershipData?.latestFundCount ?? (Array.isArray(ownership) ? ownership.length : 0);
@@ -361,7 +379,10 @@ export default function Home() {
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
-    if (s) setSymbol(s);
+    if (s) {
+      setSymbol(s);
+      setSearchValue("");
+    }
   };
 
   if (error && !data) {
@@ -387,9 +408,9 @@ export default function Home() {
         quote={data?.quote ?? null}
         profile={data?.profile}
         symbol={symbol}
-        atrPct={atrPct}
-        avgVolume30d={avgVolume30d}
-        computed52WHigh={computed52WHigh}
+        atrPct={atrPctEffective}
+        avgVolume30d={avgVolume30dEffective}
+        computed52WHigh={computed52WHighEffective}
         lastUpdate={lastUpdate}
         onSymbolChange={setSymbol}
         searchValue={searchValue}
@@ -399,6 +420,8 @@ export default function Home() {
         currentPage={page}
         onPageChange={setPage}
         dbUpdateCompletedAt={dbUpdateCompletedAt}
+        leftSidebarHidden={leftSidebarHidden}
+        onLeftSidebarToggle={handleLeftSidebarToggle}
       />
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden p-0 gap-0 bg-white dark:bg-zinc-900">
         {page === "market-monitor" ? (
@@ -420,58 +443,71 @@ export default function Home() {
         ) : (
           <>
         <div className="min-w-0 flex-1 min-h-0 overflow-hidden border-b border-zinc-200 dark:border-zinc-800 flex flex-col">
-          <div className="flex flex-1 min-h-0 min-w-0 gap-0 overflow-hidden">
-            <LeftSidebar
-              profile={data?.profile ?? null}
-              nextEarnings={data?.nextEarnings}
-              yearly={yearlyRows}
-              relatedStocks={relatedStocks}
-              onSymbolSelect={(sym) => {
-                setSymbol(sym);
-                setSearchValue(sym);
-              }}
-              onOpenRelatedStocksInWatchlist={
-                relatedStocks.length > 0
-                  ? () => {
-                      setWatchlistHeightPx((h) => {
-                        if (h <= 32) {
-                          savePanelHeightPx(320);
-                          return 320;
+          <div className="relative flex flex-1 min-h-0 min-w-0 gap-0 overflow-hidden">
+            <div
+              className={`relative min-h-0 shrink-0 overflow-hidden border-r border-zinc-200 dark:border-zinc-700 transition-[width] duration-300 ease-in-out ${
+                leftSidebarHidden ? "w-0" : "w-[22rem]"
+              }`}
+            >
+              <div
+                className={`h-full min-h-0 transition-transform duration-300 ease-in-out ${
+                  leftSidebarHidden ? "-translate-x-full" : "translate-x-0"
+                }`}
+              >
+                <LeftSidebar
+                  symbol={symbol}
+                  profile={data?.profile ?? null}
+                  nextEarnings={data?.nextEarnings}
+                  yearly={yearlyRows}
+                  relatedStocks={relatedStocks}
+                  onSymbolSelect={(sym) => {
+                    setSymbol(sym);
+                    setSearchValue("");
+                  }}
+                  onOpenRelatedStocksInWatchlist={
+                    relatedStocks.length > 0
+                      ? () => {
+                          setWatchlistHeightPx((h) => {
+                            if (h <= 32) {
+                              savePanelHeightPx(320);
+                              return 320;
+                            }
+                            return h;
+                          });
+                          setOpenToRelatedListTrigger(Date.now());
                         }
-                        return h;
-                      });
-                      setOpenToRelatedListTrigger(Date.now());
-                    }
-                  : undefined
-              }
-              onOpenSectorInWatchlist={(sector) => {
-                const trimmed = String(sector ?? "").trim();
-                if (!trimmed) return;
-                setWatchlistHeightPx((h) => {
-                  if (h <= 32) {
-                    savePanelHeightPx(320);
-                    return 320;
+                      : undefined
                   }
-                  return h;
-                });
-                setOpenToCollectionTrigger({ kind: "sector", value: trimmed, nonce: Date.now() });
-              }}
-              onOpenIndustryInWatchlist={(industry) => {
-                const trimmed = String(industry ?? "").trim();
-                if (!trimmed) return;
-                setWatchlistHeightPx((h) => {
-                  if (h <= 32) {
-                    savePanelHeightPx(320);
-                    return 320;
-                  }
-                  return h;
-                });
-                setOpenToCollectionTrigger({ kind: "industry", value: trimmed, nonce: Date.now() });
-              }}
-              loading={sidebarLoading}
-            />
-            <div className="flex flex-1 min-w-0 min-h-0 border-l border-zinc-200 dark:border-zinc-800 overflow-hidden">
-              <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                  onOpenSectorInWatchlist={(sector) => {
+                    const trimmed = String(sector ?? "").trim();
+                    if (!trimmed) return;
+                    setWatchlistHeightPx((h) => {
+                      if (h <= 32) {
+                        savePanelHeightPx(320);
+                        return 320;
+                      }
+                      return h;
+                    });
+                    setOpenToCollectionTrigger({ kind: "sector", value: trimmed, nonce: Date.now() });
+                  }}
+                  onOpenIndustryInWatchlist={(industry) => {
+                    const trimmed = String(industry ?? "").trim();
+                    if (!trimmed) return;
+                    setWatchlistHeightPx((h) => {
+                      if (h <= 32) {
+                        savePanelHeightPx(320);
+                        return 320;
+                      }
+                      return h;
+                    });
+                    setOpenToCollectionTrigger({ kind: "industry", value: trimmed, nonce: Date.now() });
+                  }}
+                  loading={sidebarLoading}
+                />
+              </div>
+            </div>
+            <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+              <div className="relative flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                 <StockChart
                   symbol={symbol}
                   data={candles}
@@ -479,39 +515,44 @@ export default function Home() {
                   timeframe={chartTimeframe}
                   onTimeframeChange={setChartTimeframe}
                 />
-                <QuarterlyBox rows={quarterlyRows} loading={quarterlyLoading} />
-              </div>
-              <div
-                className={`flex min-h-0 shrink-0 border-l border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 ${newsOpen ? "w-[18rem]" : "w-6"}`}
-              >
-                <button
-                  type="button"
-                  onClick={handleNewsToggle}
-                  className="w-6 shrink-0 flex items-center justify-center border-r border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 self-stretch"
-                  aria-expanded={newsOpen}
-                  aria-label={newsOpen ? "Collapse news" : "Expand news"}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    className={`${newsOpen ? "" : "rotate-180"}`}
-                    aria-hidden
+                <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700">
+                  <button
+                    type="button"
+                    onClick={handleQuarterlyToggle}
+                    className="w-full px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 flex items-center justify-center gap-2"
+                    aria-label={quarterlyHidden ? "Show quarterly box" : "Hide quarterly box"}
+                    title={quarterlyHidden ? "Show quarterly box" : "Hide quarterly box"}
                   >
-                    <path
-                      d="M3 3.5L13 8l-10 4.5V3.5z"
-                      fill="none"
-                      stroke="#9ca3af"
-                      strokeWidth="1.5"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-                {newsOpen && (
-                  <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-                    <NewsSidebar symbol={symbol} />
+                    <div className="flex items-center gap-2 min-w-0 justify-center">
+                      <svg
+                        width="20"
+                        height="12"
+                        viewBox="0 0 20 12"
+                        fill="currentColor"
+                        className="text-zinc-400 dark:text-zinc-500 shrink-0"
+                        aria-hidden
+                      >
+                        {[0, 1, 2, 3, 4, 5].map((col) => (
+                          <g key={col}>
+                            <rect x={1.5 + col * 3.2} y={1} width="1.5" height="1.5" rx="0.5" />
+                            <rect x={1.5 + col * 3.2} y={5.25} width="1.5" height="1.5" rx="0.5" />
+                            <rect x={1.5 + col * 3.2} y={9.5} width="1.5" height="1.5" rx="0.5" />
+                          </g>
+                        ))}
+                      </svg>
+                      <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide truncate">
+                        Quarterly Revenue & EPS
+                      </span>
+                    </div>
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-in-out ${
+                      quarterlyHidden ? "max-h-0 opacity-0 -translate-y-2" : "max-h-[360px] opacity-100 translate-y-0"
+                    }`}
+                  >
+                    <QuarterlyBox rows={quarterlyRows} loading={quarterlyLoading} />
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -528,7 +569,7 @@ export default function Home() {
             onHeightChange={handleWatchlistHeightChange}
             onSymbolSelect={(sym) => {
               setSymbol(sym);
-              setSearchValue(sym);
+              setSearchValue("");
             }}
             relatedStocksList={
               relatedStocks.length > 0 && symbol

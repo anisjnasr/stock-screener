@@ -8,7 +8,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type TooltipProps,
+  type TooltipContentProps,
 } from "recharts";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 
@@ -44,6 +44,13 @@ function fmtRatio(n: number | null | undefined): string {
 function fmtPctCell(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
   return `${n.toFixed(1)}%`;
+}
+
+function getBreadthPctCellClass(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "";
+  if (n < 30) return "bg-[#5f4147] text-white";
+  if (n < 40) return "bg-[#a54557] text-white";
+  return "";
 }
 
 function formatDateDmy(input: string): string {
@@ -86,18 +93,24 @@ function NetTooltip({
   active,
   payload,
   label,
-}: TooltipProps<number, string>) {
+}: TooltipContentProps) {
   if (!active || !payload || payload.length === 0) return null;
-  const net = Number(payload[0]?.value ?? 0);
+  const rawValue = payload[0]?.value;
+  const net =
+    typeof rawValue === "number"
+      ? rawValue
+      : Array.isArray(rawValue)
+        ? Number(rawValue[0] ?? 0)
+        : Number(rawValue ?? 0);
   return (
     <div
       style={{
         background: "#1c1c1f",
         border: "1px solid #2e2e35",
         borderRadius: 6,
-        padding: "3px 6px",
-        fontSize: 10,
-        lineHeight: 1.2,
+        padding: "4px 8px",
+        fontSize: 12,
+        lineHeight: 1.3,
       }}
     >
       <div style={{ color: "#d4d4d8" }}>{formatDateDmy(String(label ?? ""))}</div>
@@ -153,13 +166,13 @@ function MiniBarSeries({
             />
             <YAxis tick={false} axisLine={false} tickLine={false} domain={[-maxAbs, maxAbs]} />
             <ReferenceLine y={0} stroke="#2e2e35" />
-            <Tooltip content={<NetTooltip />} />
+            <Tooltip content={NetTooltip} />
             <Bar dataKey="net" maxBarSize={5} minPointSize={2} radius={[2, 2, 0, 0]}>
               {series.map((entry) => (
                 <Cell
                   key={entry.date}
                   fill={entry.net >= 0 ? "#0a8963" : "#a54557"}
-                  fillOpacity={0.6}
+                  fillOpacity={1}
                 />
               ))}
             </Bar>
@@ -243,8 +256,8 @@ export default function MarketMonitorTable() {
         </p>
       </div>
       <div className="mb-4 rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900 shadow-sm">
-        <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2">
-          Net New Highs (Highs - Lows)
+        <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2 text-center">
+          Net New Highs
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
           <MiniBarSeries title="1M" series={netNewHighs?.oneMonth ?? []} />
@@ -277,7 +290,7 @@ export default function MarketMonitorTable() {
                 S&amp;P 500 Breadth
               </th>
               <th
-                className="sticky top-0 z-10 bg-fuchsia-100/80 dark:bg-fuchsia-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold text-fuchsia-900 dark:text-fuchsia-100"
+                className="sticky top-0 z-10 bg-violet-100/80 dark:bg-violet-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold text-violet-900 dark:text-violet-100"
                 colSpan={2}
               >
                 Nasdaq Breadth
@@ -383,16 +396,32 @@ export default function MarketMonitorTable() {
                 <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>
                   {fmtInt(row.down50pct_month)}
                 </td>
-                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
+                <td
+                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700 ${getBreadthPctCellClass(
+                    row.sp500PctAbove50d
+                  )}`}
+                >
                   {fmtPctCell(row.sp500PctAbove50d)}
                 </td>
-                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td
+                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
+                    row.sp500PctAbove200d
+                  )}`}
+                >
                   {fmtPctCell(row.sp500PctAbove200d)}
                 </td>
-                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td
+                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
+                    row.nasdaqPctAbove50d
+                  )}`}
+                >
                   {fmtPctCell(row.nasdaqPctAbove50d)}
                 </td>
-                <td className="pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
+                <td
+                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
+                    row.nasdaqPctAbove200d
+                  )}`}
+                >
                   {fmtPctCell(row.nasdaqPctAbove200d)}
                 </td>
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">

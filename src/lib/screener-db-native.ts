@@ -96,9 +96,8 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
   let change_pct: number | null = typeof r.change_pct === "number" ? r.change_pct : null;
   let atr_pct_21d: number | null = typeof r.atr_pct_21d === "number" ? r.atr_pct_21d : null;
 
-  if (marketClosed && prev_close != null && prev_close > 0) {
+  if ((last_price == null || last_price <= 0) && prev_close != null && prev_close > 0) {
     last_price = prev_close;
-    change_pct = 0;
     if (atr_pct_21d != null && last_price_raw != null && last_price_raw > 0 && prev_close > 0) {
       atr_pct_21d = (atr_pct_21d * last_price_raw) / prev_close;
     }

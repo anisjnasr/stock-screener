@@ -136,25 +136,26 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
   if (!t) return null;
   const day = t.day ?? {};
   const prev = t.prevDay ?? {};
-  const close = day.c ?? prev.c ?? t.lastTrade?.p ?? 0;
-  const prevClose = prev.c ?? close;
-  const lastClosedSessionClose = day.c ?? prev.c ?? close;
+  const pickPositive = (...values: Array<number | undefined>): number | undefined =>
+    values.find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+  const close = pickPositive(day.c, prev.c, t.lastTrade?.p) ?? 0;
+  const prevClose = pickPositive(prev.c, close) ?? close;
+  const lastClosedSessionClose = pickPositive(day.c, prev.c, close) ?? close;
   const marketOpen = isUSMarketOpen();
   const displayPrice = marketOpen ? close : lastClosedSessionClose;
-  const change = marketOpen ? close - prevClose : 0;
-  const changePct =
-    marketOpen && prevClose > 0 && close > 0 ? (change / prevClose) * 100 : 0;
+  const change = prevClose > 0 && displayPrice > 0 ? displayPrice - prevClose : 0;
+  const changePct = prevClose > 0 && displayPrice > 0 ? (change / prevClose) * 100 : 0;
   return {
     symbol: t.ticker ?? sym,
     name: sym,
     price: displayPrice,
     changesPercentage: changePct,
     change,
-    dayLow: day.l ?? close,
-    dayHigh: day.h ?? close,
-    yearHigh: day.h ?? close,
-    yearLow: day.l ?? close,
-    volume: day.v ?? 0,
+    dayLow: pickPositive(day.l, prev.l, close) ?? close,
+    dayHigh: pickPositive(day.h, prev.h, close) ?? close,
+    yearHigh: pickPositive(day.h, prev.h, close) ?? close,
+    yearLow: pickPositive(day.l, prev.l, close) ?? close,
+    volume: pickPositive(day.v, prev.v) ?? 0,
     avgVolume: t.min?.av,
     marketCap: undefined,
     priceAvg50: undefined,

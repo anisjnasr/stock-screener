@@ -46,6 +46,8 @@ type HeaderProps = {
   currentPage?: HeaderPage;
   onPageChange?: (page: HeaderPage) => void;
   dbUpdateCompletedAt?: Date | null;
+  leftSidebarHidden?: boolean;
+  onLeftSidebarToggle?: () => void;
 };
 
 function ordinal(day: number): string {
@@ -110,6 +112,8 @@ export default function Header({
   currentPage,
   onPageChange,
   dbUpdateCompletedAt,
+  leftSidebarHidden = false,
+  onLeftSidebarToggle,
 }: HeaderProps) {
   const brandName = "Stock Stalker";
   const name = quote?.name ?? profile?.companyName ?? symbol;
@@ -158,7 +162,7 @@ export default function Header({
 
   const selectSymbol = useCallback(
     (sym: string) => {
-      onSearchChange(sym);
+      onSearchChange("");
       onSymbolChange(sym);
       setSuggestionsOpen(false);
       setSuggestions([]);
@@ -205,6 +209,21 @@ export default function Header({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pr-28">
           <div className="flex flex-wrap items-center gap-3 min-w-0">
             {currentPage === "home" && (
+              <button
+                type="button"
+                onClick={onLeftSidebarToggle}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/60 transition-colors shrink-0"
+                aria-label={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
+                title={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
+              >
+                <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M2 3.25H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M2 7H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M2 10.75H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            {currentPage === "home" && (
               <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
                 {loading ? "…" : name}
               </h1>
@@ -231,7 +250,7 @@ export default function Header({
                     if (suggestions.length > 0) setSuggestionsOpen(true);
                   }}
                   onKeyDown={handleKeyDown}
-                  placeholder="Search..."
+                  placeholder="Search"
                   className="w-28 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
                   aria-label="Stock search"
                   autoComplete="off"
@@ -330,63 +349,71 @@ export default function Header({
           </div>
         </div>
         {currentPage === "home" && (
-          <div className="mt-2 pr-28 flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 text-sm overflow-x-auto min-w-0">
-            <span className="text-zinc-600 dark:text-zinc-400">
+          <div
+            className="mt-3 pr-28 relative transition-[margin-left] duration-300 ease-in-out"
+            style={{ marginLeft: leftSidebarHidden ? 0 : "22rem" }}
+          >
+            <div
+              className="flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-x-auto min-w-0 whitespace-nowrap"
+              style={{ fontSize: "clamp(11px, 0.75vw, 14px)" }}
+            >
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Last:{" "}
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {price != null ? `$${price.toFixed(2)}` : "NA"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Change %:{" "}
+                <span
+                  className={`tabular-nums ${
+                    isUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {fmtPct(chgPct)}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Vol:{" "}
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {vol != null ? vol.toLocaleString() : "NA"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Avg Vol:{" "}
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {avgVol != null ? avgVol.toLocaleString() : "NA"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Mkt Cap (bn):{" "}
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {fmtNum(mktCap)}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                52W High:{" "}
+                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {yHigh != null ? `$${yHigh.toFixed(2)}` : "NA"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                Off 52W High:{" "}
+                <span className="tabular-nums text-red-600 dark:text-red-400">
+                  {off52WHighPct != null ? `${off52WHighPct.toFixed(2)}%` : "NA"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+                ATRP:{" "}
+                <span className="tabular-nums text-blue-600 dark:text-blue-400">
+                  {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
+                </span>
+              </span>
+            </div>
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap pointer-events-none">
               DB Update:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+              <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
                 {formatDbUpdateTimestamp(dbUpdateCompletedAt)}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Last:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {price != null ? `$${price.toFixed(2)}` : "NA"}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Change %:{" "}
-              <span
-                className={`tabular-nums ${
-                  isUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {fmtPct(chgPct)}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Vol:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {vol != null ? vol.toLocaleString() : "NA"}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Avg Vol:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {avgVol != null ? avgVol.toLocaleString() : "NA"}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Mkt Cap (bn):{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {fmtNum(mktCap)}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              52W High:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {yHigh != null ? `$${yHigh.toFixed(2)}` : "NA"}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Off 52W High:{" "}
-              <span className="tabular-nums text-red-600 dark:text-red-400">
-                {off52WHighPct != null ? `${off52WHighPct.toFixed(2)}%` : "NA"}
-              </span>
-            </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              ATRP:{" "}
-              <span className="tabular-nums text-blue-600 dark:text-blue-400">
-                {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
               </span>
             </span>
           </div>
