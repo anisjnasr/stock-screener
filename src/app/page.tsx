@@ -519,11 +519,18 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={handleQuarterlyToggle}
-                    className="w-full px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 flex items-center justify-center gap-2"
+                    className="w-full h-8 px-2 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex items-center"
                     aria-label={quarterlyHidden ? "Show quarterly box" : "Hide quarterly box"}
                     title={quarterlyHidden ? "Show quarterly box" : "Hide quarterly box"}
                   >
-                    <div className="flex items-center gap-2 min-w-0 justify-center">
+                    <div
+                      className="flex-1 flex justify-center items-center gap-1.5 min-w-0 transition-transform duration-300 ease-in-out"
+                      style={{
+                        transform: leftSidebarHidden
+                          ? "translateX(-1.75rem)"
+                          : "translateX(-12.75rem)",
+                      }}
+                    >
                       <svg
                         width="20"
                         height="12"

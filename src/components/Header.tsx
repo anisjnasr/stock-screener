@@ -206,157 +206,147 @@ export default function Header({
           alt={brandName}
           className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700 absolute right-4 top-3"
         />
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pr-28">
-          <div className="flex flex-wrap items-center gap-3 min-w-0">
-            {currentPage === "home" && (
+        <div className="flex items-center justify-center pr-28">
+          <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
+            {[
+              { id: "home" as HeaderPage, label: "Home" },
+              { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
+              { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
+            ].map((item) => (
               <button
+                key={item.id}
                 type="button"
-                onClick={onLeftSidebarToggle}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/60 transition-colors shrink-0"
-                aria-label={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
-                title={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
+                onClick={() => onPageChange?.(item.id)}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                  currentPage === item.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
               >
-                <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <path d="M2 3.25H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M2 7H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M2 10.75H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
+                {item.label}
               </button>
-            )}
-            {currentPage === "home" && (
-              <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
-                {loading ? "…" : name}
-              </h1>
-            )}
-            {currentPage === "home" && (
-            <div ref={searchContainerRef} className="relative">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-                    selectSymbol(suggestions[highlightedIndex].symbol);
-                  } else {
-                    onSearchSubmit();
-                  }
-                }}
-                className="flex items-center gap-1"
-              >
-                <input
-                  type="text"
-                  value={searchValue}
-                  onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-                  onFocus={(e) => {
-                    (e.target as HTMLInputElement).select();
-                    if (suggestions.length > 0) setSuggestionsOpen(true);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Search"
-                  className="w-28 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
-                  aria-label="Stock search"
-                  autoComplete="off"
-                  aria-autocomplete="list"
-                  aria-expanded={suggestionsOpen}
-                  aria-controls="search-suggestions"
-                  aria-activedescendant={
-                    highlightedIndex >= 0 ? `suggestion-${highlightedIndex}` : undefined
-                  }
-                />
-                <button
-                  type="submit"
-                  className="rounded bg-zinc-700 dark:bg-zinc-600 text-white px-2 py-1 text-sm hover:bg-zinc-600 dark:hover:bg-zinc-500"
-                >
-                  Go
-                </button>
-              </form>
-              {suggestionsOpen && (
-                <ul
-                  id="search-suggestions"
-                  role="listbox"
-                  className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
-                >
-                  {suggestionsLoading ? (
-                    <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                      Searching…
-                    </li>
-                  ) : (
-                    suggestions.map((s, i) => (
-                      <li
-                        key={`${s.symbol}-${i}`}
-                        id={`suggestion-${i}`}
-                        role="option"
-                        aria-selected={i === highlightedIndex}
-                        className={`cursor-pointer px-3 py-2 text-sm ${
-                          i === highlightedIndex
-                            ? "bg-zinc-100 dark:bg-zinc-700"
-                            : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
-                        }`}
-                        onMouseEnter={() => setHighlightedIndex(i)}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          selectSymbol(s.symbol);
-                        }}
-                      >
-                        <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100">
-                          {s.symbol}
-                        </span>
-                        {s.name && (
-                          <span className="ml-2 text-zinc-500 dark:text-zinc-400 truncate block">
-                            {s.name}
-                          </span>
-                        )}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              )}
-            </div>
-            )}
-          </div>
-          {/* Center nav: primary pages */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
-              {[
-                { id: "home" as HeaderPage, label: "Home" },
-                { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
-                { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onPageChange?.(item.id)}
-                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                    currentPage === item.id
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  /* reserved for future: open add-page dialog */
-                }}
-                className="ml-1 flex items-center justify-center text-zinc-500 dark:text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100"
-                style={{ width: 28, height: 28 }}
-                title="Add page"
-                aria-label="Add page"
-              >
-                <span className="text-base leading-none">+</span>
-              </button>
-            </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                /* reserved for future: open add-page dialog */
+              }}
+              className="ml-1 flex items-center justify-center text-zinc-500 dark:text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100"
+              style={{ width: 28, height: 28 }}
+              title="Add page"
+              aria-label="Add page"
+            >
+              <span className="text-base leading-none">+</span>
+            </button>
           </div>
         </div>
         {currentPage === "home" && (
           <div
-            className="mt-3 pr-28 relative transition-[margin-left] duration-300 ease-in-out"
-            style={{ marginLeft: leftSidebarHidden ? 0 : "22rem" }}
+            className="mt-3 pr-28 relative"
           >
             <div
-              className="flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-x-auto min-w-0 whitespace-nowrap"
+              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-x-auto min-w-0 whitespace-nowrap"
               style={{ fontSize: "clamp(11px, 0.75vw, 14px)" }}
             >
+              <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={onLeftSidebarToggle}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/60 transition-colors shrink-0"
+                  aria-label={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
+                  title={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
+                >
+                  <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M2 3.25H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    <path d="M2 7H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    <path d="M2 10.75H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <span className="text-base font-semibold font-mono text-zinc-900 dark:text-zinc-100 shrink-0">
+                  {symbol.toUpperCase()}
+                </span>
+                <div ref={searchContainerRef} className="relative">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+                        selectSymbol(suggestions[highlightedIndex].symbol);
+                      } else {
+                        onSearchSubmit();
+                      }
+                    }}
+                    className="flex items-center gap-1"
+                  >
+                    <input
+                      type="text"
+                      value={searchValue}
+                      onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
+                      onFocus={(e) => {
+                        (e.target as HTMLInputElement).select();
+                        if (suggestions.length > 0) setSuggestionsOpen(true);
+                      }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Search"
+                      className="w-28 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                      aria-label="Stock search"
+                      autoComplete="off"
+                      aria-autocomplete="list"
+                      aria-expanded={suggestionsOpen}
+                      aria-controls="search-suggestions"
+                      aria-activedescendant={
+                        highlightedIndex >= 0 ? `suggestion-${highlightedIndex}` : undefined
+                      }
+                    />
+                    <button
+                      type="submit"
+                      className="rounded bg-zinc-700 dark:bg-zinc-600 text-white px-2 py-1 text-sm hover:bg-zinc-600 dark:hover:bg-zinc-500"
+                    >
+                      Go
+                    </button>
+                  </form>
+                  {suggestionsOpen && (
+                    <ul
+                      id="search-suggestions"
+                      role="listbox"
+                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
+                    >
+                      {suggestionsLoading ? (
+                        <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+                          Searching…
+                        </li>
+                      ) : (
+                        suggestions.map((s, i) => (
+                          <li
+                            key={`${s.symbol}-${i}`}
+                            id={`suggestion-${i}`}
+                            role="option"
+                            aria-selected={i === highlightedIndex}
+                            className={`cursor-pointer px-3 py-2 text-sm ${
+                              i === highlightedIndex
+                                ? "bg-zinc-100 dark:bg-zinc-700"
+                                : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                            }`}
+                            onMouseEnter={() => setHighlightedIndex(i)}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectSymbol(s.symbol);
+                            }}
+                          >
+                            <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100">
+                              {s.symbol}
+                            </span>
+                            {s.name && (
+                              <span className="ml-2 text-zinc-500 dark:text-zinc-400 truncate block">
+                                {s.name}
+                              </span>
+                            )}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </div>
               <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
                 Last:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">

@@ -41,6 +41,7 @@ type DrawTemplate = "weekly" | "daily" | "custom";
 type DrawingStyle = {
   color: string;
   lineWidth: number;
+  lineStyle: 0 | 1 | 2;
   showLabel: boolean;
   label: string;
 };
@@ -133,12 +134,14 @@ const TEMPLATE_STYLES: Record<Exclude<DrawTemplate, "custom">, DrawingStyle> = {
   weekly: {
     color: "#f59e0b",
     lineWidth: 2,
+    lineStyle: 0,
     showLabel: true,
     label: "Weekly",
   },
   daily: {
     color: "#d946ef",
     lineWidth: 2,
+    lineStyle: 0,
     showLabel: true,
     label: "Daily",
   },
@@ -188,6 +191,7 @@ export default function StockChart({
   const [customStyle, setCustomStyle] = useState<DrawingStyle>({
     color: "#22d3ee",
     lineWidth: 2,
+    lineStyle: 0,
     showLabel: false,
     label: "",
   });
@@ -195,6 +199,7 @@ export default function StockChart({
     null
   );
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [showSelectedDrawingSettings, setShowSelectedDrawingSettings] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapToOhlc, setSnapToOhlc] = useState(true);
 
@@ -484,6 +489,7 @@ export default function StockChart({
       const lineSeries = chart.addSeries(LineSeries, {
         color: d.style.color,
         lineWidth: clampedLineWidth,
+        lineStyle: d.style.lineStyle ?? 0,
         lastValueVisible: false,
         priceLineVisible: false,
         crosshairMarkerVisible: false,
@@ -688,12 +694,35 @@ export default function StockChart({
     () => drawings.find((d) => d.id === selectedDrawingId) ?? null,
     [drawings, selectedDrawingId]
   );
+  const updateSelectedDrawingStyle = useCallback(
+    (partial: Partial<DrawingStyle>) => {
+      if (!selectedDrawingId) return;
+      setDrawings((prev) =>
+        prev.map((d) =>
+          d.id === selectedDrawingId
+            ? {
+                ...d,
+                style: {
+                  ...d.style,
+                  ...partial,
+                },
+              }
+            : d
+        )
+      );
+    },
+    [selectedDrawingId]
+  );
 
   useEffect(() => {
     if (selectedDrawingId && !drawings.some((d) => d.id === selectedDrawingId)) {
       setSelectedDrawingId(null);
     }
   }, [drawings, selectedDrawingId]);
+
+  useEffect(() => {
+    if (!selectedDrawing) setShowSelectedDrawingSettings(false);
+  }, [selectedDrawing]);
 
   const getHandlePoint = useCallback(
     (d: ChartDrawing, handle: DragHandle): { x: number; y: number } | null => {
@@ -784,8 +813,7 @@ export default function StockChart({
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
       <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 shrink-0 flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-sm font-semibold font-mono text-zinc-900 dark:text-zinc-100">{symbol}</span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           {onTimeframeChange &&
             timeframes.map((tf) => (
               <button
@@ -801,8 +829,6 @@ export default function StockChart({
                 {tf.charAt(0).toUpperCase() + tf.slice(1)}
               </button>
             ))}
-        </div>
-        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => {
@@ -858,6 +884,9 @@ export default function StockChart({
       ) : (
         <div className="relative w-full flex-1 min-h-0">
           <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+          <div className="absolute top-3 left-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide">
+            {symbol.toUpperCase()}
+          </div>
           {crosshairCandle && (
             <div className="absolute top-2 left-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3">
               <span>O {crosshairCandle.open.toFixed(2)}</span>
@@ -885,6 +914,77 @@ export default function StockChart({
               aria-label="Drag drawing handle"
             />
           ))}
+          {selectedDrawing && (
+            <div className="absolute top-2 right-12 z-20 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowSelectedDrawingSettings((v) => !v)}
+                className="p-1.5 rounded bg-zinc-900/80 text-zinc-300 border border-zinc-600 hover:bg-zinc-800"
+                title="Drawing settings"
+                aria-label="Drawing settings"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                  <path d="M9.243 1.5a1.25 1.25 0 0 0-2.486 0l-.11.887a4.51 4.51 0 0 0-1.26.73l-.852-.36a1.25 1.25 0 0 0-1.64.66l-.75 1.8a1.25 1.25 0 0 0 .64 1.62l.83.35a4.37 4.37 0 0 0 0 1.46l-.83.35a1.25 1.25 0 0 0-.64 1.62l.75 1.8a1.25 1.25 0 0 0 1.64.66l.852-.36a4.51 4.51 0 0 0 1.26.73l.11.887a1.25 1.25 0 0 0 2.486 0l.11-.887a4.51 4.51 0 0 0 1.26-.73l.852.36a1.25 1.25 0 0 0 1.64-.66l.75-1.8a1.25 1.25 0 0 0-.64-1.62l-.83-.35a4.37 4.37 0 0 0 0-1.46l.83-.35a1.25 1.25 0 0 0 .64-1.62l-.75-1.8a1.25 1.25 0 0 0-1.64-.66l-.852.36a4.51 4.51 0 0 0-1.26-.73l-.11-.887ZM8 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawings((prev) => prev.filter((d) => d.id !== selectedDrawing.id));
+                  setSelectedDrawingId(null);
+                }}
+                className="p-1.5 rounded bg-zinc-900/80 text-rose-300 border border-zinc-600 hover:bg-zinc-800"
+                title="Delete drawing"
+                aria-label="Delete drawing"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                  <path d="M6.5 1.5h3a1 1 0 0 1 1 1V3H13a.5.5 0 0 1 0 1h-.5l-.6 9a1.5 1.5 0 0 1-1.5 1.4H5.6A1.5 1.5 0 0 1 4.1 13l-.6-9H3a.5.5 0 0 1 0-1h2.5v-.5a1 1 0 0 1 1-1Zm0 1a.2.2 0 0 0-.2.2V3h3.4v-.3a.2.2 0 0 0-.2-.2h-3Z" />
+                </svg>
+              </button>
+              {showSelectedDrawingSettings && (
+                <div className="absolute right-0 top-9 w-52 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 shadow-lg p-2 text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-600 dark:text-zinc-300">Color</span>
+                    <input
+                      type="color"
+                      value={selectedDrawing.style.color}
+                      onChange={(e) => updateSelectedDrawingStyle({ color: e.target.value })}
+                      className="w-10 h-5 border border-zinc-300 dark:border-zinc-600 rounded cursor-pointer bg-transparent"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-600 dark:text-zinc-300">Thickness</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={6}
+                      value={selectedDrawing.style.lineWidth}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (!Number.isFinite(n)) return;
+                        updateSelectedDrawingStyle({ lineWidth: Math.max(1, Math.min(6, n)) });
+                      }}
+                      className="w-14 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-1 py-0.5 text-zinc-700 dark:text-zinc-200"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-600 dark:text-zinc-300">Style</span>
+                    <select
+                      value={selectedDrawing.style.lineStyle ?? 0}
+                      onChange={(e) =>
+                        updateSelectedDrawingStyle({ lineStyle: Number(e.target.value) as 0 | 1 | 2 })
+                      }
+                      className="w-24 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-1 py-0.5 text-zinc-700 dark:text-zinc-200"
+                    >
+                      <option value={0}>Solid</option>
+                      <option value={2}>Dashed</option>
+                      <option value={1}>Dotted</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {/* Chart settings trigger at axes intersection (bottom-right) */}
           <div className="absolute bottom-1 right-1 z-20">
             <button
@@ -1072,6 +1172,22 @@ export default function StockChart({
                       disabled={drawTemplate !== "custom"}
                       className="w-14 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-1 py-0.5 text-zinc-700 dark:text-zinc-200 disabled:opacity-50"
                     />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-zinc-600 dark:text-zinc-300">Line style</span>
+                    <select
+                      value={drawTemplate === "custom" ? customStyle.lineStyle : activeDrawingStyle.lineStyle}
+                      onChange={(e) => {
+                        if (drawTemplate !== "custom") return;
+                        setCustomStyle((s) => ({ ...s, lineStyle: Number(e.target.value) as 0 | 1 | 2 }));
+                      }}
+                      disabled={drawTemplate !== "custom"}
+                      className="w-24 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-1 py-0.5 text-zinc-700 dark:text-zinc-200 disabled:opacity-50"
+                    >
+                      <option value={0}>Solid</option>
+                      <option value={2}>Dashed</option>
+                      <option value={1}>Dotted</option>
+                    </select>
                   </div>
                   <label className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-zinc-600 dark:text-zinc-300">Ray label</span>
