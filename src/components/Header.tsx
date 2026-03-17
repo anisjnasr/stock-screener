@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { formatDisplayDateTime } from "@/lib/date-format";
 
 type SearchSuggestion = {
   symbol: string;
@@ -197,17 +196,19 @@ export default function Header({
 
   return (
     <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-sm">
-      <div className="px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="relative px-4 py-3">
+        <img
+          src="/brand/stockstalker-lockup.svg"
+          alt={brandName}
+          className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700 absolute right-4 top-3"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pr-28">
           <div className="flex flex-wrap items-center gap-3 min-w-0">
-            <img
-              src="/brand/stockstalker-lockup.svg"
-              alt={brandName}
-              className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
-            />
-            <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
-              {currentPage === "home" ? (loading ? "…" : name) : brandName}
-            </h1>
+            {currentPage === "home" && (
+              <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
+                {loading ? "…" : name}
+              </h1>
+            )}
             {currentPage === "home" && (
             <div ref={searchContainerRef} className="relative">
               <form
@@ -327,8 +328,9 @@ export default function Header({
               </button>
             </div>
           </div>
-          {currentPage === "home" && (
-          <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 text-sm overflow-x-auto min-w-0">
+        </div>
+        {currentPage === "home" && (
+          <div className="mt-2 pr-28 flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 text-sm overflow-x-auto min-w-0">
             <span className="text-zinc-600 dark:text-zinc-400">
               DB Update:{" "}
               <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
@@ -387,15 +389,8 @@ export default function Header({
                 {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
               </span>
             </span>
-            <span className="text-zinc-600 dark:text-zinc-400">
-              Updated:{" "}
-              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                {lastUpdate != null ? formatDisplayDateTime(lastUpdate) : "NA"}
-              </span>
-            </span>
           </div>
-          )}
-        </div>
+        )}
       </div>
     </header>
   );

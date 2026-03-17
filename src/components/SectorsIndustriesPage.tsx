@@ -199,8 +199,10 @@ export default function SectorsIndustriesPage({
 
   return (
     <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Sectors / Industries</h2>
+      <div className="mb-4 relative flex flex-wrap items-center justify-end gap-3">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 absolute left-1/2 -translate-x-1/2">
+          Sectors / Industries
+        </h2>
         <div className="inline-flex items-center gap-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-1">
           {TIMEFRAME_OPTIONS.map((opt) => (
             <button

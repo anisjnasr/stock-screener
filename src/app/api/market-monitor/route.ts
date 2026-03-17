@@ -48,7 +48,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 8;
 
 export async function GET() {
   try {
@@ -62,11 +62,13 @@ export async function GET() {
     start.setFullYear(start.getFullYear() - 2);
     const startDate = start.toISOString().slice(0, 10);
 
+    let cachedPayload: CachePayload | null = null;
     // Try cache first; if it matches the current [startDate, latestDate] window, return it.
     if (existsSync(CACHE_PATH)) {
       try {
         const raw = readFileSync(CACHE_PATH, "utf8");
         const cached = JSON.parse(raw) as CachePayload;
+        cachedPayload = cached;
         if (
           cached.version === CACHE_VERSION &&
           cached.latestDate === latestDate &&
@@ -77,38 +79,33 @@ export async function GET() {
         }
       } catch {
         // ignore cache errors and recompute below
+        cachedPayload = null;
       }
     }
 
     let baseRows: ReturnType<typeof getMarketMonitorBaseRowsFromDailyBars> = [];
     let cachedRowsAsc: MarketMonitorRow[] = [];
     let canIncremental = false;
-    if (existsSync(CACHE_PATH)) {
-      try {
-        const raw = readFileSync(CACHE_PATH, "utf8");
-        const cached = JSON.parse(raw) as CachePayload;
-        if (
-          cached.version === CACHE_VERSION &&
-          cached.startDate === startDate &&
-          Array.isArray(cached.rows) &&
-          cached.rows.length > 0
-        ) {
-          cachedRowsAsc = [...cached.rows].sort((a, b) => a.date.localeCompare(b.date));
-          const cachedLatest = cachedRowsAsc[cachedRowsAsc.length - 1]?.date;
-          if (cachedLatest && cachedLatest < latestDate) {
-            const nextStart = new Date(`${cachedLatest}T00:00:00Z`);
-            nextStart.setUTCDate(nextStart.getUTCDate() + 1);
-            const nextStartDate = nextStart.toISOString().slice(0, 10);
-            const missing = getMarketMonitorBaseRowsFromDailyBars(nextStartDate, latestDate);
-            baseRows = [...cachedRowsAsc, ...missing];
-            canIncremental = true;
-          } else if (cachedLatest === latestDate) {
-            baseRows = cachedRowsAsc;
-            canIncremental = true;
-          }
-        }
-      } catch {
-        // ignore and full recompute below
+    let incrementalStartDate: string | null = null;
+    if (
+      cachedPayload &&
+      cachedPayload.version === CACHE_VERSION &&
+      cachedPayload.startDate === startDate &&
+      Array.isArray(cachedPayload.rows) &&
+      cachedPayload.rows.length > 0
+    ) {
+      cachedRowsAsc = [...cachedPayload.rows].sort((a, b) => a.date.localeCompare(b.date));
+      const cachedLatest = cachedRowsAsc[cachedRowsAsc.length - 1]?.date;
+      if (cachedLatest && cachedLatest < latestDate) {
+        const nextStart = new Date(`${cachedLatest}T00:00:00Z`);
+        nextStart.setUTCDate(nextStart.getUTCDate() + 1);
+        incrementalStartDate = nextStart.toISOString().slice(0, 10);
+        const missing = getMarketMonitorBaseRowsFromDailyBars(incrementalStartDate, latestDate);
+        baseRows = [...cachedRowsAsc, ...missing];
+        canIncremental = true;
+      } else if (cachedLatest === latestDate) {
+        baseRows = cachedRowsAsc;
+        canIncremental = true;
       }
     }
     if (!canIncremental) {
@@ -137,10 +134,37 @@ export async function GET() {
       return up / down;
     }
 
-    const sp500BreadthSeries = getIndexBreadthSeries("sp500", startDate, latestDate);
-    const nasdaqBreadthSeries = getIndexBreadthSeries("nasdaq100", startDate, latestDate);
-    const sp500ByDate = new Map(sp500BreadthSeries.rows.map((r) => [r.date, r]));
-    const nasdaqByDate = new Map(nasdaqBreadthSeries.rows.map((r) => [r.date, r]));
+    const sp500ByDate = new Map<string, { pctAbove50d: number | null; pctAbove200d: number | null }>();
+    const nasdaqByDate = new Map<string, { pctAbove50d: number | null; pctAbove200d: number | null }>();
+    if (canIncremental && cachedRowsAsc.length > 0 && incrementalStartDate) {
+      for (const r of cachedRowsAsc) {
+        sp500ByDate.set(r.date, {
+          pctAbove50d: r.sp500PctAbove50d ?? null,
+          pctAbove200d: r.sp500PctAbove200d ?? null,
+        });
+        nasdaqByDate.set(r.date, {
+          pctAbove50d: r.nasdaqPctAbove50d ?? null,
+          pctAbove200d: r.nasdaqPctAbove200d ?? null,
+        });
+      }
+      const sp500Missing = getIndexBreadthSeries("sp500", incrementalStartDate, latestDate);
+      const nasdaqMissing = getIndexBreadthSeries("nasdaq", incrementalStartDate, latestDate);
+      for (const r of sp500Missing.rows) {
+        sp500ByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
+      }
+      for (const r of nasdaqMissing.rows) {
+        nasdaqByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
+      }
+    } else {
+      const sp500BreadthSeries = getIndexBreadthSeries("sp500", startDate, latestDate);
+      const nasdaqBreadthSeries = getIndexBreadthSeries("nasdaq", startDate, latestDate);
+      for (const r of sp500BreadthSeries.rows) {
+        sp500ByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
+      }
+      for (const r of nasdaqBreadthSeries.rows) {
+        nasdaqByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
+      }
+    }
 
     const withRatiosAsc: MarketMonitorRow[] = rowsAsc.map((r, idx) => ({
       date: r.date,
@@ -178,9 +202,9 @@ export async function GET() {
       startDate,
       breadth: {
         sp500PctAbove50d: breadthById.get("sp500")?.pctAbove50d ?? null,
-        nasdaqPctAbove50d: breadthById.get("nasdaq100")?.pctAbove50d ?? null,
+        nasdaqPctAbove50d: breadthById.get("nasdaq")?.pctAbove50d ?? null,
         sp500PctAbove200d: breadthById.get("sp500")?.pctAbove200d ?? null,
-        nasdaqPctAbove200d: breadthById.get("nasdaq100")?.pctAbove200d ?? null,
+        nasdaqPctAbove200d: breadthById.get("nasdaq")?.pctAbove200d ?? null,
       },
       netNewHighs: {
         oneMonth: nnh1m.rows,

@@ -310,7 +310,7 @@ export type TickerPerformanceRow = {
 };
 
 export type IndexBreadthRow = {
-  indexId: "sp500" | "nasdaq100";
+  indexId: "sp500" | "nasdaq";
   indexName: string;
   pctAbove50d: number | null;
   pctAbove200d: number | null;
@@ -373,7 +373,8 @@ function getBufferStartDate(asOfDate: string, lookbackDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
+function loadIndexSymbols(indexId: "sp500" | "nasdaq100" | "nasdaq"): string[] {
+  if (indexId === "nasdaq") return [];
   const directPath = join(process.cwd(), "data", `${indexId}.json`);
   const bootstrapPath = join(process.cwd(), "bootstrap-data", `${indexId}.json`);
   const p = existsSync(directPath) ? directPath : existsSync(bootstrapPath) ? bootstrapPath : null;
@@ -385,6 +386,26 @@ function loadIndexSymbols(indexId: "sp500" | "nasdaq100"): string[] {
   } catch {
     return [];
   }
+}
+
+function normalizeSymbolForDb(symbol: string): string {
+  return String(symbol).toUpperCase().replace(/\./g, "-");
+}
+
+function expandIndexSymbolsForDb(symbols: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of symbols) {
+    const sym = String(raw).toUpperCase().trim();
+    if (!sym) continue;
+    const variants = [sym, normalizeSymbolForDb(sym)];
+    for (const v of variants) {
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
 }
 
 function getTodayDateInNewYork(): string {
@@ -616,30 +637,29 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
   if (!asOfDate) return { rows: [], date: null };
 
   const fallbackSymbolsForIndex = (
-    indexId: "sp500" | "nasdaq100",
+    indexId: "sp500" | "nasdaq",
     desiredCount: number
   ): string[] => {
-    if (indexId === "nasdaq100") {
+    if (indexId === "nasdaq") {
       const rows = db
         .prepare(
           `
-          SELECT q.symbol
-          FROM quote_daily q
+          SELECT d.symbol
+          FROM daily_bars d
           INNER JOIN (
             SELECT symbol, MAX(date) AS max_date
-            FROM quote_daily
+            FROM daily_bars
             WHERE date <= ?
             GROUP BY symbol
-          ) x ON x.symbol = q.symbol AND x.max_date = q.date
-          INNER JOIN companies c ON c.symbol = q.symbol
-          WHERE q.market_cap IS NOT NULL
+          ) x ON x.symbol = d.symbol AND x.max_date = d.date
+          INNER JOIN companies c ON c.symbol = d.symbol
+          WHERE d.close IS NOT NULL
             AND c.exchange IS NOT NULL
-            AND UPPER(c.exchange) LIKE '%NASDAQ%'
-          ORDER BY q.market_cap DESC
-          LIMIT ?
+            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
+          ORDER BY d.symbol ASC
           `
         )
-        .all(asOfDate, desiredCount) as Array<{ symbol: string }>;
+        .all(asOfDate) as Array<{ symbol: string }>;
       return rows.map((r) => String(r.symbol));
     }
     const rows = db
@@ -665,7 +685,7 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
   };
 
   const computeForSymbols = (
-    indexId: "sp500" | "nasdaq100",
+    indexId: "sp500" | "nasdaq",
     indexName: string,
     symbols: string[]
   ): IndexBreadthRow => {
@@ -735,20 +755,22 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
 
   const sp500Symbols = (() => {
     const list = loadIndexSymbols("sp500");
-    return list.length > 0 ? list : fallbackSymbolsForIndex("sp500", 500);
+    const base = list.length > 0 ? list : fallbackSymbolsForIndex("sp500", 500);
+    return expandIndexSymbolsForDb(base);
   })();
   const nasdaqSymbols = (() => {
-    const list = loadIndexSymbols("nasdaq100");
-    return list.length > 0 ? list : fallbackSymbolsForIndex("nasdaq100", 100);
+    const list = loadIndexSymbols("nasdaq");
+    const base = list.length > 0 ? list : fallbackSymbolsForIndex("nasdaq", 0);
+    return expandIndexSymbolsForDb(base);
   })();
 
   const sp500 = computeForSymbols("sp500", "S&P 500", sp500Symbols);
-  const nasdaq = computeForSymbols("nasdaq100", "Nasdaq", nasdaqSymbols);
+  const nasdaq = computeForSymbols("nasdaq", "Nasdaq Composite", nasdaqSymbols);
   return { rows: [sp500, nasdaq], date: asOfDate };
 }
 
 export function getIndexBreadthSeries(
-  indexId: "sp500" | "nasdaq100",
+  indexId: "sp500" | "nasdaq",
   startDate: string,
   endDate: string
 ): { rows: IndexBreadthSeriesRow[]; date: string | null } {
@@ -756,30 +778,29 @@ export function getIndexBreadthSeries(
   if (!db) return { rows: [], date: null };
 
   const fallbackSymbolsForIndex = (
-    id: "sp500" | "nasdaq100",
+    id: "sp500" | "nasdaq",
     desiredCount: number
   ): string[] => {
-    if (id === "nasdaq100") {
+    if (id === "nasdaq") {
       const rows = db
         .prepare(
           `
-          SELECT q.symbol
-          FROM quote_daily q
+          SELECT d.symbol
+          FROM daily_bars d
           INNER JOIN (
             SELECT symbol, MAX(date) AS max_date
-            FROM quote_daily
+            FROM daily_bars
             WHERE date <= ?
             GROUP BY symbol
-          ) x ON x.symbol = q.symbol AND x.max_date = q.date
-          INNER JOIN companies c ON c.symbol = q.symbol
-          WHERE q.market_cap IS NOT NULL
+          ) x ON x.symbol = d.symbol AND x.max_date = d.date
+          INNER JOIN companies c ON c.symbol = d.symbol
+          WHERE d.close IS NOT NULL
             AND c.exchange IS NOT NULL
-            AND UPPER(c.exchange) LIKE '%NASDAQ%'
-          ORDER BY q.market_cap DESC
-          LIMIT ?
+            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
+          ORDER BY d.symbol ASC
           `
         )
-        .all(endDate, desiredCount) as Array<{ symbol: string }>;
+        .all(endDate) as Array<{ symbol: string }>;
       return rows.map((r) => String(r.symbol));
     }
     const rows = db
@@ -805,7 +826,9 @@ export function getIndexBreadthSeries(
   };
 
   const list = loadIndexSymbols(indexId);
-  const symbols = list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 100);
+  const symbols = expandIndexSymbolsForDb(
+    list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 0)
+  );
   if (symbols.length === 0) return { rows: [], date: endDate };
 
   const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
@@ -933,29 +956,31 @@ export function getNetNewHighSeries(
           d.symbol,
           d.date,
           d.close,
-          MAX(d.close) OVER (
+          d.high,
+          d.low,
+          MAX(d.high) OVER (
             PARTITION BY d.symbol
             ORDER BY d.date
-            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
-          ) AS rolling_high,
-          MIN(d.close) OVER (
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_high,
+          MIN(d.low) OVER (
             PARTITION BY d.symbol
             ORDER BY d.date
-            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
-          ) AS rolling_low,
-          COUNT(d.close) OVER (
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_low,
+          COUNT(d.high) OVER (
             PARTITION BY d.symbol
             ORDER BY d.date
-            ROWS BETWEEN ${lookbackDays - 1} PRECEDING AND CURRENT ROW
-          ) AS window_count
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_count
         FROM daily_bars d
         INNER JOIN universe u ON u.symbol = d.symbol
         WHERE d.date BETWEEN ? AND ?
       )
       SELECT
         date,
-        SUM(CASE WHEN window_count = ${lookbackDays} AND close >= rolling_high THEN 1 ELSE 0 END) AS highs,
-        SUM(CASE WHEN window_count = ${lookbackDays} AND close <= rolling_low THEN 1 ELSE 0 END) AS lows
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END) AS highs,
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END) AS lows
       FROM base
       GROUP BY date
       ORDER BY date ASC
