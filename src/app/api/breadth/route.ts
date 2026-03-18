@@ -30,7 +30,7 @@ type BreadthPayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "breadth-cache.json");
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 type DiskCache = {
   version: number;
   items: Record<string, BreadthPayload>;
@@ -152,8 +152,8 @@ export async function GET(request: NextRequest) {
 
     const start = new Date(`${latestDate}T00:00:00Z`);
     start.setUTCFullYear(start.getUTCFullYear() - 2);
-    const startDate = start.toISOString().slice(0, 10);
-    const cacheKey = `${indexId}:${latestDate}:${startDate}`;
+    const queryStartDate = start.toISOString().slice(0, 10);
+    const cacheKey = `${indexId}:${latestDate}:${queryStartDate}`;
 
     if (existsSync(CACHE_PATH)) {
       try {
@@ -171,11 +171,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const nnh1m = getIndexNetNewHighSeries(indexId, 21, startDate, latestDate);
-    const nnh3m = getIndexNetNewHighSeries(indexId, 63, startDate, latestDate);
-    const nnh6m = getIndexNetNewHighSeries(indexId, 126, startDate, latestDate);
-    const nnh52w = getIndexNetNewHighSeries(indexId, 252, startDate, latestDate);
-    const breadth = getIndexBreadthSeries(indexId, startDate, latestDate);
+    const nnh1m = getIndexNetNewHighSeries(indexId, 21, queryStartDate, latestDate);
+    const nnh3m = getIndexNetNewHighSeries(indexId, 63, queryStartDate, latestDate);
+    const nnh6m = getIndexNetNewHighSeries(indexId, 126, queryStartDate, latestDate);
+    const nnh52w = getIndexNetNewHighSeries(indexId, 252, queryStartDate, latestDate);
+    const breadth = getIndexBreadthSeries(indexId, queryStartDate, latestDate);
+
+    const responseStartDate = breadth.rows[0]?.date ?? null;
 
     try {
       persistBreadthSeries(indexId, latestDate, {
@@ -193,7 +195,7 @@ export async function GET(request: NextRequest) {
     const payload = {
       indexId,
       latestDate,
-      startDate,
+      startDate: responseStartDate,
       netNewHighs: {
         oneMonth: nnh1m.rows,
         threeMonths: nnh3m.rows,

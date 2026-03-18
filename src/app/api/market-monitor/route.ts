@@ -4,7 +4,6 @@ import { join } from "path";
 import {
   getLatestCompletedTradingDate,
   getMarketMonitorBaseRowsFromDailyBars,
-  getIndexBreadthSnapshot,
   getIndexBreadthSeries,
   getNetNewHighSeries,
 } from "@/lib/screener-db-native";
@@ -48,7 +47,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 9;
 
 export async function GET() {
   try {
@@ -60,7 +59,7 @@ export async function GET() {
     const end = new Date(latestDate);
     const start = new Date(end);
     start.setFullYear(start.getFullYear() - 2);
-    const startDate = start.toISOString().slice(0, 10);
+    const queryStartDate = start.toISOString().slice(0, 10);
 
     let cachedPayload: CachePayload | null = null;
     // Try cache first; if it matches the current [startDate, latestDate] window, return it.
@@ -72,7 +71,6 @@ export async function GET() {
         if (
           cached.version === CACHE_VERSION &&
           cached.latestDate === latestDate &&
-          cached.startDate === startDate &&
           Array.isArray(cached.rows)
         ) {
           return NextResponse.json(cached);
@@ -90,7 +88,6 @@ export async function GET() {
     if (
       cachedPayload &&
       cachedPayload.version === CACHE_VERSION &&
-      cachedPayload.startDate === startDate &&
       Array.isArray(cachedPayload.rows) &&
       cachedPayload.rows.length > 0
     ) {
@@ -109,10 +106,11 @@ export async function GET() {
       }
     }
     if (!canIncremental) {
-      baseRows = getMarketMonitorBaseRowsFromDailyBars(startDate, latestDate);
+      baseRows = getMarketMonitorBaseRowsFromDailyBars(queryStartDate, latestDate);
     }
+    baseRows = baseRows.filter((r) => r.date >= queryStartDate);
     if (baseRows.length === 0) {
-      return NextResponse.json({ rows: [], latestDate, startDate });
+      return NextResponse.json({ rows: [], latestDate, startDate: null });
     }
 
     // Compute 5-day and 10-day ratios using rolling sums of up4/down4.
@@ -156,8 +154,8 @@ export async function GET() {
         nasdaqByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
       }
     } else {
-      const sp500BreadthSeries = getIndexBreadthSeries("sp500", startDate, latestDate);
-      const nasdaqBreadthSeries = getIndexBreadthSeries("nasdaq", startDate, latestDate);
+      const sp500BreadthSeries = getIndexBreadthSeries("sp500", queryStartDate, latestDate);
+      const nasdaqBreadthSeries = getIndexBreadthSeries("nasdaq", queryStartDate, latestDate);
       for (const r of sp500BreadthSeries.rows) {
         sp500ByDate.set(r.date, { pctAbove50d: r.pctAbove50d, pctAbove200d: r.pctAbove200d });
       }
@@ -186,9 +184,8 @@ export async function GET() {
     }));
 
     const rows = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
-
-    const breadthSnapshot = getIndexBreadthSnapshot(latestDate);
-    const breadthById = new Map(breadthSnapshot.rows.map((r) => [r.indexId, r]));
+    const latestRow = rows[0] ?? null;
+    const responseStartDate = rows[rows.length - 1]?.date ?? null;
 
     const nnh1m = getNetNewHighSeries(21, 126, latestDate);
     const nnh3m = getNetNewHighSeries(63, 126, latestDate);
@@ -199,12 +196,12 @@ export async function GET() {
       version: CACHE_VERSION,
       rows,
       latestDate,
-      startDate,
+      startDate: responseStartDate,
       breadth: {
-        sp500PctAbove50d: breadthById.get("sp500")?.pctAbove50d ?? null,
-        nasdaqPctAbove50d: breadthById.get("nasdaq")?.pctAbove50d ?? null,
-        sp500PctAbove200d: breadthById.get("sp500")?.pctAbove200d ?? null,
-        nasdaqPctAbove200d: breadthById.get("nasdaq")?.pctAbove200d ?? null,
+        sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
+        nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
+        sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
+        nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
       },
       netNewHighs: {
         oneMonth: nnh1m.rows,
