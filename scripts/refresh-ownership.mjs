@@ -14,7 +14,7 @@ import { fileURLToPath } from "url";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { ensureQuartersDownloaded, QUARTERS_12 } from "./sec-13f-download.mjs";
 import { resolveCusipMap } from "./sec-13f-cusip-map.mjs";
-import { aggregateHoldings, addNumFundsChange } from "./sec-13f-aggregate.mjs";
+import { aggregateHoldings } from "./sec-13f-aggregate.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -51,13 +51,20 @@ function* allParsedHoldings(quarterPaths) {
 }
 
 /**
- * Yield all holdings from all quarter ZIPs with symbol resolved.
- * Only yields rows where CUSIP maps to a symbol.
+ * Yield holdings for one quarter with symbol resolved.
+ * Also updates coverage stats as rows stream through.
  */
-function* allHoldingsWithSymbol(quarterPaths, cusipToSymbol) {
-  for (const row of allParsedHoldings(quarterPaths)) {
+function* holdingsWithSymbolForQuarter(quarterPath, cusipToSymbol, coverageStats) {
+  const reportDateFallback = quarterPath?.quarter?.reportDate ?? null;
+  for (const row of parseQuarter13F(quarterPath.path, reportDateFallback, { latestByFilerQuarter: true })) {
+    coverageStats.totalRows++;
     const symbol = cusipToSymbol[row.cusip];
     if (!symbol) continue;
+    coverageStats.mappedRows++;
+    const reportDate = String(row.reportDate || reportDateFallback || "");
+    if (reportDate) {
+      coverageStats.byQuarterRowCounts.set(reportDate, (coverageStats.byQuarterRowCounts.get(reportDate) || 0) + 1);
+    }
     yield { ...row, symbol };
   }
 }
@@ -113,42 +120,8 @@ async function main() {
     JSON.stringify(mapStats)
   );
 
-  console.log("4. Parsing and aggregating holdings...");
-  const holdingsIter = allHoldingsWithSymbol(quarterPaths, cusipToSymbol);
-  const byReportDate = aggregateHoldings(holdingsIter);
-  const reportDatesOrdered = [...byReportDate.keys()].sort();
-  const rows = addNumFundsChange(byReportDate, reportDatesOrdered);
-
-  const mappedCusips = new Set(Object.keys(cusipToSymbol));
-  let mappedRows = 0;
-  let totalRows = 0;
-  const byQuarterRowCounts = new Map();
-  const unmappedCusipCounts = new Map();
-  for (const row of allParsedHoldings(quarterPaths)) {
-    totalRows++;
-    if (mappedCusips.has(row.cusip)) {
-      mappedRows++;
-      byQuarterRowCounts.set(row.reportDate, (byQuarterRowCounts.get(row.reportDate) || 0) + 1);
-    } else {
-      unmappedCusipCounts.set(row.cusip, (unmappedCusipCounts.get(row.cusip) || 0) + 1);
-    }
-  }
-  const coverage = totalRows > 0 ? (mappedRows / totalRows) * 100 : 0;
-  console.log(`   Coverage (mapped holdings rows): ${mappedRows}/${totalRows} (${coverage.toFixed(2)}%)`);
-  console.log("   Per-quarter mapped row counts:", JSON.stringify(Object.fromEntries([...byQuarterRowCounts.entries()].sort())));
-  const topUnmapped = [...unmappedCusipCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15);
-  if (topUnmapped.length > 0) {
-    console.log("   Top unmapped CUSIPs (count):", topUnmapped.map(([c, n]) => `${c}:${n}`).join(", "));
-  }
-
-  // Basic monotonic quarter-order sanity check.
-  const reportDatesSorted = [...reportDatesOrdered].sort();
-  const monotonicOk = reportDatesOrdered.every((d, i) => d === reportDatesSorted[i]);
-  if (!monotonicOk) {
-    console.warn("   Warning: report_dates are not sorted monotonically:", reportDatesOrdered.join(", "));
-  }
+  const quarterPathsAsc = [...quarterPaths].sort((a, b) => String(a.quarter.reportDate).localeCompare(String(b.quarter.reportDate)));
+  const reportDatesFromSelection = [...new Set(quarterPathsAsc.map((q) => String(q.quarter.reportDate)))];
 
   let symbolsToSave = null;
   if (SYMBOLS_ARG) {
@@ -176,37 +149,64 @@ async function main() {
     "SELECT num_funds FROM ownership WHERE symbol = ? AND report_date < ? ORDER BY report_date DESC LIMIT 1"
   );
 
-  if (RECOMPUTE && reportDatesOrdered.length > 0) {
-    const placeholders = reportDatesOrdered.map(() => "?").join(",");
-    db.prepare(`DELETE FROM ownership WHERE report_date IN (${placeholders})`).run(...reportDatesOrdered);
-    console.log("   Recompute mode: cleared existing ownership rows for report dates:", reportDatesOrdered.join(", "));
+  if (RECOMPUTE && reportDatesFromSelection.length > 0) {
+    const placeholders = reportDatesFromSelection.map(() => "?").join(",");
+    db.prepare(`DELETE FROM ownership WHERE report_date IN (${placeholders})`).run(...reportDatesFromSelection);
+    console.log("   Recompute mode: cleared existing ownership rows for report dates:", reportDatesFromSelection.join(", "));
   }
 
+  console.log("4. Parsing, aggregating, and writing quarter-by-quarter...");
+  const coverageStats = {
+    totalRows: 0,
+    mappedRows: 0,
+    byQuarterRowCounts: new Map(),
+  };
+
   let inserted = 0;
-  const tx = db.transaction(() => {
-    for (const row of rows) {
-      if (symbolsToSave != null && !symbolsToSave.has(row.symbol)) continue;
-      const topHoldersJson = JSON.stringify(row.top_holders || []);
-      let change = row.num_funds_change;
-      if ((change == null || !Number.isFinite(change)) && row.num_funds != null) {
-        const prev = prevNumFundsStmt.get(row.symbol, row.report_date);
-        const prevNum = prev?.num_funds != null ? Number(prev.num_funds) : null;
-        if (prevNum != null && Number.isFinite(prevNum)) {
-          change = Number(row.num_funds) - prevNum;
+  for (const quarterPath of quarterPathsAsc) {
+    console.log(`   Processing ${quarterPath.quarter.key} (${quarterPath.quarter.reportDate})...`);
+    const byReportDate = aggregateHoldings(holdingsWithSymbolForQuarter(quarterPath, cusipToSymbol, coverageStats));
+    const reportDates = [...byReportDate.keys()].sort();
+
+    for (const reportDate of reportDates) {
+      const bySymbol = byReportDate.get(reportDate);
+      if (!bySymbol) continue;
+      const tx = db.transaction(() => {
+        for (const [symbol, rec] of bySymbol.entries()) {
+          if (symbolsToSave != null && !symbolsToSave.has(symbol)) continue;
+          const topHoldersJson = JSON.stringify(rec.top_holders || []);
+          let change = null;
+          if (rec.num_funds != null) {
+            const prev = prevNumFundsStmt.get(symbol, reportDate);
+            const prevNum = prev?.num_funds != null ? Number(prev.num_funds) : null;
+            if (prevNum != null && Number.isFinite(prevNum)) {
+              change = Number(rec.num_funds) - prevNum;
+            }
+          }
+          upsert.run(
+            symbol,
+            reportDate,
+            rec.num_funds,
+            change,
+            topHoldersJson,
+            now
+          );
+          inserted++;
         }
-      }
-      upsert.run(
-        row.symbol,
-        row.report_date,
-        row.num_funds,
-        change,
-        topHoldersJson,
-        now
-      );
-      inserted++;
+      });
+      tx();
     }
-  });
-  tx();
+  }
+
+  const coverage = coverageStats.totalRows > 0 ? (coverageStats.mappedRows / coverageStats.totalRows) * 100 : 0;
+  console.log(
+    `   Coverage (mapped holdings rows): ${coverageStats.mappedRows}/${coverageStats.totalRows} (${coverage.toFixed(2)}%)`
+  );
+  console.log(
+    "   Per-quarter mapped row counts:",
+    JSON.stringify(Object.fromEntries([...coverageStats.byQuarterRowCounts.entries()].sort()))
+  );
+
   db.pragma("optimize");
   db.close();
   console.log("5. Wrote", inserted, "ownership rows. Done.");
