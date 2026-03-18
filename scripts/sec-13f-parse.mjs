@@ -24,6 +24,13 @@ const INFOTABLE_COLS = [
   "VOTING_AUTH_NONE",
 ];
 
+function getEntryByBasename(zip, baseName) {
+  const direct = zip.getEntry(baseName);
+  if (direct) return direct;
+  const suffix = `/${baseName}`;
+  return zip.getEntries().find((e) => e.entryName.endsWith(suffix)) || null;
+}
+
 function parseTsvLine(line) {
   const out = [];
   let cur = "";
@@ -95,12 +102,34 @@ function compareSubmissionMeta(a, b) {
 }
 
 /**
+ * Collect ACCESSION_NUMBER values that actually appear in INFOTABLE.tsv.
+ * Some SUBMISSION entries (e.g. notice-only filings) have no holdings rows.
+ */
+function collectInfotableAccessions(zip) {
+  const entry = getEntryByBasename(zip, "INFOTABLE.tsv");
+  if (!entry) return new Set();
+  const raw = entry.getData().toString("utf8");
+  const lines = raw.split("\n").filter((l) => l.trim());
+  if (lines.length < 2) return new Set();
+  const header = parseTsvLine(lines[0]);
+  const accIdx = getColumnIndex(header, ["ACCESSION_NUMBER"]);
+  if (accIdx < 0) return new Set();
+  const out = new Set();
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseTsvLine(lines[i]);
+    const acc = row[accIdx]?.trim();
+    if (acc) out.add(acc);
+  }
+  return out;
+}
+
+/**
  * Build map ACCESSION_NUMBER -> PERIODOFREPORT (YYYY-MM-DD) from SUBMISSION.tsv.
  * Also captures CIK / filing-date / amendment metadata so callers can select the latest
  * effective filing version for each filer and quarter.
  */
 function parseSubmission(zip) {
-  const entry = zip.getEntry("SUBMISSION.tsv");
+  const entry = getEntryByBasename(zip, "SUBMISSION.tsv");
   if (!entry) return new Map();
   const raw = entry.getData().toString("utf8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -146,9 +175,10 @@ function parseSubmission(zip) {
  * Pick the latest filing accession for each (CIK, reportDate), so amended filings
  * supersede earlier versions and we avoid double-counting funds.
  */
-function selectLatestAccessionsByFilerQuarter(submissionByAccession, fallbackReportDate) {
+function selectLatestAccessionsByFilerQuarter(submissionByAccession, fallbackReportDate, allowedAccessions) {
   const selectedByFilerQuarter = new Map();
   for (const [accession, meta] of submissionByAccession.entries()) {
+    if (allowedAccessions && !allowedAccessions.has(accession)) continue;
     const reportDate = meta?.reportDate || fallbackReportDate;
     if (!reportDate) continue;
     const cik = meta?.cik ? String(meta.cik) : accession;
@@ -173,7 +203,7 @@ function selectLatestAccessionsByFilerQuarter(submissionByAccession, fallbackRep
  * Build map ACCESSION_NUMBER -> FILINGMANAGER_NAME from COVERPAGE.tsv.
  */
 function parseCoverpage(zip) {
-  const entry = zip.getEntry("COVERPAGE.tsv");
+  const entry = getEntryByBasename(zip, "COVERPAGE.tsv");
   if (!entry) return new Map();
   const raw = entry.getData().toString("utf8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -196,7 +226,7 @@ function parseCoverpage(zip) {
  * VALUE in 13F is in thousands of dollars (as filed). We keep it as number (thousands).
  */
 function* parseInfotable(zip, defaultReportDate, filerNameByAccession, accessionToReportDate) {
-  const entry = zip.getEntry("INFOTABLE.tsv");
+  const entry = getEntryByBasename(zip, "INFOTABLE.tsv");
   if (!entry) return;
   const raw = entry.getData().toString("utf8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -261,8 +291,9 @@ export function* parseQuarter13F(zipPathOrBuffer, reportDate, opts = {}) {
     ? new AdmZip(zipPathOrBuffer)
     : new AdmZip(zipPathOrBuffer);
   const submissionByAccession = parseSubmission(zip);
+  const infotableAccessions = latestByFilerQuarter ? collectInfotableAccessions(zip) : null;
   const selectedAccessions = latestByFilerQuarter
-    ? selectLatestAccessionsByFilerQuarter(submissionByAccession, reportDate)
+    ? selectLatestAccessionsByFilerQuarter(submissionByAccession, reportDate, infotableAccessions)
     : null;
   const filerNameByAccession = parseCoverpage(zip);
   for (const row of parseInfotable(zip, reportDate, filerNameByAccession, submissionByAccession)) {
