@@ -1,5 +1,5 @@
 # Daily data refresh: fetch latest market data, recompute indicators.
-# Runs at 2am ET (7am UTC during EST / 6am UTC during EDT).
+# Runs at 2am UAE time (22:00 UTC previous day), Tue-Sat.
 # Uses GitHub Actions cache to persist the SQLite DB between runs.
 #
 # FIRST-TIME SETUP:
@@ -12,8 +12,8 @@ name: Daily Data Refresh
 
 on:
   schedule:
-    # 7am UTC = 2am EST / 3am EDT — runs Tue-Sat (covers Mon-Fri market closes)
-    - cron: "0 7 * * 2-6"
+    # 22:00 UTC (previous day) = 2:00 AM UAE — runs Tue-Sat UAE (covers Mon-Fri market closes)
+    - cron: "0 22 * * 1-5"
   workflow_dispatch:
     inputs:
       seed_db_path:
