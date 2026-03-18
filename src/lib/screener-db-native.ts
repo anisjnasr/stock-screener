@@ -1025,7 +1025,7 @@ export function getNetNewHighSeries(
   const displayDatesAsc = displayDateRows.map((r) => String(r.date)).reverse();
   if (displayDatesAsc.length === 0) return { rows: [], date: asOfDate };
 
-  const earliestDisplayDate = displayDatesAsc[0];
+  const requiredHistoryRows = Math.max(0, lookbackDays + Math.max(5, displayDays) + 20);
   const startRow = db
     .prepare(
       `
@@ -1037,8 +1037,23 @@ export function getNetNewHighSeries(
       LIMIT 1 OFFSET ?
       `
     )
-    .get(earliestDisplayDate, Math.max(0, lookbackDays + 20)) as { date?: string } | undefined;
-  const startDate = startRow?.date ? String(startRow.date) : earliestDisplayDate;
+    .get(asOfDate, requiredHistoryRows) as { date?: string } | undefined;
+  const earliestAvailableRow = db
+    .prepare(
+      `
+      SELECT date
+      FROM daily_bars
+      GROUP BY date
+      ORDER BY date ASC
+      LIMIT 1
+      `
+    )
+    .get() as { date?: string } | undefined;
+  const startDate = startRow?.date
+    ? String(startRow.date)
+    : earliestAvailableRow?.date
+      ? String(earliestAvailableRow.date)
+      : displayDatesAsc[0];
 
   const rows = db
     .prepare(

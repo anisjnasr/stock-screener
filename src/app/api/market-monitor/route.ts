@@ -47,7 +47,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 10;
 
 export async function GET() {
   try {

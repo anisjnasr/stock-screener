@@ -41,7 +41,10 @@ function quarterKeyFromDate(date?: string): string | null {
 }
 
 function quarterKeyFromPeriod(period: string, date?: string): string | null {
-  const y = date?.slice(0, 4) || period.match(/\d{4}/)?.[0] || "";
+  // Ownership is reported on calendar quarter-end dates, so prefer the row date
+  // (calendar quarter) instead of fiscal period labels like Q1/Q2.
+  if (date) return quarterKeyFromDate(date);
+  const y = period.match(/\d{4}/)?.[0] || "";
   const p = period.match(/Q([1-4])/i)?.[1];
   if (y && p) return `${y}-Q${p}`;
   return quarterKeyFromDate(date);
