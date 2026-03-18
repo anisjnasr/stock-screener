@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Database from "better-sqlite3";
 import { join } from "path";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import {
   getLatestCompletedTradingDate,
   getIndexBreadthSeries,
@@ -26,6 +27,13 @@ type BreadthPayload = {
     count50d: number;
     count200d: number;
   }>;
+};
+
+const CACHE_PATH = join(process.cwd(), "data", "breadth-cache.json");
+const CACHE_VERSION = 1;
+type DiskCache = {
+  version: number;
+  items: Record<string, BreadthPayload>;
 };
 
 function persistBreadthSeries(
@@ -145,6 +153,23 @@ export async function GET(request: NextRequest) {
     const start = new Date(`${latestDate}T00:00:00Z`);
     start.setUTCFullYear(start.getUTCFullYear() - 2);
     const startDate = start.toISOString().slice(0, 10);
+    const cacheKey = `${indexId}:${latestDate}:${startDate}`;
+
+    if (existsSync(CACHE_PATH)) {
+      try {
+        const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+        if (
+          parsed &&
+          parsed.version === CACHE_VERSION &&
+          parsed.items &&
+          parsed.items[cacheKey]
+        ) {
+          return NextResponse.json(parsed.items[cacheKey]);
+        }
+      } catch {
+        /* ignore cache read errors */
+      }
+    }
 
     const nnh1m = getIndexNetNewHighSeries(indexId, 21, startDate, latestDate);
     const nnh3m = getIndexNetNewHighSeries(indexId, 63, startDate, latestDate);
@@ -160,7 +185,7 @@ export async function GET(request: NextRequest) {
       breadth: breadth.rows,
     });
 
-    return NextResponse.json({
+    const payload = {
       indexId,
       latestDate,
       startDate,
@@ -171,7 +196,25 @@ export async function GET(request: NextRequest) {
         fiftyTwoWeek: nnh52w.rows,
       },
       breadth: breadth.rows,
-    } satisfies BreadthPayload);
+    } satisfies BreadthPayload;
+
+    try {
+      let cache: DiskCache = { version: CACHE_VERSION, items: {} };
+      if (existsSync(CACHE_PATH)) {
+        const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+        if (parsed && parsed.version === CACHE_VERSION && parsed.items) cache = parsed;
+      }
+      cache.items[cacheKey] = payload;
+      const keys = Object.keys(cache.items);
+      if (keys.length > 24) {
+        for (const k of keys.slice(0, keys.length - 24)) delete cache.items[k];
+      }
+      writeFileSync(CACHE_PATH, JSON.stringify(cache), "utf8");
+    } catch {
+      /* ignore cache write errors */
+    }
+
+    return NextResponse.json(payload);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Breadth error";
     return NextResponse.json({ error: message }, { status: 500 });

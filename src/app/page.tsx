@@ -119,6 +119,7 @@ export default function Home() {
   const [scanSymbols, setScanSymbols] = useState<string[]>([]);
   const candlesCacheRef = useRef<Map<string, CachedCandlesEntry>>(new Map());
   const prefetchInFlightRef = useRef<Map<string, Promise<Candle[] | null>>>(new Map());
+  const secondaryPagesPrefetchedRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -154,6 +155,25 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (secondaryPagesPrefetchedRef.current) return;
+    secondaryPagesPrefetchedRef.current = true;
+    const timer = window.setTimeout(() => {
+      const urls = [
+        "/api/market-monitor",
+        "/api/sectors-industries",
+        "/api/breadth?index=sp500",
+        "/api/breadth?index=nasdaq",
+      ];
+      for (const url of urls) {
+        fetch(url).catch(() => {
+          /* ignore warmup failures */
+        });
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, []);
   const handleWatchlistHeightChange = useCallback((px: number) => {
     setWatchlistHeightPx(px);

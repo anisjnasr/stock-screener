@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 import {
   getLatestCompletedTradingDate,
   getTickerPerformance,
@@ -21,12 +23,25 @@ type CachedValue =
 
 const globalForSiCache = globalThis as unknown as {
   _siCache?: Map<string, CachedValue>;
+  _siResponseCache?: Map<string, unknown>;
 };
 
 function getSiCache(): Map<string, CachedValue> {
   if (!globalForSiCache._siCache) globalForSiCache._siCache = new Map();
   return globalForSiCache._siCache;
 }
+
+function getSiResponseCache(): Map<string, unknown> {
+  if (!globalForSiCache._siResponseCache) globalForSiCache._siResponseCache = new Map();
+  return globalForSiCache._siResponseCache;
+}
+
+const CACHE_PATH = join(process.cwd(), "data", "sectors-industries-cache.json");
+const CACHE_VERSION = 1;
+type DiskCache = {
+  version: number;
+  items: Record<string, unknown>;
+};
 
 function parseTimeframe(value: string | null): TimeframeParam {
   if (value === "day" || value === "week" || value === "month" || value === "quarter" || value === "year") {
@@ -59,6 +74,34 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("themesTimeframe") ?? defaultTimeframe
     );
     const asOfDate = getLatestCompletedTradingDate();
+    const responseKey = [
+      asOfDate ?? "na",
+      indicesTimeframe,
+      sectorsTimeframe,
+      industriesTimeframe,
+      themesTimeframe,
+    ].join("|");
+
+    const responseCache = getSiResponseCache();
+    const memCached = responseCache.get(responseKey);
+    if (memCached) return NextResponse.json(memCached);
+
+    if (existsSync(CACHE_PATH)) {
+      try {
+        const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+        if (
+          parsed &&
+          parsed.version === CACHE_VERSION &&
+          parsed.items &&
+          parsed.items[responseKey]
+        ) {
+          responseCache.set(responseKey, parsed.items[responseKey]);
+          return NextResponse.json(parsed.items[responseKey]);
+        }
+      } catch {
+        /* ignore disk cache read errors */
+      }
+    }
     const cache = getSiCache();
 
     const getOrSet = <T extends CachedValue>(key: string, compute: () => T): T => {
@@ -109,7 +152,7 @@ export async function GET(request: NextRequest) {
     const indexMap = new Map(indexPerf.rows.map((r) => [r.symbol, r]));
     const themeMap = new Map(themePerf.rows.map((r) => [r.symbol, r]));
 
-    return NextResponse.json({
+    const payload = {
       timeframe: defaultTimeframe,
       timeframes: {
         indices: indicesTimeframe,
@@ -145,7 +188,26 @@ export async function GET(request: NextRequest) {
         ticker: item.ticker,
         changePct: themeMap.get(item.ticker)?.change_pct ?? null,
       })),
-    });
+    };
+
+    responseCache.set(responseKey, payload);
+    try {
+      let disk: DiskCache = { version: CACHE_VERSION, items: {} };
+      if (existsSync(CACHE_PATH)) {
+        const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+        if (parsed && parsed.version === CACHE_VERSION && parsed.items) disk = parsed;
+      }
+      disk.items[responseKey] = payload;
+      const keys = Object.keys(disk.items);
+      if (keys.length > 80) {
+        for (const k of keys.slice(0, keys.length - 80)) delete disk.items[k];
+      }
+      writeFileSync(CACHE_PATH, JSON.stringify(disk), "utf8");
+    } catch {
+      /* ignore disk cache write errors */
+    }
+
+    return NextResponse.json(payload);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to compute sectors/industries";
     return NextResponse.json({ error: message }, { status: 500 });
