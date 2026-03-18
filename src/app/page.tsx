@@ -139,10 +139,14 @@ export default function Home() {
     const fetchHealth = async () => {
       try {
         const res = await fetch("/api/health");
-        const json = (await res.json()) as { dbUpdatedAt?: string | null };
+        const json = (await res.json()) as {
+          dbUpdatedAt?: string | null;
+          latestScreenerDate?: string | null;
+        };
         if (cancelled) return;
-        if (json?.dbUpdatedAt) {
-          const d = new Date(String(json.dbUpdatedAt));
+        const ts = json?.dbUpdatedAt ?? (json?.latestScreenerDate ? `${json.latestScreenerDate}T00:00:00.000Z` : null);
+        if (ts) {
+          const d = new Date(String(ts));
           setDbUpdateCompletedAt(Number.isNaN(d.getTime()) ? null : d);
         } else {
           setDbUpdateCompletedAt(null);

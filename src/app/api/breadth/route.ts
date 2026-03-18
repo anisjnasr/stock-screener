@@ -177,13 +177,18 @@ export async function GET(request: NextRequest) {
     const nnh52w = getIndexNetNewHighSeries(indexId, 252, startDate, latestDate);
     const breadth = getIndexBreadthSeries(indexId, startDate, latestDate);
 
-    persistBreadthSeries(indexId, latestDate, {
-      nnh1m: nnh1m.rows,
-      nnh3m: nnh3m.rows,
-      nnh6m: nnh6m.rows,
-      nnh52w: nnh52w.rows,
-      breadth: breadth.rows,
-    });
+    try {
+      persistBreadthSeries(indexId, latestDate, {
+        nnh1m: nnh1m.rows,
+        nnh3m: nnh3m.rows,
+        nnh6m: nnh6m.rows,
+        nnh52w: nnh52w.rows,
+        breadth: breadth.rows,
+      });
+    } catch {
+      // Persistence is best-effort; API responses should still succeed even when
+      // the runtime filesystem/database is read-only.
+    }
 
     const payload = {
       indexId,

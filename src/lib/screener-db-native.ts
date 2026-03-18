@@ -469,6 +469,7 @@ function getTodayDateInNewYork(): string {
 export function getLatestCompletedTradingDate(): string | null {
   const db = getDb();
   if (!db) return null;
+  const latestScreenerDate = getLatestReliableScreenerDateFromDb(db);
   const nyToday = getTodayDateInNewYork();
   const companyCountRow = db.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number } | undefined;
   const companyCount = Number(companyCountRow?.c ?? 0);
@@ -485,9 +486,13 @@ export function getLatestCompletedTradingDate(): string | null {
       `
     )
     .all(nyToday) as Array<{ date: string; cnt: number }>;
-  if (recent.length === 0) return null;
+  if (recent.length === 0) return latestScreenerDate;
   const reliable = recent.find((r) => Number(r.cnt ?? 0) >= minCoverage);
-  return String(reliable?.date ?? recent[0].date);
+  const latestDailyDate = String(reliable?.date ?? recent[0].date);
+  if (!latestScreenerDate) return latestDailyDate;
+  // Use the common upper bound so endpoints that rely on quote/indicator coverage
+  // don't switch to a date where those joins are still incomplete.
+  return latestDailyDate < latestScreenerDate ? latestDailyDate : latestScreenerDate;
 }
 
 export function getWeightedCategoryPerformance(

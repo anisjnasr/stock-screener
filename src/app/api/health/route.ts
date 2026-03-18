@@ -33,6 +33,14 @@ export async function GET() {
     }
   }
 
+  if (latestScreenerDate) {
+    const screenerAsIso = `${latestScreenerDate}T00:00:00.000Z`;
+    const fileDatePart = dbUpdatedAt ? String(dbUpdatedAt).slice(0, 10) : null;
+    if (!fileDatePart || fileDatePart < latestScreenerDate) {
+      dbUpdatedAt = screenerAsIso;
+    }
+  }
+
   const healthy = hasDb && latestScreenerDate !== null;
   const status = healthy ? 200 : 503;
 
