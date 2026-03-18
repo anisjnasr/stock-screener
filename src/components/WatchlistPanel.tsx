@@ -1868,7 +1868,7 @@ export default function WatchlistPanel({
             Watchlists & Screener
           </span>
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="flex items-center justify-end gap-0.5 shrink-0 w-[86px]">
           <button
             type="button"
             onClick={() => {

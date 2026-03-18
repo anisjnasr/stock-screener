@@ -809,9 +809,7 @@ export default function Home() {
                     <div
                       className="flex-1 flex justify-center items-center gap-1.5 min-w-0 transition-transform duration-300 ease-in-out"
                       style={{
-                        transform: leftSidebarHidden
-                          ? "translateX(-1.75rem)"
-                          : "translateX(-12.75rem)",
+                        transform: leftSidebarHidden ? "translateX(0)" : "translateX(-11rem)",
                       }}
                     >
                       <svg
@@ -834,6 +832,7 @@ export default function Home() {
                         Quarterly Revenue & EPS
                       </span>
                     </div>
+                    <div className="w-[86px] shrink-0" aria-hidden />
                   </button>
                   <div
                     className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-in-out ${
