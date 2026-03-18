@@ -455,7 +455,7 @@ async function main() {
         close: r.close,
         volume: r.volume,
       }));
-      if (bars.length < 22) continue;
+      if (bars.length === 0) continue;
 
       const lastBar = bars[bars.length - 1];
       if (lastBar.date !== latestDate) continue;
@@ -676,6 +676,31 @@ async function main() {
     }
   });
   ranksTx();
+
+  // Strict freshness guard: daily refresh should keep these tables on the same selected latestDate.
+  const latestQuoteDateRow = db.prepare("SELECT MAX(date) AS d FROM quote_daily").get();
+  const latestIndicatorsDateRow = db.prepare("SELECT MAX(date) AS d FROM indicators_daily").get();
+  const latestQuoteDate = latestQuoteDateRow?.d ? String(latestQuoteDateRow.d) : null;
+  const latestIndicatorsDate = latestIndicatorsDateRow?.d ? String(latestIndicatorsDateRow.d) : null;
+  if (latestQuoteDate !== latestDate || latestIndicatorsDate !== latestDate) {
+    db.close();
+    throw new Error(
+      `Post-refresh freshness check failed. Expected quote_daily and indicators_daily at ${latestDate}, got quote_daily=${latestQuoteDate}, indicators_daily=${latestIndicatorsDate}.`
+    );
+  }
+
+  const quoteCoverage = Number(
+    db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM quote_daily WHERE date = ?").get(latestDate)?.c ?? 0
+  );
+  const indicatorCoverage = Number(
+    db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM indicators_daily WHERE date = ?").get(latestDate)?.c ?? 0
+  );
+  if (quoteCoverage < minCoverageAbs || indicatorCoverage < minCoverageAbs) {
+    db.close();
+    throw new Error(
+      `Post-refresh coverage check failed for ${latestDate}. quote_daily=${quoteCoverage}, indicators_daily=${indicatorCoverage}, required minimum=${minCoverageAbs}.`
+    );
+  }
 
   console.log("Running WAL checkpoint...");
   db.pragma("wal_checkpoint(TRUNCATE)");
