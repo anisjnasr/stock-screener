@@ -47,6 +47,12 @@ function getDb(): BetterSqlite3Database | null {
 
 type RowObject = Record<string, unknown>;
 type DateCoverageRow = { date: string; cnt: number };
+export type OwnershipQuarterNative = {
+  report_date: string;
+  num_funds: number | null;
+  num_funds_change: number | null;
+  top_holders: Array<{ name: string; value?: number; shares?: number | null }>;
+};
 
 function getLatestReliableScreenerDateFromDb(db: BetterSqlite3Database): string | null {
   const latestRow = db.prepare("SELECT MAX(date) AS d FROM quote_daily").get() as { d: string | null } | undefined;
@@ -150,6 +156,46 @@ export function getLatestScreenerDate(): string | null {
   const db = getDb();
   if (!db) return null;
   return getLatestReliableScreenerDateFromDb(db);
+}
+
+export function getOwnershipNative(symbol: string, limit = 8): OwnershipQuarterNative[] {
+  const db = getDb();
+  if (!db) return [];
+  const safeLimit = Math.max(1, Math.min(40, Number(limit) || 8));
+  const rows = db
+    .prepare(
+      `
+      SELECT report_date, num_funds, num_funds_change, top_holders
+      FROM ownership
+      WHERE symbol = ?
+      ORDER BY report_date DESC
+      LIMIT ?
+      `
+    )
+    .all(String(symbol).toUpperCase(), safeLimit) as Array<{
+    report_date: string;
+    num_funds: number | null;
+    num_funds_change: number | null;
+    top_holders: string | null;
+  }>;
+
+  return rows.map((r) => {
+    let top_holders: OwnershipQuarterNative["top_holders"] = [];
+    if (r.top_holders) {
+      try {
+        const parsed = JSON.parse(String(r.top_holders));
+        if (Array.isArray(parsed)) top_holders = parsed;
+      } catch {
+        /* ignore malformed JSON */
+      }
+    }
+    return {
+      report_date: String(r.report_date),
+      num_funds: r.num_funds != null ? Number(r.num_funds) : null,
+      num_funds_change: r.num_funds_change != null ? Number(r.num_funds_change) : null,
+      top_holders,
+    };
+  });
 }
 
 export function getCompanyClassification(symbol: string): {

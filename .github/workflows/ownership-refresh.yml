@@ -2,8 +2,8 @@ name: Ownership 13F Refresh
 
 on:
   schedule:
-    # Monthly checkpoint to catch newly posted 13F batches.
-    - cron: "30 2 20 * *"
+    # Daily lightweight incremental check/update (latest quarter only).
+    - cron: "15 2 * * *"
   workflow_dispatch:
     inputs:
       quarters:

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOwnership } from "@/lib/screener-db";
+import { getOwnershipNative } from "@/lib/screener-db-native";
+
+export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol") || "AAPL";
   try {
-    const quarters = await getOwnership(symbol.toUpperCase());
+    const quarters = getOwnershipNative(symbol.toUpperCase(), 8);
     const latest = quarters[0] ?? null;
     return NextResponse.json({
       quarters,
