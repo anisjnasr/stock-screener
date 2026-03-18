@@ -33,6 +33,7 @@ type StockChartProps = {
   loading?: boolean;
   timeframe?: ChartTimeframe;
   onTimeframeChange?: (tf: ChartTimeframe) => void;
+  onVisibleDateRangeChange?: (range: { from: string; to: string } | null) => void;
   dualModeEnabled?: boolean;
   onToggleDualMode?: () => void;
   crosshairSyncEnabled?: boolean;
@@ -106,6 +107,25 @@ function normalizeTime(raw: unknown): UTCTimestamp | null {
   ) {
     const t = raw as { year: number; month: number; day: number };
     return dateToTime(toIsoDate(t));
+  }
+  return null;
+}
+
+function timeToDateKey(raw: unknown): string | null {
+  if (typeof raw === "number") {
+    const ms = Number(raw) * 1000;
+    if (!Number.isFinite(ms)) return null;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "year" in raw &&
+    "month" in raw &&
+    "day" in raw
+  ) {
+    const t = raw as { year: number; month: number; day: number };
+    return toIsoDate(t);
   }
   return null;
 }
@@ -239,6 +259,7 @@ export default function StockChart({
   loading,
   timeframe = "daily",
   onTimeframeChange,
+  onVisibleDateRangeChange,
   dualModeEnabled = false,
   onToggleDualMode,
   crosshairSyncEnabled = false,
@@ -504,6 +525,7 @@ export default function StockChart({
             lastValueVisible: false,
             priceLineVisible: false,
             crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => null,
           })
           .setData(ema50Data);
       }
@@ -516,6 +538,7 @@ export default function StockChart({
             lastValueVisible: false,
             priceLineVisible: false,
             crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => null,
           })
           .setData(ema200Data);
       }
@@ -528,6 +551,7 @@ export default function StockChart({
           lastValueVisible: false,
           priceLineVisible: false,
           crosshairMarkerVisible: false,
+          autoscaleInfoProvider: () => null,
         })
         .setData(ema40Data);
     }
@@ -789,7 +813,17 @@ export default function StockChart({
       const rawTo = maxTo - remembered.barsFromRight;
       const minTo = -visibleBars + 1;
       const maxToAllowed = maxTo + 200;
-      const to = Math.max(minTo, Math.min(maxToAllowed, rawTo));
+      let to = Math.max(minTo, Math.min(maxToAllowed, rawTo));
+      // Guard against future-only windows (can render an "empty" chart).
+      // Keep at least one real bar inside the visible logical range.
+      const latestRealBar = Math.max(0, barCount - 1);
+      if (to - visibleBars >= latestRealBar) {
+        to = latestRealBar + 3;
+      }
+      // Also guard against past-only windows (entire range before first bar).
+      if (to < 0) {
+        to = Math.min(maxTo, visibleBars - 1);
+      }
       const from = to - visibleBars;
       chart.timeScale().setVisibleLogicalRange({ from, to });
     } else {
@@ -805,6 +839,30 @@ export default function StockChart({
       saveViewportMemory(viewportKey, { barsFromRight, visibleBars });
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
+
+    const onVisibleTimeRangeChange = (range: { from: unknown; to: unknown } | null) => {
+      if (!onVisibleDateRangeChange) return;
+      if (!range || range.from == null || range.to == null) {
+        onVisibleDateRangeChange(null);
+        return;
+      }
+      const fromDate = timeToDateKey(range.from);
+      const toDate = timeToDateKey(range.to);
+      if (!fromDate || !toDate) {
+        onVisibleDateRangeChange(null);
+        return;
+      }
+      onVisibleDateRangeChange(
+        fromDate <= toDate ? { from: fromDate, to: toDate } : { from: toDate, to: fromDate }
+      );
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(onVisibleTimeRangeChange as never);
+    if (onVisibleDateRangeChange) {
+      const initialVisibleRange = (
+        chart.timeScale() as { getVisibleRange?: () => { from: unknown; to: unknown } | null }
+      ).getVisibleRange?.() ?? null;
+      onVisibleTimeRangeChange(initialVisibleRange);
+    }
 
     try {
       const rightScale = chart.priceScale("right");
@@ -842,6 +900,7 @@ export default function StockChart({
       window.removeEventListener("resize", handleResize);
       resizeObserver.disconnect();
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange as never);
       chart.remove();
       chartRef.current = null;
       mainSeriesRef.current = null;
@@ -864,6 +923,7 @@ export default function StockChart({
     selectedDrawingId,
     timeToCandle,
     crosshairSyncEnabled,
+    onVisibleDateRangeChange,
     chartInstanceId,
   ]);
 

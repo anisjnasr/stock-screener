@@ -8,6 +8,7 @@ import QuarterlyBox from "@/components/QuarterlyBox";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
+import BreadthPage from "@/components/BreadthPage";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
 
 const DEFAULT_SYMBOL = "AAPL";
@@ -29,6 +30,7 @@ type CachedCandlesEntry = {
 const CANDLE_CACHE_TTL_MS = 5 * 60 * 1000;
 const CANDLE_CACHE_MAX_ENTRIES = 100;
 const PREFETCH_NEIGHBOR_COUNT = 3;
+const WATCHLIST_PANEL_USER_SET_KEY = "stock-research-watchlist-panel-user-set";
 
 function candlesCacheKey(symbol: string, timeframe: ChartTimeframe): string {
   return `${symbol.toUpperCase()}:${timeframe}`;
@@ -114,7 +116,8 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      setWatchlistHeightPx(loadPanelHeightPx());
+      const userSet = localStorage.getItem(WATCHLIST_PANEL_USER_SET_KEY) === "true";
+      setWatchlistHeightPx(userSet ? loadPanelHeightPx() : 32);
       const storedLeft = localStorage.getItem("stock-research-left-sidebar-hidden");
       if (storedLeft !== null) setLeftSidebarHidden(storedLeft === "true");
       const storedQuarterly = localStorage.getItem("stock-research-quarterly-hidden");
@@ -149,6 +152,11 @@ export default function Home() {
   const handleWatchlistHeightChange = useCallback((px: number) => {
     setWatchlistHeightPx(px);
     savePanelHeightPx(px);
+    try {
+      localStorage.setItem(WATCHLIST_PANEL_USER_SET_KEY, "true");
+    } catch {
+      /* ignore */
+    }
   }, []);
   const handleLeftSidebarToggle = useCallback(() => {
     setLeftSidebarHidden((prev) => {
@@ -688,6 +696,8 @@ export default function Home() {
               setOpenToCollectionTrigger({ kind: target.kind, value: target.value, nonce: Date.now() });
             }}
           />
+        ) : page === "breadth" ? (
+          <BreadthPage />
         ) : (
           <>
         <div className="min-w-0 flex-1 min-h-0 overflow-hidden border-b border-zinc-200 dark:border-zinc-800 flex flex-col">

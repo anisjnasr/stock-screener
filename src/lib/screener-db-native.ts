@@ -903,6 +903,129 @@ export function getIndexBreadthSeries(
   };
 }
 
+export function getIndexNetNewHighSeries(
+  indexId: "sp500" | "nasdaq",
+  lookbackDays: number,
+  startDate: string,
+  endDate: string
+): { rows: NetNewHighRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+
+  const fallbackSymbolsForIndex = (
+    id: "sp500" | "nasdaq",
+    desiredCount: number
+  ): string[] => {
+    if (id === "nasdaq") {
+      const rows = db
+        .prepare(
+          `
+          SELECT d.symbol
+          FROM daily_bars d
+          INNER JOIN (
+            SELECT symbol, MAX(date) AS max_date
+            FROM daily_bars
+            WHERE date <= ?
+            GROUP BY symbol
+          ) x ON x.symbol = d.symbol AND x.max_date = d.date
+          INNER JOIN companies c ON c.symbol = d.symbol
+          WHERE d.close IS NOT NULL
+            AND c.exchange IS NOT NULL
+            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
+          ORDER BY d.symbol ASC
+          `
+        )
+        .all(endDate) as Array<{ symbol: string }>;
+      return rows.map((r) => String(r.symbol));
+    }
+    const rows = db
+      .prepare(
+        `
+        SELECT q.symbol
+        FROM quote_daily q
+        INNER JOIN (
+          SELECT symbol, MAX(date) AS max_date
+          FROM quote_daily
+          WHERE date <= ?
+          GROUP BY symbol
+        ) x ON x.symbol = q.symbol AND x.max_date = q.date
+        INNER JOIN companies c ON c.symbol = q.symbol
+        WHERE q.market_cap IS NOT NULL
+          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
+        ORDER BY q.market_cap DESC
+        LIMIT ?
+        `
+      )
+      .all(endDate, desiredCount) as Array<{ symbol: string }>;
+    return rows.map((r) => String(r.symbol));
+  };
+
+  const list = loadIndexSymbols(indexId);
+  const symbols = expandIndexSymbolsForDb(
+    list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 0)
+  );
+  if (symbols.length === 0) return { rows: [], date: endDate };
+
+  const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
+
+  const from = new Date(`${startDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - (lookbackDays + 30));
+  const bufferStartDate = from.toISOString().slice(0, 10);
+
+  const rows = db
+    .prepare(
+      `
+      WITH base AS (
+        SELECT
+          d.symbol,
+          d.date,
+          d.close,
+          MAX(d.high) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_high,
+          MIN(d.low) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_low,
+          COUNT(d.high) OVER (
+            PARTITION BY d.symbol
+            ORDER BY d.date
+            ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+          ) AS prior_count
+        FROM daily_bars d
+        WHERE d.symbol IN (${symbolFilter})
+          AND d.date BETWEEN ? AND ?
+      )
+      SELECT
+        date,
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END) AS highs,
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END) AS lows
+      FROM base
+      WHERE date BETWEEN ? AND ?
+      GROUP BY date
+      ORDER BY date ASC
+      `
+    )
+    .all(bufferStartDate, endDate, startDate, endDate) as Array<{ date: string; highs: number; lows: number }>;
+
+  return {
+    rows: rows.map((r) => {
+      const highs = Number(r.highs ?? 0);
+      const lows = Number(r.lows ?? 0);
+      return {
+        date: String(r.date),
+        highs,
+        lows,
+        net: highs - lows,
+      };
+    }),
+    date: endDate,
+  };
+}
+
 export function getNetNewHighSeries(
   lookbackDays: number,
   displayDays = 60,

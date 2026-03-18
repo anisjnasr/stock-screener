@@ -28,7 +28,7 @@ type Profile = {
   mktCap?: number;
 } | undefined;
 
-export type HeaderPage = "home" | "market-monitor" | "market-breadth";
+export type HeaderPage = "home" | "market-monitor" | "market-breadth" | "breadth";
 
 type HeaderProps = {
   quote: Quote | null;
@@ -208,8 +208,9 @@ export default function Header({
           <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
             {[
               { id: "home" as HeaderPage, label: "Home" },
-              { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
               { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
+              { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
+              { id: "breadth" as HeaderPage, label: "Breadth" },
             ].map((item) => (
               <button
                 key={item.id}
