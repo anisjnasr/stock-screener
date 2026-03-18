@@ -23,6 +23,10 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+COPY package.json package-lock.json* ./
+# Install production dependencies so operational scripts run in Render Shell
+# (e.g. refresh-ownership uses adm-zip and better-sqlite3).
+RUN npm ci --omit=dev
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
