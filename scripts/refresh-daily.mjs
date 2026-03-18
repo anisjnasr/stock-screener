@@ -14,6 +14,7 @@ import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { spawnSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -43,6 +44,9 @@ const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80
 const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
 const COMPANY_REFERENCE_ENRICH_LIMIT = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_LIMIT ?? 200);
 const COMPANY_REFERENCE_DELAY_MS = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_DELAY_MS ?? 80);
+const REFRESH_INDEX_CONSTITUENTS = String(process.env.DAILY_REFRESH_INDEX_CONSTITUENTS ?? "1") !== "0";
+const REFRESH_THEMATIC_ETF_CONSTITUENTS =
+  String(process.env.DAILY_REFRESH_THEMATIC_ETF_CONSTITUENTS ?? "1") !== "0";
 const REQUIRED_ETF_SYMBOLS = [
   "SPY",
   "QQQ",
@@ -190,6 +194,19 @@ function computeATR(bars, period) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function runScript(relativeScriptPath) {
+  const scriptPath = join(root, relativeScriptPath);
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: root,
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${relativeScriptPath} exited with code ${result.status ?? "unknown"}`);
+  }
 }
 
 async function main() {
@@ -706,6 +723,27 @@ async function main() {
   db.pragma("wal_checkpoint(TRUNCATE)");
   db.pragma("optimize");
   db.close();
+
+  if (REFRESH_INDEX_CONSTITUENTS) {
+    try {
+      console.log("Refreshing index constituents...");
+      runScript("scripts/build-index-constituents.mjs");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: index constituents refresh failed (${msg}). Keeping existing files.`);
+    }
+  }
+
+  if (REFRESH_THEMATIC_ETF_CONSTITUENTS) {
+    try {
+      console.log("Refreshing thematic ETF constituents...");
+      runScript("scripts/build-thematic-etf-constituents.mjs");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: thematic ETF constituents refresh failed (${msg}). Keeping existing file.`);
+    }
+  }
+
   console.log("Daily refresh done. Latest date:", latestDate, "| Symbols processed:", symbols.length);
 }
 

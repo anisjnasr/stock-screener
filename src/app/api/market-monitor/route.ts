@@ -47,7 +47,9 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
-const CACHE_VERSION = 10;
+const CACHE_VERSION = 11;
+const TRADING_DAYS_PER_YEAR = 252;
+const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
 
 export async function GET() {
   try {
@@ -190,7 +192,9 @@ export async function GET() {
     const nnh1m = getNetNewHighSeries(21, 126, latestDate);
     const nnh3m = getNetNewHighSeries(63, 126, latestDate);
     const nnh6m = getNetNewHighSeries(126, 126, latestDate);
-    const nnh52w = getNetNewHighSeries(252, 126, latestDate);
+    // 52W NNH is a rolling daily metric; keep at least 2 years of points so
+    // the MM mini-chart remains fully populated.
+    const nnh52w = getNetNewHighSeries(252, TWO_YEARS_TRADING_DAYS, latestDate);
 
     const payload: CachePayload = {
       version: CACHE_VERSION,

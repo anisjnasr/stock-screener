@@ -10,6 +10,7 @@
     "count-stocks": "node scripts/count-us-stocks.mjs",
     "build-stocks-db": "node scripts/build-stocks-db.mjs",
     "build-index-constituents": "node scripts/build-index-constituents.mjs",
+    "build-thematic-etf-constituents": "node scripts/build-thematic-etf-constituents.mjs",
     "enrich-stocks": "node scripts/enrich-stocks-yfinance.mjs",
     "check-gics-coverage": "node scripts/check-gics-coverage.mjs",
     "check-and-enrich-gics": "node scripts/check-and-enrich-gics.mjs",

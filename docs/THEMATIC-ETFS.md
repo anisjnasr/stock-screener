@@ -1,6 +1,7 @@
 # Thematic ETFs Tracker
 
-This document is the source list for the `Thematic ETFs` folder in Watchlists.
+This document is the source list for the `Thematic Industries` folder in Watchlists.
+Inside that folder, the `Thematic ETFs` list contains all ETF tickers below.
 
 | # | Category | Theme | ETF |
 |---|---|---|---|

@@ -113,6 +113,8 @@ const INDEX_LIST_PREFIX = "index:";
 const SECTOR_LIST_PREFIX = "sector:";
 const INDUSTRY_LIST_PREFIX = "industry:";
 const THEME_ETF_PREFIX = "theme-etf:";
+const THEMATIC_ETFS_ALL_ID = "__theme-etfs-all__";
+const THEMATIC_INDUSTRIES_FOLDER_ID = "thematic-industries";
 
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
 
@@ -490,6 +492,8 @@ export default function WatchlistPanel({
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [predefinedListSymbols, setPredefinedListSymbols] = useState<Record<string, string[]>>({});
   const [predefinedListSymbolsLoading, setPredefinedListSymbolsLoading] = useState(false);
+  const [thematicEtfConstituents, setThematicEtfConstituents] = useState<Record<string, string[]>>({});
+  const [thematicEtfConstituentsLoading, setThematicEtfConstituentsLoading] = useState(false);
   const [sectorListSymbols, setSectorListSymbols] = useState<Record<string, string[]>>({});
   const [industryListSymbols, setIndustryListSymbols] = useState<Record<string, string[]>>({});
   const [classificationListsLoading, setClassificationListsLoading] = useState(false);
@@ -831,6 +835,40 @@ export default function WatchlistPanel({
     };
   }, [sectorListSymbols, industryListSymbols]);
 
+  // Fetch thematic ETF constituents when a thematic ETF list is selected.
+  useEffect(() => {
+    if (!selectedCollectionId?.startsWith(THEME_ETF_PREFIX)) return;
+    const etfId = selectedCollectionId.slice(THEME_ETF_PREFIX.length);
+    const item = THEMATIC_ETFS.find((x) => x.id === etfId);
+    if (!item) return;
+    const ticker = item.ticker.toUpperCase();
+    if (thematicEtfConstituents[ticker] != null) return;
+    let cancelled = false;
+    setThematicEtfConstituentsLoading(true);
+    fetch(`/api/thematic-etf-constituents?etf=${encodeURIComponent(ticker)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load constituents");
+        return res.json();
+      })
+      .then((symbols: string[]) => {
+        if (!cancelled && Array.isArray(symbols)) {
+          setThematicEtfConstituents((prev) => ({
+            ...prev,
+            [ticker]: symbols.map((s) => String(s).toUpperCase()),
+          }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setThematicEtfConstituents((prev) => ({ ...prev, [ticker]: [] }));
+      })
+      .finally(() => {
+        if (!cancelled) setThematicEtfConstituentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCollectionId, thematicEtfConstituents]);
+
   const tableSource = useMemo(() => {
     if (sidebarTab === "screener") {
       if (selectedScreen) return { symbols: [], title: selectedScreen.name, fromScreener: true, screen: selectedScreen };
@@ -869,13 +907,22 @@ export default function WatchlistPanel({
       const etfId = selectedCollectionId.slice(THEME_ETF_PREFIX.length);
       const item = THEMATIC_ETFS.find((x) => x.id === etfId);
       if (item) {
+        const ticker = item.ticker.toUpperCase();
         return {
-          symbols: [item.ticker],
+          symbols: thematicEtfConstituents[ticker] ?? [],
           title: `${formatListDisplayName(item.theme)} (${item.ticker})`,
           fromScreener: false,
           screen: null,
         };
       }
+    }
+    if (selectedCollectionId === THEMATIC_ETFS_ALL_ID) {
+      return {
+        symbols: THEMATIC_ETFS.map((x) => x.ticker.toUpperCase()),
+        title: "Thematic ETFs",
+        fromScreener: false,
+        screen: null,
+      };
     }
     const selectedFolder = selectedCollectionId
       ? listFolders.find((f) => f.id === selectedCollectionId)
@@ -887,7 +934,7 @@ export default function WatchlistPanel({
       return { symbols: activeList.symbols ?? [], title: activeList.name, fromScreener: false, screen: null };
     }
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
-  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, listFolders, selectedScreen]);
+  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -925,7 +972,7 @@ export default function WatchlistPanel({
       const next = new Set(prev);
       if (openToCollectionTrigger.kind === "sector") next.add("sectors");
       else if (openToCollectionTrigger.kind === "industry") next.add("industries");
-      else if (openToCollectionTrigger.kind === "theme") next.add("thematic-etfs");
+      else if (openToCollectionTrigger.kind === "theme") next.add(THEMATIC_INDUSTRIES_FOLDER_ID);
       else next.add("indices");
       return next;
     });
@@ -937,7 +984,8 @@ export default function WatchlistPanel({
       selectedCollectionId.startsWith(INDEX_LIST_PREFIX) ||
       selectedCollectionId.startsWith(SECTOR_LIST_PREFIX) ||
       selectedCollectionId.startsWith(INDUSTRY_LIST_PREFIX) ||
-      selectedCollectionId.startsWith(THEME_ETF_PREFIX)
+      selectedCollectionId.startsWith(THEME_ETF_PREFIX) ||
+      selectedCollectionId === THEMATIC_ETFS_ALL_ID
     ) {
       setSortKey("marketCap");
       setSortDir("desc");
@@ -2363,12 +2411,18 @@ export default function WatchlistPanel({
                   )}
                 </li>
                 <li className="mt-1">
-                  <button type="button" onClick={() => toggleListFolderExpanded("thematic-etfs")} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has("thematic-etfs") ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
-                    <span>Thematic ETFs</span>
+                  <button type="button" onClick={() => toggleListFolderExpanded(THEMATIC_INDUSTRIES_FOLDER_ID)} className="w-full px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expandedListFolderIds.has(THEMATIC_INDUSTRIES_FOLDER_ID) ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
+                    <span>Thematic Industries</span>
                   </button>
-                  {expandedListFolderIds.has("thematic-etfs") && (
+                  {expandedListFolderIds.has(THEMATIC_INDUSTRIES_FOLDER_ID) && (
                     <ul className="pl-4">
+                      <li>
+                        <button type="button" onClick={() => { setSelectedCollectionId(THEMATIC_ETFS_ALL_ID); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === THEMATIC_ETFS_ALL_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                          <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                          <span className="truncate min-w-0">Thematic ETFs</span>
+                        </button>
+                      </li>
                       {sortedThematicEtfs.map((item) => {
                         const id = `${THEME_ETF_PREFIX}${item.id}`;
                         return (
@@ -3258,8 +3312,10 @@ export default function WatchlistPanel({
                       <td colSpan={tableColumns.length + 2} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
                         {sidebarTab === "watchlists" &&
                         selectedCollectionId != null &&
-                        selectedCollectionId.startsWith(INDEX_LIST_PREFIX) &&
-                        predefinedListSymbolsLoading
+                        ((selectedCollectionId.startsWith(INDEX_LIST_PREFIX) &&
+                          predefinedListSymbolsLoading) ||
+                          (selectedCollectionId.startsWith(THEME_ETF_PREFIX) &&
+                            thematicEtfConstituentsLoading))
                           ? "Loading constituents…"
                           : sidebarTab === "watchlists" &&
                             selectedCollectionId != null &&
