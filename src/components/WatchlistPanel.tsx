@@ -162,6 +162,14 @@ function formatRelatedTitleWithUpperTicker(title: string): string {
   return `${formatListDisplayName(m[1] ?? "Related To")} ${(m[2] ?? "").toUpperCase()}`.trim();
 }
 
+function normalizeExportFileName(name: string): string {
+  const cleaned = String(name ?? "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
+    .replace(/\s+/g, " ");
+  return cleaned.length > 0 ? cleaned : "export";
+}
+
 /** Table column id: standard ColumnId or script criterion label (e.g. "MA(C, 21)"). */
 type TableColumnId = ColumnId | string;
 
@@ -561,6 +569,7 @@ export default function WatchlistPanel({
   const lastSidebarWidthPx = useRef(224);
   const isResizingSidebar = useRef(false);
   const addToListMenuRef = useRef<HTMLDivElement>(null);
+  const addPopupListNameInputRef = useRef<HTMLInputElement>(null);
   const popupSearchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedScreen = useMemo(
@@ -1063,27 +1072,32 @@ export default function WatchlistPanel({
     [mapItemToRow, mapScreenerRowToWatchlistRow]
   );
 
+  const buildScreenerParams = useCallback(async (screen: SavedScreen, limit = 2000): Promise<URLSearchParams> => {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (screen.type === "script") {
+      params.set("scriptBody", screen.scriptBody ?? "");
+      params.set("universe", screen.universe ?? "all");
+      return params;
+    }
+    let symbols: string[] | undefined;
+    if (screen.universe !== "all") {
+      const res = await fetch(`/api/index-constituents?index=${encodeURIComponent(screen.universe)}`);
+      if (res.ok) {
+        const data = (await res.json()) as string[];
+        symbols = Array.isArray(data) ? data.map((s) => String(s).toUpperCase()) : undefined;
+      }
+    }
+    if (symbols && symbols.length > 0) params.set("symbols", symbols.join(","));
+    if (Object.keys(screen.filters).length > 0) params.set("filters", JSON.stringify(screen.filters));
+    return params;
+  }, []);
+
   const fetchScreenerResults = useCallback(async (screen: SavedScreen) => {
     setLoading(true);
     setScreenerError(null);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "2000");
-      if (screen.type === "script") {
-        params.set("scriptBody", screen.scriptBody ?? "");
-        params.set("universe", screen.universe ?? "all");
-      } else {
-        let symbols: string[] | undefined;
-        if (screen.universe !== "all") {
-          const res = await fetch(`/api/index-constituents?index=${encodeURIComponent(screen.universe)}`);
-          if (res.ok) {
-            const data = (await res.json()) as string[];
-            symbols = Array.isArray(data) ? data.map((s) => String(s).toUpperCase()) : undefined;
-          }
-        }
-        if (symbols && symbols.length > 0) params.set("symbols", symbols.join(","));
-        if (Object.keys(screen.filters).length > 0) params.set("filters", JSON.stringify(screen.filters));
-      }
+      const params = await buildScreenerParams(screen, 2000);
       const res = await fetch(`/api/screener?${params.toString()}`);
       if (!res.ok) throw new Error("Screener fetch failed");
       const data = (await res.json()) as {
@@ -1111,7 +1125,57 @@ export default function WatchlistPanel({
     } finally {
       setLoading(false);
     }
-  }, [mapScreenerRowToWatchlistRow]);
+  }, [buildScreenerParams, mapScreenerRowToWatchlistRow]);
+
+  const downloadSymbolsTxt = useCallback((rawName: string, symbols: string[]) => {
+    const unique = Array.from(
+      new Set(
+        symbols
+          .map((s) => String(s).trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
+    const body = unique.join("\n");
+    const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = `${normalizeExportFileName(rawName)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(href);
+  }, []);
+
+  const exportWatchlistSymbols = useCallback(
+    (list: Watchlist) => {
+      downloadSymbolsTxt(list.name, list.symbols ?? []);
+    },
+    [downloadSymbolsTxt]
+  );
+
+  const exportScreenerSymbols = useCallback(
+    async (screen: SavedScreen) => {
+      try {
+        const params = await buildScreenerParams(screen, 20000);
+        const res = await fetch(`/api/screener?${params.toString()}`);
+        if (!res.ok) throw new Error("Screener export failed");
+        const data = (await res.json()) as { rows?: Array<Record<string, unknown>>; error?: string };
+        if (data.error) throw new Error(data.error);
+        const symbols = Array.isArray(data.rows)
+          ? data.rows
+              .map((r) => String(r.symbol ?? "").toUpperCase())
+              .filter(Boolean)
+          : [];
+        downloadSymbolsTxt(screen.name, symbols);
+      } catch {
+        if (typeof window !== "undefined") {
+          window.alert("Unable to export this screener right now.");
+        }
+      }
+    },
+    [buildScreenerParams, downloadSymbolsTxt]
+  );
 
   const fetchRows = useCallback(
     () =>
@@ -1163,22 +1227,18 @@ export default function WatchlistPanel({
   }, [flagPickerSymbol]);
 
   const addList = useCallback(() => {
-    const currentFolderId =
-      selectedCollectionId && selectedCollectionId !== RELATED_LIST_ID && !selectedCollectionId.includes(":")
-        ? selectedCollectionId
-        : undefined;
     setAddPopupMode("create");
     setAddPopupListId(null);
-    setAddPopupListName("New List");
+    setAddPopupListName("");
     setAddPopupSymbols([]);
-    setAddPopupTargetFolderId(currentFolderId);
+    setAddPopupTargetFolderId(undefined);
     setPendingAdds([]);
     setPopupSearchQuery("");
     setPopupSearchResults([]);
     setPopupSearchHighlighted(-1);
     setSidebarTab("watchlists");
-    setTimeout(() => popupSearchInputRef.current?.focus(), 0);
-  }, [selectedCollectionId]);
+    setTimeout(() => addPopupListNameInputRef.current?.focus(), 0);
+  }, []);
 
   const addListFolder = useCallback(() => {
     const name = prompt("Folder name", "New Folder");
@@ -2085,6 +2145,7 @@ export default function WatchlistPanel({
                         <span className="truncate min-w-0">{s.name}</span>
                       </button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                     </div>
@@ -2149,6 +2210,7 @@ export default function WatchlistPanel({
                                   <span className="truncate min-w-0">{s.name}</span>
                                 </button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                               </div>
@@ -2182,6 +2244,7 @@ export default function WatchlistPanel({
                           </button>
                           <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                           </div>
                         </li>
@@ -2226,6 +2289,7 @@ export default function WatchlistPanel({
                               </button>
                               <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                               </div>
                             </li>
@@ -2366,17 +2430,21 @@ export default function WatchlistPanel({
                   <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 space-y-2">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                        List name
+                        Name
                       </label>
                       <input
+                        ref={addPopupListNameInputRef}
                         type="text"
                         value={addPopupListName}
                         onChange={(e) => setAddPopupListName(e.target.value)}
-                        placeholder="List name"
+                        placeholder="New List"
                         className="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
                       />
                     </div>
                     <div className="relative">
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                        Search Tickers
+                      </label>
                       <input
                         ref={popupSearchInputRef}
                         type="text"
@@ -2385,12 +2453,15 @@ export default function WatchlistPanel({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            const pick = popupSearchHighlighted >= 0 && popupSearchResults[popupSearchHighlighted]
-                              ? popupSearchResults[popupSearchHighlighted]
-                              : popupSearchResults[0];
+                            const pick =
+                              popupSearchResults.length === 1
+                                ? popupSearchResults[0]
+                                : popupSearchHighlighted >= 0 && popupSearchResults[popupSearchHighlighted]
+                                  ? popupSearchResults[popupSearchHighlighted]
+                                  : null;
                             if (pick) {
                               addPendingFromSearch(pick.symbol, pick.name);
-                            } else if (popupSearchQuery.trim()) {
+                            } else if (popupSearchResults.length === 0 && popupSearchQuery.trim()) {
                               addPendingFromSearch(popupSearchQuery.trim().toUpperCase(), popupSearchQuery.trim());
                             }
                           } else if (e.key === "ArrowDown") {
@@ -2404,7 +2475,7 @@ export default function WatchlistPanel({
                             setPopupSearchHighlighted(-1);
                           }
                         }}
-                        placeholder="Type ticker and press Enter..."
+                        placeholder="Type tickers"
                         className="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
                         autoComplete="off"
                       />
@@ -2415,6 +2486,7 @@ export default function WatchlistPanel({
                               <button
                                 type="button"
                                 className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${i === popupSearchHighlighted ? "bg-zinc-100 dark:bg-zinc-700" : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"}`}
+                                onMouseEnter={() => setPopupSearchHighlighted(i)}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   addPendingFromSearch(s.symbol, s.name);
@@ -2430,18 +2502,16 @@ export default function WatchlistPanel({
                     </div>
                   </div>
                   <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3">
-                    <div>
-                      <h3 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                        Current stocks
-                      </h3>
-                      {addPopupSymbols.length > 0 ? (
-                        <ul className="max-h-40 overflow-auto border border-zinc-200 dark:border-zinc-700 rounded">
+                    {(addPopupSymbols.length > 0 || pendingAdds.length > 0) && (
+                      <div>
+                        <ul className="space-y-1">
                           {addPopupSymbols.map((sym) => (
                             <li
                               key={sym}
-                              className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm border-b last:border-b-0 border-zinc-200 dark:border-zinc-700"
+                              className="flex items-center justify-between gap-2 py-1.5 px-2 rounded bg-zinc-50 dark:bg-zinc-700/50 text-sm"
                             >
                               <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100">{sym}</span>
+                              <span className="flex-1 min-w-0 truncate text-zinc-600 dark:text-zinc-400" />
                               <button
                                 type="button"
                                 onClick={() =>
@@ -2456,23 +2526,6 @@ export default function WatchlistPanel({
                               </button>
                             </li>
                           ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          This list is currently empty.
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                        Add stocks
-                      </h3>
-                      {pendingAdds.length === 0 ? (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          Type a ticker above and press Enter to queue new stocks.
-                        </p>
-                      ) : (
-                        <ul className="space-y-1">
                           {pendingAdds.map((p) => (
                             <li
                               key={p.symbol}
@@ -2495,8 +2548,8 @@ export default function WatchlistPanel({
                             </li>
                           ))}
                         </ul>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                   <div className="p-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0 flex justify-end gap-2">
                     <button
