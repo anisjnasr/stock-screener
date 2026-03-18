@@ -3,6 +3,20 @@ import { existsSync, statSync } from "fs";
 import { join } from "path";
 import Database from "better-sqlite3";
 
+type CountRow = { c: number };
+type DateRow = { d: string | null };
+
+function readCount(db: InstanceType<typeof Database>, sql: string): number {
+  const row = db.prepare(sql).get() as CountRow | undefined;
+  return Number(row?.c ?? 0);
+}
+
+function readDate(db: InstanceType<typeof Database>, sql: string): string | null {
+  const row = db.prepare(sql).get() as DateRow | undefined;
+  const value = row?.d;
+  return value != null && String(value) !== "" ? String(value) : null;
+}
+
 export async function GET() {
   const dbPath = join(process.cwd(), "data", "screener.db");
   const hasDb = existsSync(dbPath);
@@ -61,24 +75,20 @@ export async function GET() {
       const db = new Database(dbPath, { readonly: true });
       try {
         ownership = {
-          rows: Number(db.prepare("SELECT COUNT(*) AS c FROM ownership").get()?.c ?? 0),
-          symbols: Number(db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM ownership").get()?.c ?? 0),
-          latestReportDate: String(db.prepare("SELECT MAX(report_date) AS d FROM ownership").get()?.d ?? "") || null,
+          rows: readCount(db, "SELECT COUNT(*) AS c FROM ownership"),
+          symbols: readCount(db, "SELECT COUNT(DISTINCT symbol) AS c FROM ownership"),
+          latestReportDate: readDate(db, "SELECT MAX(report_date) AS d FROM ownership"),
         };
         financials = {
-          rows: Number(db.prepare("SELECT COUNT(*) AS c FROM financials").get()?.c ?? 0),
-          symbols: Number(db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM financials").get()?.c ?? 0),
-          latestPeriodEnd: String(db.prepare("SELECT MAX(period_end) AS d FROM financials").get()?.d ?? "") || null,
-          annualRows: Number(
-            db.prepare("SELECT COUNT(*) AS c FROM financials WHERE period_type = 'annual'").get()?.c ?? 0
-          ),
-          quarterlyRows: Number(
-            db.prepare("SELECT COUNT(*) AS c FROM financials WHERE period_type = 'quarterly'").get()?.c ?? 0
-          ),
+          rows: readCount(db, "SELECT COUNT(*) AS c FROM financials"),
+          symbols: readCount(db, "SELECT COUNT(DISTINCT symbol) AS c FROM financials"),
+          latestPeriodEnd: readDate(db, "SELECT MAX(period_end) AS d FROM financials"),
+          annualRows: readCount(db, "SELECT COUNT(*) AS c FROM financials WHERE period_type = 'annual'"),
+          quarterlyRows: readCount(db, "SELECT COUNT(*) AS c FROM financials WHERE period_type = 'quarterly'"),
         };
         quoteDaily = {
-          latestQuoteDate: String(db.prepare("SELECT MAX(date) AS d FROM quote_daily").get()?.d ?? "") || null,
-          latestBarsDate: String(db.prepare("SELECT MAX(date) AS d FROM daily_bars").get()?.d ?? "") || null,
+          latestQuoteDate: readDate(db, "SELECT MAX(date) AS d FROM quote_daily"),
+          latestBarsDate: readDate(db, "SELECT MAX(date) AS d FROM daily_bars"),
         };
       } finally {
         db.close();
