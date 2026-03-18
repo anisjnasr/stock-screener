@@ -41,9 +41,11 @@ function quarterKeyFromDate(date?: string): string | null {
 }
 
 function quarterKeyFromPeriod(period: string, date?: string): string | null {
-  // The table columns are fiscal quarters (Q1..Q4), so align ownership to the
-  // displayed period label first; use date only when period is unavailable.
-  const y = period.match(/\d{4}/)?.[0] || (date ? date.slice(0, 4) : "");
+  // Ownership rows are keyed by calendar quarter via report_date.
+  // Prefer date alignment first; fiscal labels can diverge for non-calendar FY.
+  const byDate = quarterKeyFromDate(date);
+  if (byDate) return byDate;
+  const y = period.match(/\d{4}/)?.[0];
   const p = period.match(/Q([1-4])/i)?.[1];
   if (y && p) return `${y}-Q${p}`;
   return quarterKeyFromDate(date);
