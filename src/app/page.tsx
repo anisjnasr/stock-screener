@@ -44,6 +44,12 @@ type IncomeLine = {
   netIncome?: number;
   eps?: number;
 };
+type OwnershipQuarter = {
+  report_date: string;
+  num_funds: number | null;
+  num_funds_change: number | null;
+  top_holders: Array<{ name: string; value?: number; shares?: number | null }>;
+};
 
 type StockData = {
   quote: {
@@ -632,6 +638,13 @@ export default function Home() {
     ? (ownership as { dateReported?: string }[]).map((o) => o.dateReported).filter(Boolean).sort().reverse()[0] ?? null
     : null);
   const topHolders = ownershipData?.topHolders ?? [];
+  const ownershipQuarters = useMemo(() => {
+    const rows = (ownershipData?.quarters ?? []) as OwnershipQuarter[];
+    return [...rows]
+      .filter((r) => !!r?.report_date)
+      .sort((a, b) => b.report_date.localeCompare(a.report_date))
+      .slice(0, 8);
+  }, [ownershipData]);
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
@@ -717,6 +730,11 @@ export default function Home() {
                   profile={data?.profile ?? null}
                   nextEarnings={data?.nextEarnings}
                   yearly={yearlyRows}
+                  ownership={{
+                    quarters: ownershipQuarters,
+                    latestFundCount: ownershipData?.latestFundCount ?? undefined,
+                    latestReportDate: ownershipData?.latestReportDate ?? undefined,
+                  }}
                   relatedStocks={relatedStocks}
                   onSymbolSelect={handleSymbolSelect}
                   onOpenRelatedStocksInWatchlist={
@@ -849,7 +867,7 @@ export default function Home() {
                       quarterlyHidden ? "max-h-0 opacity-0 -translate-y-2" : "max-h-[360px] opacity-100 translate-y-0"
                     }`}
                   >
-                    <QuarterlyBox rows={quarterlyRows} loading={quarterlyLoading} />
+                    <QuarterlyBox rows={quarterlyRows} ownershipRows={ownershipQuarters} loading={quarterlyLoading} />
                   </div>
                 </div>
               </div>

@@ -504,14 +504,14 @@ export type OwnershipQuarter = {
 };
 
 /**
- * Get ownership (13F fund count and top holders) for a symbol, last 12 quarters, latest first.
+ * Get ownership (13F fund count and top holders) for a symbol, last 8 quarters, latest first.
  */
 export async function getOwnership(symbol: string): Promise<OwnershipQuarter[]> {
   const db = await openScreenerDb();
   if (!db) return [];
   try {
     const stmt = db.prepare(
-      "SELECT report_date, num_funds, num_funds_change, top_holders FROM ownership WHERE symbol = ? ORDER BY report_date DESC LIMIT 12"
+      "SELECT report_date, num_funds, num_funds_change, top_holders FROM ownership WHERE symbol = ? ORDER BY report_date DESC LIMIT 8"
     );
     stmt.bind([symbol.toUpperCase()]);
     const rows: OwnershipQuarter[] = [];

@@ -1,0 +1,101 @@
+name: Ownership 13F Refresh
+
+on:
+  schedule:
+    # Monthly checkpoint to catch newly posted 13F batches.
+    - cron: "30 2 20 * *"
+  workflow_dispatch:
+    inputs:
+      quarters:
+        description: "How many quarters to process (ignored when latest_only=true)"
+        required: false
+        default: "8"
+        type: string
+      latest_only:
+        description: "Process latest quarter only"
+        required: false
+        default: true
+        type: boolean
+      recompute:
+        description: "Delete and recompute selected quarter rows"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ownership-refresh
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  DB_CACHE_PREFIX: screener-db-v1
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore DB from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/screener.db
+          key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ env.DB_CACHE_PREFIX }}-
+          enableCrossOsArchive: true
+
+      - name: Verify DB exists
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = 'data/screener.db';
+          if (!fs.existsSync(p)) {
+            console.error('::error::No screener.db found from cache.');
+            process.exit(1);
+          }
+          console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
+          "
+
+      - name: Refresh ownership (13F)
+        run: |
+          ARGS=()
+          if [ "${{ github.event.inputs.latest_only }}" = "true" ]; then ARGS+=("--latest-only"); fi
+          if [ "${{ github.event.inputs.recompute }}" = "true" ]; then ARGS+=("--recompute"); fi
+          if [ -n "${{ github.event.inputs.quarters }}" ]; then ARGS+=("--quarters" "${{ github.event.inputs.quarters }}"); fi
+          node scripts/refresh-ownership.mjs "${ARGS[@]}"
+        env:
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          OPENFIGI_USER_AGENT: ${{ secrets.OPENFIGI_USER_AGENT }}
+
+      - name: Ownership sanity checks
+        run: node scripts/check-ownership-refresh.mjs
+
+      - name: Optimize database
+        run: node scripts/optimize-db.mjs
+
+      - name: Save DB to cache
+        uses: actions/cache/save@v4
+        with:
+          path: data/screener.db
+          key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          enableCrossOsArchive: true
+
+      - name: Upload DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screener-db-ownership-${{ github.run_id }}
+          path: data/screener.db
+          retention-days: 3
+          compression-level: 1
+

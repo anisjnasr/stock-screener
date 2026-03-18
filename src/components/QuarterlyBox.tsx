@@ -8,9 +8,15 @@ type QuarterlyRow = {
   sales: number | null;
   salesGrowth: number | null;
 };
+type OwnershipRow = {
+  report_date: string;
+  num_funds: number | null;
+  num_funds_change: number | null;
+};
 
 type QuarterlyBoxProps = {
   rows: QuarterlyRow[];
+  ownershipRows?: OwnershipRow[];
   loading?: boolean;
 };
 
@@ -25,7 +31,23 @@ function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 }
 
-export default function QuarterlyBox({ rows, loading }: QuarterlyBoxProps) {
+function quarterKeyFromDate(date?: string): string | null {
+  if (!date) return null;
+  const y = date.slice(0, 4);
+  const month = Number(date.slice(5, 7));
+  if (!Number.isFinite(month)) return null;
+  const q = month <= 3 ? 1 : month <= 6 ? 2 : month <= 9 ? 3 : 4;
+  return `${y}-Q${q}`;
+}
+
+function quarterKeyFromPeriod(period: string, date?: string): string | null {
+  const y = date?.slice(0, 4) || period.match(/\d{4}/)?.[0] || "";
+  const p = period.match(/Q([1-4])/i)?.[1];
+  if (y && p) return `${y}-Q${p}`;
+  return quarterKeyFromDate(date);
+}
+
+export default function QuarterlyBox({ rows, ownershipRows = [], loading }: QuarterlyBoxProps) {
   if (loading) {
     return (
       <div className="w-full border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1.5 shrink-0">
@@ -87,6 +109,11 @@ export default function QuarterlyBox({ rows, loading }: QuarterlyBoxProps) {
   yearEndColIndices.delete(ordered.length - 1);
 
   const cellBorder = "border-r border-zinc-200 dark:border-zinc-700";
+  const ownershipByQuarter = new Map(
+    ownershipRows
+      .map((r) => [quarterKeyFromDate(r.report_date), r] as const)
+      .filter((e): e is [string, OwnershipRow] => Boolean(e[0]))
+  );
 
   return (
     <div className="w-full border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden shrink-0">
@@ -161,6 +188,39 @@ export default function QuarterlyBox({ rows, loading }: QuarterlyBoxProps) {
                   {row.salesGrowth != null ? fmtPct(row.salesGrowth) : "NA"}
                 </td>
               ))}
+            </tr>
+            <tr className="border-b border-zinc-100 dark:border-zinc-800">
+              <td className="py-0.5 px-2 text-zinc-500 dark:text-zinc-400 text-left whitespace-nowrap border-r border-zinc-200 dark:border-zinc-700"># of Funds</td>
+              {ordered.map((row, i) => {
+                const qk = quarterKeyFromPeriod(row.period, row.date);
+                const own = qk ? ownershipByQuarter.get(qk) : undefined;
+                return (
+                  <td
+                    key={row.date ?? `fundcount-${i}`}
+                    className={`py-0.5 px-2 tabular-nums text-zinc-900 dark:text-zinc-100 text-center whitespace-nowrap ${yearEndColIndices.has(i) ? cellBorder : ""}`}
+                  >
+                    {own?.num_funds != null ? Number(own.num_funds).toLocaleString() : "NA"}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-b border-zinc-100 dark:border-zinc-800">
+              <td className="py-0.5 px-2 text-zinc-500 dark:text-zinc-400 text-left whitespace-nowrap border-r border-zinc-200 dark:border-zinc-700">Funds Chg</td>
+              {ordered.map((row, i) => {
+                const qk = quarterKeyFromPeriod(row.period, row.date);
+                const own = qk ? ownershipByQuarter.get(qk) : undefined;
+                const chg = own?.num_funds_change;
+                return (
+                  <td
+                    key={row.date ?? `fundchg-${i}`}
+                    className={`py-0.5 px-2 tabular-nums text-center whitespace-nowrap ${yearEndColIndices.has(i) ? cellBorder : ""} ${
+                      chg != null ? (chg >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-zinc-600 dark:text-zinc-400"
+                    }`}
+                  >
+                    {chg != null ? Number(chg).toLocaleString() : "NA"}
+                  </td>
+                );
+              })}
             </tr>
           </tbody>
         </table>

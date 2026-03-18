@@ -27,6 +27,16 @@ type ProfileData = {
 } | null;
 
 type RelatedStock = { symbol: string; name: string };
+type OwnershipQuarter = {
+  report_date: string;
+  num_funds: number | null;
+  num_funds_change: number | null;
+};
+type OwnershipSummary = {
+  quarters?: OwnershipQuarter[];
+  latestFundCount?: number;
+  latestReportDate?: string | null;
+};
 
 type LeftSidebarProps = {
   symbol: string;
@@ -41,6 +51,7 @@ type LeftSidebarProps = {
   onOpenSectorInWatchlist?: (sector: string) => void;
   /** Open an industry list in Watchlists. */
   onOpenIndustryInWatchlist?: (industry: string) => void;
+  ownership?: OwnershipSummary | null;
   loading?: boolean;
 };
 
@@ -73,9 +84,10 @@ export default function LeftSidebar({
   onOpenRelatedStocksInWatchlist,
   onOpenSectorInWatchlist,
   onOpenIndustryInWatchlist,
+  ownership,
   loading,
 }: LeftSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"profile" | "news">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "news" | "filings">("profile");
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [yearlyExpanded, setYearlyExpanded] = useState(false);
 
@@ -126,6 +138,17 @@ export default function LeftSidebar({
             }`}
           >
             News
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("filings")}
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+              activeTab === "filings"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            Filings
           </button>
         </div>
       </div>
@@ -332,9 +355,62 @@ export default function LeftSidebar({
             )}
           </div>
         </>
-      ) : (
+      ) : activeTab === "news" ? (
         <div className="min-h-0 flex-1">
           <NewsSidebar symbol={symbol} embedded />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50/70 dark:bg-zinc-800/40 p-2 space-y-1.5">
+            <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">13F Summary</div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
+              <span className="text-zinc-500 dark:text-zinc-400">Latest Quarter</span>
+              <span className="text-zinc-900 dark:text-zinc-100">
+                {ownership?.latestReportDate ? formatDisplayDate(ownership.latestReportDate) : "NA"}
+              </span>
+              <span className="text-zinc-500 dark:text-zinc-400"># of Funds</span>
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {ownership?.latestFundCount != null ? Number(ownership.latestFundCount).toLocaleString() : "NA"}
+              </span>
+              <span className="text-zinc-500 dark:text-zinc-400">Funds Chg</span>
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {ownership?.quarters?.[0]?.num_funds_change != null
+                  ? Number(ownership.quarters[0].num_funds_change).toLocaleString()
+                  : "NA"}
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 rounded border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-zinc-50 dark:bg-zinc-800/60">
+                <tr className="border-b border-zinc-200 dark:border-zinc-700">
+                  <th className="px-2 py-1 text-left font-medium text-zinc-500 dark:text-zinc-400">Quarter</th>
+                  <th className="px-2 py-1 text-right font-medium text-zinc-500 dark:text-zinc-400"># of Funds</th>
+                  <th className="px-2 py-1 text-right font-medium text-zinc-500 dark:text-zinc-400">Funds Chg</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(ownership?.quarters ?? []).slice(0, 8).map((q) => (
+                  <tr key={q.report_date} className="border-b border-zinc-100 dark:border-zinc-800">
+                    <td className="px-2 py-1 text-zinc-700 dark:text-zinc-200">{formatDisplayDate(q.report_date)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
+                      {q.num_funds != null ? Number(q.num_funds).toLocaleString() : "NA"}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
+                      {q.num_funds_change != null ? Number(q.num_funds_change).toLocaleString() : "NA"}
+                    </td>
+                  </tr>
+                ))}
+                {(!ownership?.quarters || ownership.quarters.length === 0) && (
+                  <tr>
+                    <td colSpan={3} className="px-2 py-2 text-zinc-500 dark:text-zinc-400">
+                      No filings data available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </aside>

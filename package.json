@@ -22,6 +22,7 @@
     "enrich-company-reference": "node scripts/enrich-company-reference.mjs",
     "refresh-financials": "node scripts/refresh-financials.mjs",
     "refresh-ownership": "node scripts/refresh-ownership.mjs",
+    "check-ownership-refresh": "node scripts/check-ownership-refresh.mjs",
     "refresh-companies": "node scripts/refresh-companies.mjs",
     "backfill-daily-history": "node scripts/backfill-daily-history.mjs",
     "sample-tables": "node scripts/sample-tables.mjs",

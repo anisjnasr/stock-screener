@@ -3,12 +3,13 @@
  * Matches "Name of Issuer" to companies.name (normalized). Persists to data/cusip-to-symbol.json.
  */
 
-import initSqlJs from "sql.js";
+import Database from "better-sqlite3";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { DATA_13F_DIR, QUARTERS_12 } from "./sec-13f-download.mjs";
+import { resolveCusipsViaOpenFigi, normalizeSymbolForDb } from "./sec-13f-openfigi-map.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -37,9 +38,10 @@ function normalize(s) {
  * Load companies (symbol, name) from screener.db.
  */
 function loadCompanies(db) {
-  const rows = db.exec("SELECT symbol, name FROM companies WHERE name IS NOT NULL AND name != ''");
-  if (!rows.length || !rows[0].values) return [];
-  return rows[0].values.map(([symbol, name]) => ({ symbol: String(symbol), name: String(name) }));
+  const rows = db
+    .prepare("SELECT symbol, name FROM companies WHERE name IS NOT NULL AND name != ''")
+    .all();
+  return rows.map((r) => ({ symbol: String(r.symbol), name: String(r.name) }));
 }
 
 /**
@@ -138,9 +140,7 @@ export async function buildCusipToSymbolMap() {
   if (!existsSync(DB_PATH)) {
     throw new Error("Missing data/screener.db. Run init-screener-db and seed-companies.");
   }
-  const SQL = await initSqlJs();
-  const buf = readFileSync(DB_PATH);
-  const db = new SQL.Database(buf);
+  const db = new Database(DB_PATH, { readonly: true });
   const companies = loadCompanies(db);
   db.close();
   if (companies.length === 0) {
@@ -178,6 +178,81 @@ export function loadCusipToSymbolMap() {
     }
   }
   return map;
+}
+
+function loadCompanyMatchers() {
+  const db = new Database(DB_PATH, { readonly: true });
+  const companies = loadCompanies(db);
+  db.close();
+  const nameToSymbol = buildNameToSymbol(companies);
+  const firstTwoWordsIndex = buildFirstTwoWordsIndex(companies);
+  const validSymbols = new Set(
+    companies.map((c) => normalizeSymbolForDb(String(c.symbol || ""))).filter(Boolean)
+  );
+  return Promise.resolve({ nameToSymbol, firstTwoWordsIndex, validSymbols });
+}
+
+/**
+ * Resolve CUSIP -> symbol using:
+ * 1) existing saved map + overrides
+ * 2) OpenFIGI (primary)
+ * 3) issuer-name heuristic fallback
+ *
+ * @param {Array<{cusip:string, issuerName?:string}>} pairs
+ * @param {object} [opts]
+ */
+export async function resolveCusipMap(pairs, opts = {}) {
+  const entries = Array.isArray(pairs) ? pairs : [];
+  const map = loadCusipToSymbolMap();
+  const uniquePairs = new Map();
+  for (const p of entries) {
+    const cusip = String(p?.cusip || "").trim().replace(/\s/g, "");
+    if (!cusip || cusip.length !== 9) continue;
+    if (!uniquePairs.has(cusip)) {
+      uniquePairs.set(cusip, { cusip, issuerName: String(p?.issuerName || "").trim() });
+    }
+  }
+  if (uniquePairs.size === 0) {
+    return { map, stats: { totalCusips: 0, mappedBefore: 0, openfigiAdded: 0, heuristicAdded: 0 } };
+  }
+
+  const { nameToSymbol, firstTwoWordsIndex, validSymbols } = await loadCompanyMatchers();
+  const unresolvedCusips = [...uniquePairs.keys()].filter((cusip) => !map[cusip]);
+
+  let openfigiAdded = 0;
+  if (opts.useOpenfigi !== false && unresolvedCusips.length > 0) {
+    const figi = await resolveCusipsViaOpenFigi(unresolvedCusips, opts);
+    for (const cusip of unresolvedCusips) {
+      const symbolRaw = figi.map?.[cusip]?.symbol;
+      const symbol = normalizeSymbolForDb(symbolRaw || "");
+      if (!symbol || !validSymbols.has(symbol)) continue;
+      if (!map[cusip]) openfigiAdded++;
+      map[cusip] = symbol;
+    }
+  }
+
+  let heuristicAdded = 0;
+  for (const { cusip, issuerName } of uniquePairs.values()) {
+    if (map[cusip]) continue;
+    const symbol = matchIssuerToSymbol(issuerName, nameToSymbol, firstTwoWordsIndex);
+    const normalized = normalizeSymbolForDb(symbol || "");
+    if (normalized && validSymbols.has(normalized)) {
+      map[cusip] = normalized;
+      heuristicAdded++;
+    }
+  }
+
+  writeFileSync(CUSIP_MAP_PATH, JSON.stringify(map, null, 0));
+  return {
+    map,
+    stats: {
+      totalCusips: uniquePairs.size,
+      mappedBefore: uniquePairs.size - unresolvedCusips.length,
+      openfigiAdded,
+      heuristicAdded,
+      unresolved: [...uniquePairs.keys()].filter((cusip) => !map[cusip]).length,
+    },
+  };
 }
 
 export { CUSIP_MAP_PATH };

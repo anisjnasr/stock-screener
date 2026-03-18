@@ -1,6 +1,7 @@
 /**
  * Parse SEC Form 13F quarterly ZIP: extract holdings (filer, CUSIP, issuer, value, shares).
- * ZIP contains TSV files: COVERPAGE (filer name by accession), INFOTABLE (holdings).
+ * ZIP contains TSV files: SUBMISSION (filing metadata), COVERPAGE (filer name by accession),
+ * and INFOTABLE (holdings).
  */
 
 import AdmZip from "adm-zip";
@@ -55,9 +56,48 @@ function periodToReportDate(periodStr) {
   return `${m[3]}-${month}-${day}`;
 }
 
+function normalizeDate(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  const fromPeriod = periodToReportDate(s);
+  if (fromPeriod) return fromPeriod;
+  return null;
+}
+
+function getColumnIndex(header, names) {
+  for (const name of names) {
+    const idx = header.indexOf(name);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+function isTruthyFlag(raw) {
+  if (raw == null) return false;
+  const v = String(raw).trim().toUpperCase();
+  return v === "1" || v === "Y" || v === "YES" || v === "TRUE";
+}
+
+function compareSubmissionMeta(a, b) {
+  const ad = a?.filedDate ?? "";
+  const bd = b?.filedDate ?? "";
+  if (ad && bd && ad !== bd) return ad > bd ? 1 : -1;
+  if (a?.isAmendment !== b?.isAmendment) {
+    return a?.isAmendment ? 1 : -1;
+  }
+  const aa = String(a?.accessionNumber ?? "");
+  const bb = String(b?.accessionNumber ?? "");
+  if (aa === bb) return 0;
+  return aa > bb ? 1 : -1;
+}
+
 /**
  * Build map ACCESSION_NUMBER -> PERIODOFREPORT (YYYY-MM-DD) from SUBMISSION.tsv.
- * Ensures each holding is attributed to the correct quarter.
+ * Also captures CIK / filing-date / amendment metadata so callers can select the latest
+ * effective filing version for each filer and quarter.
  */
 function parseSubmission(zip) {
   const entry = zip.getEntry("SUBMISSION.tsv");
@@ -66,20 +106,67 @@ function parseSubmission(zip) {
   const lines = raw.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return new Map();
   const header = parseTsvLine(lines[0]);
-  const accIdx = header.indexOf("ACCESSION_NUMBER");
-  const periodIdx = header.indexOf("PERIODOFREPORT");
+  const accIdx = getColumnIndex(header, ["ACCESSION_NUMBER"]);
+  const periodIdx = getColumnIndex(header, ["PERIODOFREPORT"]);
+  const cikIdx = getColumnIndex(header, ["CIK", "CENTRALINDEXKEY"]);
+  const filedIdx = getColumnIndex(header, ["FILING_DATE", "DATEFILED", "FILEDASOFDATE"]);
+  const amendTypeIdx = getColumnIndex(header, ["AMENDMENTTYPE", "AMENDMENT_TYPE"]);
+  const amendFlagIdx = getColumnIndex(header, ["ISAMENDMENT", "AMENDMENTFLAG"]);
   if (accIdx < 0 || periodIdx < 0) return new Map();
   const map = new Map();
   for (let i = 1; i < lines.length; i++) {
     const row = parseTsvLine(lines[i]);
     const acc = row[accIdx]?.trim();
-    const period = row[periodIdx]?.trim();
+    const period = row[periodIdx]?.trim() ?? "";
     if (acc) {
-      const reportDate = periodToReportDate(period);
-      map.set(acc, reportDate || undefined);
+      const reportDate = normalizeDate(period);
+      const cikRaw = cikIdx >= 0 ? row[cikIdx] : "";
+      const cik = cikRaw ? String(cikRaw).trim().replace(/^0+/, "") : "";
+      const filedDateRaw = filedIdx >= 0 ? row[filedIdx] : "";
+      const filedDate = normalizeDate(filedDateRaw);
+      const amendmentType = amendTypeIdx >= 0 ? String(row[amendTypeIdx] ?? "").trim() : "";
+      const amendmentFlag = amendFlagIdx >= 0 ? isTruthyFlag(row[amendFlagIdx]) : false;
+      const isAmendment =
+        amendmentFlag ||
+        (amendmentType && amendmentType.toUpperCase() !== "NEW HOLDINGS");
+      map.set(acc, {
+        accessionNumber: acc,
+        reportDate: reportDate || undefined,
+        cik: cik || "",
+        filedDate: filedDate || undefined,
+        amendmentType,
+        isAmendment,
+      });
     }
   }
   return map;
+}
+
+/**
+ * Pick the latest filing accession for each (CIK, reportDate), so amended filings
+ * supersede earlier versions and we avoid double-counting funds.
+ */
+function selectLatestAccessionsByFilerQuarter(submissionByAccession, fallbackReportDate) {
+  const selectedByFilerQuarter = new Map();
+  for (const [accession, meta] of submissionByAccession.entries()) {
+    const reportDate = meta?.reportDate || fallbackReportDate;
+    if (!reportDate) continue;
+    const cik = meta?.cik ? String(meta.cik) : accession;
+    const key = `${cik}|${reportDate}`;
+    const prev = selectedByFilerQuarter.get(key);
+    const candidate = {
+      accessionNumber: accession,
+      reportDate,
+      cik,
+      filedDate: meta?.filedDate,
+      amendmentType: meta?.amendmentType ?? "",
+      isAmendment: Boolean(meta?.isAmendment),
+    };
+    if (!prev || compareSubmissionMeta(candidate, prev) > 0) {
+      selectedByFilerQuarter.set(key, candidate);
+    }
+  }
+  return new Set([...selectedByFilerQuarter.values()].map((m) => m.accessionNumber));
 }
 
 /**
@@ -137,17 +224,22 @@ function* parseInfotable(zip, defaultReportDate, filerNameByAccession, accession
     const sharesStr = row[shsIdx]?.trim().replace(/,/g, "");
     const shares = sharesStr ? parseInt(sharesStr, 10) : null;
     const issuerName = (row[issuerIdx] || "").trim();
+    const subMeta = accession ? accessionToReportDate.get(accession) : null;
     const filerName = (accession && filerNameByAccession.get(accession)) || "";
-    const reportDate = (accession && accessionToReportDate.get(accession)) || defaultReportDate;
+    const reportDate = subMeta?.reportDate || defaultReportDate;
     if (!reportDate) continue;
     yield {
       accessionNumber: accession || "",
+      cik: subMeta?.cik || "",
       filerName,
       cusip,
       issuerName,
       value: value != null && !isNaN(value) ? value : null,
       shares: shares != null && !isNaN(shares) ? shares : null,
       reportDate,
+      filedDate: subMeta?.filedDate || null,
+      amendmentType: subMeta?.amendmentType || "",
+      isAmendment: Boolean(subMeta?.isAmendment),
     };
   }
 }
@@ -155,15 +247,26 @@ function* parseInfotable(zip, defaultReportDate, filerNameByAccession, accession
 /**
  * Parse one quarter ZIP and yield all holdings.
  * Uses SUBMISSION.tsv PERIODOFREPORT per accession when available; otherwise falls back to reportDate.
+ * By default, only rows belonging to the latest filing version per (CIK, reportDate)
+ * are emitted (amendments supersede previous versions).
  * @param {Buffer|string} zipPathOrBuffer - Path to .zip or buffer
  * @param {string} reportDate - YYYY-MM-DD fallback when PERIODOFREPORT is missing
- * @returns {Generator<{accessionNumber, filerName, cusip, issuerName, value, shares, reportDate}>}
+ * @param {object} [opts]
+ * @param {boolean} [opts.latestByFilerQuarter=true]
+ * @returns {Generator<{accessionNumber, cik, filerName, cusip, issuerName, value, shares, reportDate, filedDate, amendmentType, isAmendment}>}
  */
-export function* parseQuarter13F(zipPathOrBuffer, reportDate) {
+export function* parseQuarter13F(zipPathOrBuffer, reportDate, opts = {}) {
+  const { latestByFilerQuarter = true } = opts;
   const zip = Buffer.isBuffer(zipPathOrBuffer)
     ? new AdmZip(zipPathOrBuffer)
     : new AdmZip(zipPathOrBuffer);
-  const accessionToReportDate = parseSubmission(zip);
+  const submissionByAccession = parseSubmission(zip);
+  const selectedAccessions = latestByFilerQuarter
+    ? selectLatestAccessionsByFilerQuarter(submissionByAccession, reportDate)
+    : null;
   const filerNameByAccession = parseCoverpage(zip);
-  yield* parseInfotable(zip, reportDate, filerNameByAccession, accessionToReportDate);
+  for (const row of parseInfotable(zip, reportDate, filerNameByAccession, submissionByAccession)) {
+    if (selectedAccessions && !selectedAccessions.has(row.accessionNumber)) continue;
+    yield row;
+  }
 }
