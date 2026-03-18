@@ -163,6 +163,32 @@ jobs:
       - name: Optimize database
         run: node scripts/optimize-db.mjs
 
+      # Precompute and persist secondary-page payload caches against the freshly refreshed DB.
+      - name: Warm secondary page caches
+        run: |
+          npm run dev -- --hostname 127.0.0.1 --port 3000 > /tmp/next-dev.log 2>&1 &
+          echo $! > /tmp/next-dev.pid
+
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS "http://127.0.0.1:3000/api/market-monitor" >/tmp/mm.json
+          curl -fsS "http://127.0.0.1:3000/api/sectors-industries" >/tmp/si.json
+          curl -fsS "http://127.0.0.1:3000/api/breadth?index=sp500" >/tmp/breadth-sp500.json
+          curl -fsS "http://127.0.0.1:3000/api/breadth?index=nasdaq" >/tmp/breadth-nasdaq.json
+
+      - name: Stop cache warmup app
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/next-dev.pid ]; then
+            kill "$(cat /tmp/next-dev.pid)" || true
+          fi
+          pkill -f "next dev" || true
+
       # Save updated DB to cache
       - name: Save DB to cache
         uses: actions/cache/save@v4
