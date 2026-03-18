@@ -8,7 +8,7 @@
 #   3. Manually run this workflow with "Seed DB path" set to your local screener.db path.
 #   4. After that run, cache is populated; scheduled runs use ubuntu-latest and the cache.
 
-name: Daily Data Refresh
+name: Stocks Data Refresh
 
 on:
   schedule:
