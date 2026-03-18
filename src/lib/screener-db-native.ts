@@ -53,6 +53,14 @@ export type OwnershipQuarterNative = {
   num_funds_change: number | null;
   top_holders: Array<{ name: string; value?: number; shares?: number | null }>;
 };
+export type FinancialLineNative = {
+  period_end: string;
+  period_type: "annual" | "quarterly";
+  eps: number | null;
+  eps_growth_yoy: number | null;
+  sales: number | null;
+  sales_growth_yoy: number | null;
+};
 
 function getLatestReliableScreenerDateFromDb(db: BetterSqlite3Database): string | null {
   const latestRow = db.prepare("SELECT MAX(date) AS d FROM quote_daily").get() as { d: string | null } | undefined;
@@ -196,6 +204,44 @@ export function getOwnershipNative(symbol: string, limit = 8): OwnershipQuarterN
       top_holders,
     };
   });
+}
+
+export function getFinancialsNative(
+  symbol: string,
+  periodType: "annual" | "quarterly",
+  limit = 40
+): FinancialLineNative[] {
+  const db = getDb();
+  if (!db) return [];
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 40));
+  const rows = db
+    .prepare(
+      `
+      SELECT period_end, period_type, eps, eps_growth_yoy, sales, sales_growth_yoy
+      FROM financials
+      WHERE symbol = ?
+        AND period_type = ?
+      ORDER BY period_end DESC
+      LIMIT ?
+      `
+    )
+    .all(String(symbol).toUpperCase(), periodType, safeLimit) as Array<{
+    period_end: string;
+    period_type: string;
+    eps: number | null;
+    eps_growth_yoy: number | null;
+    sales: number | null;
+    sales_growth_yoy: number | null;
+  }>;
+
+  return rows.map((r) => ({
+    period_end: String(r.period_end),
+    period_type: r.period_type === "annual" ? "annual" : "quarterly",
+    eps: r.eps != null ? Number(r.eps) : null,
+    eps_growth_yoy: r.eps_growth_yoy != null ? Number(r.eps_growth_yoy) : null,
+    sales: r.sales != null ? Number(r.sales) : null,
+    sales_growth_yoy: r.sales_growth_yoy != null ? Number(r.sales_growth_yoy) : null,
+  }));
 }
 
 export function getCompanyClassification(symbol: string): {
