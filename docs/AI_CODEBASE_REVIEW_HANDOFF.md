@@ -195,6 +195,7 @@ Key npm scripts in `package.json`:
   - `migrate-add-is-etf`
   - `migrate-add-rs-percentile`
 - Refresh:
+  - `refresh-safe`
   - `refresh-daily`
   - `refresh-financials`
   - `refresh-ownership`
@@ -231,6 +232,7 @@ Key npm scripts in `package.json`:
 ## 10.3 Critical deployment invariant
 
 The app can report `hasDb: true` while key tables are empty if the deployed DB file differs from local expectations. Always inspect `/api/health` table-level diagnostics (`ownership`, `financials`, `quoteDaily`) after deploy.
+Health also exposes readiness flags under `checks` and returns HTTP `503` if required datasets are missing.
 
 ---
 
@@ -357,10 +359,10 @@ If UI shows missing ownership/fund counts in production:
 1. Check `/api/health`:
    - if `ownership.rows === 0`, run ownership refresh on deploy environment.
 2. Run:
-   - `npm run refresh-ownership`
+   - `npm run refresh-safe -- --skip-daily --ownership-latest-only`
    - `npm run check-ownership-refresh`
 3. If fundamentals are missing:
-   - `npm run refresh-financials`
+   - `npm run refresh-safe -- --skip-daily --skip-ownership`
 4. Restart service and re-check `/api/health`.
 
 ---

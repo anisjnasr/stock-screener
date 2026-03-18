@@ -55,7 +55,7 @@ After this, CI will run on every push (see `.github/workflows/ci.yml`).
    npm run seed-companies
    ```
 
-6. (Optional) To keep data fresh, add a [scheduled job](https://render.com/docs/cronjobs) or run `npm run refresh-daily` on a schedule (see [DEPLOY.md](DEPLOY.md#5-schedule-the-screener-refresh-scripts)).
+6. (Optional) To keep data fresh, add a [scheduled job](https://render.com/docs/cronjobs) or run `npm run refresh-safe` on a schedule (see [DEPLOY.md](DEPLOY.md#5-schedule-the-screener-refresh-scripts)).
 
 ### Option B: Railway
 

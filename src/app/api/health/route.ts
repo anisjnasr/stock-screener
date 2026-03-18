@@ -106,7 +106,16 @@ export async function GET() {
     }
   }
 
-  const healthy = hasDb && latestScreenerDate !== null;
+  const requireOwnership = String(process.env.HEALTH_REQUIRE_OWNERSHIP ?? "1") !== "0";
+  const requireFinancials = String(process.env.HEALTH_REQUIRE_FINANCIALS ?? "1") !== "0";
+  const ownershipHealthy = !requireOwnership || Boolean(ownership && ownership.rows > 0 && ownership.symbols > 0);
+  const financialsHealthy = !requireFinancials || Boolean(financials && financials.rows > 0 && financials.symbols > 0);
+
+  const healthy =
+    hasDb &&
+    latestScreenerDate !== null &&
+    ownershipHealthy &&
+    financialsHealthy;
   const status = healthy ? 200 : 503;
 
   return NextResponse.json(
@@ -119,6 +128,12 @@ export async function GET() {
       ownership,
       financials,
       quoteDaily,
+      checks: {
+        ownershipHealthy,
+        financialsHealthy,
+        requireOwnership,
+        requireFinancials,
+      },
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
       timestamp: new Date().toISOString(),
     },

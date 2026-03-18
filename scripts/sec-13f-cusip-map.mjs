@@ -5,16 +5,12 @@
 
 import Database from "better-sqlite3";
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { DATA_13F_DIR, QUARTERS_12 } from "./sec-13f-download.mjs";
 import { resolveCusipsViaOpenFigi, normalizeSymbolForDb } from "./sec-13f-openfigi-map.mjs";
+import { dataDir as DATA_DIR, dbPath as DB_PATH } from "./_db-paths.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const DATA_DIR = join(root, "data");
-const DB_PATH = join(DATA_DIR, "screener.db");
 const CUSIP_MAP_PATH = join(DATA_DIR, "cusip-to-symbol.json");
 const CUSIP_OVERRIDES_PATH = join(DATA_DIR, "cusip-overrides.json");
 
@@ -138,7 +134,7 @@ function* uniqueCusipIssuers() {
  */
 export async function buildCusipToSymbolMap() {
   if (!existsSync(DB_PATH)) {
-    throw new Error("Missing data/screener.db. Run init-screener-db and seed-companies.");
+    throw new Error(`Missing screener DB at ${DB_PATH}. Run init-screener-db and seed-companies.`);
   }
   const db = new Database(DB_PATH, { readonly: true });
   const companies = loadCompanies(db);

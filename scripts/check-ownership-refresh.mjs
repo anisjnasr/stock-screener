@@ -8,16 +8,12 @@
 
 import Database from "better-sqlite3";
 import { existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { dbPath as DB_PATH } from "./_db-paths.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const DB_PATH = join(root, "data", "screener.db");
 const KEY_SYMBOLS = ["AAPL", "MSFT", "NVDA", "TSLA"];
 
 if (!existsSync(DB_PATH)) {
-  console.error("Missing data/screener.db");
+  console.error(`Missing screener DB at ${DB_PATH}`);
   process.exit(1);
 }
 

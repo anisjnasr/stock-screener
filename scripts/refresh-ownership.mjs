@@ -9,17 +9,14 @@
 
 import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { ensureQuartersDownloaded, QUARTERS_12 } from "./sec-13f-download.mjs";
 import { resolveCusipMap } from "./sec-13f-cusip-map.mjs";
 import { aggregateHoldings } from "./sec-13f-aggregate.mjs";
+import { dataDir as DATA_DIR, dbPath as DB_PATH, root } from "./_db-paths.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const DATA_DIR = join(root, "data");
-const DB_PATH = join(DATA_DIR, "screener.db");
+const USING_CUSTOM_DB = Boolean(process.env.SCREENER_DB_PATH);
 
 function loadEnvLocal() {
   const path = join(root, ".env.local");
@@ -82,8 +79,11 @@ function collectUniqueCusipIssuerPairs(quarterPaths) {
 
 async function main() {
   if (!existsSync(DB_PATH)) {
-    console.error("Missing data/screener.db. Run: npm run init-screener-db && npm run seed-companies");
+    console.error(`Missing screener DB at ${DB_PATH}. Run: npm run init-screener-db && npm run seed-companies`);
     process.exit(1);
+  }
+  if (USING_CUSTOM_DB) {
+    console.log("   Using SCREENER_DB_PATH:", DB_PATH);
   }
 
   console.log("1. Ensuring 13F data...");

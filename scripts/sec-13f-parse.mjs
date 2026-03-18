@@ -50,6 +50,18 @@ function parseTsvLine(line) {
   return out;
 }
 
+function* iterNonEmptyLines(raw) {
+  let start = 0;
+  while (start <= raw.length) {
+    const nl = raw.indexOf("\n", start);
+    const end = nl === -1 ? raw.length : nl;
+    const line = raw.slice(start, end);
+    if (line.trim()) yield line;
+    if (nl === -1) break;
+    start = nl + 1;
+  }
+}
+
 /** Convert SEC date (DD-MMM-YYYY e.g. 31-MAR-2023) to YYYY-MM-DD. */
 function periodToReportDate(periodStr) {
   if (!periodStr || typeof periodStr !== "string") return null;
@@ -109,14 +121,15 @@ function collectInfotableAccessions(zip) {
   const entry = getEntryByBasename(zip, "INFOTABLE.tsv");
   if (!entry) return new Set();
   const raw = entry.getData().toString("utf8");
-  const lines = raw.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return new Set();
-  const header = parseTsvLine(lines[0]);
+  const lines = iterNonEmptyLines(raw);
+  const first = lines.next();
+  if (first.done) return new Set();
+  const header = parseTsvLine(first.value);
   const accIdx = getColumnIndex(header, ["ACCESSION_NUMBER"]);
   if (accIdx < 0) return new Set();
   const out = new Set();
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseTsvLine(lines[i]);
+  for (const line of lines) {
+    const row = parseTsvLine(line);
     const acc = row[accIdx]?.trim();
     if (acc) out.add(acc);
   }
@@ -132,9 +145,10 @@ function parseSubmission(zip) {
   const entry = getEntryByBasename(zip, "SUBMISSION.tsv");
   if (!entry) return new Map();
   const raw = entry.getData().toString("utf8");
-  const lines = raw.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return new Map();
-  const header = parseTsvLine(lines[0]);
+  const lines = iterNonEmptyLines(raw);
+  const first = lines.next();
+  if (first.done) return new Map();
+  const header = parseTsvLine(first.value);
   const accIdx = getColumnIndex(header, ["ACCESSION_NUMBER"]);
   const periodIdx = getColumnIndex(header, ["PERIODOFREPORT"]);
   const cikIdx = getColumnIndex(header, ["CIK", "CENTRALINDEXKEY"]);
@@ -143,8 +157,8 @@ function parseSubmission(zip) {
   const amendFlagIdx = getColumnIndex(header, ["ISAMENDMENT", "AMENDMENTFLAG"]);
   if (accIdx < 0 || periodIdx < 0) return new Map();
   const map = new Map();
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseTsvLine(lines[i]);
+  for (const line of lines) {
+    const row = parseTsvLine(line);
     const acc = row[accIdx]?.trim();
     const period = row[periodIdx]?.trim() ?? "";
     if (acc) {
@@ -206,15 +220,16 @@ function parseCoverpage(zip) {
   const entry = getEntryByBasename(zip, "COVERPAGE.tsv");
   if (!entry) return new Map();
   const raw = entry.getData().toString("utf8");
-  const lines = raw.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return new Map();
-  const header = parseTsvLine(lines[0]);
+  const lines = iterNonEmptyLines(raw);
+  const first = lines.next();
+  if (first.done) return new Map();
+  const header = parseTsvLine(first.value);
   const accIdx = header.indexOf("ACCESSION_NUMBER");
   const nameIdx = header.indexOf("FILINGMANAGER_NAME");
   if (accIdx < 0 || nameIdx < 0) return new Map();
   const map = new Map();
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseTsvLine(lines[i]);
+  for (const line of lines) {
+    const row = parseTsvLine(line);
     if (row[accIdx]) map.set(row[accIdx].trim(), (row[nameIdx] || "").trim());
   }
   return map;
@@ -229,9 +244,10 @@ function* parseInfotable(zip, defaultReportDate, filerNameByAccession, accession
   const entry = getEntryByBasename(zip, "INFOTABLE.tsv");
   if (!entry) return;
   const raw = entry.getData().toString("utf8");
-  const lines = raw.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return;
-  const header = parseTsvLine(lines[0]);
+  const lines = iterNonEmptyLines(raw);
+  const first = lines.next();
+  if (first.done) return;
+  const header = parseTsvLine(first.value);
   const getIdx = (name) => {
     const i = header.indexOf(name);
     return i >= 0 ? i : -1;
@@ -243,8 +259,8 @@ function* parseInfotable(zip, defaultReportDate, filerNameByAccession, accession
   const shsIdx = getIdx("SSHPRNAMT");
   if (accIdx < 0 || cusipIdx < 0) return;
 
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseTsvLine(lines[i]);
+  for (const line of lines) {
+    const row = parseTsvLine(line);
     const accession = row[accIdx]?.trim();
     const cusip = (row[cusipIdx] || "").trim().replace(/\s/g, "");
     if (!cusip || cusip.length !== 9) continue;
