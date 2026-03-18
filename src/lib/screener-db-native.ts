@@ -453,6 +453,89 @@ function expandIndexSymbolsForDb(symbols: string[]): string[] {
   return out;
 }
 
+function getFallbackIndexSymbolsFromDb(
+  db: BetterSqlite3Database,
+  indexId: "sp500" | "nasdaq",
+  endDate: string,
+  desiredCount: number
+): string[] {
+  if (indexId === "nasdaq") {
+    const rows = db
+      .prepare(
+        `
+        SELECT d.symbol
+        FROM daily_bars d
+        INNER JOIN (
+          SELECT symbol, MAX(date) AS max_date
+          FROM daily_bars
+          WHERE date <= ?
+          GROUP BY symbol
+        ) x ON x.symbol = d.symbol AND x.max_date = d.date
+        INNER JOIN companies c ON c.symbol = d.symbol
+        WHERE d.close IS NOT NULL
+          AND c.exchange IS NOT NULL
+          AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
+        ORDER BY d.symbol ASC
+        `
+      )
+      .all(endDate) as Array<{ symbol: string }>;
+    return rows.map((r) => String(r.symbol));
+  }
+  const rows = db
+    .prepare(
+      `
+      SELECT q.symbol
+      FROM quote_daily q
+      INNER JOIN (
+        SELECT symbol, MAX(date) AS max_date
+        FROM quote_daily
+        WHERE date <= ?
+        GROUP BY symbol
+      ) x ON x.symbol = q.symbol AND x.max_date = q.date
+      INNER JOIN companies c ON c.symbol = q.symbol
+      WHERE q.market_cap IS NOT NULL
+        AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
+      ORDER BY q.market_cap DESC
+      LIMIT ?
+      `
+    )
+    .all(endDate, desiredCount) as Array<{ symbol: string }>;
+  return rows.map((r) => String(r.symbol));
+}
+
+function resolveIndexSymbolsForDb(
+  db: BetterSqlite3Database,
+  indexId: "sp500" | "nasdaq",
+  endDate: string
+): string[] {
+  const configuredList = loadIndexSymbols(indexId);
+  let configured = expandIndexSymbolsForDb(configuredList);
+
+  if (configured.length > 0) {
+    const symbolFilter = configured.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
+    const present = db
+      .prepare(
+        `
+        SELECT DISTINCT symbol
+        FROM daily_bars
+        WHERE symbol IN (${symbolFilter})
+          AND date <= ?
+        `
+      )
+      .all(endDate) as Array<{ symbol: string }>;
+    configured = present.map((r) => String(r.symbol));
+  }
+
+  const minExpected = indexId === "sp500" ? 350 : 1000;
+  if (configured.length >= minExpected) return configured;
+
+  // If configured constituents have poor DB coverage (or no config), fall back to
+  // a robust DB-derived universe so breadth/NNH never collapses to sparse counts.
+  return expandIndexSymbolsForDb(
+    getFallbackIndexSymbolsFromDb(db, indexId, endDate, indexId === "sp500" ? 500 : 0)
+  );
+}
+
 function getTodayDateInNewYork(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -686,54 +769,6 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
   const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate) return { rows: [], date: null };
 
-  const fallbackSymbolsForIndex = (
-    indexId: "sp500" | "nasdaq",
-    desiredCount: number
-  ): string[] => {
-    if (indexId === "nasdaq") {
-      const rows = db
-        .prepare(
-          `
-          SELECT d.symbol
-          FROM daily_bars d
-          INNER JOIN (
-            SELECT symbol, MAX(date) AS max_date
-            FROM daily_bars
-            WHERE date <= ?
-            GROUP BY symbol
-          ) x ON x.symbol = d.symbol AND x.max_date = d.date
-          INNER JOIN companies c ON c.symbol = d.symbol
-          WHERE d.close IS NOT NULL
-            AND c.exchange IS NOT NULL
-            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
-          ORDER BY d.symbol ASC
-          `
-        )
-        .all(asOfDate) as Array<{ symbol: string }>;
-      return rows.map((r) => String(r.symbol));
-    }
-    const rows = db
-      .prepare(
-        `
-        SELECT q.symbol
-        FROM quote_daily q
-        INNER JOIN (
-          SELECT symbol, MAX(date) AS max_date
-          FROM quote_daily
-          WHERE date <= ?
-          GROUP BY symbol
-        ) x ON x.symbol = q.symbol AND x.max_date = q.date
-        INNER JOIN companies c ON c.symbol = q.symbol
-        WHERE q.market_cap IS NOT NULL
-          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
-        ORDER BY q.market_cap DESC
-        LIMIT ?
-        `
-      )
-      .all(asOfDate, desiredCount) as Array<{ symbol: string }>;
-    return rows.map((r) => String(r.symbol));
-  };
-
   const computeForSymbols = (
     indexId: "sp500" | "nasdaq",
     indexName: string,
@@ -803,16 +838,8 @@ export function getIndexBreadthSnapshot(date?: string): { rows: IndexBreadthRow[
     };
   };
 
-  const sp500Symbols = (() => {
-    const list = loadIndexSymbols("sp500");
-    const base = list.length > 0 ? list : fallbackSymbolsForIndex("sp500", 500);
-    return expandIndexSymbolsForDb(base);
-  })();
-  const nasdaqSymbols = (() => {
-    const list = loadIndexSymbols("nasdaq");
-    const base = list.length > 0 ? list : fallbackSymbolsForIndex("nasdaq", 0);
-    return expandIndexSymbolsForDb(base);
-  })();
+  const sp500Symbols = resolveIndexSymbolsForDb(db, "sp500", asOfDate);
+  const nasdaqSymbols = resolveIndexSymbolsForDb(db, "nasdaq", asOfDate);
 
   const sp500 = computeForSymbols("sp500", "S&P 500", sp500Symbols);
   const nasdaq = computeForSymbols("nasdaq", "Nasdaq Composite", nasdaqSymbols);
@@ -826,59 +853,7 @@ export function getIndexBreadthSeries(
 ): { rows: IndexBreadthSeriesRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-
-  const fallbackSymbolsForIndex = (
-    id: "sp500" | "nasdaq",
-    desiredCount: number
-  ): string[] => {
-    if (id === "nasdaq") {
-      const rows = db
-        .prepare(
-          `
-          SELECT d.symbol
-          FROM daily_bars d
-          INNER JOIN (
-            SELECT symbol, MAX(date) AS max_date
-            FROM daily_bars
-            WHERE date <= ?
-            GROUP BY symbol
-          ) x ON x.symbol = d.symbol AND x.max_date = d.date
-          INNER JOIN companies c ON c.symbol = d.symbol
-          WHERE d.close IS NOT NULL
-            AND c.exchange IS NOT NULL
-            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
-          ORDER BY d.symbol ASC
-          `
-        )
-        .all(endDate) as Array<{ symbol: string }>;
-      return rows.map((r) => String(r.symbol));
-    }
-    const rows = db
-      .prepare(
-        `
-        SELECT q.symbol
-        FROM quote_daily q
-        INNER JOIN (
-          SELECT symbol, MAX(date) AS max_date
-          FROM quote_daily
-          WHERE date <= ?
-          GROUP BY symbol
-        ) x ON x.symbol = q.symbol AND x.max_date = q.date
-        INNER JOIN companies c ON c.symbol = q.symbol
-        WHERE q.market_cap IS NOT NULL
-          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
-        ORDER BY q.market_cap DESC
-        LIMIT ?
-        `
-      )
-      .all(endDate, desiredCount) as Array<{ symbol: string }>;
-    return rows.map((r) => String(r.symbol));
-  };
-
-  const list = loadIndexSymbols(indexId);
-  const symbols = expandIndexSymbolsForDb(
-    list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 0)
-  );
+  const symbols = resolveIndexSymbolsForDb(db, indexId, endDate);
   if (symbols.length === 0) return { rows: [], date: endDate };
 
   const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
@@ -962,59 +937,7 @@ export function getIndexNetNewHighSeries(
 ): { rows: NetNewHighRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
-
-  const fallbackSymbolsForIndex = (
-    id: "sp500" | "nasdaq",
-    desiredCount: number
-  ): string[] => {
-    if (id === "nasdaq") {
-      const rows = db
-        .prepare(
-          `
-          SELECT d.symbol
-          FROM daily_bars d
-          INNER JOIN (
-            SELECT symbol, MAX(date) AS max_date
-            FROM daily_bars
-            WHERE date <= ?
-            GROUP BY symbol
-          ) x ON x.symbol = d.symbol AND x.max_date = d.date
-          INNER JOIN companies c ON c.symbol = d.symbol
-          WHERE d.close IS NOT NULL
-            AND c.exchange IS NOT NULL
-            AND (UPPER(c.exchange) LIKE '%NASDAQ%' OR UPPER(c.exchange) = 'XNAS')
-          ORDER BY d.symbol ASC
-          `
-        )
-        .all(endDate) as Array<{ symbol: string }>;
-      return rows.map((r) => String(r.symbol));
-    }
-    const rows = db
-      .prepare(
-        `
-        SELECT q.symbol
-        FROM quote_daily q
-        INNER JOIN (
-          SELECT symbol, MAX(date) AS max_date
-          FROM quote_daily
-          WHERE date <= ?
-          GROUP BY symbol
-        ) x ON x.symbol = q.symbol AND x.max_date = q.date
-        INNER JOIN companies c ON c.symbol = q.symbol
-        WHERE q.market_cap IS NOT NULL
-          AND (c.exchange IS NULL OR UPPER(c.exchange) NOT LIKE '%OTC%')
-        ORDER BY q.market_cap DESC
-        LIMIT ?
-        `
-      )
-      .all(endDate, desiredCount) as Array<{ symbol: string }>;
-    return rows.map((r) => String(r.symbol));
-  };
-
-  const list = loadIndexSymbols(indexId);
-  const symbols = expandIndexSymbolsForDb(
-    list.length > 0 ? list : fallbackSymbolsForIndex(indexId, indexId === "sp500" ? 500 : 0)
-  );
+  const symbols = resolveIndexSymbolsForDb(db, indexId, endDate);
   if (symbols.length === 0) return { rows: [], date: endDate };
 
   const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
