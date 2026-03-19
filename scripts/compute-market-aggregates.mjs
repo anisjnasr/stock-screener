@@ -44,6 +44,14 @@ const nasdaqSymbols = new Set(
     .map(r => r.symbol)
 );
 
+// Ensure is_etf column exists on companies (older DBs may lack it)
+try {
+  db.exec("ALTER TABLE companies ADD COLUMN is_etf INTEGER NOT NULL DEFAULT 0");
+  console.log("Added missing is_etf column to companies table.");
+} catch {
+  // Column already exists
+}
+
 // Ensure tables exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS market_monitor_daily (

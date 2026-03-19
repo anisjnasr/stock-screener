@@ -1476,6 +1476,12 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
   if (!toDate) toDate = getLatestCompletedTradingDate();
   if (!toDate) return [];
 
+  // Check if is_etf column exists on companies table
+  const hasIsEtf = (db.prepare(
+    "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
+  ).get() as { c: number })?.c > 0;
+  const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
   // Need at least 65 trading days of lookback for C[65]; use ~100 calendar days buffer
   const from = new Date(`${startDate}T00:00:00Z`);
   from.setUTCDate(from.getUTCDate() - 120);
@@ -1497,7 +1503,7 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
           AVG(d.close)  OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_c_20,
           AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
         FROM daily_bars d
-        INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+        INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
         WHERE d.date BETWEEN ? AND ?
         WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
       )
