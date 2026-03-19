@@ -1,6 +1,6 @@
 /**
  * Screener DB access using better-sqlite3 (opens file on disk, no full load).
- * Singleton connection with production-grade PRAGMA tuning for 5GB+ databases.
+ * Singleton connection with PRAGMA tuning sized for 512MB instances.
  *
  * This is the sole DB access layer. All screener data flows through here.
  */
@@ -195,9 +195,9 @@ function openDb(): BetterSqlite3Database {
   const db = new Database(DB_PATH, { readonly: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = NORMAL");
-  db.exec("PRAGMA cache_size = -512000");
-  db.exec("PRAGMA mmap_size = 5368709120");
-  db.exec("PRAGMA temp_store = MEMORY");
+  db.exec("PRAGMA cache_size = -64000");
+  db.exec("PRAGMA mmap_size = 268435456");
+  db.exec("PRAGMA temp_store = FILE");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA read_uncommitted = ON");
 

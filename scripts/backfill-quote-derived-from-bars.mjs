@@ -48,7 +48,7 @@ function main() {
   const db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
-  db.pragma("cache_size = -200000");
+  db.pragma("cache_size = -64000");
   db.pragma("busy_timeout = 10000");
 
   const quoteCols = new Set(db.prepare("PRAGMA table_info(quote_daily)").all().map((r) => r.name));

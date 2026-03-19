@@ -219,7 +219,7 @@ async function main() {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = OFF");
   db.pragma("synchronous = NORMAL");
-  db.pragma("cache_size = -200000");
+  db.pragma("cache_size = -64000");
   db.pragma("busy_timeout = 10000");
 
   db.exec(`

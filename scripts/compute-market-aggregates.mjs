@@ -29,7 +29,7 @@ const backfillDays = daysArg >= 0 ? parseInt(process.argv[daysArg + 1], 10) : 1;
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 30000");
-db.pragma("cache_size = -256000");
+db.pragma("cache_size = -64000");
 
 function loadIndexSymbols(filename) {
   const path = join(__dirname, "..", "data", filename);
