@@ -1476,8 +1476,9 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
   if (!toDate) toDate = getLatestCompletedTradingDate();
   if (!toDate) return [];
 
+  // Need at least 65 trading days of lookback for C[65]; use ~100 calendar days buffer
   const from = new Date(`${startDate}T00:00:00Z`);
-  from.setUTCDate(from.getUTCDate() - 320);
+  from.setUTCDate(from.getUTCDate() - 120);
   const bufferStartDate = from.toISOString().slice(0, 10);
 
   const rows = db
@@ -1487,44 +1488,35 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
         SELECT
           d.symbol,
           d.date,
-          d.close,
-          d.volume,
-          AVG(d.volume) OVER (
-            PARTITION BY d.symbol
-            ORDER BY d.date
-            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-          ) AS avg_vol_30d,
-          LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1d,
-          LAG(d.close, 21) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_1m,
-          LAG(d.close, 63) OVER (PARTITION BY d.symbol ORDER BY d.date) AS close_3m
+          d.close AS C,
+          d.volume AS V,
+          LAG(d.close, 1)  OVER w AS C1,
+          LAG(d.close, 20) OVER w AS C20,
+          LAG(d.close, 65) OVER w AS C65,
+          LAG(d.volume, 1) OVER w AS V1,
+          AVG(d.close)  OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_c_20,
+          AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
         FROM daily_bars d
-        INNER JOIN companies c ON c.symbol = d.symbol
+        INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
         WHERE d.date BETWEEN ? AND ?
-      ),
-      eligible AS (
-        SELECT
-          symbol,
-          date,
-          close,
-          avg_vol_30d,
-          CASE WHEN close > 5 AND COALESCE(avg_vol_30d, 0) >= 100000 THEN 1 ELSE 0 END AS in_universe,
-          CASE WHEN close_1d > 0 THEN (close - close_1d) * 100.0 / close_1d ELSE NULL END AS chg_1d,
-          CASE WHEN close_1m > 0 THEN (close - close_1m) * 100.0 / close_1m ELSE NULL END AS chg_1m,
-          CASE WHEN close_3m > 0 THEN (close - close_3m) * 100.0 / close_3m ELSE NULL END AS chg_3m
-        FROM base
+        WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
       )
       SELECT
         date,
-        SUM(CASE WHEN in_universe = 1 THEN 1 ELSE 0 END) AS universe,
-        SUM(CASE WHEN in_universe = 1 AND chg_1d >= 4 THEN 1 ELSE 0 END) AS up4pct,
-        SUM(CASE WHEN in_universe = 1 AND chg_1d <= -4 THEN 1 ELSE 0 END) AS down4pct,
-        SUM(CASE WHEN in_universe = 1 AND chg_3m >= 25 THEN 1 ELSE 0 END) AS up25pct_qtr,
-        SUM(CASE WHEN in_universe = 1 AND chg_3m <= -25 THEN 1 ELSE 0 END) AS down25pct_qtr,
-        SUM(CASE WHEN in_universe = 1 AND chg_1m >= 25 THEN 1 ELSE 0 END) AS up25pct_month,
-        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
-        SUM(CASE WHEN in_universe = 1 AND chg_1m >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
-        SUM(CASE WHEN in_universe = 1 AND chg_1m <= -50 THEN 1 ELSE 0 END) AS down50pct_month
-      FROM eligible
+        COUNT(*) AS universe,
+        -- Up/Down 4% today: 100*(C-C[1])/C[1] >= 4, V >= 1000, V > V[1]
+        SUM(CASE WHEN C1 > 0 AND 100.0*(C-C1)/C1 >= 4 AND V >= 1000 AND V > V1 THEN 1 ELSE 0 END) AS up4pct,
+        SUM(CASE WHEN C1 > 0 AND 100.0*(C-C1)/C1 <= -4 AND V >= 1000 AND V > V1 THEN 1 ELSE 0 END) AS down4pct,
+        -- Up/Down 25% quarter: 100*(C-C[65])/C[65], filter AVG(C,20)*AVG(V,20) >= 2500
+        SUM(CASE WHEN C65 > 0 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C65)/C65 >= 25 THEN 1 ELSE 0 END) AS up25pct_qtr,
+        SUM(CASE WHEN C65 > 0 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C65)/C65 <= -25 THEN 1 ELSE 0 END) AS down25pct_qtr,
+        -- Up/Down 25% month: 100*(C-C[20])/C[20], filter C[20]>=5, AVG(C,20)*AVG(V,20)>=2500
+        SUM(CASE WHEN C20 >= 5 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C20)/C20 >= 25 THEN 1 ELSE 0 END) AS up25pct_month,
+        SUM(CASE WHEN C20 >= 5 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C20)/C20 <= -25 THEN 1 ELSE 0 END) AS down25pct_month,
+        -- Up/Down 50% month: same filters, threshold 50
+        SUM(CASE WHEN C20 >= 5 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C20)/C20 >= 50 THEN 1 ELSE 0 END) AS up50pct_month,
+        SUM(CASE WHEN C20 >= 5 AND avg_c_20*avg_v_20 >= 2500 AND 100.0*(C-C20)/C20 <= -50 THEN 1 ELSE 0 END) AS down50pct_month
+      FROM base
       WHERE date BETWEEN ? AND ?
       GROUP BY date
       ORDER BY date ASC
