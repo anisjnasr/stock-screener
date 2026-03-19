@@ -5,7 +5,7 @@
  */
 
 import Database from "better-sqlite3";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import { buildFilterClauses, type ScreenerFilters, type ScreenerRow } from "@/lib/screener-db";
@@ -14,32 +14,75 @@ const DB_PATH = join(process.cwd(), "data", "screener.db");
 
 type BetterSqlite3Database = InstanceType<typeof Database>;
 
+const DB_STAT_CHECK_INTERVAL_MS = 5_000;
+
 const globalForDb = globalThis as unknown as {
   _screenerDb?: BetterSqlite3Database;
   _screenerDbPath?: string;
+  _screenerDbMtimeMs?: number;
+  _screenerDbIno?: number;
+  _screenerDbLastStatCheck?: number;
 };
+
+function dbFileChanged(): boolean {
+  const now = Date.now();
+  if (
+    globalForDb._screenerDbLastStatCheck &&
+    now - globalForDb._screenerDbLastStatCheck < DB_STAT_CHECK_INTERVAL_MS
+  ) {
+    return false;
+  }
+  globalForDb._screenerDbLastStatCheck = now;
+  try {
+    const st = statSync(DB_PATH);
+    if (
+      globalForDb._screenerDbMtimeMs !== undefined &&
+      (st.mtimeMs !== globalForDb._screenerDbMtimeMs ||
+        st.ino !== globalForDb._screenerDbIno)
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function openDb(): BetterSqlite3Database {
+  const db = new Database(DB_PATH, { readonly: true });
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA synchronous = NORMAL");
+  db.exec("PRAGMA cache_size = -512000");
+  db.exec("PRAGMA mmap_size = 5368709120");
+  db.exec("PRAGMA temp_store = MEMORY");
+  db.exec("PRAGMA busy_timeout = 5000");
+
+  const st = statSync(DB_PATH);
+  globalForDb._screenerDb = db;
+  globalForDb._screenerDbPath = DB_PATH;
+  globalForDb._screenerDbMtimeMs = st.mtimeMs;
+  globalForDb._screenerDbIno = st.ino;
+  globalForDb._screenerDbLastStatCheck = Date.now();
+  return db;
+}
 
 function getDb(): BetterSqlite3Database | null {
   if (globalForDb._screenerDb && globalForDb._screenerDbPath === DB_PATH) {
-    try {
-      globalForDb._screenerDb.prepare("SELECT 1").get();
-      return globalForDb._screenerDb;
-    } catch {
+    if (dbFileChanged()) {
+      try { globalForDb._screenerDb.close(); } catch { /* ignore */ }
       globalForDb._screenerDb = undefined;
+    } else {
+      try {
+        globalForDb._screenerDb.prepare("SELECT 1").get();
+        return globalForDb._screenerDb;
+      } catch {
+        globalForDb._screenerDb = undefined;
+      }
     }
   }
   if (!existsSync(DB_PATH)) return null;
   try {
-    const db = new Database(DB_PATH, { readonly: true });
-    db.exec("PRAGMA journal_mode = WAL");
-    db.exec("PRAGMA synchronous = NORMAL");
-    db.exec("PRAGMA cache_size = -512000");  // 512 MB page cache
-    db.exec("PRAGMA mmap_size = 5368709120"); // 5 GB memory-mapped I/O
-    db.exec("PRAGMA temp_store = MEMORY");
-    db.exec("PRAGMA busy_timeout = 5000");
-    globalForDb._screenerDb = db;
-    globalForDb._screenerDbPath = DB_PATH;
-    return db;
+    return openDb();
   } catch {
     return null;
   }
