@@ -52,7 +52,10 @@ try {
   // Column already exists
 }
 
-// Ensure tables exist
+// Drop and recreate precomputed tables to handle schema changes from older DBs
+db.exec("DROP TABLE IF EXISTS market_monitor_daily");
+db.exec("DROP TABLE IF EXISTS breadth_daily");
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS market_monitor_daily (
     date TEXT PRIMARY KEY,
