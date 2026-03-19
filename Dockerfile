@@ -38,8 +38,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 # Keep bootstrap files outside /app/data because mounted disks hide that path.
 COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./bootstrap-data/screener-schema.sql
 COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./bootstrap-data/all-stocks.json
-# Ensure data directory exists; volume mount will provide screener.db
-RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+# Render persistent disk mounts at /opt/render/project/src/data (Node-runtime path).
+# The standalone app runs from /app, so symlink /app/data -> the mount point.
+RUN mkdir -p /opt/render/project/src/data \
+ && ln -s /opt/render/project/src/data /app/data \
+ && chown -h nextjs:nodejs /app/data
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
