@@ -138,9 +138,10 @@ function MiniBarSeries({
     );
   }
 
-  const maxAbs = Math.max(1, ...series.map((s) => Math.abs(s.net)));
-  const latest = series[series.length - 1]?.net ?? 0;
-  const interval = Math.max(0, Math.floor(series.length / 5));
+  const displaySeries = series.slice(-63);
+  const displayMaxAbs = Math.max(1, ...displaySeries.map((s) => Math.abs(s.net)));
+  const latest = displaySeries[displaySeries.length - 1]?.net ?? 0;
+  const interval = Math.max(0, Math.floor(displaySeries.length / 5));
   return (
     <div className="rounded border border-zinc-200 dark:border-zinc-700 px-2 py-2 bg-zinc-50/40 dark:bg-zinc-800/30">
       <div className="flex items-center justify-between">
@@ -156,7 +157,7 @@ function MiniBarSeries({
       </div>
       <div className="mt-1">
         <ResponsiveContainer width="100%" height={130}>
-          <BarChart data={series} margin={{ top: 0, right: 1, left: -18, bottom: -2 }} barCategoryGap="2%">
+          <BarChart data={displaySeries} margin={{ top: 0, right: 1, left: -18, bottom: -2 }} barCategoryGap="2%">
             <XAxis
               dataKey="date"
               axisLine={false}
@@ -164,7 +165,7 @@ function MiniBarSeries({
               interval={interval}
               tick={{ fontSize: 7, fill: "#4a475a", fontFamily: "Outfit" }}
             />
-            <YAxis tick={false} axisLine={false} tickLine={false} domain={[-maxAbs, maxAbs]} />
+            <YAxis tick={false} axisLine={false} tickLine={false} domain={[-displayMaxAbs, displayMaxAbs]} />
             <ReferenceLine y={0} stroke="#2e2e35" />
             <Tooltip content={NetTooltip} />
             <Bar dataKey="net" maxBarSize={5} minPointSize={2} radius={[2, 2, 0, 0]}>

@@ -62,6 +62,7 @@ function SubChart({
   kind: "net" | "pct";
 }) {
   const cleaned = data.filter((d) => d.value != null) as Array<{ date: string; value: number }>;
+  const currentValue = cleaned.length > 0 ? cleaned[cleaned.length - 1].value : null;
   const nnhDomain = useMemo(() => {
     if (kind !== "net" || cleaned.length === 0) return undefined as [number, number] | undefined;
     const absVals = cleaned.map((d) => Math.abs(d.value)).sort((a, b) => a - b);
@@ -69,15 +70,28 @@ function SubChart({
     const maxAbs = Math.max(5, p95 * 1.15);
     return [-maxAbs, maxAbs] as [number, number];
   }, [kind, cleaned]);
+  const fmtCurrentValue = currentValue != null
+    ? kind === "pct" ? `${currentValue.toFixed(1)}%` : String(Math.round(currentValue))
+    : "";
+  const currentColor = kind === "pct"
+    ? "text-sky-500 dark:text-sky-400"
+    : currentValue != null && currentValue >= 0
+      ? "text-emerald-600 dark:text-emerald-400"
+      : "text-red-600 dark:text-red-400";
   return (
     <div className="w-full rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50/40 dark:bg-zinc-800/35 p-2">
-      <div className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
-        {title}
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+          {title}
+        </span>
+        <span className={`text-xs font-semibold tabular-nums ${currentColor}`}>
+          {fmtCurrentValue}
+        </span>
       </div>
       <div className="h-36 w-full">
         <ResponsiveContainer width="100%" height="100%">
           {kind === "net" ? (
-            <BarChart data={cleaned} margin={{ top: 2, right: 8, left: -12, bottom: 0 }}>
+            <BarChart data={cleaned} margin={{ top: 2, right: 4, left: 4, bottom: 0 }}>
               <XAxis
                 dataKey="date"
                 tickFormatter={fmtDate}
@@ -87,11 +101,12 @@ function SubChart({
                 minTickGap={24}
               />
               <YAxis
+                orientation="right"
                 domain={nnhDomain}
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "#71717a" }}
-                width={28}
+                width={36}
               />
               <Tooltip
                 cursor={{ fill: "rgba(148,163,184,0.12)" }}
@@ -109,7 +124,7 @@ function SubChart({
               </Bar>
             </BarChart>
           ) : (
-            <LineChart data={cleaned} margin={{ top: 2, right: 8, left: -12, bottom: 0 }}>
+            <LineChart data={cleaned} margin={{ top: 2, right: 4, left: 4, bottom: 0 }}>
               <XAxis
                 dataKey="date"
                 tickFormatter={fmtDate}
@@ -119,11 +134,13 @@ function SubChart({
                 minTickGap={24}
               />
               <YAxis
+                orientation="right"
                 domain={[0, 100]}
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "#71717a" }}
-                width={28}
+                width={36}
+                tickFormatter={(v) => `${v}%`}
               />
               <Tooltip
                 cursor={{ stroke: "rgba(148,163,184,0.35)", strokeWidth: 1 }}

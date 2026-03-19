@@ -1251,7 +1251,10 @@ export function getNetNewHighSeries(
   const displayDatesAsc = displayDateRows.map((r) => String(r.date)).reverse();
   if (displayDatesAsc.length === 0) return { rows: [], date: asOfDate };
 
+  // Need lookbackDays of extra history before the earliest display date
+  // so the window function has full preceding rows for every displayed date
   const requiredHistoryRows = Math.max(0, lookbackDays + Math.max(5, displayDays) + 20);
+  const scanBufferRows = Math.max(0, lookbackDays * 2 + Math.max(5, displayDays) + 20);
   const startRow = db
     .prepare(
       `
@@ -1263,7 +1266,7 @@ export function getNetNewHighSeries(
       LIMIT 1 OFFSET ?
       `
     )
-    .get(asOfDate, requiredHistoryRows) as { date?: string } | undefined;
+    .get(asOfDate, scanBufferRows) as { date?: string } | undefined;
   const earliestAvailableRow = db
     .prepare(
       `
