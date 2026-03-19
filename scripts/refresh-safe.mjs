@@ -32,6 +32,19 @@ const STAGED_DB_PATH = join(dataDir, "screener.staged.db");
 const STAGED_OLD_PATH = join(dataDir, "screener.previous.db");
 const BACKUP_DIR = join(dataDir, "backups");
 
+function readPragmaStatus(db, pragmaName) {
+  try {
+    const rows = db.prepare(`PRAGMA ${pragmaName}`).all();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const first = rows[0];
+    if (!first || typeof first !== "object") return null;
+    const value = Object.values(first)[0];
+    return value != null ? String(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 function runNodeScript(relativeScriptPath, extraArgs = [], targetDbPath = STAGED_DB_PATH) {
   const scriptPath = join(root, relativeScriptPath);
   const result = spawnSync(process.execPath, [scriptPath, ...extraArgs], {
@@ -51,6 +64,11 @@ function runNodeScript(relativeScriptPath, extraArgs = [], targetDbPath = STAGED
 function verifyStagedDb(targetDbPath) {
   const db = new Database(targetDbPath, { readonly: true });
   try {
+    const integrityStatus = readPragmaStatus(db, "integrity_check");
+    if (!integrityStatus || integrityStatus.toLowerCase() !== "ok") {
+      throw new Error(`Verification failed: staged DB integrity_check=${integrityStatus ?? "null"}`);
+    }
+
     const latestQuoteDate = String(db.prepare("SELECT MAX(date) AS d FROM quote_daily").get()?.d ?? "");
     if (!latestQuoteDate) {
       throw new Error("Verification failed: staged DB has no quote_daily data.");
@@ -87,6 +105,7 @@ function verifyStagedDb(targetDbPath) {
       "Verification passed:",
       JSON.stringify(
         {
+          integrityStatus,
           latestQuoteDate,
           financialsRows,
           ownershipRows,
@@ -102,13 +121,33 @@ function verifyStagedDb(targetDbPath) {
   }
 }
 
+function removeWalShm(base) {
+  rmSync(`${base}-wal`, { force: true });
+  rmSync(`${base}-shm`, { force: true });
+}
+
 async function promoteStagedDb() {
+  // Checkpoint staged DB so all WAL data is merged into the main file.
+  try {
+    const tmpDb = new Database(STAGED_DB_PATH);
+    tmpDb.pragma("wal_checkpoint(TRUNCATE)");
+    tmpDb.close();
+  } catch {
+    // readonly or no WAL — safe to continue
+  }
+  removeWalShm(STAGED_DB_PATH);
+
   // Fast path: atomic rename swap (works when file is not locked).
   try {
     rmSync(STAGED_OLD_PATH, { force: true });
+    removeWalShm(STAGED_OLD_PATH);
     renameSync(dbPath, STAGED_OLD_PATH);
+    // Remove stale WAL/SHM for the live path BEFORE renaming staged into place.
+    // Leaving them causes SQLite to replay an incompatible WAL → corruption.
+    removeWalShm(dbPath);
     renameSync(STAGED_DB_PATH, dbPath);
     rmSync(STAGED_OLD_PATH, { force: true });
+    removeWalShm(STAGED_OLD_PATH);
     return { method: "rename" };
   } catch (err) {
     // Fallback for environments where the active DB file is locked by a running process
@@ -125,6 +164,7 @@ async function promoteStagedDb() {
   } finally {
     stagedDb.close();
   }
+  removeWalShm(dbPath);
   return { method: "sqlite-backup" };
 }
 
@@ -179,6 +219,7 @@ async function main() {
   } finally {
     clearLock();
     rmSync(STAGED_DB_PATH, { force: true });
+    removeWalShm(STAGED_DB_PATH);
   }
 }
 
