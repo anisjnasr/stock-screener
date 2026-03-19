@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { resolveDataPath } from "@/lib/data-path";
 import {
   getScreenerSnapshot,
   getScreenerCount,
@@ -19,7 +19,7 @@ function getSymbolsForUniverse(universe: string): string[] {
   }
   const id = universe.toLowerCase();
   if (INDEX_IDS.includes(id as (typeof INDEX_IDS)[number])) {
-    const path = join(process.cwd(), "data", `${id}.json`);
+    const path = resolveDataPath(`${id}.json`);
     if (existsSync(path)) {
       const raw = readFileSync(path, "utf8");
       return JSON.parse(raw) as string[];

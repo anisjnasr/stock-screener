@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
+import { resolveDataPath } from "@/lib/data-path";
 
-const DATA_PATH = join(process.cwd(), "data", "thematic-etf-constituents.json");
+const DATA_PATH = resolveDataPath("thematic-etf-constituents.json");
 const VALID_ETFS = new Set(THEMATIC_ETFS.map((x) => x.ticker.toUpperCase()));
 
 type ConstituentsMap = Record<string, string[]>;

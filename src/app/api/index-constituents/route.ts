@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { resolveDataPath } from "@/lib/data-path";
 
 const VALID_INDEXES = ["sp500", "nasdaq100", "russell2000"] as const;
 
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const path = join(process.cwd(), "data", `${index}.json`);
+  const path = resolveDataPath(`${index}.json`);
   if (!existsSync(path)) {
     return NextResponse.json(
       { error: `Constituents file not found. Run: node scripts/build-index-constituents.mjs` },

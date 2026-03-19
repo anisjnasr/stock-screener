@@ -5,7 +5,7 @@
  */
 
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { resolveDataPath } from "@/lib/data-path";
 
 export type StockRecord = {
   symbol: string;
@@ -30,7 +30,7 @@ export type StocksDb = {
 let cached: StocksDb | null = null;
 
 function getDataPath(): string {
-  return join(process.cwd(), "data", "all-stocks.json");
+  return resolveDataPath("all-stocks.json");
 }
 
 /**

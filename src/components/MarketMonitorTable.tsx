@@ -169,7 +169,7 @@ function MiniBarSeries({
             <ReferenceLine y={0} stroke="#2e2e35" />
             <Tooltip content={NetTooltip} />
             <Bar dataKey="net" maxBarSize={5} minPointSize={2} radius={[2, 2, 0, 0]}>
-              {series.map((entry) => (
+              {displaySeries.map((entry) => (
                 <Cell
                   key={entry.date}
                   fill={entry.net >= 0 ? "#0a8963" : "#a54557"}

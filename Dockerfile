@@ -31,12 +31,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Include operational scripts and seed/schema data so Render Shell can run
 # init/seed/refresh commands after deploy.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
-COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./data/screener-schema.sql
-COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./data/all-stocks.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/nasdaq100.json ./data/nasdaq100.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/sp500.json ./data/sp500.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/russell2000.json ./data/russell2000.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/thematic-etf-constituents.json ./data/thematic-etf-constituents.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./static-data/screener-schema.sql
+COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./static-data/all-stocks.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/nasdaq100.json ./static-data/nasdaq100.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/sp500.json ./static-data/sp500.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/russell2000.json ./static-data/russell2000.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/thematic-etf-constituents.json ./static-data/thematic-etf-constituents.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/cusip-to-symbol.json ./static-data/cusip-to-symbol.json
+COPY --from=builder --chown=nextjs:nodejs /app/data/cusip-overrides.json ./static-data/cusip-overrides.json
 # Ensure data directory exists; volume mount will provide screener.db
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 USER nextjs

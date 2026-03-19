@@ -247,14 +247,13 @@ export async function fetchRelatedTickers(
 
   // Resolve names from local companies table to avoid N+1 API calls
   try {
-    const { getCompanyClassification } = await import("@/lib/screener-db-native");
-    const { getStockRecord } = await import("@/lib/stocks-db");
+    const { getCompanyName, getCompanyClassification } = await import("@/lib/screener-db-native");
     return tickers
       .map((t) => {
-        const record = getStockRecord(t);
+        const name = getCompanyName(t);
         const classification = getCompanyClassification(t);
-        if (!record && !classification) return null;
-        return { symbol: t, name: record?.name ?? t };
+        if (!name && !classification) return null;
+        return { symbol: t, name: name ?? t };
       })
       .filter((r): r is { symbol: string; name: string } => r !== null);
   } catch {

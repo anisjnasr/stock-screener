@@ -431,6 +431,15 @@ export function getFinancialsNative(
   }));
 }
 
+export function getCompanyName(symbol: string): string | null {
+  const db = getDb();
+  if (!db) return null;
+  const row = db
+    .prepare("SELECT name FROM companies WHERE symbol = ? LIMIT 1")
+    .get(String(symbol).toUpperCase()) as { name?: string | null } | undefined;
+  return row?.name ? String(row.name).trim() : null;
+}
+
 export function getCompanyClassification(symbol: string): {
   sector?: string;
   industry?: string;
@@ -647,8 +656,9 @@ function getBufferStartDate(asOfDate: string, lookbackDays: number): string {
 function loadIndexSymbols(indexId: "sp500" | "nasdaq100" | "nasdaq"): string[] {
   if (indexId === "nasdaq") return [];
   const directPath = join(process.cwd(), "data", `${indexId}.json`);
+  const staticPath = join(process.cwd(), "static-data", `${indexId}.json`);
   const bootstrapPath = join(process.cwd(), "bootstrap-data", `${indexId}.json`);
-  const p = existsSync(directPath) ? directPath : existsSync(bootstrapPath) ? bootstrapPath : null;
+  const p = existsSync(directPath) ? directPath : existsSync(staticPath) ? staticPath : existsSync(bootstrapPath) ? bootstrapPath : null;
   if (!p) return [];
   try {
     const raw = readFileSync(p, "utf8");
