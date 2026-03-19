@@ -45,9 +45,7 @@ export async function GET(request: NextRequest) {
     );
     // Only return CS, ADRC, ETF (exclude when profile missing or type not allowed)
     const allowed = results.filter((r) => isAllowedTickerType(r.profile?.type));
-    return NextResponse.json(allowed, {
-      headers: { "Cache-Control": "public, max-age=15, stale-while-revalidate=60" },
-    });
+    return NextResponse.json(allowed);
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

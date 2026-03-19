@@ -19,7 +19,6 @@ Good options: **Railway**, **Fly.io**, **Render** (with disk + worker), or a **V
    - **Railway**: **New Project** → **Deploy from GitHub** → select this repo. Add a **Volume** and mount it at `./data`. In **Variables** set `MASSIVE_API_KEY`. Use the **Shell** (or a one-off run) to run DB init and seed (Section 2).
 
 3. **One-time DB setup** (Section 2) and **schedule refresh** (Section 5) still apply; do them on the host (Shell, cron, or worker).
-4. Prefer `npm run refresh-safe` for production refreshes. It stages changes on a DB copy and promotes only after verification.
 
 ---
 
@@ -104,23 +103,13 @@ Open http://localhost:3000 (or the host’s public URL). Schedule refresh script
 
 So the historical DB stays up to date:
 
-See also: [RELIABLE_REFRESH.md](RELIABLE_REFRESH.md) for staged promotion and recovery behavior.
-
-| Script | Suggested schedule | Purpose |
-|---|---|---|
-| `npm run refresh-safe` | Daily off-hours | Runs staged refresh + verification + atomic promotion |
-| `npm run refresh-safe -- --skip-daily --ownership-latest-only` | Daily off-hours (lighter) | Ownership update only with staged safety |
-| `npm run refresh-companies` | Weekly or on universe change | Refreshes company metadata |
+| Script                | Suggested schedule   | Purpose                          |
+|-----------------------|----------------------|----------------------------------|
+| `npm run refresh-daily` | Daily (e.g. after market close) | Updates `daily_bars`, `quote_daily`, indicators |
+| `npm run refresh-financials` | Weekly or on-demand   | Refreshes financials             |
+| `npm run refresh-companies` | Weekly or on universe change | Refreshes company metadata       |
 
 All need `MASSIVE_API_KEY` and read/write access to `data/screener.db`.
-
-### Important memory note for Render Shell
-
-Running heavy jobs like `npm run refresh-ownership` directly inside the web service shell can exceed memory and restart the app instance. Use one of:
-
-- `npm run refresh-safe -- --ownership-latest-only` first (lighter path), or
-- a larger instance type during refresh windows, or
-- an external scheduler/worker that is isolated from user traffic.
 
 ### Option A: GitHub Actions (recommended)
 
@@ -135,11 +124,11 @@ After the cache is seeded, scheduled and manual runs use GitHub-hosted runners a
 
 **Examples:**
 
-- **Railway**: Add a cron job or a separate worker service that runs `node scripts/refresh-safe.mjs` on a schedule, with the same env and volume as the app.
+- **Railway**: Add a cron job or a separate worker service that runs `node scripts/refresh-daily.mjs` (and others) on a schedule, with the same env and volume as the app.
 - **Fly.io**: Use a machine with a volume; run cron inside the machine or a separate small machine that shares the volume and runs only the scripts.
 - **VPS (e.g. system cron):**
   ```cron
-  0 18 * * 1-5 cd /app && npm run refresh-safe
+  0 18 * * 1-5 cd /app && npm run refresh-daily
   ```
   Adjust path and timezone (e.g. 18:00 UTC weekdays).
 - **Windows (local fallback):** Run `npm run setup-daily-update` to create a Task Scheduler task (e.g. 6pm weekdays). See the script in `scripts/setup-daily-update.ps1`.
@@ -151,10 +140,10 @@ After the cache is seeded, scheduled and manual runs use GitHub-hosted runners a
 - [ ] `MASSIVE_API_KEY` set on the host (app and any job that runs scripts).
 - [ ] `data/screener.db` exists and is readable by the Next.js process (and writable by refresh scripts).
 - [ ] At least one run of init + seed (and optionally backfill) so the screener has data.
-- [ ] Cron or scheduled job for `refresh-safe` (or equivalent staged refresh orchestration).
+- [ ] Cron or scheduled job for `refresh-daily` (and optionally `refresh-financials` / `refresh-companies`).
 - [ ] App is reachable over HTTPS at a public URL (platform default or custom domain).
 - [ ] Run preflight checks: `npm run go-live:check`.
-- [ ] Verify health endpoint: `GET /api/health` returns `status: "ok"` and `checks.*Healthy` are true.
+- [ ] Verify health endpoint: `GET /api/health` returns `status: "ok"`.
 - [ ] Enable DB backup workflow (`.github/workflows/db-backup.yml`) or equivalent daily backup on your host.
 
 ---

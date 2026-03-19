@@ -3,22 +3,19 @@
  * Matches "Name of Issuer" to companies.name (normalized). Persists to data/cusip-to-symbol.json.
  */
 
-import Database from "better-sqlite3";
+import initSqlJs from "sql.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { DATA_13F_DIR, QUARTERS_12 } from "./sec-13f-download.mjs";
-import { dataDir as DATA_DIR, dbPath as DB_PATH } from "./_db-paths.mjs";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
+const DATA_DIR = join(root, "data");
+const DB_PATH = join(DATA_DIR, "screener.db");
 const CUSIP_MAP_PATH = join(DATA_DIR, "cusip-to-symbol.json");
 const CUSIP_OVERRIDES_PATH = join(DATA_DIR, "cusip-overrides.json");
-
-function normalizeSymbolForDb(symbol) {
-  return String(symbol || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[./\s]+/g, "-");
-}
 
 const SUFFIXES = /\s+(INC\.?|CORP\.?|CORPORATION|CO\.?|LTD\.?|LLC\.?|L\.?L\.?C\.?|PLC|N\.?V\.?|S\.?A\.?|AG|LP|L\.?P\.?|COMPANY|COS?\.?|HOLDINGS|GROUP|PARTNERS|BANCORP|BANK|FINANCIAL|INVESTMENT|TRUST)\s*$/gi;
 
@@ -40,10 +37,9 @@ function normalize(s) {
  * Load companies (symbol, name) from screener.db.
  */
 function loadCompanies(db) {
-  const rows = db
-    .prepare("SELECT symbol, name FROM companies WHERE name IS NOT NULL AND name != ''")
-    .all();
-  return rows.map((r) => ({ symbol: String(r.symbol), name: String(r.name) }));
+  const rows = db.exec("SELECT symbol, name FROM companies WHERE name IS NOT NULL AND name != ''");
+  if (!rows.length || !rows[0].values) return [];
+  return rows[0].values.map(([symbol, name]) => ({ symbol: String(symbol), name: String(name) }));
 }
 
 /**
@@ -111,20 +107,27 @@ function matchIssuerToSymbol(issuerName, nameToSymbol, firstTwoWordsIndex) {
 }
 
 /**
- * Collect unique (cusip, issuerName) from ALL available quarter ZIPs in data/13f.
- * Scanning every quarter maximises CUSIP coverage for historical ownership.
+ * Collect unique (cusip, issuerName) from one quarter's INFOTABLE.
+ * Uses the first available quarter ZIP in data/13f.
  */
 function* uniqueCusipIssuers() {
-  const seen = new Set();
+  let path;
+  let reportDate;
   for (const q of QUARTERS_12) {
     const p = join(DATA_13F_DIR, `${q.key}.zip`);
-    if (!existsSync(p)) continue;
-    for (const row of parseQuarter13F(p, q.reportDate)) {
-      const key = `${row.cusip}\t${row.issuerName}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      yield { cusip: row.cusip, issuerName: row.issuerName };
+    if (existsSync(p)) {
+      path = p;
+      reportDate = q.reportDate;
+      break;
     }
+  }
+  if (!path) return;
+  const seen = new Set();
+  for (const row of parseQuarter13F(path, reportDate)) {
+    const key = `${row.cusip}\t${row.issuerName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    yield { cusip: row.cusip, issuerName: row.issuerName };
   }
 }
 
@@ -133,9 +136,11 @@ function* uniqueCusipIssuers() {
  */
 export async function buildCusipToSymbolMap() {
   if (!existsSync(DB_PATH)) {
-    throw new Error(`Missing screener DB at ${DB_PATH}. Run init-screener-db and seed-companies.`);
+    throw new Error("Missing data/screener.db. Run init-screener-db and seed-companies.");
   }
-  const db = new Database(DB_PATH, { readonly: true });
+  const SQL = await initSqlJs();
+  const buf = readFileSync(DB_PATH);
+  const db = new SQL.Database(buf);
   const companies = loadCompanies(db);
   db.close();
   if (companies.length === 0) {
@@ -173,66 +178,6 @@ export function loadCusipToSymbolMap() {
     }
   }
   return map;
-}
-
-function loadCompanyMatchers() {
-  const db = new Database(DB_PATH, { readonly: true });
-  const companies = loadCompanies(db);
-  db.close();
-  const nameToSymbol = buildNameToSymbol(companies);
-  const firstTwoWordsIndex = buildFirstTwoWordsIndex(companies);
-  const validSymbols = new Set(
-    companies.map((c) => normalizeSymbolForDb(String(c.symbol || ""))).filter(Boolean)
-  );
-  return Promise.resolve({ nameToSymbol, firstTwoWordsIndex, validSymbols });
-}
-
-/**
- * Resolve CUSIP -> symbol using:
- * 1) existing saved map + overrides
- * 2) issuer-name heuristic fallback
- *
- * @param {Array<{cusip:string, issuerName?:string}>} pairs
- */
-export async function resolveCusipMap(pairs) {
-  const entries = Array.isArray(pairs) ? pairs : [];
-  const map = loadCusipToSymbolMap();
-  const uniquePairs = new Map();
-  for (const p of entries) {
-    const cusip = String(p?.cusip || "").trim().replace(/\s/g, "");
-    if (!cusip || cusip.length !== 9) continue;
-    if (!uniquePairs.has(cusip)) {
-      uniquePairs.set(cusip, { cusip, issuerName: String(p?.issuerName || "").trim() });
-    }
-  }
-  if (uniquePairs.size === 0) {
-    return { map, stats: { totalCusips: 0, mappedBefore: 0, heuristicAdded: 0 } };
-  }
-
-  const { nameToSymbol, firstTwoWordsIndex, validSymbols } = await loadCompanyMatchers();
-  const unresolvedCusips = [...uniquePairs.keys()].filter((cusip) => !map[cusip]);
-
-  let heuristicAdded = 0;
-  for (const { cusip, issuerName } of uniquePairs.values()) {
-    if (map[cusip]) continue;
-    const symbol = matchIssuerToSymbol(issuerName, nameToSymbol, firstTwoWordsIndex);
-    const normalized = normalizeSymbolForDb(symbol || "");
-    if (normalized && validSymbols.has(normalized)) {
-      map[cusip] = normalized;
-      heuristicAdded++;
-    }
-  }
-
-  writeFileSync(CUSIP_MAP_PATH, JSON.stringify(map, null, 0));
-  return {
-    map,
-    stats: {
-      totalCusips: uniquePairs.size,
-      mappedBefore: uniquePairs.size - unresolvedCusips.length,
-      heuristicAdded,
-      unresolved: [...uniquePairs.keys()].filter((cusip) => !map[cusip]).length,
-    },
-  };
 }
 
 export { CUSIP_MAP_PATH };

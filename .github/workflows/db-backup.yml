@@ -25,7 +25,6 @@ jobs:
           key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
           restore-keys: |
             ${{ env.DB_CACHE_PREFIX }}-
-          enableCrossOsArchive: true
 
       - name: Verify DB exists
         run: |

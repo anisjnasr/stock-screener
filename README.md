@@ -22,14 +22,6 @@ npm run go-live:check
 
 Operational health endpoint: `GET /api/health`.
 
-For production-safe refreshes that avoid partial DB writes, use:
-
-```bash
-npm run refresh-safe
-```
-
-This runs refreshes on a staged DB copy, verifies table health, and only then promotes changes.
-
 ---
 
 ## Getting Started

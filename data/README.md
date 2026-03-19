@@ -12,12 +12,6 @@
 - **Build:** `npm run build-index-constituents` — fetches from public sources and writes `data/sp500.json`, `data/nasdaq100.json`, `data/russell2000.json` (arrays of ticker symbols).
 - **Usage:** `GET /api/index-constituents?index=sp500|nasdaq100|russell2000` and `WatchlistPanel` (Lists tab).
 
-**Thematic ETF constituents** (for Watchlist “Thematic Industries” folder):
-
-- **Build:** `npm run build-thematic-etf-constituents` — writes `data/thematic-etf-constituents.json`.
-- **Usage:** `GET /api/thematic-etf-constituents?etf=...` and thematic ETF constituent lists in `WatchlistPanel`.
-- **Refresh cadence:** automatically refreshed by `npm run refresh-daily` (set `DAILY_REFRESH_THEMATIC_ETF_CONSTITUENTS=0` to disable).
-
 ---
 
 ## Screener database (`data/screener.db`)
@@ -27,7 +21,7 @@ SQLite DB for companies, daily_bars, quote_daily, indicators_daily, financials, 
 - **Init:** `npm run init-screener-db` then `npm run seed-companies`
 - **Backfill 10y (full):** `npm run backfill-historical-massive` (use `--years 10 --resume` to skip completed symbols)
 - **Extend 5y to 10y:** If you already have 5 years, run `npm run backfill-extend-to-10y` to fetch the older 5 years, backfill quote_daily for 10y, and run indicators for 10y.
-- **Daily:** `npm run refresh-daily` — latest bars + quote_daily + indicators + constituents files refresh
+- **Daily:** `npm run refresh-daily` — latest bars + quote_daily + indicators
 - **Indicators only:** `npm run compute-indicators [--years 10]` — recompute quote_daily and indicators_daily from daily_bars (no API calls)
 - **Status:** `node scripts/check-backfill-status.mjs` — shows 5y and 10y row/symbol counts
 

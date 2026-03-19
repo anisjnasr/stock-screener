@@ -7,10 +7,13 @@
 
 import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
-import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
-const USING_CUSTOM_DB = Boolean(process.env.SCREENER_DB_PATH);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
+const DATA_DIR = join(root, "data");
+const DB_PATH = join(DATA_DIR, "screener.db");
 
 function loadEnvLocal() {
   const path = join(root, ".env.local");
@@ -69,11 +72,8 @@ function sleep(ms) {
 
 async function main() {
   if (!existsSync(DB_PATH)) {
-    console.error(`Missing screener DB at ${DB_PATH}. Run: npm run init-screener-db && npm run seed-companies`);
+    console.error("Missing data/screener.db. Run: npm run init-screener-db && npm run seed-companies");
     process.exit(1);
-  }
-  if (USING_CUSTOM_DB) {
-    console.log("Using SCREENER_DB_PATH:", DB_PATH);
   }
 
   const db = new Database(DB_PATH);

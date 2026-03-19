@@ -2,8 +2,6 @@
 
 The **Daily Data Refresh** workflow runs at **2am ET** (Tue–Sat) to fetch the latest market data and recompute indicators. It uses GitHub’s cache to store the SQLite DB between runs so your app’s data stays current without running anything on your own machine.
 
-For host-side manual refreshes, prefer `npm run refresh-safe` so the active DB is only replaced after verification succeeds.
-
 ---
 
 ## Quick start

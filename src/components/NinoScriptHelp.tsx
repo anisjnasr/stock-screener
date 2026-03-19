@@ -144,7 +144,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
                 </tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600">
                   <td className="px-2 py-1.5 font-mono">ATRP(n)</td>
-                  <td>ATR as percentage of close (returns percent value). Compare with whole numbers: e.g. ATRP(14) &gt; 5 means greater than 5%.</td>
+                  <td>ATR as percentage of close: ATR(n) / C. Use for volatility relative to price (e.g. ATRP(14) &gt; 0.02 for 2% ATR).</td>
                 </tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600">
                   <td className="px-2 py-1.5 font-mono">ROC(series, n [, bar])</td>

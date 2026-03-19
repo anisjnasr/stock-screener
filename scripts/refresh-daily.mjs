@@ -12,11 +12,13 @@
 
 import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
-import { spawnSync } from "child_process";
-import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
-const USING_CUSTOM_DB = Boolean(process.env.SCREENER_DB_PATH);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
+const DATA_DIR = join(root, "data");
+const DB_PATH = join(DATA_DIR, "screener.db");
 
 function loadEnvLocal() {
   const path = join(root, ".env.local");
@@ -37,56 +39,6 @@ if (!API_KEY) {
 
 const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
-const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80);
-const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
-const COMPANY_REFERENCE_ENRICH_LIMIT = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_LIMIT ?? 200);
-const COMPANY_REFERENCE_DELAY_MS = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_DELAY_MS ?? 80);
-const REFRESH_INDEX_CONSTITUENTS = String(process.env.DAILY_REFRESH_INDEX_CONSTITUENTS ?? "1") !== "0";
-const REFRESH_THEMATIC_ETF_CONSTITUENTS =
-  String(process.env.DAILY_REFRESH_THEMATIC_ETF_CONSTITUENTS ?? "1") !== "0";
-const REQUIRED_ETF_SYMBOLS = [
-  "SPY",
-  "QQQ",
-  "IWM",
-  "BOTZ",
-  "SMH",
-  "SKYY",
-  "CIBR",
-  "DTCR",
-  "SNSR",
-  "QTUM",
-  "ARKX",
-  "ARKK",
-  "XOP",
-  "ICLN",
-  "TAN",
-  "URA",
-  "HYDR",
-  "PHO",
-  "LIT",
-  "PAVE",
-  "ITA",
-  "GRID",
-  "GDX",
-  "SIL",
-  "COPX",
-  "REMX",
-  "MOO",
-  "IBIT",
-  "BLOK",
-  "FINX",
-  "XBI",
-  "OZEM",
-  "MSOS",
-  "BETZ",
-  "ESPO",
-  "ITB",
-  "JETS",
-  "SOCL",
-  "IBUY",
-  "KWEB",
-  "INDA",
-];
 
 const BASE = "https://api.polygon.io";
 function url(path, params = {}) {
@@ -138,13 +90,6 @@ async function fetchDailyBars(symbol, from, to) {
   }));
 }
 
-async function fetchTickerReference(symbol) {
-  const res = await fetchWithRetry(url(`/v3/reference/tickers/${encodeURIComponent(symbol)}`));
-  if (!res || !res.ok) return null;
-  const data = await res.json();
-  return data?.results ?? null;
-}
-
 function computeEMA(bars, key = "close", period) {
   const k = 2 / (period + 1);
   const out = [];
@@ -193,33 +138,17 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function runScript(relativeScriptPath) {
-  const scriptPath = join(root, relativeScriptPath);
-  const result = spawnSync(process.execPath, [scriptPath], {
-    cwd: root,
-    stdio: "inherit",
-    env: process.env,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`${relativeScriptPath} exited with code ${result.status ?? "unknown"}`);
-  }
-}
-
 async function main() {
   if (!existsSync(DB_PATH)) {
-    console.error(`Missing screener DB at ${DB_PATH}. Run: npm run init-screener-db && npm run seed-companies`);
+    console.error("Missing data/screener.db. Run: npm run init-screener-db && npm run seed-companies");
     process.exit(1);
-  }
-  if (USING_CUSTOM_DB) {
-    console.log("Using SCREENER_DB_PATH:", DB_PATH);
   }
 
   const db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = OFF");
   db.pragma("synchronous = NORMAL");
-  db.pragma("cache_size = -64000");
+  db.pragma("cache_size = -200000");
   db.pragma("busy_timeout = 10000");
 
   db.exec(`
@@ -228,99 +157,10 @@ async function main() {
     CREATE INDEX IF NOT EXISTS idx_indicators_daily_date_symbol ON indicators_daily(date, symbol);
   `);
 
-  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => String(r.symbol));
-  symbols = Array.from(new Set([...symbols.map((s) => s.toUpperCase()), ...REQUIRED_ETF_SYMBOLS]));
+  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
-  }
-
-  // Keep company reference fields fresh for newly-added symbols and any historical gaps.
-  // Full historical catch-up should be done with: npm run enrich-company-reference
-  if (COMPANY_REFERENCE_ENRICH_LIMIT > 0) {
-    const candidates = db
-      .prepare(
-        `
-        SELECT symbol
-        FROM companies
-        WHERE
-          ipo_date IS NULL OR TRIM(ipo_date) = ''
-          OR shares_outstanding IS NULL OR shares_outstanding <= 0
-        ORDER BY symbol
-        LIMIT ?
-        `
-      )
-      .all(COMPANY_REFERENCE_ENRICH_LIMIT)
-      .map((r) => String(r.symbol).toUpperCase());
-
-    if (candidates.length > 0) {
-      console.log(`Enriching company reference fields for up to ${candidates.length} symbols...`);
-      const updateCompany = db.prepare(
-        `
-        UPDATE companies
-        SET
-          name = COALESCE(?, name),
-          exchange = COALESCE(?, exchange),
-          industry = COALESCE(?, industry),
-          sector = COALESCE(?, sector),
-          ipo_date = COALESCE(?, ipo_date),
-          shares_outstanding = COALESCE(?, shares_outstanding),
-          updated_at = ?
-        WHERE symbol = ?
-        `
-      );
-      const updateCompanyTx = db.transaction((patches) => {
-        for (const p of patches) {
-          updateCompany.run(
-            p.name ?? null,
-            p.exchange ?? null,
-            p.industry ?? null,
-            p.sector ?? null,
-            p.ipoDate ?? null,
-            p.sharesOutstanding ?? null,
-            p.now,
-            p.symbol
-          );
-        }
-      });
-
-      let ok = 0;
-      let emptyOrFailed = 0;
-      const now = new Date().toISOString();
-      const patches = [];
-      for (let i = 0; i < candidates.length; i++) {
-        const sym = candidates[i];
-        const ref = await fetchTickerReference(sym);
-        if (ref) {
-          patches.push({
-            symbol: sym,
-            name: ref.name ?? null,
-            exchange: ref.primary_exchange ?? null,
-            industry: ref.sic_description ?? null,
-            sector: null,
-            ipoDate: ref.list_date ?? null,
-            sharesOutstanding:
-              ref.share_class_shares_outstanding != null
-                ? Number(ref.share_class_shares_outstanding)
-                : ref.weighted_shares_outstanding != null
-                  ? Number(ref.weighted_shares_outstanding)
-                  : null,
-            now,
-          });
-          ok++;
-        } else {
-          emptyOrFailed++;
-        }
-        if (patches.length >= 100) updateCompanyTx(patches.splice(0, patches.length));
-        if ((i + 1) % 50 === 0 || i === candidates.length - 1) {
-          process.stdout.write(`  company_ref: ${i + 1}/${candidates.length}\r`);
-        }
-        await sleep(COMPANY_REFERENCE_DELAY_MS);
-      }
-      if (patches.length > 0) updateCompanyTx(patches);
-      console.log("");
-      console.log(`Company reference enrichment: ok=${ok}, empty_or_failed=${emptyOrFailed}`);
-    }
   }
 
   const toDate = new Date();
@@ -338,13 +178,13 @@ async function main() {
     }
   });
 
-  let fetchOkCount = 0;
-  let fetchEmptyCount = 0;
+  console.log("Fetching SPY bars...");
+  const spyBars = await fetchDailyBars("SPY", fromStr, toStr);
+  upsertBarsTx("SPY", spyBars);
+
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i];
     const bars = await fetchDailyBars(sym, fromStr, toStr);
-    if (bars.length > 0) fetchOkCount++;
-    else fetchEmptyCount++;
     upsertBarsTx(sym, bars);
     if ((i + 1) % 50 === 0 || i === symbols.length - 1) {
       process.stdout.write(`  daily_bars: ${i + 1}/${symbols.length}\r`);
@@ -352,69 +192,14 @@ async function main() {
     await sleep(120);
   }
   console.log("");
-  console.log(`Fetched bars: ok=${fetchOkCount}, empty_or_failed=${fetchEmptyCount}`);
 
   const latestDateRow = db.prepare("SELECT MAX(date) AS d FROM daily_bars").get();
-  const rawLatestDate = latestDateRow?.d;
-  if (!rawLatestDate) {
+  const latestDate = latestDateRow?.d;
+  if (!latestDate) {
     console.error("No latest date found in daily_bars.");
     db.close();
     process.exit(1);
   }
-
-  // Coverage guard + date selection:
-  // if the newest date is partial (intraday/incomplete fetch), use the latest reliable recent date.
-  const expectedSymbols = symbols.length;
-  const minCoverageAbs = Math.max(200, Math.floor((expectedSymbols * MIN_COVERAGE_PCT) / 100));
-  const recentCoverageRows = db
-    .prepare(
-      `
-      WITH recent_dates AS (
-        SELECT date
-        FROM daily_bars
-        GROUP BY date
-        ORDER BY date DESC
-        LIMIT ?
-      )
-      SELECT rd.date AS date, COUNT(d.symbol) AS c
-      FROM recent_dates rd
-      LEFT JOIN daily_bars d ON d.date = rd.date
-      GROUP BY rd.date
-      ORDER BY rd.date DESC
-      `
-    )
-    .all(COVERAGE_LOOKBACK_DATES);
-
-  if (!recentCoverageRows.length) {
-    console.error("No recent coverage rows found in daily_bars.");
-    db.close();
-    process.exit(1);
-  }
-
-  const reliableRow = recentCoverageRows.find((r) => Number(r.c ?? 0) >= minCoverageAbs);
-  if (!reliableRow) {
-    const summary = recentCoverageRows
-      .map((r) => `${r.date}:${r.c}`)
-      .join(", ");
-    console.error(
-      `Coverage too low across recent dates. Minimum required: ${minCoverageAbs}/${expectedSymbols} (${MIN_COVERAGE_PCT}%). Recent: ${summary}. Aborting to avoid partial screener snapshot.`
-    );
-    db.close();
-    process.exit(1);
-  }
-
-  const latestDate = String(reliableRow.date);
-  const latestCoverage = Number(reliableRow.c ?? 0);
-  const rawLatestCoverage =
-    Number(recentCoverageRows.find((r) => String(r.date) === String(rawLatestDate))?.c ?? 0);
-  if (String(rawLatestDate) !== latestDate) {
-    console.log(
-      `Latest raw date ${rawLatestDate} is partial (${rawLatestCoverage}/${expectedSymbols}); using reliable date ${latestDate} (${latestCoverage}/${expectedSymbols}).`
-    );
-  }
-  console.log(
-    `Coverage check passed for ${latestDate}: ${latestCoverage}/${expectedSymbols} (${((latestCoverage / expectedSymbols) * 100).toFixed(2)}%)`
-  );
 
   const indCols = new Set(db.prepare("PRAGMA table_info(indicators_daily)").all().map((r) => r.name));
   for (const col of ["rs_pct_1w", "rs_pct_1m", "rs_pct_3m", "rs_pct_6m", "rs_pct_12m"]) {
@@ -447,7 +232,6 @@ async function main() {
     "SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date <= ? ORDER BY date"
   );
   const getQuoteStmt = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
-  const getSharesStmt = db.prepare("SELECT shares_outstanding FROM companies WHERE symbol = ?");
   const companyMap = new Map(db.prepare("SELECT symbol, industry, sector FROM companies").all().map((r) => [r.symbol, r]));
 
   const spyBarsList = db
@@ -472,21 +256,13 @@ async function main() {
         close: r.close,
         volume: r.volume,
       }));
-      if (bars.length === 0) continue;
+      if (bars.length < 22) continue;
 
       const lastBar = bars[bars.length - 1];
       if (lastBar.date !== latestDate) continue;
 
       const q = getQuoteStmt.get(sym, latestDate);
-      const sharesRow = getSharesStmt.get(sym);
-      const sharesOutstanding =
-        sharesRow?.shares_outstanding != null ? Number(sharesRow.shares_outstanding) : null;
-      const marketCap =
-        q?.market_cap != null && Number(q.market_cap) > 0
-          ? Number(q.market_cap)
-          : sharesOutstanding != null && sharesOutstanding > 0
-            ? sharesOutstanding * lastBar.close
-            : null;
+      const marketCap = q?.market_cap ?? null;
       const lastPrice = q?.last_price ?? lastBar.close;
       const volume = q?.volume ?? lastBar.volume;
       const prevClose = bars.length >= 2 ? bars[bars.length - 2].close : lastBar.close;
@@ -694,56 +470,10 @@ async function main() {
   });
   ranksTx();
 
-  // Strict freshness guard: daily refresh should keep these tables on the same selected latestDate.
-  const latestQuoteDateRow = db.prepare("SELECT MAX(date) AS d FROM quote_daily").get();
-  const latestIndicatorsDateRow = db.prepare("SELECT MAX(date) AS d FROM indicators_daily").get();
-  const latestQuoteDate = latestQuoteDateRow?.d ? String(latestQuoteDateRow.d) : null;
-  const latestIndicatorsDate = latestIndicatorsDateRow?.d ? String(latestIndicatorsDateRow.d) : null;
-  if (latestQuoteDate !== latestDate || latestIndicatorsDate !== latestDate) {
-    db.close();
-    throw new Error(
-      `Post-refresh freshness check failed. Expected quote_daily and indicators_daily at ${latestDate}, got quote_daily=${latestQuoteDate}, indicators_daily=${latestIndicatorsDate}.`
-    );
-  }
-
-  const quoteCoverage = Number(
-    db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM quote_daily WHERE date = ?").get(latestDate)?.c ?? 0
-  );
-  const indicatorCoverage = Number(
-    db.prepare("SELECT COUNT(DISTINCT symbol) AS c FROM indicators_daily WHERE date = ?").get(latestDate)?.c ?? 0
-  );
-  if (quoteCoverage < minCoverageAbs || indicatorCoverage < minCoverageAbs) {
-    db.close();
-    throw new Error(
-      `Post-refresh coverage check failed for ${latestDate}. quote_daily=${quoteCoverage}, indicators_daily=${indicatorCoverage}, required minimum=${minCoverageAbs}.`
-    );
-  }
-
   console.log("Running WAL checkpoint...");
   db.pragma("wal_checkpoint(TRUNCATE)");
   db.pragma("optimize");
   db.close();
-
-  if (REFRESH_INDEX_CONSTITUENTS) {
-    try {
-      console.log("Refreshing index constituents...");
-      runScript("scripts/build-index-constituents.mjs");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`Warning: index constituents refresh failed (${msg}). Keeping existing files.`);
-    }
-  }
-
-  if (REFRESH_THEMATIC_ETF_CONSTITUENTS) {
-    try {
-      console.log("Refreshing thematic ETF constituents...");
-      runScript("scripts/build-thematic-etf-constituents.mjs");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`Warning: thematic ETF constituents refresh failed (${msg}). Keeping existing file.`);
-    }
-  }
-
   console.log("Daily refresh done. Latest date:", latestDate, "| Symbols processed:", symbols.length);
 }
 

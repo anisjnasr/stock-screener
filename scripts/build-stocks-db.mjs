@@ -62,13 +62,6 @@ async function buildStocksDb() {
         type,
         exchange: r.primary_exchange != null ? String(r.primary_exchange) : undefined,
         currency: r.currency_name != null ? String(r.currency_name) : undefined,
-        ipo_date: r.list_date != null ? String(r.list_date) : undefined,
-        shares_outstanding:
-          r.share_class_shares_outstanding != null
-            ? Number(r.share_class_shares_outstanding)
-            : r.weighted_shares_outstanding != null
-              ? Number(r.weighted_shares_outstanding)
-              : undefined,
       });
     }
 

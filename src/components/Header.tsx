@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useTheme } from "@/hooks/useTheme";
+import { formatDisplayDateTime } from "@/lib/date-format";
 
 type SearchSuggestion = {
   symbol: string;
@@ -29,8 +29,6 @@ type Profile = {
   mktCap?: number;
 } | undefined;
 
-export type HeaderPage = "home" | "market-monitor" | "market-breadth" | "breadth";
-
 type HeaderProps = {
   quote: Quote | null;
   profile: Profile;
@@ -44,52 +42,14 @@ type HeaderProps = {
   onSearchChange: (s: string) => void;
   onSearchSubmit: () => void;
   loading?: boolean;
-  currentPage?: HeaderPage;
-  onPageChange?: (page: HeaderPage) => void;
-  dbUpdateCompletedAt?: Date | null;
-  leftSidebarHidden?: boolean;
-  onLeftSidebarToggle?: () => void;
 };
-
-function ordinal(day: number): string {
-  const rem10 = day % 10;
-  const rem100 = day % 100;
-  if (rem10 === 1 && rem100 !== 11) return `${day}st`;
-  if (rem10 === 2 && rem100 !== 12) return `${day}nd`;
-  if (rem10 === 3 && rem100 !== 13) return `${day}rd`;
-  return `${day}th`;
-}
-
-function formatDbUpdateTimestamp(input: Date | null | undefined): string {
-  if (!input || Number.isNaN(input.getTime())) return "NA";
-  const d = input;
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-  const day = ordinal(d.getDate());
-  const month = months[d.getMonth()];
-  const year = d.getFullYear();
-  const h24 = d.getHours();
-  const hour12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  const minutes = d.getMinutes().toString().padStart(2, "0");
-  const ampm = h24 < 12 ? "am" : "pm";
-  return `${day} ${month} ${year} ${hour12}:${minutes}${ampm}`;
-}
 
 function fmtNum(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return "NA";
-  return (n / 1e9).toFixed(2);
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+  return n.toLocaleString();
 }
 
 function fmtPct(n: number | undefined): string {
@@ -110,13 +70,7 @@ export default function Header({
   onSearchChange,
   onSearchSubmit,
   loading,
-  currentPage,
-  onPageChange,
-  dbUpdateCompletedAt,
-  leftSidebarHidden = false,
-  onLeftSidebarToggle,
 }: HeaderProps) {
-  const brandName = "Stock Stalker";
   const name = quote?.name ?? profile?.companyName ?? symbol;
   const price = quote?.price;
   const chgPct = quote?.changesPercentage;
@@ -134,6 +88,44 @@ export default function Header({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
+  const FONT_SCALE_MIN = 0.8;
+  const FONT_SCALE_MAX = 1.4;
+  const FONT_SCALE_STEP = 0.1;
+  const FONT_SCALE_STORAGE_KEY = "fontScale";
+
+  const [fontScale, setFontScale] = useState(1);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(FONT_SCALE_STORAGE_KEY);
+      if (stored != null) {
+        const n = parseFloat(stored);
+        if (!Number.isNaN(n) && n >= FONT_SCALE_MIN && n <= FONT_SCALE_MAX) {
+          setFontScale(n);
+          document.documentElement.style.setProperty("--font-scale", String(n));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-scale", String(fontScale));
+    try {
+      localStorage.setItem(FONT_SCALE_STORAGE_KEY, String(fontScale));
+    } catch {
+      /* ignore */
+    }
+  }, [fontScale]);
+
+  const adjustFontScale = useCallback((delta: number) => {
+    setFontScale((prev) => {
+      const next = Math.round((prev + delta) * 10) / 10;
+      return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, next));
+    });
+  }, []);
+
   useEffect(() => {
     if (!searchValue.trim()) {
       setSuggestions([]);
@@ -147,7 +139,9 @@ export default function Header({
         .then((data) => {
           const list = Array.isArray(data) ? data.slice(0, 10) : [];
           setSuggestions(list);
-          setSuggestionsOpen(list.length > 0);
+          setSuggestionsOpen(
+            list.length > 0 && searchValue.trim().toUpperCase() !== symbol.toUpperCase()
+          );
           setHighlightedIndex(-1);
         })
         .catch(() => {
@@ -161,7 +155,7 @@ export default function Header({
 
   const selectSymbol = useCallback(
     (sym: string) => {
-      onSearchChange("");
+      onSearchChange(sym);
       onSymbolChange(sym);
       setSuggestionsOpen(false);
       setSuggestions([]);
@@ -197,226 +191,171 @@ export default function Header({
     }
   };
 
-  const { theme, cycleTheme } = useTheme();
-
   return (
     <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-sm">
-      <div className="relative px-4 py-3">
-        <div className="absolute right-4 top-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={cycleTheme}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 transition-colors"
-            aria-label={`Theme: ${theme}. Click to cycle.`}
-            title={`Theme: ${theme}`}
-          >
-            {theme === "dark" ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            ) : theme === "light" ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            )}
-          </button>
-          <img
-            src="/brand/stockstalker-lockup.svg"
-            alt={brandName}
-            className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
-          />
-        </div>
-        <div className="flex items-center justify-center pr-28">
-          <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
-            {[
-              { id: "home" as HeaderPage, label: "Home" },
-              { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
-              { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
-              { id: "breadth" as HeaderPage, label: "Breadth" },
-            ].map((item) => (
+      <div className="px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate min-w-0">
+              {loading ? "…" : name}
+            </h1>
+            <div ref={searchContainerRef} className="relative">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+                  selectSymbol(suggestions[highlightedIndex].symbol);
+                } else {
+                  onSearchSubmit();
+                }
+              }}
+              className="flex items-center gap-1"
+            >
+              <input
+                type="text"
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
+                onFocus={(e) => {
+                  (e.target as HTMLInputElement).select();
+                  if (suggestions.length > 0) setSuggestionsOpen(true);
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Search..."
+                className="w-28 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                aria-label="Stock search"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={suggestionsOpen}
+                aria-controls="search-suggestions"
+                aria-activedescendant={highlightedIndex >= 0 ? `suggestion-${highlightedIndex}` : undefined}
+              />
               <button
-                key={item.id}
-                type="button"
-                onClick={() => onPageChange?.(item.id)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  currentPage === item.id
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                type="submit"
+                className="rounded bg-zinc-700 dark:bg-zinc-600 text-white px-2 py-1 text-sm hover:bg-zinc-600 dark:hover:bg-zinc-500"
+              >
+                Go
+              </button>
+            </form>
+            {suggestionsOpen && (
+              <ul
+                id="search-suggestions"
+                role="listbox"
+                className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
+              >
+                {suggestionsLoading ? (
+                  <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">Searching…</li>
+                ) : (
+                  suggestions.map((s, i) => (
+                    <li
+                      key={`${s.symbol}-${i}`}
+                      id={`suggestion-${i}`}
+                      role="option"
+                      aria-selected={i === highlightedIndex}
+                      className={`cursor-pointer px-3 py-2 text-sm ${i === highlightedIndex ? "bg-zinc-100 dark:bg-zinc-700" : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"}`}
+                      onMouseEnter={() => setHighlightedIndex(i)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectSymbol(s.symbol);
+                      }}
+                    >
+                      <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100">{s.symbol}</span>
+                      {s.name && (
+                        <span className="ml-2 text-zinc-500 dark:text-zinc-400 truncate block">
+                          {s.name}
+                        </span>
+                      )}
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1 text-sm overflow-x-auto min-w-0">
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Last:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {price != null ? `$${price.toFixed(2)}` : "NA"}
+              </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Change %:{" "}
+              <span
+                className={`tabular-nums ${
+                  isUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
                 }`}
               >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {currentPage === "home" && (
-          <div
-            className="mt-3 pr-28 relative"
-          >
-            <div
-              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-visible min-w-0 whitespace-nowrap"
-              style={{ fontSize: "clamp(11px, 0.75vw, 14px)" }}
-            >
-              <div className="inline-flex items-center gap-1 rounded-md bg-transparent p-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={onLeftSidebarToggle}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/60 transition-colors shrink-0"
-                  aria-label={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
-                  title={leftSidebarHidden ? "Show left sidebar" : "Hide left sidebar"}
-                >
-                  <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                    <path d="M2 3.25H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                    <path d="M2 7H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                    <path d="M2 10.75H12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <span className="text-base font-semibold font-mono text-zinc-900 dark:text-zinc-100 shrink-0">
-                  {symbol.toUpperCase()}
-                </span>
-                <div ref={searchContainerRef} className="relative">
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-                        selectSymbol(suggestions[highlightedIndex].symbol);
-                      } else {
-                        onSearchSubmit();
-                      }
-                    }}
-                    className="flex items-center gap-1"
-                  >
-                    <input
-                      type="text"
-                      value={searchValue}
-                      onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-                      onFocus={(e) => {
-                        (e.target as HTMLInputElement).select();
-                        if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
-                      }}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Search"
-                      className="w-44 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
-                      aria-label="Stock search"
-                      autoComplete="off"
-                      aria-autocomplete="list"
-                      aria-expanded={suggestionsOpen}
-                      aria-controls="search-suggestions"
-                      aria-activedescendant={
-                        highlightedIndex >= 0 ? `suggestion-${highlightedIndex}` : undefined
-                      }
-                    />
-                    <button
-                      type="submit"
-                      className="rounded bg-zinc-700 dark:bg-zinc-600 text-white px-2 py-1 text-sm hover:bg-zinc-600 dark:hover:bg-zinc-500"
-                    >
-                      Go
-                    </button>
-                  </form>
-                  {suggestionsOpen && (
-                    <ul
-                      id="search-suggestions"
-                      role="listbox"
-                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[36rem] max-w-[90vw] overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
-                    >
-                      {suggestionsLoading ? (
-                        <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                          Searching…
-                        </li>
-                      ) : (
-                        suggestions.map((s, i) => (
-                          <li
-                            key={`${s.symbol}-${i}`}
-                            id={`suggestion-${i}`}
-                            role="option"
-                            aria-selected={i === highlightedIndex}
-                            className={`cursor-pointer px-3 py-2 text-sm flex items-center gap-3 ${
-                              i === highlightedIndex
-                                ? "bg-zinc-100 dark:bg-zinc-700"
-                                : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
-                            }`}
-                            onMouseEnter={() => setHighlightedIndex(i)}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              selectSymbol(s.symbol);
-                            }}
-                          >
-                            <span className="font-medium font-mono text-zinc-900 dark:text-zinc-100 shrink-0 min-w-[78px]">
-                              {s.symbol}
-                            </span>
-                            {s.name && (
-                              <span className="text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                                {s.name}
-                              </span>
-                            )}
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  )}
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Last:{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {price != null ? `$${price.toFixed(2)}` : "NA"}
-                </span>
+                {fmtPct(chgPct)}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Change %:{" "}
-                <span
-                  className={`tabular-nums ${
-                    isUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                  }`}
-                >
-                  {fmtPct(chgPct)}
-                </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Vol:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {vol != null ? vol.toLocaleString() : "NA"}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Vol:{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {vol != null ? vol.toLocaleString() : "NA"}
-                </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Avg Vol:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {avgVol != null ? avgVol.toLocaleString() : "NA"}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Avg Vol:{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {avgVol != null ? avgVol.toLocaleString() : "NA"}
-                </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Mkt Cap:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">{fmtNum(mktCap)}</span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              52W High:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {yHigh != null ? `$${yHigh.toFixed(2)}` : "NA"}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Mkt Cap (bn):{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {fmtNum(mktCap)}
-                </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Off 52W High:{" "}
+              <span className="tabular-nums text-red-600 dark:text-red-400">
+                {off52WHighPct != null ? `${off52WHighPct.toFixed(2)}%` : "NA"}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                52W High:{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {yHigh != null ? `$${yHigh.toFixed(2)}` : "NA"}
-                </span>
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              ATR %:{" "}
+              <span className="tabular-nums text-blue-600 dark:text-blue-400">
+                {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                Off 52W High:{" "}
-                <span className="tabular-nums text-red-600 dark:text-red-400">
-                  {off52WHighPct != null ? `${off52WHighPct.toFixed(2)}%` : "NA"}
-                </span>
-              </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
-                ATRP:{" "}
-                <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                  {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
-                </span>
-              </span>
-            </div>
-            <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
-              DB Update:{" "}
-              <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
-                {formatDbUpdateTimestamp(dbUpdateCompletedAt)}
+            </span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              Updated:{" "}
+              <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                {lastUpdate != null ? formatDisplayDateTime(lastUpdate) : "NA"}
               </span>
             </span>
           </div>
-        )}
+          <div className="flex items-center gap-2 shrink-0" role="group" aria-label="Font size">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Font Size</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => adjustFontScale(-FONT_SCALE_STEP)}
+                disabled={fontScale <= FONT_SCALE_MIN}
+                className="inline-flex items-center justify-center w-5 h-5 text-sm font-semibold text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 disabled:opacity-40 disabled:pointer-events-none leading-none"
+                aria-label="Decrease font size"
+                title="Decrease font size"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => adjustFontScale(FONT_SCALE_STEP)}
+                disabled={fontScale >= FONT_SCALE_MAX}
+                className="inline-flex items-center justify-center w-5 h-5 text-sm font-semibold text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 disabled:opacity-40 disabled:pointer-events-none leading-none"
+                aria-label="Increase font size"
+                title="Increase font size"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
   );
 }
-

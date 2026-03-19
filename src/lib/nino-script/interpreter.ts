@@ -159,7 +159,7 @@ function evalNode(node: AstNode, ctx: EvalContext): number | null {
           atr = (atr * (period - 1) + tr[i]!) / period;
         }
         const close = bars[0]!.close;
-        return close === 0 ? null : (atr / close) * 100;
+        return close === 0 ? null : atr / close;
       }
 
       const seriesArg = node.args[0];

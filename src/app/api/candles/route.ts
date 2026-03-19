@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
+import { fetchHistoricalDaily } from "@/lib/massive";
 
 type Candle = {
   date: string;
@@ -9,23 +9,6 @@ type Candle = {
   close: number;
   volume: number;
 };
-
-type CandleCacheEntry = {
-  data: Candle[];
-  expiresAt: number;
-};
-
-const API_CANDLES_TTL_MS = 60 * 1000;
-
-function getApiCandlesCache(): Map<string, CandleCacheEntry> {
-  const globalWithCache = globalThis as typeof globalThis & {
-    __stockToolCandlesCache?: Map<string, CandleCacheEntry>;
-  };
-  if (!globalWithCache.__stockToolCandlesCache) {
-    globalWithCache.__stockToolCandlesCache = new Map();
-  }
-  return globalWithCache.__stockToolCandlesCache;
-}
 
 function weekKey(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00Z");
@@ -66,53 +49,18 @@ function aggregateCandles(daily: Candle[], interval: "weekly" | "monthly"): Cand
 }
 
 export async function GET(request: NextRequest) {
-  const symbol = (request.nextUrl.searchParams.get("symbol") || "AAPL").toUpperCase();
+  const symbol = request.nextUrl.searchParams.get("symbol") || "AAPL";
+  const from = request.nextUrl.searchParams.get("from") || undefined;
+  const to = request.nextUrl.searchParams.get("to") || undefined;
   const interval = request.nextUrl.searchParams.get("interval") || "daily";
   try {
-    const latest = getLatestScreenerDate();
-    if (!latest) {
-      return NextResponse.json({ error: "No screener date available" }, { status: 200 });
-    }
-    const cacheKey = `${symbol}:${interval}:${latest}`;
-    const cache = getApiCandlesCache();
-    const cached = cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json(cached.data, {
-        headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
-      });
-    }
-    if (cached && cached.expiresAt <= Date.now()) {
-      cache.delete(cacheKey);
-    }
-    const DAILY_LIMIT = 2500;
-    const bars = getDailyBars(symbol, latest, DAILY_LIMIT);
-    if (!bars.length) {
-      return NextResponse.json([] as Candle[]);
-    }
-    const dailyChrono: Candle[] = bars
-      .slice()
-      .reverse()
-      .map((b) => ({
-        date: b.date,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-        volume: b.volume,
-      }));
-    let data: Candle[] = dailyChrono;
+    let data = await fetchHistoricalDaily(symbol, from, to);
     if (interval === "weekly" || interval === "monthly") {
-      data = aggregateCandles(dailyChrono, interval as "weekly" | "monthly");
+      data = aggregateCandles(data, interval);
     }
-    cache.set(cacheKey, {
-      data,
-      expiresAt: Date.now() + API_CANDLES_TTL_MS,
-    });
-    return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
-    });
+    return NextResponse.json(data);
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Candles error";
+    const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

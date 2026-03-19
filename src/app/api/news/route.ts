@@ -6,9 +6,7 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(request.nextUrl.searchParams.get("limit")) || 15, 50);
   try {
     const data = await fetchStockNews(symbol, limit);
-    return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
-    });
+    return NextResponse.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

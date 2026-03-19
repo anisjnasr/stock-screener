@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -13,44 +12,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://stock-screener-orfz.onrender.com";
-
 export const metadata: Metadata = {
-  title: "Stock Stalker",
-  description: "Stock Stalker - fundamentals, charts, screener, and market insights",
-  metadataBase: new URL(siteUrl),
-  applicationName: "Stock Stalker",
-  manifest: "/site.webmanifest",
-  icons: {
-    icon: [
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
-    ],
-    shortcut: ["/favicon-32x32.png"],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
-  },
-  openGraph: {
-    title: "Stock Stalker",
-    description: "Stock Stalker - fundamentals, charts, screener, and market insights",
-    url: "/",
-    siteName: "Stock Stalker",
-    type: "website",
-    images: [
-      {
-        url: "/opengraph-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Stock Stalker",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Stock Stalker",
-    description: "Stock Stalker - fundamentals, charts, screener, and market insights",
-    images: ["/twitter-image.png"],
-  },
+  title: "Stock Scanner",
+  description: "Stock scanner – fundamentals, chart, screener, news",
 };
 
 export default function RootLayout({
@@ -59,15 +23,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem("stock-research-theme");if(t==="light"){document.documentElement.classList.remove("dark");document.documentElement.classList.add("light")}else if(t==="dark"||!t){document.documentElement.classList.add("dark");document.documentElement.classList.remove("light")}else{var m=window.matchMedia("(prefers-color-scheme:dark)").matches;document.documentElement.classList.toggle("dark",m);document.documentElement.classList.toggle("light",!m)}}catch(e){}})()` }} />
-      </head>
+    <html lang="en">
       <body
         className={`${inter.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <ServiceWorkerRegistration />
       </body>
     </html>
   );

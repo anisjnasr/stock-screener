@@ -18,31 +18,25 @@ export function aggregateHoldings(holdingsWithSymbol) {
     const bySymbol = byReport.get(reportDate);
     if (!bySymbol.has(symbol)) {
       bySymbol.set(symbol, {
-        fundValues: new Map(),
-        fundSet: new Set(),
+        filerValues: new Map(),
+        filerSet: new Set(),
       });
     }
     const rec = bySymbol.get(symbol);
-    // Accurate definition: unique filer CIK per symbol+quarter.
-    // Fallback to accession/filer name if CIK is unavailable.
-    const fundKey =
-      (h.cik && String(h.cik).trim()) ||
-      (accessionNumber && String(accessionNumber).trim()) ||
-      (filerName && String(filerName).trim()) ||
-      "UNKNOWN";
-    rec.fundSet.add(fundKey);
+    rec.filerSet.add(accessionNumber || filerName);
     const val = value != null ? value : 0;
-    const existing = rec.fundValues.get(fundKey) || { name: filerName, value: 0, shares: 0 };
+    const key = accessionNumber || filerName;
+    const existing = rec.filerValues.get(key) || { name: filerName, value: 0, shares: 0 };
     existing.value += val;
     existing.shares = (existing.shares || 0) + (shares || 0);
-    rec.fundValues.set(fundKey, existing);
+    rec.filerValues.set(key, existing);
   }
   const result = new Map();
   for (const [reportDate, bySymbol] of byReport) {
     const symbolMap = new Map();
     for (const [symbol, rec] of bySymbol) {
-      const num_funds = rec.fundSet.size;
-      const sorted = [...rec.fundValues.entries()]
+      const num_funds = rec.filerSet.size;
+      const sorted = [...rec.filerValues.entries()]
         .sort((a, b) => (b[1].value || 0) - (a[1].value || 0))
         .slice(0, 5)
         .map(([, v]) => ({

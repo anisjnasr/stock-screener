@@ -1,34 +1,12 @@
 /**
- * Platform-wide date display format: "2nd March 2026".
+ * Platform-wide date display format: d-mmm-yyyy (e.g. 27-Feb-2025).
  * Times use AM/PM.
  */
 
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-function ordinal(day: number): string {
-  const rem10 = day % 10;
-  const rem100 = day % 100;
-  if (rem10 === 1 && rem100 !== 11) return `${day}st`;
-  if (rem10 === 2 && rem100 !== 12) return `${day}nd`;
-  if (rem10 === 3 && rem100 !== 13) return `${day}rd`;
-  return `${day}th`;
-}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * Format a date for display as "2nd March 2026".
+ * Format a date for display as "d-mmm-yyyy".
  * Accepts Date, ISO string (YYYY-MM-DD or full ISO), or timestamp (ms).
  */
 export function formatDisplayDate(input: Date | string | number): string {
@@ -37,11 +15,11 @@ export function formatDisplayDate(input: Date | string | number): string {
   const day = d.getDate();
   const month = MONTHS[d.getMonth()];
   const year = d.getFullYear();
-  return `${ordinal(day)} ${month} ${year}`;
+  return `${day}-${month}-${year}`;
 }
 
 /**
- * Format a date with time for display: "2nd March 2026, h:mm AM/PM".
+ * Format a date with time for display: "d-mmm-yyyy, h:mm am/pm".
  */
 export function formatDisplayDateTime(input: Date | string | number): string {
   const d = typeof input === "number" ? new Date(input) : typeof input === "string" ? new Date(input.trim()) : input;

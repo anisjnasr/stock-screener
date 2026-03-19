@@ -15,7 +15,6 @@ type NewsItem = {
 
 type NewsSidebarProps = {
   symbol: string;
-  embedded?: boolean;
 };
 
 function formatNewsTime(utc?: string): string {
@@ -29,7 +28,7 @@ function formatNewsTime(utc?: string): string {
   }
 }
 
-export default function NewsSidebar({ symbol, embedded = false }: NewsSidebarProps) {
+export default function NewsSidebar({ symbol }: NewsSidebarProps) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -53,20 +52,8 @@ export default function NewsSidebar({ symbol, embedded = false }: NewsSidebarPro
   }, [symbol]);
 
   return (
-    <aside
-      className={
-        embedded
-          ? "h-full min-h-0 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden"
-          : "w-72 shrink-0 border-l border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden"
-      }
-    >
-      <div
-        className={
-          embedded
-            ? "p-2 border-b border-zinc-200 dark:border-zinc-700 shrink-0"
-            : "p-2 border-b border-zinc-200 dark:border-zinc-700 shrink-0"
-        }
-      >
+    <aside className="w-72 shrink-0 border-l border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden">
+      <div className="p-2 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
         <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
           {symbol ? (
             <>NEWS (<span className="font-mono">{symbol.toUpperCase()}</span>)</>
