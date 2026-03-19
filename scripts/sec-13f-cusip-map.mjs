@@ -105,27 +105,20 @@ function matchIssuerToSymbol(issuerName, nameToSymbol, firstTwoWordsIndex) {
 }
 
 /**
- * Collect unique (cusip, issuerName) from one quarter's INFOTABLE.
- * Uses the first available quarter ZIP in data/13f.
+ * Collect unique (cusip, issuerName) from ALL available quarter ZIPs in data/13f.
+ * Scanning every quarter maximises CUSIP coverage for historical ownership.
  */
 function* uniqueCusipIssuers() {
-  let path;
-  let reportDate;
+  const seen = new Set();
   for (const q of QUARTERS_12) {
     const p = join(DATA_13F_DIR, `${q.key}.zip`);
-    if (existsSync(p)) {
-      path = p;
-      reportDate = q.reportDate;
-      break;
+    if (!existsSync(p)) continue;
+    for (const row of parseQuarter13F(p, q.reportDate)) {
+      const key = `${row.cusip}\t${row.issuerName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      yield { cusip: row.cusip, issuerName: row.issuerName };
     }
-  }
-  if (!path) return;
-  const seen = new Set();
-  for (const row of parseQuarter13F(path, reportDate)) {
-    const key = `${row.cusip}\t${row.issuerName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    yield { cusip: row.cusip, issuerName: row.issuerName };
   }
 }
 
