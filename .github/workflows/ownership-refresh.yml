@@ -4,6 +4,8 @@ on:
   schedule:
     # Daily lightweight incremental check/update (latest quarter only).
     - cron: "15 2 * * *"
+    # Weekly full recompute (all 8 quarters) to pick up CUSIP map improvements.
+    - cron: "30 3 * * 0"
   workflow_dispatch:
     inputs:
       quarters:
@@ -70,13 +72,21 @@ jobs:
       - name: Refresh ownership (13F)
         run: |
           ARGS=()
-          if [ "${{ github.event.inputs.latest_only }}" = "true" ]; then ARGS+=("--latest-only"); fi
-          if [ "${{ github.event.inputs.recompute }}" = "true" ]; then ARGS+=("--recompute"); fi
-          if [ -n "${{ github.event.inputs.quarters }}" ]; then ARGS+=("--quarters" "${{ github.event.inputs.quarters }}"); fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "${{ github.event.schedule }}" = "30 3 * * 0" ]; then
+              echo "Weekly full recompute (all 8 quarters)"
+              ARGS+=("--recompute")
+            else
+              echo "Daily latest-only refresh"
+              ARGS+=("--latest-only")
+            fi
+          else
+            if [ "${{ github.event.inputs.latest_only }}" = "true" ]; then ARGS+=("--latest-only"); fi
+            if [ "${{ github.event.inputs.recompute }}" = "true" ]; then ARGS+=("--recompute"); fi
+            if [ -n "${{ github.event.inputs.quarters }}" ]; then ARGS+=("--quarters" "${{ github.event.inputs.quarters }}"); fi
+          fi
+          echo "Args: ${ARGS[@]}"
           node scripts/refresh-ownership.mjs "${ARGS[@]}"
-        env:
-          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
-          OPENFIGI_USER_AGENT: ${{ secrets.OPENFIGI_USER_AGENT }}
 
       - name: Ownership sanity checks
         run: node scripts/check-ownership-refresh.mjs

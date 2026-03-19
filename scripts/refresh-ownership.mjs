@@ -104,17 +104,8 @@ async function main() {
   const uniqueCusipIssuerPairs = collectUniqueCusipIssuerPairs(quarterPaths);
   console.log("   Unique CUSIPs in selected filings:", uniqueCusipIssuerPairs.length);
 
-  console.log("3. Resolving CUSIP → symbol (OpenFIGI primary + fallback)...");
-  const openfigiKey = String(process.env.OPENFIGI_API_KEY || "").trim();
-  const useOpenfigi = openfigiKey.length > 0;
-  if (!useOpenfigi) {
-    console.log("   OPENFIGI_API_KEY not set; proceeding with SEC/heuristic fallback mapping only for this run.");
-  }
-  const { map: cusipToSymbol, stats: mapStats } = await resolveCusipMap(uniqueCusipIssuerPairs, {
-    useOpenfigi,
-    apiKey: openfigiKey,
-    userAgent: process.env.OPENFIGI_USER_AGENT || "stock-scanner admin@localhost",
-  });
+  console.log("3. Resolving CUSIP → symbol (saved map + overrides + issuer-name fallback)...");
+  const { map: cusipToSymbol, stats: mapStats } = await resolveCusipMap(uniqueCusipIssuerPairs);
   console.log(
     "   Mapping stats:",
     JSON.stringify(mapStats)

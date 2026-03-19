@@ -8,11 +8,17 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
 import { DATA_13F_DIR, QUARTERS_12 } from "./sec-13f-download.mjs";
-import { resolveCusipsViaOpenFigi, normalizeSymbolForDb } from "./sec-13f-openfigi-map.mjs";
 import { dataDir as DATA_DIR, dbPath as DB_PATH } from "./_db-paths.mjs";
 
 const CUSIP_MAP_PATH = join(DATA_DIR, "cusip-to-symbol.json");
 const CUSIP_OVERRIDES_PATH = join(DATA_DIR, "cusip-overrides.json");
+
+function normalizeSymbolForDb(symbol) {
+  return String(symbol || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[./\s]+/g, "-");
+}
 
 const SUFFIXES = /\s+(INC\.?|CORP\.?|CORPORATION|CO\.?|LTD\.?|LLC\.?|L\.?L\.?C\.?|PLC|N\.?V\.?|S\.?A\.?|AG|LP|L\.?P\.?|COMPANY|COS?\.?|HOLDINGS|GROUP|PARTNERS|BANCORP|BANK|FINANCIAL|INVESTMENT|TRUST)\s*$/gi;
 
@@ -184,13 +190,11 @@ function loadCompanyMatchers() {
 /**
  * Resolve CUSIP -> symbol using:
  * 1) existing saved map + overrides
- * 2) OpenFIGI (primary)
- * 3) issuer-name heuristic fallback
+ * 2) issuer-name heuristic fallback
  *
  * @param {Array<{cusip:string, issuerName?:string}>} pairs
- * @param {object} [opts]
  */
-export async function resolveCusipMap(pairs, opts = {}) {
+export async function resolveCusipMap(pairs) {
   const entries = Array.isArray(pairs) ? pairs : [];
   const map = loadCusipToSymbolMap();
   const uniquePairs = new Map();
@@ -202,23 +206,11 @@ export async function resolveCusipMap(pairs, opts = {}) {
     }
   }
   if (uniquePairs.size === 0) {
-    return { map, stats: { totalCusips: 0, mappedBefore: 0, openfigiAdded: 0, heuristicAdded: 0 } };
+    return { map, stats: { totalCusips: 0, mappedBefore: 0, heuristicAdded: 0 } };
   }
 
   const { nameToSymbol, firstTwoWordsIndex, validSymbols } = await loadCompanyMatchers();
   const unresolvedCusips = [...uniquePairs.keys()].filter((cusip) => !map[cusip]);
-
-  let openfigiAdded = 0;
-  if (opts.useOpenfigi !== false && unresolvedCusips.length > 0) {
-    const figi = await resolveCusipsViaOpenFigi(unresolvedCusips, opts);
-    for (const cusip of unresolvedCusips) {
-      const symbolRaw = figi.map?.[cusip]?.symbol;
-      const symbol = normalizeSymbolForDb(symbolRaw || "");
-      if (!symbol || !validSymbols.has(symbol)) continue;
-      if (!map[cusip]) openfigiAdded++;
-      map[cusip] = symbol;
-    }
-  }
 
   let heuristicAdded = 0;
   for (const { cusip, issuerName } of uniquePairs.values()) {
@@ -237,7 +229,6 @@ export async function resolveCusipMap(pairs, opts = {}) {
     stats: {
       totalCusips: uniquePairs.size,
       mappedBefore: uniquePairs.size - unresolvedCusips.length,
-      openfigiAdded,
       heuristicAdded,
       unresolved: [...uniquePairs.keys()].filter((cusip) => !map[cusip]).length,
     },
