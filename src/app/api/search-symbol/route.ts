@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(filtered);
+    return NextResponse.json(filtered, {
+      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

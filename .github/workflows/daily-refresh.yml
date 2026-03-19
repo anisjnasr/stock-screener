@@ -1,5 +1,5 @@
 # Daily data refresh: fetch latest market data, recompute indicators.
-# Runs at 2am ET (7am UTC during EST / 6am UTC during EDT).
+# Runs at 2am UAE time (22:00 UTC previous day), Tue-Sat.
 # Uses GitHub Actions cache to persist the SQLite DB between runs.
 #
 # FIRST-TIME SETUP:
@@ -8,12 +8,12 @@
 #   3. Manually run this workflow with "Seed DB path" set to your local screener.db path.
 #   4. After that run, cache is populated; scheduled runs use ubuntu-latest and the cache.
 
-name: Daily Data Refresh
+name: Stocks Data Refresh
 
 on:
   schedule:
-    # 7am UTC = 2am EST / 3am EDT — runs Tue-Sat (covers Mon-Fri market closes)
-    - cron: "0 7 * * 2-6"
+    # 22:00 UTC (previous day) = 2:00 AM UAE — runs Tue-Sat UAE (covers Mon-Fri market closes)
+    - cron: "0 22 * * 1-5"
   workflow_dispatch:
     inputs:
       seed_db_path:
@@ -39,9 +39,66 @@ env:
   DB_CACHE_PREFIX: screener-db-v1
 
 jobs:
+  seed_db:
+    # First-time seed only: copy local DB from Windows self-hosted runner.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' }}
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Validate seed runner context
+        run: |
+          node -e "
+          const os = process.platform;
+          if (os !== 'win32') {
+            console.error('::error::Seed DB path was provided, but this job is not running on a Windows self-hosted runner.');
+            console.error('::error::Open Run workflow, set Seed DB path, and ensure a Windows self-hosted runner is Online.');
+            process.exit(1);
+          }
+          "
+
+      - name: Copy seed DB
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const src = process.env.SEED_DB_PATH;
+          const dest = path.join('data', 'screener.db');
+          fs.mkdirSync('data', { recursive: true });
+          if (!src || !fs.existsSync(src)) {
+            console.error('::error::Seed DB path does not exist on this runner: ' + (src || '<empty>'));
+            process.exit(1);
+          }
+          fs.copyFileSync(src, dest);
+          const mb = Math.round(fs.statSync(dest).size / 1024 / 1024);
+          console.log('Copied seed DB to', dest, '| Size', mb, 'MB');
+          "
+        env:
+          SEED_DB_PATH: ${{ github.event.inputs.seed_db_path }}
+
+      - name: Verify seeded DB exists
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = 'data/screener.db';
+          if (!fs.existsSync(p)) {
+            console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set and use a self-hosted runner.');
+            process.exit(1);
+          }
+          console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
+          "
+
+      - name: Upload seeded DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seeded-db-${{ github.run_id }}
+          path: data/screener.db
+          retention-days: 1
+          compression-level: 1
+
   refresh:
-    # Use self-hosted runner when seeding so we can copy the local DB
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' && 'self-hosted' || 'ubuntu-latest' }}
+    needs: [seed_db]
+    if: ${{ always() && (needs.seed_db.result == 'success' || needs.seed_db.result == 'skipped') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -64,39 +121,15 @@ jobs:
           key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
           restore-keys: |
             ${{ env.DB_CACHE_PREFIX }}-
+          enableCrossOsArchive: true
 
-      # First-time only: copy DB from runner machine into repo (requires self-hosted runner)
-      - name: Validate seed runner context
-        if: ${{ github.event.inputs.seed_db_path }}
-        run: |
-          node -e "
-          const os = process.platform;
-          if (os !== 'win32') {
-            console.error('::error::Seed DB path was provided, but this job is not running on a Windows self-hosted runner.');
-            console.error('::error::Open Run workflow, set Seed DB path, and ensure a Windows self-hosted runner is Online.');
-            process.exit(1);
-          }
-          "
-
-      - name: Copy seed DB (first-time only)
-        if: ${{ github.event.inputs.seed_db_path }}
-        run: |
-          node -e "
-          const fs = require('fs');
-          const path = require('path');
-          const src = process.env.SEED_DB_PATH;
-          const dest = path.join('data', 'screener.db');
-          fs.mkdirSync('data', { recursive: true });
-          if (!src || !fs.existsSync(src)) {
-            console.error('::error::Seed DB path does not exist on this runner: ' + (src || '<empty>'));
-            process.exit(1);
-          }
-          fs.copyFileSync(src, dest);
-          const mb = Math.round(fs.statSync(dest).size / 1024 / 1024);
-          console.log('Copied seed DB to', dest, '| Size', mb, 'MB');
-          "
-        env:
-          SEED_DB_PATH: ${{ github.event.inputs.seed_db_path }}
+      # If this is a seed run, use seeded DB artifact (overrides cache restore)
+      - name: Download seeded DB artifact
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.seed_db_path != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: seeded-db-${{ github.run_id }}
+          path: data
 
       - name: Verify DB exists
         run: |
@@ -104,7 +137,7 @@ jobs:
           const fs = require('fs');
           const p = 'data/screener.db';
           if (!fs.existsSync(p)) {
-            console.error('::error::No cached screener.db found. First-time: run workflow manually with Seed DB path set and use a self-hosted runner.');
+            console.error('::error::No screener.db found from cache or seed artifact.');
             process.exit(1);
           }
           console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
@@ -130,12 +163,52 @@ jobs:
       - name: Optimize database
         run: node scripts/optimize-db.mjs
 
+      # Precompute market monitor and breadth aggregates directly into DB tables.
+      # This is faster and more reliable than spinning up a dev server in CI.
+      - name: Precompute market aggregates
+        run: node scripts/compute-market-aggregates.mjs --days 1
+        timeout-minutes: 15
+
+      # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).
+      - name: Warm secondary page caches
+        continue-on-error: true
+        env:
+          HEALTH_REQUIRE_OWNERSHIP: "0"
+          HEALTH_REQUIRE_FINANCIALS: "0"
+        run: |
+          npm run dev -- --hostname 127.0.0.1 --port 3000 > /tmp/next-dev.log 2>&1 &
+          echo $! > /tmp/next-dev.pid
+
+          # Wait for the dev server to accept connections (any HTTP response = server is up)
+          echo "Waiting for dev server..."
+          for i in $(seq 1 120); do
+            if curl -sS -o /dev/null -w '' http://127.0.0.1:3000/api/health 2>/dev/null; then
+              echo "Dev server ready (attempt $i)"
+              break
+            fi
+            sleep 1
+          done
+
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/market-monitor" >/tmp/mm.json || echo "market-monitor cache warm failed (non-fatal)"
+          curl -sS --max-time 60  "http://127.0.0.1:3000/api/sectors-industries" >/tmp/si.json || echo "sectors-industries cache warm failed (non-fatal)"
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/breadth?index=sp500" >/tmp/breadth-sp500.json || echo "breadth sp500 cache warm failed (non-fatal)"
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/breadth?index=nasdaq" >/tmp/breadth-nasdaq.json || echo "breadth nasdaq cache warm failed (non-fatal)"
+
+      - name: Stop cache warmup app
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/next-dev.pid ]; then
+            kill "$(cat /tmp/next-dev.pid)" || true
+          fi
+          pkill -f "next dev" || true
+
       # Save updated DB to cache
       - name: Save DB to cache
         uses: actions/cache/save@v4
         with:
           path: data/screener.db
           key: ${{ env.DB_CACHE_PREFIX }}-${{ github.run_id }}
+          enableCrossOsArchive: true
 
       # Upload as artifact for deployment pipeline to pick up
       - name: Upload DB artifact

@@ -67,6 +67,7 @@ const requiredIndexes = [
   ["idx_daily_bars_symbol_date", "daily_bars", "symbol, date"],
   ["idx_daily_bars_date", "daily_bars", "date"],
   ["idx_quote_daily_date_symbol", "quote_daily", "date, symbol"],
+  ["idx_quote_daily_date_covering", "quote_daily", "date, symbol, last_price, change_pct, volume, market_cap, prev_close, atr_pct_21d, high_52w, off_52w_high_pct, avg_volume_30d_shares"],
   ["idx_indicators_daily_date_symbol", "indicators_daily", "date, symbol"],
   ["idx_financials_symbol", "financials", "symbol"],
   ["idx_ownership_symbol", "ownership", "symbol"],
@@ -90,6 +91,7 @@ console.log(`   Checkpoint result:`, checkpoint);
 
 // 5. ANALYZE
 console.log("5. Running ANALYZE (updating query planner statistics)...");
+db.pragma("analysis_limit = 1000");
 db.exec("ANALYZE");
 console.log("   Done.");
 

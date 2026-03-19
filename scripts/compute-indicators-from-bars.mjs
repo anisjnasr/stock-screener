@@ -90,6 +90,7 @@ function computeATR(bars, period) {
 async function runNativeCompute(LIMIT, YEARS) {
   const Database = require("better-sqlite3");
   const db = new Database(DB_PATH);
+  db.pragma("foreign_keys = OFF");
   const toDate = new Date();
   const fromDate = new Date(toDate);
   fromDate.setUTCFullYear(fromDate.getUTCFullYear() - YEARS);
@@ -264,14 +265,17 @@ async function main() {
   const fromStr = fromDate.toISOString().slice(0, 10);
   const toStr = toDate.toISOString().slice(0, 10);
 
+  let dbSize = null;
   try {
-    const stat = statSync(DB_PATH);
-    if (stat.size > USE_NATIVE_IF_LARGER_BYTES) {
-      console.log("DB is large (" + (stat.size / 1e9).toFixed(1) + " GB), using better-sqlite3 (on-disk)...");
-      await runNativeCompute(LIMIT, YEARS);
-      return;
-    }
-  } catch (_) {}
+    dbSize = statSync(DB_PATH).size;
+  } catch (_) {
+    dbSize = null;
+  }
+  if (dbSize != null && dbSize > USE_NATIVE_IF_LARGER_BYTES) {
+    console.log("DB is large (" + (dbSize / 1e9).toFixed(1) + " GB), using better-sqlite3 (on-disk)...");
+    await runNativeCompute(LIMIT, YEARS);
+    return;
+  }
 
   console.log("Loading DB...");
   const SQL = await initSqlJs();

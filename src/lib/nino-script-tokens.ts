@@ -1,9 +1,9 @@
 /**
  * Tokenizer for Nino Script syntax highlighting.
- * Produces tokens with types: keyword, function, variable, number, operator, punctuation.
+ * Produces tokens with types: keyword, function, variable, number, operator, punctuation, space.
  */
 
-export type TokenType = "keyword" | "function" | "variable" | "number" | "operator" | "punctuation" | "identifier";
+export type TokenType = "keyword" | "function" | "variable" | "number" | "operator" | "punctuation" | "identifier" | "space";
 
 export type Token = { type: TokenType; value: string };
 
@@ -38,7 +38,12 @@ export function tokenize(source: string): Token[] {
     const c = source[i]!;
 
     if (isSpace(c)) {
-      i++;
+      let val = "";
+      while (i < n && isSpace(source[i]!)) {
+        val += source[i];
+        i++;
+      }
+      tokens.push({ type: "space", value: val });
       continue;
     }
 
@@ -112,6 +117,8 @@ export function tokenize(source: string): Token[] {
  */
 export function tokenClass(type: TokenType): string {
   switch (type) {
+    case "space":
+      return "";
     case "keyword":
       return "text-purple-600 dark:text-purple-400 font-semibold";
     case "function":

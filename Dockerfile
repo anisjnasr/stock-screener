@@ -23,6 +23,10 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+COPY package.json package-lock.json* ./
+# Install production dependencies so operational scripts run in Render Shell
+# (e.g. refresh-ownership uses adm-zip and better-sqlite3).
+RUN npm ci --omit=dev
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
@@ -31,11 +35,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Include operational scripts and seed/schema data so Render Shell can run
 # init/seed/refresh commands after deploy.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
-COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./data/screener-schema.sql
-COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./data/all-stocks.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/nasdaq100.json ./data/nasdaq100.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/sp500.json ./data/sp500.json
-COPY --from=builder --chown=nextjs:nodejs /app/data/russell2000.json ./data/russell2000.json
+# Keep bootstrap files outside /app/data because mounted disks hide that path.
+COPY --from=builder --chown=nextjs:nodejs /app/data/screener-schema.sql ./bootstrap-data/screener-schema.sql
+COPY --from=builder --chown=nextjs:nodejs /app/data/all-stocks.json ./bootstrap-data/all-stocks.json
 # Ensure data directory exists; volume mount will provide screener.db
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 USER nextjs

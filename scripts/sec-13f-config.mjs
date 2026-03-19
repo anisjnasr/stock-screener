@@ -18,5 +18,6 @@ export const QUARTERS_12 = [
   { key: "2023q4", reportDate: "2023-12-31", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/01jan2024-29feb2024_form13f.zip" },
   { key: "2023q3", reportDate: "2023-09-30", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/2023q3_form13f.zip" },
   { key: "2023q2", reportDate: "2023-06-30", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/2023q2_form13f.zip" },
-  { key: "2023q1", reportDate: "2023-02-28", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/2023q1_form13f.zip" },
+  { key: "2023q1", reportDate: "2023-03-31", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/2023q1_form13f.zip" },
+  { key: "2022q4", reportDate: "2022-12-31", url: "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/2022q4_form13f.zip" },
 ];

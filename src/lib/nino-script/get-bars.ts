@@ -1,8 +1,9 @@
 /**
- * Load daily bars for a symbol from screener DB (newest-first). Tries native then sql.js.
+ * Load daily bars for a symbol from screener DB (newest-first).
  */
 
 import type { Bar } from "./interpreter";
+import { getDailyBars } from "@/lib/screener-db-native";
 
 const DEFAULT_LIMIT = 300;
 
@@ -11,12 +12,5 @@ export async function getBarsForSymbol(
   asOfDate: string,
   limit = DEFAULT_LIMIT
 ): Promise<Bar[]> {
-  try {
-    const { getDailyBars } = await import("@/lib/screener-db-native");
-    const rows = getDailyBars(symbol, asOfDate, limit);
-    return rows;
-  } catch {
-    const { getDailyBars } = await import("@/lib/screener-db");
-    return getDailyBars(symbol, asOfDate, limit);
-  }
+  return getDailyBars(symbol, asOfDate, limit);
 }
