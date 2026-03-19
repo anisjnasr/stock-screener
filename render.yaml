@@ -10,7 +10,7 @@ services:
     plan: starter
 
     buildCommand: npm ci && npm run build
-    startCommand: npm run start
+    startCommand: node server.mjs
 
     # Next.js uses PORT from env; Render sets PORT=10000
     envVars:
