@@ -163,23 +163,30 @@ jobs:
       - name: Optimize database
         run: node scripts/optimize-db.mjs
 
-      # Precompute and persist secondary-page payload caches against the freshly refreshed DB.
+      # Precompute market monitor and breadth aggregates directly into DB tables.
+      # This is faster and more reliable than spinning up a dev server in CI.
+      - name: Precompute market aggregates
+        run: node scripts/compute-market-aggregates.mjs --days 1
+        timeout-minutes: 15
+
+      # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).
       - name: Warm secondary page caches
+        continue-on-error: true
         run: |
           npm run dev -- --hostname 127.0.0.1 --port 3000 > /tmp/next-dev.log 2>&1 &
           echo $! > /tmp/next-dev.pid
 
           for i in {1..120}; do
-            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
               break
             fi
             sleep 1
           done
 
-          curl -fsS "http://127.0.0.1:3000/api/market-monitor" >/tmp/mm.json
-          curl -fsS "http://127.0.0.1:3000/api/sectors-industries" >/tmp/si.json
-          curl -fsS "http://127.0.0.1:3000/api/breadth?index=sp500" >/tmp/breadth-sp500.json
-          curl -fsS "http://127.0.0.1:3000/api/breadth?index=nasdaq" >/tmp/breadth-nasdaq.json
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/market-monitor" >/tmp/mm.json || echo "market-monitor cache warm failed (non-fatal)"
+          curl -sS --max-time 60  "http://127.0.0.1:3000/api/sectors-industries" >/tmp/si.json || echo "sectors-industries cache warm failed (non-fatal)"
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/breadth?index=sp500" >/tmp/breadth-sp500.json || echo "breadth sp500 cache warm failed (non-fatal)"
+          curl -sS --max-time 120 "http://127.0.0.1:3000/api/breadth?index=nasdaq" >/tmp/breadth-nasdaq.json || echo "breadth nasdaq cache warm failed (non-fatal)"
 
       - name: Stop cache warmup app
         if: ${{ always() }}
