@@ -155,11 +155,13 @@ async function main() {
 
   let inserted = 0;
   for (const quarterPath of quarterPathsAsc) {
-    console.log(`   Processing ${quarterPath.quarter.key} (${quarterPath.quarter.reportDate})...`);
+    const primaryReportDate = quarterPath.quarter.reportDate;
+    console.log(`   Processing ${quarterPath.quarter.key} (${primaryReportDate})...`);
     const byReportDate = aggregateHoldings(holdingsWithSymbolForQuarter(quarterPath, cusipToSymbol, coverageStats));
     const reportDates = [...byReportDate.keys()].sort();
 
     for (const reportDate of reportDates) {
+      if (reportDate !== primaryReportDate) continue;
       const bySymbol = byReportDate.get(reportDate);
       if (!bySymbol) continue;
       const tx = db.transaction(() => {
