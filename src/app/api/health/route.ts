@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { existsSync, statSync } from "fs";
 import { join } from "path";
+import {
+  getLatestScreenerDate,
+  getOwnershipNative,
+  getFinancialsNative,
+} from "@/lib/screener-db-native";
 import Database from "better-sqlite3";
 
 type CountRow = { c: number };
@@ -22,29 +27,23 @@ export async function GET() {
   const hasDb = existsSync(dbPath);
   let latestScreenerDate: string | null = null;
   let dbUpdatedAt: string | null = null;
-  let dbBackend: "better-sqlite3" | "sql.js-fallback" | "none" = "none";
-  let ownership:
-    | {
-        rows: number;
-        symbols: number;
-        latestReportDate: string | null;
-      }
-    | null = null;
-  let financials:
-    | {
-        rows: number;
-        symbols: number;
-        latestPeriodEnd: string | null;
-        annualRows: number;
-        quarterlyRows: number;
-      }
-    | null = null;
-  let quoteDaily:
-    | {
-        latestQuoteDate: string | null;
-        latestBarsDate: string | null;
-      }
-    | null = null;
+  const dbBackend: "better-sqlite3" | "none" = hasDb ? "better-sqlite3" : "none";
+  let ownership: {
+    rows: number;
+    symbols: number;
+    latestReportDate: string | null;
+  } | null = null;
+  let financials: {
+    rows: number;
+    symbols: number;
+    latestPeriodEnd: string | null;
+    annualRows: number;
+    quarterlyRows: number;
+  } | null = null;
+  let quoteDaily: {
+    latestQuoteDate: string | null;
+    latestBarsDate: string | null;
+  } | null = null;
 
   if (hasDb) {
     try {
@@ -56,17 +55,9 @@ export async function GET() {
 
   if (hasDb) {
     try {
-      const { getLatestScreenerDate } = await import("@/lib/screener-db-native");
       latestScreenerDate = getLatestScreenerDate();
-      dbBackend = "better-sqlite3";
     } catch {
-      try {
-        const { getLatestScreenerDate } = await import("@/lib/screener-db");
-        latestScreenerDate = await getLatestScreenerDate();
-        dbBackend = "sql.js-fallback";
-      } catch {
-        dbBackend = "none";
-      }
+      latestScreenerDate = null;
     }
   }
 
@@ -137,6 +128,9 @@ export async function GET() {
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
       timestamp: new Date().toISOString(),
     },
-    { status }
+    {
+      status,
+      headers: { "Cache-Control": "no-cache, max-age=0" },
+    }
   );
 }

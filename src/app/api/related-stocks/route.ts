@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
   }
   try {
     const data = await fetchRelatedTickers(symbol.trim());
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -221,7 +221,9 @@ export async function GET(request: NextRequest) {
       /* ignore cache write errors */
     }
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Breadth error";
     return NextResponse.json({ error: message }, { status: 500 });

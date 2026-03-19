@@ -9,92 +9,25 @@ import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
 import BreadthPage from "@/components/BreadthPage";
-import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
+import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
+import { savePanelHeightPx } from "@/lib/watchlist-storage";
+import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
+import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
+import { useStockData } from "@/hooks/useStockData";
+import { useFundamentals } from "@/hooks/useFundamentals";
+import { useOwnership } from "@/hooks/useOwnership";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useTheme } from "@/hooks/useTheme";
 
 const DEFAULT_SYMBOL = "AAPL";
-
-type Candle = {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-};
-
-type CachedCandlesEntry = {
-  data: Candle[];
-  expiresAt: number;
-};
-
-const CANDLE_CACHE_TTL_MS = 5 * 60 * 1000;
-const CANDLE_CACHE_MAX_ENTRIES = 100;
 const PREFETCH_NEIGHBOR_COUNT = 3;
-const WATCHLIST_PANEL_USER_SET_KEY = "stock-research-watchlist-panel-user-set";
-
-function candlesCacheKey(symbol: string, timeframe: ChartTimeframe): string {
-  return `${symbol.toUpperCase()}:${timeframe}`;
-}
-
-type IncomeLine = {
-  date: string;
-  calendarYear?: string;
-  period?: string;
-  revenue?: number;
-  netIncome?: number;
-  eps?: number;
-};
-type OwnershipQuarter = {
-  report_date: string;
-  num_funds: number | null;
-  num_funds_change: number | null;
-  top_holders: Array<{ name: string; value?: number; shares?: number | null }>;
-};
-
-type StockData = {
-  quote: {
-    symbol: string;
-    name: string;
-    price: number;
-    changesPercentage: number;
-    change: number;
-    volume: number;
-    yearHigh?: number;
-    yearLow?: number;
-    avgVolume?: number;
-    marketCap?: number;
-    atrPct21d?: number | null;
-    off52WHighPct?: number | null;
-  };
-  profile?: {
-    companyName: string;
-    sector: string;
-    industry: string;
-    mktCap?: number;
-  };
-  nextEarnings?: string;
-};
 
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [page, setPage] = useState<HeaderPage>("home");
   const [searchValue, setSearchValue] = useState("");
-  const [data, setData] = useState<StockData | null>(null);
   const [candles, setCandles] = useState<Candle[] | null>(null);
-  const [annualFundamentals, setAnnualFundamentals] = useState<IncomeLine[]>([]);
-  const [quarterlyFundamentals, setQuarterlyFundamentals] = useState<IncomeLine[]>([]);
-  const [ownership, setOwnership] = useState<{
-    quarters?: Array<{ report_date: string; num_funds: number | null; num_funds_change: number | null; top_holders: Array<{ name: string; value?: number; shares?: number | null }> }>;
-    latestFundCount?: number;
-    latestReportDate?: string | null;
-    topHolders?: Array<{ name: string; value?: number; shares?: number | null }>;
-  } | { dateReported?: string }[]>([]);
-  const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(true);
-  const [sidebarLoading, setSidebarLoading] = useState(true);
-  const [quarterlyLoading, setQuarterlyLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [watchlistHeightPx, setWatchlistHeightPx] = useState(32);
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("daily");
   const [dualChartMode, setDualChartMode] = useState(false);
   const [syncCrosshair, setSyncCrosshair] = useState(true);
@@ -104,9 +37,7 @@ export default function Home() {
   const [dualRightCandles, setDualRightCandles] = useState<Candle[] | null>(null);
   const [dualLeftLoading, setDualLeftLoading] = useState(true);
   const [dualRightLoading, setDualRightLoading] = useState(true);
-  const [dailyCandlesForAvg, setDailyCandlesForAvg] = useState<Candle[] | null>(null);
   const [relatedStocks, setRelatedStocks] = useState<Array<{ symbol: string; name: string }>>([]);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [dbUpdateCompletedAt, setDbUpdateCompletedAt] = useState<Date | null>(null);
   const [openToRelatedListTrigger, setOpenToRelatedListTrigger] = useState<number | null>(null);
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<{
@@ -114,26 +45,27 @@ export default function Home() {
     value: string;
     nonce: number;
   } | null>(null);
-  const [leftSidebarHidden, setLeftSidebarHidden] = useState(false);
-  const [quarterlyHidden, setQuarterlyHidden] = useState(false);
   const [scanSymbols, setScanSymbols] = useState<string[]>([]);
-  const candlesCacheRef = useRef<Map<string, CachedCandlesEntry>>(new Map());
-  const prefetchInFlightRef = useRef<Map<string, Promise<Candle[] | null>>>(new Map());
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const secondaryPagesPrefetchedRef = useRef(false);
+  const { cycleTheme } = useTheme();
 
-  useEffect(() => {
-    try {
-      const userSet = localStorage.getItem(WATCHLIST_PANEL_USER_SET_KEY) === "true";
-      setWatchlistHeightPx(userSet ? loadPanelHeightPx() : 32);
-      const storedLeft = localStorage.getItem("stock-research-left-sidebar-hidden");
-      if (storedLeft !== null) setLeftSidebarHidden(storedLeft === "true");
-      const storedQuarterly = localStorage.getItem("stock-research-quarterly-hidden");
-      if (storedQuarterly !== null) setQuarterlyHidden(storedQuarterly === "true");
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const {
+    watchlistHeightPx,
+    setWatchlistHeightPx,
+    leftSidebarHidden,
+    quarterlyHidden,
+    handleWatchlistHeightChange,
+    handleLeftSidebarToggle,
+    handleQuarterlyToggle,
+  } = useLayoutPreferences();
 
+  const { getCachedCandles, fetchCandlesFor } = useCandleCache();
+  const { data, loading, error, lastUpdate } = useStockData(symbol);
+  const { yearlyRows, quarterlyRows, sidebarLoading, quarterlyLoading } = useFundamentals(symbol);
+  const { ownershipData, ownershipQuarters } = useOwnership(symbol);
+
+  // Fetch health for DB update timestamp
   useEffect(() => {
     let cancelled = false;
     const fetchHealth = async () => {
@@ -156,11 +88,10 @@ export default function Home() {
       }
     };
     fetchHealth();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // Prefetch secondary pages
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
     secondaryPagesPrefetchedRef.current = true;
@@ -172,71 +103,10 @@ export default function Home() {
         "/api/breadth?index=nasdaq",
       ];
       for (const url of urls) {
-        fetch(url).catch(() => {
-          /* ignore warmup failures */
-        });
+        fetch(url).catch(() => { /* ignore warmup failures */ });
       }
     }, 600);
     return () => window.clearTimeout(timer);
-  }, []);
-  const handleWatchlistHeightChange = useCallback((px: number) => {
-    setWatchlistHeightPx(px);
-    savePanelHeightPx(px);
-    try {
-      localStorage.setItem(WATCHLIST_PANEL_USER_SET_KEY, "true");
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const handleLeftSidebarToggle = useCallback(() => {
-    setLeftSidebarHidden((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("stock-research-left-sidebar-hidden", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-  const handleQuarterlyToggle = useCallback(() => {
-    setQuarterlyHidden((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("stock-research-quarterly-hidden", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-
-  const getCachedCandles = useCallback((sym: string, tf: ChartTimeframe): Candle[] | null => {
-    const key = candlesCacheKey(sym, tf);
-    const entry = candlesCacheRef.current.get(key);
-    if (!entry) return null;
-    if (entry.expiresAt < Date.now()) {
-      candlesCacheRef.current.delete(key);
-      return null;
-    }
-    // Refresh LRU order.
-    candlesCacheRef.current.delete(key);
-    candlesCacheRef.current.set(key, entry);
-    return entry.data;
-  }, []);
-
-  const setCachedCandles = useCallback((sym: string, tf: ChartTimeframe, data: Candle[]) => {
-    const key = candlesCacheKey(sym, tf);
-    candlesCacheRef.current.delete(key);
-    candlesCacheRef.current.set(key, {
-      data,
-      expiresAt: Date.now() + CANDLE_CACHE_TTL_MS,
-    });
-    while (candlesCacheRef.current.size > CANDLE_CACHE_MAX_ENTRIES) {
-      const oldest = candlesCacheRef.current.keys().next().value;
-      if (!oldest) break;
-      candlesCacheRef.current.delete(oldest);
-    }
   }, []);
 
   const handleSymbolSelect = useCallback((sym: string) => {
@@ -245,84 +115,10 @@ export default function Home() {
   }, []);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
-    const next = symbols
-      .map((s) => s.toUpperCase())
-      .filter((s) => s.length > 0);
-    setScanSymbols(next);
+    setScanSymbols(symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0));
   }, []);
 
-  const fetchStock = useCallback(async (sym: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/stock?symbol=${encodeURIComponent(sym)}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to load");
-      }
-      const json = await res.json();
-      setData(json);
-      setLastUpdate(new Date());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStock(symbol);
-  }, [symbol, fetchStock]);
-
-  const fetchCandlesFor = useCallback(
-    async (
-      sym: string,
-      tf: ChartTimeframe,
-      opts?: { signal?: AbortSignal }
-    ): Promise<Candle[] | null> => {
-      const key = candlesCacheKey(sym, tf);
-      const cached = getCachedCandles(sym, tf);
-      if (cached) return cached;
-      if (!opts?.signal) {
-        const inFlight = prefetchInFlightRef.current.get(key);
-        if (inFlight) return inFlight;
-      }
-      const run = async (): Promise<Candle[] | null> => {
-        try {
-          const to = new Date();
-          const from = new Date();
-          from.setFullYear(from.getFullYear() - 20);
-          const fromStr = from.toISOString().slice(0, 10);
-          const toStr = to.toISOString().slice(0, 10);
-          const res = await fetch(
-            `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`,
-            { signal: opts?.signal }
-          );
-          const d = await res.json();
-          if (!Array.isArray(d)) return null;
-          setCachedCandles(sym, tf, d);
-          return d;
-        } catch {
-          return null;
-        } finally {
-          if (!opts?.signal) prefetchInFlightRef.current.delete(key);
-        }
-      };
-      if (!opts?.signal) {
-        const task = run();
-        prefetchInFlightRef.current.set(key, task);
-        return task;
-      }
-      try {
-        return await run();
-      } catch {
-        return null;
-      }
-    },
-    [getCachedCandles, setCachedCandles]
-  );
-
+  // Load candles for current chart
   useEffect(() => {
     if (!symbol) return;
     let cancelled = false;
@@ -342,12 +138,10 @@ export default function Home() {
       .finally(() => {
         if (!cancelled && !controller.signal.aborted) setChartLoading(false);
       });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+    return () => { cancelled = true; controller.abort(); };
   }, [symbol, chartTimeframe, fetchCandlesFor, getCachedCandles]);
 
+  // Load dual left candles
   useEffect(() => {
     if (!dualChartMode || !symbol) return;
     let cancelled = false;
@@ -360,18 +154,12 @@ export default function Home() {
       setDualLeftLoading(true);
     }
     fetchCandlesFor(symbol, dualLeftTimeframe, { signal: controller.signal })
-      .then((rows) => {
-        if (!cancelled && !controller.signal.aborted) setDualLeftCandles(rows);
-      })
-      .finally(() => {
-        if (!cancelled && !controller.signal.aborted) setDualLeftLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+      .then((rows) => { if (!cancelled && !controller.signal.aborted) setDualLeftCandles(rows); })
+      .finally(() => { if (!cancelled && !controller.signal.aborted) setDualLeftLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
   }, [dualChartMode, symbol, dualLeftTimeframe, fetchCandlesFor, getCachedCandles]);
 
+  // Load dual right candles
   useEffect(() => {
     if (!dualChartMode || !symbol) return;
     let cancelled = false;
@@ -384,23 +172,15 @@ export default function Home() {
       setDualRightLoading(true);
     }
     fetchCandlesFor(symbol, dualRightTimeframe, { signal: controller.signal })
-      .then((rows) => {
-        if (!cancelled && !controller.signal.aborted) setDualRightCandles(rows);
-      })
-      .finally(() => {
-        if (!cancelled && !controller.signal.aborted) setDualRightLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+      .then((rows) => { if (!cancelled && !controller.signal.aborted) setDualRightCandles(rows); })
+      .finally(() => { if (!cancelled && !controller.signal.aborted) setDualRightLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
   }, [dualChartMode, symbol, dualRightTimeframe, fetchCandlesFor, getCachedCandles]);
 
   const handleToggleDualChartMode = useCallback(() => {
     setDualChartMode((prev) => {
       const next = !prev;
       if (next) {
-        // Prime dual panes so chart area never looks "blank" while fetches resolve.
         const canReuseMain = Array.isArray(candles) && candles.length > 0;
         if (canReuseMain && chartTimeframe === dualRightTimeframe) {
           setDualRightCandles(candles);
@@ -421,36 +201,40 @@ export default function Home() {
     });
   }, [candles, chartTimeframe, dualLeftTimeframe, dualRightTimeframe]);
 
-  useEffect(() => {
-    if (!symbol) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    fetchCandlesFor(symbol, "daily", { signal: controller.signal })
-      .then((rows) => {
-        if (!cancelled && !controller.signal.aborted) setDailyCandlesForAvg(rows);
-      })
-      .catch(() => {
-        if (!cancelled && !controller.signal.aborted) setDailyCandlesForAvg(null);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [symbol, fetchCandlesFor]);
+  useKeyboardShortcuts(useMemo(() => [
+    { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
+      const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
+      el?.focus();
+      el?.select();
+    }},
+    { key: "Escape", description: "Unfocus / close", category: "general" as const, action: () => {
+      if (shortcutsOpen) { setShortcutsOpen(false); return; }
+      (document.activeElement as HTMLElement)?.blur?.();
+    }},
+    { key: "b", description: "Toggle sidebar", category: "general" as const, action: handleLeftSidebarToggle },
+    { key: "q", description: "Toggle quarterly", category: "general" as const, action: handleQuarterlyToggle },
+    { key: "t", description: "Cycle theme", category: "general" as const, action: cycleTheme },
+    { key: "?", shift: true, description: "Show shortcuts", category: "general" as const, action: () => setShortcutsOpen(true) },
+    { key: "1", description: "Home", category: "navigation" as const, action: () => setPage("home") },
+    { key: "2", description: "Sectors", category: "navigation" as const, action: () => setPage("market-breadth") },
+    { key: "3", description: "Monitor", category: "navigation" as const, action: () => setPage("market-monitor") },
+    { key: "4", description: "Breadth", category: "navigation" as const, action: () => setPage("breadth") },
+    { key: "d", description: "Daily chart", category: "chart" as const, action: () => setChartTimeframe("daily") },
+    { key: "w", description: "Weekly chart", category: "chart" as const, action: () => setChartTimeframe("weekly") },
+    { key: "m", description: "Monthly chart", category: "chart" as const, action: () => setChartTimeframe("monthly") },
+    { key: "s", description: "Toggle dual", category: "chart" as const, action: handleToggleDualChartMode },
+  ], [shortcutsOpen, handleLeftSidebarToggle, handleQuarterlyToggle, cycleTheme, handleToggleDualChartMode]));
 
-  const avgVolume30d = useMemo(() => {
-    if (!dailyCandlesForAvg || dailyCandlesForAvg.length === 0) return undefined;
-    const sorted = [...dailyCandlesForAvg].sort((a, b) => a.date.localeCompare(b.date));
-    const last30 = sorted.slice(-30);
-    const sum = last30.reduce((s, c) => s + c.volume, 0);
-    return last30.length > 0 ? Math.round(sum / last30.length) : undefined;
-  }, [dailyCandlesForAvg]);
+  const atrPctEffective = data?.quote?.atrPct21d ?? undefined;
+  const computed52WHighEffective = data?.quote?.yearHigh ?? undefined;
+  const avgVolume30dEffective = data?.quote?.avgVolume ?? undefined;
 
   const scanIndex = useMemo(
     () => scanSymbols.findIndex((s) => s === symbol.toUpperCase()),
     [scanSymbols, symbol]
   );
 
+  // Prefetch neighboring candles
   useEffect(() => {
     if (page !== "home" || scanIndex < 0) return;
     const timeframes = dualChartMode
@@ -464,21 +248,11 @@ export default function Home() {
       if (down) neighbors.add(down);
     }
     neighbors.forEach((sym) => {
-      timeframes.forEach((tf) => {
-        void fetchCandlesFor(sym, tf);
-      });
+      timeframes.forEach((tf) => { void fetchCandlesFor(sym, tf); });
     });
-  }, [
-    page,
-    scanIndex,
-    scanSymbols,
-    dualChartMode,
-    dualLeftTimeframe,
-    dualRightTimeframe,
-    chartTimeframe,
-    fetchCandlesFor,
-  ]);
+  }, [page, scanIndex, scanSymbols, dualChartMode, dualLeftTimeframe, dualRightTimeframe, chartTimeframe, fetchCandlesFor]);
 
+  // Keyboard navigation
   useEffect(() => {
     if (page !== "home") return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -505,38 +279,7 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [page, scanSymbols, symbol, handleSymbolSelect]);
 
-  useEffect(() => {
-    if (!symbol) return;
-    setSidebarLoading(true);
-    Promise.all([
-      fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=annual`).then((r) =>
-        r.json().then((d) => (Array.isArray(d) ? d : []))
-      ),
-      fetch(`/api/ownership?symbol=${encodeURIComponent(symbol)}`).then((r) =>
-        r.json().then((d) => (d && typeof d === "object" && "quarters" in d ? d : Array.isArray(d) ? d : {}))
-      ),
-    ])
-      .then(([fund, own]) => {
-        setAnnualFundamentals(fund);
-        setOwnership(own ?? {});
-      })
-      .catch(() => {
-        setAnnualFundamentals([]);
-        setOwnership([]);
-      })
-      .finally(() => setSidebarLoading(false));
-  }, [symbol]);
-
-  useEffect(() => {
-    if (!symbol) return;
-    setQuarterlyLoading(true);
-    fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=quarter`)
-      .then((r) => r.json())
-      .then((d) => setQuarterlyFundamentals(Array.isArray(d) ? d : []))
-      .catch(() => setQuarterlyFundamentals([]))
-      .finally(() => setQuarterlyLoading(false));
-  }, [symbol]);
-
+  // Fetch related stocks
   useEffect(() => {
     if (!symbol) return;
     fetch(`/api/related-stocks?symbol=${encodeURIComponent(symbol)}`)
@@ -544,131 +287,6 @@ export default function Home() {
       .then((d) => (Array.isArray(d) ? setRelatedStocks(d) : setRelatedStocks([])))
       .catch(() => setRelatedStocks([]));
   }, [symbol]);
-
-  const yearlyRows = useMemo(() => {
-    const lines = annualFundamentals as IncomeLine[];
-    if (!lines.length) return [];
-    const byYear = lines
-      .map((l) => ({
-        year: l.calendarYear ?? l.date?.slice(0, 4) ?? "",
-        eps: l.eps ?? null,
-        sales: l.revenue ?? null,
-      }))
-      .filter((r) => r.year)
-      .sort((a, b) => b.year.localeCompare(a.year));
-    return byYear.map((row, i) => {
-      const prev = byYear[i + 1];
-      const epsGrowth =
-        row.eps != null && prev?.eps != null && prev.eps !== 0
-          ? ((row.eps - prev.eps) / Math.abs(prev.eps)) * 100
-          : null;
-      const salesGrowth =
-        row.sales != null && prev?.sales != null && prev.sales !== 0
-          ? ((row.sales - prev.sales) / Math.abs(prev.sales)) * 100
-          : null;
-      return {
-        year: row.year,
-        eps: row.eps,
-        epsGrowth,
-        sales: row.sales,
-        salesGrowth,
-      };
-    });
-  }, [annualFundamentals]);
-
-  const quarterlyRows = useMemo(() => {
-    const lines = quarterlyFundamentals as IncomeLine[];
-    if (!lines.length) return [];
-    const withPeriod = lines.map((l) => ({
-      date: l.date,
-      period: l.period ?? l.date ?? "",
-      eps: l.eps ?? null,
-      sales: l.revenue ?? null,
-    }));
-    const sorted = withPeriod
-      .filter((r) => r.period)
-      .sort((a, b) => (b.date || b.period).localeCompare(a.date || a.period));
-    return sorted.map((row, i) => {
-      const prev = sorted[i + 1];
-      // For the most recent quarter (i === 0), use YoY growth vs same quarter prior year
-      const priorYearSameQuarter =
-        row.date &&
-        sorted.find(
-          (s) =>
-            s.date &&
-            s.date !== row.date &&
-            s.date.startsWith(String(Number(row.date.slice(0, 4)) - 1)) &&
-            s.date.slice(5, 7) === row.date.slice(5, 7)
-        );
-      const useYoY = i === 0 && priorYearSameQuarter;
-      const compareRow = useYoY ? priorYearSameQuarter : prev;
-      const epsGrowth =
-        row.eps != null && compareRow?.eps != null && compareRow.eps !== 0
-          ? ((row.eps - compareRow.eps) / Math.abs(compareRow.eps)) * 100
-          : null;
-      const salesGrowth =
-        row.sales != null && compareRow?.sales != null && compareRow.sales !== 0
-          ? ((row.sales - compareRow.sales) / Math.abs(compareRow.sales)) * 100
-          : null;
-      return {
-        period: row.period,
-        date: row.date,
-        eps: row.eps,
-        epsGrowth,
-        sales: row.sales,
-        salesGrowth,
-      };
-    });
-  }, [quarterlyFundamentals]);
-
-  const computed52WHigh = useMemo(() => {
-    if (!candles || candles.length === 0) return undefined;
-    const sorted = [...candles].sort((a, b) => a.date.localeCompare(b.date));
-    const n = chartTimeframe === "daily" ? 252 : chartTimeframe === "weekly" ? 52 : 12;
-    const slice = sorted.slice(-n);
-    if (slice.length === 0) return undefined;
-    return Math.max(...slice.map((c) => c.high));
-  }, [candles, chartTimeframe]);
-
-  const atrPct = useMemo(() => {
-    const list = candles;
-    if (!list || list.length < 22) return undefined;
-    const byDate = [...list].sort((a, b) => a.date.localeCompare(b.date));
-    const last22 = byDate.slice(-22);
-    const trs: number[] = [];
-    for (let i = 1; i < last22.length; i++) {
-      const high = last22[i].high;
-      const low = last22[i].low;
-      const prevClose = last22[i - 1].close;
-      const tr = Math.max(
-        high - low,
-        Math.abs(high - prevClose),
-        Math.abs(low - prevClose)
-      );
-      trs.push(tr);
-    }
-    const atr21 = trs.slice(-21).reduce((s, t) => s + t, 0) / 21;
-    const latestClose = last22[last22.length - 1].close;
-    if (!latestClose) return undefined;
-    return (atr21 / latestClose) * 100;
-  }, [candles]);
-  const computed52WHighEffective = data?.quote?.yearHigh ?? computed52WHigh;
-  const avgVolume30dEffective = data?.quote?.avgVolume ?? avgVolume30d;
-  const atrPctEffective = data?.quote?.atrPct21d ?? atrPct;
-
-  const ownershipData = ownership && typeof ownership === "object" && "quarters" in ownership ? ownership : null;
-  const fundCount = ownershipData?.latestFundCount ?? (Array.isArray(ownership) ? ownership.length : 0);
-  const fundReportDate = ownershipData?.latestReportDate ?? (Array.isArray(ownership)
-    ? (ownership as { dateReported?: string }[]).map((o) => o.dateReported).filter(Boolean).sort().reverse()[0] ?? null
-    : null);
-  const topHolders = ownershipData?.topHolders ?? [];
-  const ownershipQuarters = useMemo(() => {
-    const rows = (ownershipData?.quarters ?? []) as OwnershipQuarter[];
-    return [...rows]
-      .filter((r) => !!r?.report_date)
-      .sort((a, b) => b.report_date.localeCompare(a.report_date))
-      .slice(0, 8);
-  }, [ownershipData]);
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
@@ -723,10 +341,7 @@ export default function Home() {
           <SectorsIndustriesPage
             onOpenCollection={(target) => {
               setWatchlistHeightPx((h) => {
-                if (h <= 32) {
-                  savePanelHeightPx(320);
-                  return 320;
-                }
+                if (h <= 32) { savePanelHeightPx(320); return 320; }
                 return h;
               });
               setPage("home");
@@ -765,10 +380,7 @@ export default function Home() {
                     relatedStocks.length > 0
                       ? () => {
                           setWatchlistHeightPx((h) => {
-                            if (h <= 32) {
-                              savePanelHeightPx(320);
-                              return 320;
-                            }
+                            if (h <= 32) { savePanelHeightPx(320); return 320; }
                             return h;
                           });
                           setOpenToRelatedListTrigger(Date.now());
@@ -779,10 +391,7 @@ export default function Home() {
                     const trimmed = String(sector ?? "").trim();
                     if (!trimmed) return;
                     setWatchlistHeightPx((h) => {
-                      if (h <= 32) {
-                        savePanelHeightPx(320);
-                        return 320;
-                      }
+                      if (h <= 32) { savePanelHeightPx(320); return 320; }
                       return h;
                     });
                     setOpenToCollectionTrigger({ kind: "sector", value: trimmed, nonce: Date.now() });
@@ -791,10 +400,7 @@ export default function Home() {
                     const trimmed = String(industry ?? "").trim();
                     if (!trimmed) return;
                     setWatchlistHeightPx((h) => {
-                      if (h <= 32) {
-                        savePanelHeightPx(320);
-                        return 320;
-                      }
+                      if (h <= 32) { savePanelHeightPx(320); return 320; }
                       return h;
                     });
                     setOpenToCollectionTrigger({ kind: "industry", value: trimmed, nonce: Date.now() });
@@ -923,6 +529,7 @@ export default function Home() {
           </>
         )}
       </main>
+      <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

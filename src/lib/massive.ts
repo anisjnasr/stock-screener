@@ -27,6 +27,43 @@ function url(path: string, params: Record<string, string> = {}): string {
   return `${BASE}${path}?${search}`;
 }
 
+async function fetchWithRetry(
+  input: string,
+  init?: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch(input, init);
+      if (res.status === 429) {
+        const waitMs = Math.min(1000 * 2 ** attempt, 8000);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (attempt < maxRetries - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      }
+    }
+  }
+  throw lastError ?? new Error("fetchWithRetry exhausted retries");
+}
+
+const _dedup = new Map<string, Promise<Response>>();
+
+async function fetchDedup(input: string): Promise<Response> {
+  const existing = _dedup.get(input);
+  if (existing) return existing.then((r) => r.clone());
+  const promise = fetchWithRetry(input).finally(() => {
+    setTimeout(() => _dedup.delete(input), 500);
+  });
+  _dedup.set(input, promise);
+  return promise;
+}
+
 export type Quote = {
   symbol: string;
   name: string;
@@ -121,7 +158,7 @@ export type EarningsCalendarItem = {
 /** Snapshot (single ticker) gives day bar + prevDay + lastTrade */
 export async function fetchQuote(symbol: string): Promise<Quote | null> {
   const sym = symbol.toUpperCase();
-  const res = await fetch(url(`/v2/snapshot/locale/us/markets/stocks/tickers/${sym}`));
+  const res = await fetchDedup(url(`/v2/snapshot/locale/us/markets/stocks/tickers/${sym}`));
   if (!res.ok) return null;
   const data = (await res.json()) as {
     ticker?: {
@@ -167,7 +204,7 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
 export async function fetchSearchSymbol(query: string): Promise<SearchSymbolResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const res = await fetch(
+  const res = await fetchDedup(
     url("/v3/reference/tickers", {
       search: q,
       market: "stocks",
@@ -191,12 +228,12 @@ export async function fetchSearchSymbol(query: string): Promise<SearchSymbolResu
   }));
 }
 
-/** Related tickers: /v1/related-companies/{ticker} then resolve names via ticker details */
+/** Related tickers: /v1/related-companies/{ticker}, resolves names from local DB first */
 export async function fetchRelatedTickers(
   symbol: string
 ): Promise<Array<{ symbol: string; name: string }>> {
   const sym = symbol.toUpperCase();
-  const res = await fetch(url(`/v1/related-companies/${sym}`));
+  const res = await fetchDedup(url(`/v1/related-companies/${sym}`));
   if (!res.ok) return [];
   const data = (await res.json()) as {
     results?: Array<{ ticker?: string }>;
@@ -207,19 +244,35 @@ export async function fetchRelatedTickers(
     .filter((t) => t && t !== sym)
     .slice(0, 12);
   if (tickers.length === 0) return [];
-  const withNames = await Promise.all(
-    tickers.map(async (t) => {
-      const profile = await fetchProfile(t);
-      return { symbol: t, name: profile?.companyName ?? t, type: profile?.type };
-    })
-  );
-  return withNames.filter((r) => isAllowedTickerType(r.type)).map(({ symbol, name }) => ({ symbol, name }));
+
+  // Resolve names from local companies table to avoid N+1 API calls
+  try {
+    const { getCompanyClassification } = await import("@/lib/screener-db-native");
+    const { getStockRecord } = await import("@/lib/stocks-db");
+    return tickers
+      .map((t) => {
+        const record = getStockRecord(t);
+        const classification = getCompanyClassification(t);
+        if (!record && !classification) return null;
+        return { symbol: t, name: record?.name ?? t };
+      })
+      .filter((r): r is { symbol: string; name: string } => r !== null);
+  } catch {
+    // Fallback: use first ticker's profile to check type, batch others
+    const withNames = await Promise.all(
+      tickers.map(async (t) => {
+        const profile = await fetchProfile(t);
+        return { symbol: t, name: profile?.companyName ?? t, type: profile?.type };
+      })
+    );
+    return withNames.filter((r) => isAllowedTickerType(r.type)).map(({ symbol, name }) => ({ symbol, name }));
+  }
 }
 
 /** Ticker details: /v3/reference/tickers/{ticker} */
 export async function fetchProfile(symbol: string): Promise<Profile | null> {
   const sym = symbol.toUpperCase();
-  const res = await fetch(url(`/v3/reference/tickers/${sym}`));
+  const res = await fetchDedup(url(`/v3/reference/tickers/${sym}`));
   if (!res.ok) return null;
   const data = (await res.json()) as {
     results?: {
@@ -285,7 +338,7 @@ export async function fetchIncomeStatement(
   }
 
   // Try with timeframe filter first
-  let res = await fetch(
+  let res = await fetchWithRetry(
     url("/stocks/financials/v1/income-statements", {
       tickers: sym,
       "timeframe.any_of": timeframe,
@@ -311,7 +364,7 @@ export async function fetchIncomeStatement(
   }
 
   // Fallback: fetch without timeframe filter and filter client-side
-  res = await fetch(
+  res = await fetchWithRetry(
     url("/stocks/financials/v1/income-statements", {
       tickers: sym,
       limit: "100",
@@ -346,7 +399,7 @@ export async function fetchInstitutionalHolders(_symbol: string): Promise<Instit
 
 /** News: /v2/reference/news */
 export async function fetchStockNews(symbol: string, limit = 15): Promise<NewsItem[]> {
-  const res = await fetch(
+  const res = await fetchDedup(
     url("/v2/reference/news", {
       ticker: symbol.toUpperCase(),
       limit: String(Math.min(limit, 100)),
@@ -394,7 +447,7 @@ export async function fetchEarningsCalendar(
   from: string,
   to: string
 ): Promise<EarningsCalendarItem[]> {
-  const res = await fetch(
+  const res = await fetchDedup(
     url("/benzinga/v1/earnings", {
       ticker: symbol.toUpperCase(),
       "date.gte": from,
@@ -462,7 +515,7 @@ export async function fetchHistoricalDaily(
     const chunkFromStr = chunkStart.toISOString().slice(0, 10);
     const chunkToStr = chunkEnd.toISOString().slice(0, 10);
 
-    const res = await fetch(
+    const res = await fetchWithRetry(
       url(`/v2/aggs/ticker/${sym}/range/1/day/${chunkFromStr}/${chunkToStr}`, {
         adjusted: "true",
         sort: "asc",

@@ -207,7 +207,9 @@ export async function GET(request: NextRequest) {
       /* ignore disk cache write errors */
     }
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to compute sectors/industries";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTheme } from "@/hooks/useTheme";
 
 type SearchSuggestion = {
   symbol: string;
@@ -196,14 +197,33 @@ export default function Header({
     }
   };
 
+  const { theme, cycleTheme } = useTheme();
+
   return (
     <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-sm">
       <div className="relative px-4 py-3">
-        <img
-          src="/brand/stockstalker-lockup.svg"
-          alt={brandName}
-          className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700 absolute right-4 top-3"
-        />
+        <div className="absolute right-4 top-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={cycleTheme}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 transition-colors"
+            aria-label={`Theme: ${theme}. Click to cycle.`}
+            title={`Theme: ${theme}`}
+          >
+            {theme === "dark" ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            ) : theme === "light" ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            )}
+          </button>
+          <img
+            src="/brand/stockstalker-lockup.svg"
+            alt={brandName}
+            className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
+          />
+        </div>
         <div className="flex items-center justify-center pr-28">
           <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
             {[
@@ -225,18 +245,6 @@ export default function Header({
                 {item.label}
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => {
-                /* reserved for future: open add-page dialog */
-              }}
-              className="ml-1 flex items-center justify-center text-zinc-500 dark:text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100"
-              style={{ width: 28, height: 28 }}
-              title="Add page"
-              aria-label="Add page"
-            >
-              <span className="text-base leading-none">+</span>
-            </button>
           </div>
         </div>
         {currentPage === "home" && (
@@ -286,7 +294,7 @@ export default function Header({
                       }}
                       onKeyDown={handleKeyDown}
                       placeholder="Search"
-                      className="w-28 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                      className="w-44 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
                       aria-label="Stock search"
                       autoComplete="off"
                       aria-autocomplete="list"
@@ -307,7 +315,7 @@ export default function Header({
                     <ul
                       id="search-suggestions"
                       role="listbox"
-                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[52rem] max-w-[90vw] overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
+                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[36rem] max-w-[90vw] overflow-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 py-1 shadow-lg"
                     >
                       {suggestionsLoading ? (
                         <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
@@ -346,13 +354,13 @@ export default function Header({
                   )}
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Last:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {price != null ? `$${price.toFixed(2)}` : "NA"}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Change %:{" "}
                 <span
                   className={`tabular-nums ${
@@ -362,44 +370,44 @@ export default function Header({
                   {fmtPct(chgPct)}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Vol:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {vol != null ? vol.toLocaleString() : "NA"}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Avg Vol:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {avgVol != null ? avgVol.toLocaleString() : "NA"}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Mkt Cap (bn):{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {fmtNum(mktCap)}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 52W High:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {yHigh != null ? `$${yHigh.toFixed(2)}` : "NA"}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 Off 52W High:{" "}
                 <span className="tabular-nums text-red-600 dark:text-red-400">
                   {off52WHighPct != null ? `${off52WHighPct.toFixed(2)}%` : "NA"}
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-400">
+              <span className="inline-flex items-center gap-1 shrink-0 text-zinc-600 dark:text-zinc-300">
                 ATRP:{" "}
                 <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
                   {atrPct != null ? `${atrPct.toFixed(2)}%` : "NA"}
                 </span>
               </span>
             </div>
-            <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap pointer-events-none">
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
               DB Update:{" "}
               <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
                 {formatDbUpdateTimestamp(dbUpdateCompletedAt)}

@@ -61,13 +61,17 @@ export async function GET(request: NextRequest) {
         eps: row.eps ?? undefined,
       }));
       cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+      });
     }
 
     // Fallback for symbols missing in local DB.
     const data = await fetchIncomeStatement(symbolUpper, period);
     cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

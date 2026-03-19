@@ -37,6 +37,7 @@ if (existsSync(DB_PATH)) {
 }
 
 const db = new Database(DB_PATH);
+db.pragma("page_size = 8192");
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = OFF");
 db.pragma("busy_timeout = 10000");

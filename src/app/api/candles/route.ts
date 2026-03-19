@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBarsForSymbol } from "@/lib/nino-script";
+import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
 
 type Candle = {
   date: string;
@@ -65,21 +65,11 @@ function aggregateCandles(daily: Candle[], interval: "weekly" | "monthly"): Cand
   return result;
 }
 
-async function getLatestScreenerDateFromDb(): Promise<string | null> {
-  try {
-    const { getLatestScreenerDate } = await import("@/lib/screener-db-native");
-    return getLatestScreenerDate();
-  } catch {
-    const { getLatestScreenerDate } = await import("@/lib/screener-db");
-    return getLatestScreenerDate();
-  }
-}
-
 export async function GET(request: NextRequest) {
   const symbol = (request.nextUrl.searchParams.get("symbol") || "AAPL").toUpperCase();
   const interval = request.nextUrl.searchParams.get("interval") || "daily";
   try {
-    const latest = await getLatestScreenerDateFromDb();
+    const latest = getLatestScreenerDate();
     if (!latest) {
       return NextResponse.json({ error: "No screener date available" }, { status: 200 });
     }
@@ -87,14 +77,15 @@ export async function GET(request: NextRequest) {
     const cache = getApiCandlesCache();
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json(cached.data);
+      return NextResponse.json(cached.data, {
+        headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+      });
     }
     if (cached && cached.expiresAt <= Date.now()) {
       cache.delete(cacheKey);
     }
-    // Load up to ~10 years of daily history from screener DB (newest-first)
     const DAILY_LIMIT = 2500;
-    const bars = await getBarsForSymbol(symbol, latest, DAILY_LIMIT);
+    const bars = getDailyBars(symbol, latest, DAILY_LIMIT);
     if (!bars.length) {
       return NextResponse.json([] as Candle[]);
     }
@@ -117,7 +108,9 @@ export async function GET(request: NextRequest) {
       data,
       expiresAt: Date.now() + API_CANDLES_TTL_MS,
     });
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Candles error";
     return NextResponse.json({ error: message }, { status: 500 });

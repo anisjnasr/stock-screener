@@ -1,14 +1,157 @@
 /**
  * Screener DB access using better-sqlite3 (opens file on disk, no full load).
  * Singleton connection with production-grade PRAGMA tuning for 5GB+ databases.
- * API route should try this first so watchlists/lists get sector, ATR, etc. from the DB.
+ *
+ * This is the sole DB access layer. All screener data flows through here.
  */
 
 import Database from "better-sqlite3";
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { isUSMarketOpen } from "@/lib/market-hours";
-import { buildFilterClauses, type ScreenerFilters, type ScreenerRow } from "@/lib/screener-db";
+
+/* ── Shared types & filter builder (previously in screener-db.ts) ── */
+
+export type ScreenerFilters = Record<string, string | number | undefined>;
+
+export type ScreenerRow = {
+  symbol: string;
+  name: string;
+  exchange: string | null;
+  industry: string | null;
+  sector: string | null;
+  date: string;
+  market_cap: number | null;
+  last_price: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  avg_volume_30d_shares: number | null;
+  high_52w: number | null;
+  off_52w_high_pct: number | null;
+  atr_pct_21d: number | null;
+  price_change_1w_pct: number | null;
+  price_change_1m_pct: number | null;
+  price_change_3m_pct: number | null;
+  price_change_6m_pct: number | null;
+  price_change_12m_pct: number | null;
+  rs_vs_spy_1w: number | null;
+  rs_vs_spy_1m: number | null;
+  rs_vs_spy_3m: number | null;
+  rs_vs_spy_6m: number | null;
+  rs_vs_spy_12m: number | null;
+  rs_pct_1w: number | null;
+  rs_pct_1m: number | null;
+  rs_pct_3m: number | null;
+  rs_pct_6m: number | null;
+  rs_pct_12m: number | null;
+  industry_rank_1m: number | null;
+  industry_rank_3m: number | null;
+  industry_rank_6m: number | null;
+  industry_rank_12m: number | null;
+  sector_rank_1m: number | null;
+  sector_rank_3m: number | null;
+  sector_rank_6m: number | null;
+  sector_rank_12m: number | null;
+  [key: string]: unknown;
+};
+
+export function buildFilterClauses(filters: ScreenerFilters): { sql: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  const num = (v: string | number | undefined): number | null =>
+    v === undefined || v === "" ? null : typeof v === "number" ? v : Number(v);
+  const str = (v: string | number | undefined): string | null =>
+    v === undefined || v === "" ? null : String(v).trim() || null;
+
+  if (num(filters.market_cap_min) != null) { conditions.push(" AND q.market_cap >= ?"); params.push(num(filters.market_cap_min)); }
+  if (num(filters.market_cap_max) != null) { conditions.push(" AND q.market_cap <= ?"); params.push(num(filters.market_cap_max)); }
+  if (num(filters.last_price_min) != null) { conditions.push(" AND q.last_price >= ?"); params.push(num(filters.last_price_min)); }
+  if (num(filters.last_price_max) != null) { conditions.push(" AND q.last_price <= ?"); params.push(num(filters.last_price_max)); }
+  if (num(filters.change_pct_min) != null) { conditions.push(" AND q.change_pct >= ?"); params.push(num(filters.change_pct_min)); }
+  if (num(filters.change_pct_max) != null) { conditions.push(" AND q.change_pct <= ?"); params.push(num(filters.change_pct_max)); }
+  if (num(filters.volume_min) != null) { conditions.push(" AND q.volume >= ?"); params.push(num(filters.volume_min)); }
+  if (num(filters.volume_max) != null) { conditions.push(" AND q.volume <= ?"); params.push(num(filters.volume_max)); }
+  if (num(filters.avg_volume_30d_min) != null) { conditions.push(" AND q.avg_volume_30d_shares >= ?"); params.push(num(filters.avg_volume_30d_min)); }
+  if (num(filters.high_52w_min) != null) { conditions.push(" AND q.high_52w >= ?"); params.push(num(filters.high_52w_min)); }
+  if (num(filters.off_52w_high_pct_min) != null) { conditions.push(" AND q.off_52w_high_pct >= ?"); params.push(num(filters.off_52w_high_pct_min)); }
+  if (num(filters.off_52w_high_pct_max) != null) { conditions.push(" AND q.off_52w_high_pct <= ?"); params.push(num(filters.off_52w_high_pct_max)); }
+  if (num(filters.atr_pct_21d_min) != null) { conditions.push(" AND q.atr_pct_21d >= ?"); params.push(num(filters.atr_pct_21d_min)); }
+  if (num(filters.atr_pct_21d_max) != null) { conditions.push(" AND q.atr_pct_21d <= ?"); params.push(num(filters.atr_pct_21d_max)); }
+
+  const industryInclude = str(filters.industry_include);
+  if (industryInclude != null) {
+    const vals = industryInclude.split(",").map((s) => s.trim()).filter(Boolean);
+    if (vals.length > 0) { conditions.push(` AND c.industry IN (${vals.map(() => "?").join(",")})`); vals.forEach((v) => params.push(v)); }
+  }
+  const industryExclude = str(filters.industry_exclude);
+  if (industryExclude != null) {
+    const vals = industryExclude.split(",").map((s) => s.trim()).filter(Boolean);
+    if (vals.length > 0) { conditions.push(` AND c.industry NOT IN (${vals.map(() => "?").join(",")})`); vals.forEach((v) => params.push(v)); }
+  }
+  const sectorInclude = str(filters.sector_include);
+  if (sectorInclude != null) {
+    const vals = sectorInclude.split(",").map((s) => s.trim()).filter(Boolean);
+    if (vals.length > 0) { conditions.push(` AND c.sector IN (${vals.map(() => "?").join(",")})`); vals.forEach((v) => params.push(v)); }
+  }
+  const sectorExclude = str(filters.sector_exclude);
+  if (sectorExclude != null) {
+    const vals = sectorExclude.split(",").map((s) => s.trim()).filter(Boolean);
+    if (vals.length > 0) { conditions.push(` AND c.sector NOT IN (${vals.map(() => "?").join(",")})`); vals.forEach((v) => params.push(v)); }
+  }
+  if (filters.is_adr !== undefined && filters.is_adr !== "" && filters.is_adr !== "any") {
+    conditions.push(" AND c.is_adr = ?");
+    params.push(filters.is_adr === "1" || filters.is_adr === 1 ? 1 : 0);
+  }
+  if (filters.is_etf !== undefined && filters.is_etf !== "" && filters.is_etf !== "any") {
+    conditions.push(" AND c.is_etf = ?");
+    params.push(filters.is_etf === "1" || filters.is_etf === 1 ? 1 : 0);
+  }
+  const ipoFrom = str(filters.ipo_date_from);
+  const effectiveIpoDateExpr = "COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol))";
+  if (ipoFrom != null) { conditions.push(` AND ${effectiveIpoDateExpr} >= ?`); params.push(ipoFrom); }
+  const ipoTo = str(filters.ipo_date_to);
+  if (ipoTo != null) { conditions.push(` AND ${effectiveIpoDateExpr} <= ?`); params.push(ipoTo); }
+  if (num(filters.shares_outstanding_min) != null) { conditions.push(" AND c.shares_outstanding >= ?"); params.push(num(filters.shares_outstanding_min)); }
+  if (num(filters.shares_outstanding_max) != null) { conditions.push(" AND c.shares_outstanding <= ?"); params.push(num(filters.shares_outstanding_max)); }
+
+  const priceChangePeriods = ["1w", "1m", "3m", "6m", "12m"] as const;
+  for (const period of priceChangePeriods) {
+    const col = `price_change_${period}_pct`;
+    const minVal = num(filters[`${col}_min`]);
+    const maxVal = num(filters[`${col}_max`]);
+    if (minVal != null) { conditions.push(` AND i.${col} >= ?`); params.push(minVal); }
+    if (maxVal != null) { conditions.push(` AND i.${col} <= ?`); params.push(maxVal); }
+  }
+  const rsPctPeriods = ["1w", "1m", "3m", "6m", "12m"] as const;
+  for (const period of rsPctPeriods) {
+    const col = `rs_pct_${period}`;
+    const minVal = num(filters[`${col}_min`]);
+    const maxVal = num(filters[`${col}_max`]);
+    if (minVal != null) { conditions.push(` AND i.${col} >= ?`); params.push(minVal); }
+    if (maxVal != null) { conditions.push(` AND i.${col} <= ?`); params.push(maxVal); }
+  }
+  const rankPeriods = ["1m", "3m", "6m", "12m"] as const;
+  for (const period of rankPeriods) {
+    const minVal = num(filters[`industry_rank_${period}_min`]);
+    const maxVal = num(filters[`industry_rank_${period}_max`]);
+    if (minVal != null) { conditions.push(` AND i.industry_rank_${period} >= ?`); params.push(minVal); }
+    if (maxVal != null) { conditions.push(` AND i.industry_rank_${period} <= ?`); params.push(maxVal); }
+  }
+  for (const period of rankPeriods) {
+    const minVal = num(filters[`sector_rank_${period}_min`]);
+    const maxVal = num(filters[`sector_rank_${period}_max`]);
+    if (minVal != null) { conditions.push(` AND i.sector_rank_${period} >= ?`); params.push(minVal); }
+    if (maxVal != null) { conditions.push(` AND i.sector_rank_${period} <= ?`); params.push(maxVal); }
+  }
+  return { sql: conditions.join(""), params };
+}
+
+/* ── Helpers for parameterized symbol lists ── */
+
+function symbolPlaceholders(symbols: string[]): { placeholders: string; values: string[] } {
+  const values = symbols.map((s) => String(s).toUpperCase());
+  return { placeholders: values.map(() => "?").join(","), values };
+}
 
 const DB_PATH = join(process.cwd(), "data", "screener.db");
 
@@ -56,6 +199,7 @@ function openDb(): BetterSqlite3Database {
   db.exec("PRAGMA mmap_size = 5368709120");
   db.exec("PRAGMA temp_store = MEMORY");
   db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("PRAGMA read_uncommitted = ON");
 
   const st = statSync(DB_PATH);
   globalForDb._screenerDb = db;
@@ -325,19 +469,19 @@ export function getScreenerCount(options: {
   let date = options.date ?? null;
   if (!date) date = getLatestScreenerDate();
   if (!date) return { count: 0, date: null };
-  const symbolFilter =
-    options.symbols && options.symbols.length > 0
-      ? ` AND c.symbol IN (${options.symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",")})`
-      : "";
+  const symFilter = options.symbols && options.symbols.length > 0
+    ? symbolPlaceholders(options.symbols)
+    : null;
+  const symbolSql = symFilter ? ` AND c.symbol IN (${symFilter.placeholders})` : "";
   const { sql: filterSql, params: filterParams } = buildFilterClauses(options.filters ?? {});
   const sql = `
     SELECT COUNT(*) AS cnt FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
-    WHERE 1=1 ${symbolFilter}${filterSql}
+    WHERE 1=1 ${symbolSql}${filterSql}
   `;
   const stmt = db.prepare(sql);
-  const row = stmt.get(...[date, ...filterParams]) as { cnt: number };
+  const row = stmt.get(date, ...(symFilter?.values ?? []), ...filterParams) as { cnt: number };
   return { count: row?.cnt ?? 0, date };
 }
 
@@ -355,26 +499,19 @@ export function getScreenerSnapshot(options: {
   if (!date) return { rows: [], date: null };
   const limit = options.limit ?? 5000;
   const offset = options.offset ?? 0;
-  const symbolFilter =
-    options.symbols && options.symbols.length > 0
-      ? ` AND c.symbol IN (${options.symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",")})`
-      : "";
+  const symFilter = options.symbols && options.symbols.length > 0
+    ? symbolPlaceholders(options.symbols)
+    : null;
+  const symbolSql = symFilter ? ` AND c.symbol IN (${symFilter.placeholders})` : "";
   const { sql: filterSql, params: filterParams } = buildFilterClauses(options.filters ?? {});
   const sql = `
     SELECT
       c.symbol, c.name, c.exchange, c.industry, c.sector,
       q.date,
-      COALESCE(
-        q.market_cap,
-        c.shares_outstanding * COALESCE(
-          q.last_price,
-          q.prev_close,
-          (SELECT close FROM daily_bars WHERE symbol = c.symbol AND date < q.date ORDER BY date DESC LIMIT 1)
-        )
-      ) AS market_cap,
+      COALESCE(q.market_cap, c.shares_outstanding * COALESCE(q.last_price, q.prev_close)) AS market_cap,
       q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
       q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
-      COALESCE(q.prev_close, (SELECT close FROM daily_bars WHERE symbol = c.symbol AND date < q.date ORDER BY date DESC LIMIT 1)) AS prev_close,
+      q.prev_close,
       i.price_change_1w_pct, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct,
       i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
@@ -383,12 +520,12 @@ export function getScreenerSnapshot(options: {
     FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
-    WHERE 1=1 ${symbolFilter}${filterSql}
+    WHERE 1=1 ${symbolSql}${filterSql}
     ORDER BY c.symbol
     LIMIT ? OFFSET ?
   `;
   const stmt = db.prepare(sql);
-  const rawRows = stmt.all(date, ...filterParams, limit, offset) as RowObject[];
+  const rawRows = stmt.all(date, ...(symFilter?.values ?? []), ...filterParams, limit, offset) as RowObject[];
   const marketClosed = !isUSMarketOpen();
   const rows = rawRows.map((r) => rowToScreenerRow(r, marketClosed));
   return { rows, date };
@@ -1414,6 +1551,140 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
     down25pct_month: Number(r.down25pct_month ?? 0),
     up50pct_month: Number(r.up50pct_month ?? 0),
     down50pct_month: Number(r.down50pct_month ?? 0),
+  }));
+}
+
+/* ── Precomputed aggregation table readers ── */
+
+export type MarketMonitorDailyRow = {
+  date: string;
+  up4pct: number;
+  down4pct: number;
+  ratio5d: number | null;
+  ratio10d: number | null;
+  up25pct_qtr: number;
+  down25pct_qtr: number;
+  up25pct_month: number;
+  down25pct_month: number;
+  up50pct_month: number;
+  down50pct_month: number;
+  sp500_pct_above_50d: number | null;
+  sp500_pct_above_200d: number | null;
+  nasdaq_pct_above_50d: number | null;
+  nasdaq_pct_above_200d: number | null;
+  universe: number;
+  nnh_1m_highs: number | null;
+  nnh_1m_lows: number | null;
+  nnh_1m_net: number | null;
+  nnh_3m_highs: number | null;
+  nnh_3m_lows: number | null;
+  nnh_3m_net: number | null;
+  nnh_6m_highs: number | null;
+  nnh_6m_lows: number | null;
+  nnh_6m_net: number | null;
+  nnh_52w_highs: number | null;
+  nnh_52w_lows: number | null;
+  nnh_52w_net: number | null;
+};
+
+export function getPrecomputedMarketMonitor(startDate: string, endDate: string): MarketMonitorDailyRow[] {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    db.prepare("SELECT 1 FROM market_monitor_daily LIMIT 1").get();
+  } catch {
+    return [];
+  }
+  const rows = db.prepare(`
+    SELECT * FROM market_monitor_daily
+    WHERE date >= ? AND date <= ?
+    ORDER BY date DESC
+  `).all(startDate, endDate) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    date: String(r.date),
+    up4pct: Number(r.up4pct ?? 0),
+    down4pct: Number(r.down4pct ?? 0),
+    ratio5d: r.ratio5d != null ? Number(r.ratio5d) : null,
+    ratio10d: r.ratio10d != null ? Number(r.ratio10d) : null,
+    up25pct_qtr: Number(r.up25pct_qtr ?? 0),
+    down25pct_qtr: Number(r.down25pct_qtr ?? 0),
+    up25pct_month: Number(r.up25pct_month ?? 0),
+    down25pct_month: Number(r.down25pct_month ?? 0),
+    up50pct_month: Number(r.up50pct_month ?? 0),
+    down50pct_month: Number(r.down50pct_month ?? 0),
+    sp500_pct_above_50d: r.sp500_pct_above_50d != null ? Number(r.sp500_pct_above_50d) : null,
+    sp500_pct_above_200d: r.sp500_pct_above_200d != null ? Number(r.sp500_pct_above_200d) : null,
+    nasdaq_pct_above_50d: r.nasdaq_pct_above_50d != null ? Number(r.nasdaq_pct_above_50d) : null,
+    nasdaq_pct_above_200d: r.nasdaq_pct_above_200d != null ? Number(r.nasdaq_pct_above_200d) : null,
+    universe: Number(r.universe ?? 0),
+    nnh_1m_highs: r.nnh_1m_highs != null ? Number(r.nnh_1m_highs) : null,
+    nnh_1m_lows: r.nnh_1m_lows != null ? Number(r.nnh_1m_lows) : null,
+    nnh_1m_net: r.nnh_1m_net != null ? Number(r.nnh_1m_net) : null,
+    nnh_3m_highs: r.nnh_3m_highs != null ? Number(r.nnh_3m_highs) : null,
+    nnh_3m_lows: r.nnh_3m_lows != null ? Number(r.nnh_3m_lows) : null,
+    nnh_3m_net: r.nnh_3m_net != null ? Number(r.nnh_3m_net) : null,
+    nnh_6m_highs: r.nnh_6m_highs != null ? Number(r.nnh_6m_highs) : null,
+    nnh_6m_lows: r.nnh_6m_lows != null ? Number(r.nnh_6m_lows) : null,
+    nnh_6m_net: r.nnh_6m_net != null ? Number(r.nnh_6m_net) : null,
+    nnh_52w_highs: r.nnh_52w_highs != null ? Number(r.nnh_52w_highs) : null,
+    nnh_52w_lows: r.nnh_52w_lows != null ? Number(r.nnh_52w_lows) : null,
+    nnh_52w_net: r.nnh_52w_net != null ? Number(r.nnh_52w_net) : null,
+  }));
+}
+
+export type BreadthDailyRow = {
+  index_id: string;
+  date: string;
+  nnh_1m: number | null;
+  nnh_3m: number | null;
+  nnh_6m: number | null;
+  nnh_52w: number | null;
+  nnh_1m_highs: number | null;
+  nnh_1m_lows: number | null;
+  nnh_3m_highs: number | null;
+  nnh_3m_lows: number | null;
+  nnh_6m_highs: number | null;
+  nnh_6m_lows: number | null;
+  nnh_52w_highs: number | null;
+  nnh_52w_lows: number | null;
+  pct_above_50d: number | null;
+  pct_above_200d: number | null;
+  count_50d: number;
+  count_200d: number;
+};
+
+export function getPrecomputedBreadth(indexId: string, startDate: string, endDate: string): BreadthDailyRow[] {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    db.prepare("SELECT 1 FROM breadth_daily LIMIT 1").get();
+  } catch {
+    return [];
+  }
+  const rows = db.prepare(`
+    SELECT * FROM breadth_daily
+    WHERE index_id = ? AND date >= ? AND date <= ?
+    ORDER BY date ASC
+  `).all(indexId, startDate, endDate) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    index_id: String(r.index_id),
+    date: String(r.date),
+    nnh_1m: r.nnh_1m != null ? Number(r.nnh_1m) : null,
+    nnh_3m: r.nnh_3m != null ? Number(r.nnh_3m) : null,
+    nnh_6m: r.nnh_6m != null ? Number(r.nnh_6m) : null,
+    nnh_52w: r.nnh_52w != null ? Number(r.nnh_52w) : null,
+    nnh_1m_highs: r.nnh_1m_highs != null ? Number(r.nnh_1m_highs) : null,
+    nnh_1m_lows: r.nnh_1m_lows != null ? Number(r.nnh_1m_lows) : null,
+    nnh_3m_highs: r.nnh_3m_highs != null ? Number(r.nnh_3m_highs) : null,
+    nnh_3m_lows: r.nnh_3m_lows != null ? Number(r.nnh_3m_lows) : null,
+    nnh_6m_highs: r.nnh_6m_highs != null ? Number(r.nnh_6m_highs) : null,
+    nnh_6m_lows: r.nnh_6m_lows != null ? Number(r.nnh_6m_lows) : null,
+    nnh_52w_highs: r.nnh_52w_highs != null ? Number(r.nnh_52w_highs) : null,
+    nnh_52w_lows: r.nnh_52w_lows != null ? Number(r.nnh_52w_lows) : null,
+    pct_above_50d: r.pct_above_50d != null ? Number(r.pct_above_50d) : null,
+    pct_above_200d: r.pct_above_200d != null ? Number(r.pct_above_200d) : null,
+    count_50d: Number(r.count_50d ?? 0),
+    count_200d: Number(r.count_200d ?? 0),
   }));
 }
 

@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
       latestFundCount: latest?.num_funds ?? 0,
       latestReportDate: latest?.report_date ?? null,
       topHolders: latest?.top_holders ?? [],
+    }, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";

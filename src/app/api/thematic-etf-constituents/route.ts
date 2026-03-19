@@ -8,11 +8,29 @@ const VALID_ETFS = new Set(THEMATIC_ETFS.map((x) => x.ticker.toUpperCase()));
 
 type ConstituentsMap = Record<string, string[]>;
 
+let _parsedCache: { data: ConstituentsMap; loadedAt: number } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 function normalizeSymbols(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return input
     .map((s) => String(s ?? "").trim().toUpperCase())
     .filter((s) => /^[A-Z][A-Z0-9.\-]*$/.test(s));
+}
+
+function loadConstituents(): ConstituentsMap | null {
+  if (_parsedCache && Date.now() - _parsedCache.loadedAt < CACHE_TTL_MS) {
+    return _parsedCache.data;
+  }
+  if (!existsSync(DATA_PATH)) return null;
+  try {
+    const raw = readFileSync(DATA_PATH, "utf8");
+    const parsed = JSON.parse(raw) as ConstituentsMap;
+    _parsedCache = { data: parsed, loadedAt: Date.now() };
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -24,18 +42,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!existsSync(DATA_PATH)) {
+  const data = loadConstituents();
+  if (!data) {
     return NextResponse.json(
       { error: "Thematic constituents file not found. Run: node scripts/build-thematic-etf-constituents.mjs" },
       { status: 404 }
     );
   }
 
-  try {
-    const raw = readFileSync(DATA_PATH, "utf8");
-    const parsed = JSON.parse(raw) as ConstituentsMap;
-    return NextResponse.json(normalizeSymbols(parsed?.[etf]));
-  } catch {
-    return NextResponse.json({ error: "Failed to read constituents" }, { status: 500 });
-  }
+  return NextResponse.json(normalizeSymbols(data[etf]), {
+    headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" },
+  });
 }

@@ -6,7 +6,9 @@ import {
   getMarketMonitorBaseRowsFromDailyBars,
   getIndexBreadthSeries,
   getNetNewHighSeries,
+  getPrecomputedMarketMonitor,
 } from "@/lib/screener-db-native";
+import { recordPerf } from "@/lib/perf-monitor";
 
 export type MarketMonitorRow = {
   date: string;
@@ -52,6 +54,7 @@ const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
 
 export async function GET() {
+  const _perfStart = performance.now();
   try {
     const latest = getLatestCompletedTradingDate();
     if (!latest) {
@@ -83,6 +86,53 @@ export async function GET() {
       }
     }
 
+    // Fast path: try precomputed table first
+    const precomputed = getPrecomputedMarketMonitor(queryStartDate, latestDate);
+    if (precomputed.length > 0) {
+      const rows = precomputed.map((r) => ({
+        date: r.date,
+        up4pct: r.up4pct,
+        down4pct: r.down4pct,
+        ratio5d: r.ratio5d,
+        ratio10d: r.ratio10d,
+        up25pct_qtr: r.up25pct_qtr,
+        down25pct_qtr: r.down25pct_qtr,
+        up25pct_month: r.up25pct_month,
+        down25pct_month: r.down25pct_month,
+        up50pct_month: r.up50pct_month,
+        down50pct_month: r.down50pct_month,
+        sp500PctAbove50d: r.sp500_pct_above_50d,
+        sp500PctAbove200d: r.sp500_pct_above_200d,
+        nasdaqPctAbove50d: r.nasdaq_pct_above_50d,
+        nasdaqPctAbove200d: r.nasdaq_pct_above_200d,
+        universe: r.universe,
+      })) satisfies MarketMonitorRow[];
+      const latestRow = rows[0] ?? null;
+      const payload: CachePayload = {
+        version: CACHE_VERSION,
+        rows,
+        latestDate,
+        startDate: rows[rows.length - 1]?.date ?? null,
+        breadth: {
+          sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
+          nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
+          sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
+          nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
+        },
+        netNewHighs: {
+          oneMonth: precomputed.map((r) => ({ date: r.date, highs: r.nnh_1m_highs ?? 0, lows: r.nnh_1m_lows ?? 0, net: r.nnh_1m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
+          threeMonths: precomputed.map((r) => ({ date: r.date, highs: r.nnh_3m_highs ?? 0, lows: r.nnh_3m_lows ?? 0, net: r.nnh_3m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
+          sixMonths: precomputed.map((r) => ({ date: r.date, highs: r.nnh_6m_highs ?? 0, lows: r.nnh_6m_lows ?? 0, net: r.nnh_6m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
+          fiftyTwoWeek: precomputed.map((r) => ({ date: r.date, highs: r.nnh_52w_highs ?? 0, lows: r.nnh_52w_lows ?? 0, net: r.nnh_52w_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
+        },
+      };
+      recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "precomputed" } });
+      return NextResponse.json(payload, {
+        headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+      });
+    }
+
+    // Fallback: compute from raw data (heavy path)
     let baseRows: ReturnType<typeof getMarketMonitorBaseRowsFromDailyBars> = [];
     let cachedRowsAsc: MarketMonitorRow[] = [];
     let canIncremental = false;
@@ -220,8 +270,12 @@ export async function GET() {
       // ignore cache write errors
     }
 
-    return NextResponse.json(payload);
+    recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "computed" } });
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
   } catch (e) {
+    recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { status: 500 });
     const message = e instanceof Error ? e.message : "Market monitor error";
     return NextResponse.json({ rows: [], error: message }, { status: 500 });
   }

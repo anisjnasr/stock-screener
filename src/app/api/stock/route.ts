@@ -179,7 +179,9 @@ export async function GET(request: NextRequest) {
       nextEarnings,
     };
     cache.set(cacheKey, { payload, expiresAt: Date.now() + STOCK_API_TTL_MS });
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });

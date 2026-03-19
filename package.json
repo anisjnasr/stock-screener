@@ -31,6 +31,7 @@
     "backfill-historical-massive": "node scripts/backfill-historical-massive.mjs",
     "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
     "compute-indicators": "node scripts/compute-indicators-from-bars.mjs",
+    "compute-market-aggregates": "node scripts/compute-market-aggregates.mjs",
     "optimize-db": "node scripts/optimize-db.mjs",
     "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
@@ -47,7 +48,6 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
-    "sql.js": "^1.11.0",
     "yahoo-finance2": "^3.13.1"
   },
   "devDependencies": {
