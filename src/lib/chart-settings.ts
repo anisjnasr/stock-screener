@@ -56,6 +56,23 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
   candleDownWickColor: "#9c9c9c",
 };
 
+export const LIGHT_CHART_THEME: ChartSettings = {
+  type: "candles",
+  showVolume: true,
+  showEma50: true,
+  showEma200: true,
+  showEma40Weekly: true,
+  showVertGrid: false,
+  showHorzGrid: false,
+  backgroundColor: "#ffffff",
+  candleUpBodyColor: "#ffffff",
+  candleDownBodyColor: "#000000",
+  candleUpBorderColor: "#000000",
+  candleDownBorderColor: "#000000",
+  candleUpWickColor: "#000000",
+  candleDownWickColor: "#000000",
+};
+
 export function loadChartSettings(): ChartSettings {
   if (typeof window === "undefined") return DEFAULT_CHART_SETTINGS;
   try {

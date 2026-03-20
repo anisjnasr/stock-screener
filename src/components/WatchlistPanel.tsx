@@ -116,6 +116,16 @@ const THEME_ETF_PREFIX = "theme-etf:";
 const THEMATIC_ETFS_ALL_ID = "__theme-etfs-all__";
 const THEMATIC_INDUSTRIES_FOLDER_ID = "thematic-industries";
 
+const FLAG_LIST_PREFIX = "__flag_";
+const FLAG_COLORS = ["red", "yellow", "green", "blue"] as const;
+const FLAG_LIST_IDS = FLAG_COLORS.map((c) => `${FLAG_LIST_PREFIX}${c}__`);
+const FLAG_DOT_CLASSES: Record<string, string> = {
+  red: "bg-red-500",
+  yellow: "bg-yellow-500",
+  green: "bg-green-500",
+  blue: "bg-blue-500",
+};
+
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
 
 function getMaxPanelHeightPx(): number {
@@ -522,6 +532,11 @@ export default function WatchlistPanel({
   const [draggedScreenId, setDraggedScreenId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [dragOverRoot, setDragOverRoot] = useState(false);
+  const [draggedWatchlistId, setDraggedWatchlistId] = useState<string | null>(null);
+  const [dragOverWatchlistFolderId, setDragOverWatchlistFolderId] = useState<string | null>(null);
+  const [editingWatchlistNameId, setEditingWatchlistNameId] = useState<string | null>(null);
+  const [editingWatchlistNameValue, setEditingWatchlistNameValue] = useState("");
+  const [stockDragOverListId, setStockDragOverListId] = useState<string | null>(null);
   const [screenerModalPosition, setScreenerModalPosition] = useState<{ x: number; y: number } | null>(null);
   const screenerModalRef = useRef<HTMLDivElement>(null);
   const screenerModalDragStart = useRef<{ clientX: number; clientY: number; left: number; top: number } | null>(null);
@@ -623,6 +638,43 @@ export default function WatchlistPanel({
     });
   }, []);
 
+  const moveWatchlistToFolder = useCallback((watchlistId: string, folderId: string | null) => {
+    setLists((prev) => {
+      const next = prev.map((l) => l.id === watchlistId ? { ...l, folderId: folderId ?? undefined } : l);
+      saveWatchlists(next);
+      return next;
+    });
+  }, []);
+
+  const commitWatchlistNameEdit = useCallback((listId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setEditingWatchlistNameId(null); return; }
+    setLists((prev) => {
+      const next = prev.map((l) => l.id === listId ? { ...l, name: trimmed } : l);
+      saveWatchlists(next);
+      return next;
+    });
+    setEditingWatchlistNameId(null);
+  }, []);
+
+  const reorderWatchlistBefore = useCallback((draggedId: string, targetId: string) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    setLists((prev) => {
+      const dragIdx = prev.findIndex((l) => l.id === draggedId);
+      const targetIdx = prev.findIndex((l) => l.id === targetId);
+      if (dragIdx < 0 || targetIdx < 0) return prev;
+      const dragged = prev[dragIdx]!;
+      const target = prev[targetIdx]!;
+      const next = [...prev];
+      next.splice(dragIdx, 1);
+      const targetIdxAfterRemoval = next.findIndex((l) => l.id === targetId);
+      const insertIdx = targetIdxAfterRemoval < 0 ? next.length : targetIdxAfterRemoval;
+      next.splice(insertIdx, 0, { ...dragged, folderId: target.folderId ?? undefined });
+      saveWatchlists(next);
+      return next;
+    });
+  }, []);
+
   const toggleFolderExpanded = useCallback((folderId: string) => {
     setExpandedFolderIds((prev) => {
       const next = new Set(prev);
@@ -643,6 +695,23 @@ export default function WatchlistPanel({
     setFolders(loadFolders());
     setColumnSets(loadColumnSets());
     setSidebarWidthPx(Math.max(240, loadSidebarWidthPx()));
+  }, []);
+
+  useEffect(() => {
+    const onFlagsChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail === "object") setFlags(detail);
+    };
+    const onWatchlistsChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (Array.isArray(detail)) setLists(detail);
+    };
+    window.addEventListener("stock-flags-changed", onFlagsChanged);
+    window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    return () => {
+      window.removeEventListener("stock-flags-changed", onFlagsChanged);
+      window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    };
   }, []);
 
   // Close add menus when clicking outside.
@@ -737,6 +806,7 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     saveWatchlists(lists);
+    window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: lists }));
   }, [lists]);
 
   useEffect(() => {
@@ -809,16 +879,15 @@ export default function WatchlistPanel({
             industries[industry].push({ symbol, marketCap });
           }
         }
-        const toTopSymbols = (rows: Array<{ symbol: string; marketCap: number }>): string[] =>
+        const toAllSymbols = (rows: Array<{ symbol: string; marketCap: number }>): string[] =>
           [...rows]
             .sort((a, b) => b.marketCap - a.marketCap)
-            .slice(0, 50)
             .map((x) => x.symbol);
         setSectorListSymbols(
-          Object.fromEntries(Object.entries(sectors).map(([name, rows]) => [name, toTopSymbols(rows)]))
+          Object.fromEntries(Object.entries(sectors).map(([name, rows]) => [name, toAllSymbols(rows)]))
         );
         setIndustryListSymbols(
-          Object.fromEntries(Object.entries(industries).map(([name, rows]) => [name, toTopSymbols(rows)]))
+          Object.fromEntries(Object.entries(industries).map(([name, rows]) => [name, toAllSymbols(rows)]))
         );
       })
       .catch(() => {
@@ -889,7 +958,7 @@ export default function WatchlistPanel({
       const sectorName = selectedCollectionId.slice(SECTOR_LIST_PREFIX.length);
       return {
         symbols: sectorListSymbols[sectorName] ?? [],
-        title: `${toTitleCase(sectorName)} (Top 50)`,
+        title: `${toTitleCase(sectorName)}`,
         fromScreener: false,
         screen: null,
       };
@@ -898,7 +967,7 @@ export default function WatchlistPanel({
       const industryName = selectedCollectionId.slice(INDUSTRY_LIST_PREFIX.length);
       return {
         symbols: industryListSymbols[industryName] ?? [],
-        title: `${toTitleCase(industryName)} (Top 50)`,
+        title: `${toTitleCase(industryName)}`,
         fromScreener: false,
         screen: null,
       };
@@ -924,6 +993,11 @@ export default function WatchlistPanel({
         screen: null,
       };
     }
+    if (selectedCollectionId?.startsWith(FLAG_LIST_PREFIX)) {
+      const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
+      const flaggedSymbols = Object.entries(flags).filter(([, f]) => f === color).map(([s]) => s);
+      return { symbols: flaggedSymbols, title: `${color.charAt(0).toUpperCase() + color.slice(1)} Flag`, fromScreener: false, screen: null };
+    }
     const selectedFolder = selectedCollectionId
       ? listFolders.find((f) => f.id === selectedCollectionId)
       : null;
@@ -934,7 +1008,7 @@ export default function WatchlistPanel({
       return { symbols: activeList.symbols ?? [], title: activeList.name, fromScreener: false, screen: null };
     }
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
-  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen]);
+  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -1080,7 +1154,7 @@ export default function WatchlistPanel({
         const screenerPromises = chunks.map((chunk) => {
           const params = new URLSearchParams();
           params.set("symbols", chunk.join(","));
-          params.set("limit", "100");
+          params.set("limit", "5000");
           return fetch(`/api/screener?${params.toString()}`).then(async (res) => {
             if (!res.ok) return { rows: [] as Record<string, unknown>[] };
             const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
@@ -1409,6 +1483,7 @@ export default function WatchlistPanel({
       if (flag) next[symbol.toUpperCase()] = flag;
       else delete next[symbol.toUpperCase()];
       saveFlags(next);
+      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next }));
       return next;
     });
   }, []);
@@ -2284,12 +2359,79 @@ export default function WatchlistPanel({
                   </button>
                   {expandedListFolderIds.has(MY_LISTS_ROOT_ID) && (
                     <ul className="pl-4">
+                      {FLAG_COLORS.map((color) => {
+                        const flagListId = `${FLAG_LIST_PREFIX}${color}__`;
+                        const count = Object.values(flags).filter((f) => f === color).length;
+                        if (count === 0) return null;
+                        return (
+                          <li key={flagListId}>
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedCollectionId(flagListId); setActiveListId(null); }}
+                              className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1.5 rounded-r ${selectedCollectionId === flagListId ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                            >
+                              <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${FLAG_DOT_CLASSES[color]}`} />
+                              <span className="truncate min-w-0">{color.charAt(0).toUpperCase() + color.slice(1)}</span>
+                              <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-500">{count}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
                       {rootWatchlists.map((l) => (
-                        <li key={l.id} className="flex items-center gap-0 min-w-0 group">
-                          <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                            <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                            <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
-                          </button>
+                        <li
+                          key={l.id}
+                          className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            const hasStock = e.dataTransfer.types.includes("stocksymbol");
+                            if (hasStock) setStockDragOverListId(l.id);
+                            const hasWatchlist = e.dataTransfer.types.includes("watchlistid");
+                            if (hasWatchlist) setDragOverWatchlistFolderId(null);
+                          }}
+                          onDragLeave={() => setStockDragOverListId((cur) => (cur === l.id ? null : cur))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const sym = e.dataTransfer.getData("stockSymbol");
+                            if (sym) addSymbolToList(sym, l.id);
+                            const wlId = e.dataTransfer.getData("watchlistId");
+                            if (wlId && wlId !== l.id) reorderWatchlistBefore(wlId, l.id);
+                            setStockDragOverListId(null);
+                            setDraggedWatchlistId(null);
+                            setDragOverWatchlistFolderId(null);
+                          }}
+                        >
+                          <div
+                            draggable
+                            onDragStart={(e) => { e.dataTransfer.setData("watchlistId", l.id); e.dataTransfer.effectAllowed = "move"; setDraggedWatchlistId(l.id); }}
+                            onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); }}
+                            className={`flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedWatchlistId === l.id ? "opacity-50" : ""}`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }}
+                              onDoubleClick={(e) => { e.preventDefault(); setEditingWatchlistNameId(l.id); setEditingWatchlistNameValue(l.name); }}
+                              className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                            >
+                              <span className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1" title="Drag to reorder" aria-hidden>
+                                <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><circle cx="2" cy="2" r="1" /><circle cx="8" cy="2" r="1" /><circle cx="2" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="2" cy="10" r="1" /><circle cx="8" cy="10" r="1" /></svg>
+                              </span>
+                              {editingWatchlistNameId === l.id ? (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editingWatchlistNameValue}
+                                  onChange={(e) => setEditingWatchlistNameValue(e.target.value)}
+                                  onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-1 min-w-0 bg-transparent border-b border-blue-400 outline-none text-sm px-0 py-0"
+                                />
+                              ) : (
+                                <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
+                              )}
+                            </button>
+                          </div>
                           <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
@@ -2315,12 +2457,44 @@ export default function WatchlistPanel({
                     </ul>
                   )}
                 </li>
+                {draggedWatchlistId && (
+                  <li
+                    className={`px-3 py-1.5 text-xs rounded border border-dashed transition-colors ${dragOverWatchlistFolderId === MY_LISTS_ROOT_ID ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverWatchlistFolderId(MY_LISTS_ROOT_ID); }}
+                    onDragLeave={() => setDragOverWatchlistFolderId(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData("watchlistId");
+                      if (id) moveWatchlistToFolder(id, null);
+                      setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null);
+                    }}
+                  >
+                    Drop here to move to root
+                  </li>
+                )}
                 {listFolders.map((folder) => {
                   const folderLists = watchlistsByFolderId[folder.id] ?? [];
                   const expanded = expandedListFolderIds.has(folder.id);
+                  const isWlDropTarget = dragOverWatchlistFolderId === folder.id;
                   return (
                     <li key={folder.id} className="mt-1 group">
-                      <div className="flex items-center gap-1">
+                      <div
+                        className={`flex items-center gap-1 rounded ${isWlDropTarget ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (e.dataTransfer.types.includes("watchlistid")) setDragOverWatchlistFolderId(folder.id);
+                        }}
+                        onDragLeave={() => setDragOverWatchlistFolderId((cur) => (cur === folder.id ? null : cur))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const wlId = e.dataTransfer.getData("watchlistId");
+                          if (wlId) moveWatchlistToFolder(wlId, folder.id);
+                          const sym = e.dataTransfer.getData("stockSymbol");
+                          if (sym) { /* stock drop on folder header: ignore */ }
+                          setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null);
+                        }}
+                      >
                         <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${expanded ? "rotate-90" : ""}`}><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" /></svg>
                           <span className="truncate">{formatListDisplayName(folder.name)}</span>
@@ -2330,11 +2504,57 @@ export default function WatchlistPanel({
                       {expanded && (
                         <ul className="pl-4">
                           {folderLists.map((l) => (
-                            <li key={l.id} className="flex items-center gap-0 min-w-0 group">
-                              <button type="button" onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }} className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
-                                <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
-                                <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
-                              </button>
+                            <li
+                              key={l.id}
+                              className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                if (e.dataTransfer.types.includes("stocksymbol")) setStockDragOverListId(l.id);
+                              }}
+                              onDragLeave={() => setStockDragOverListId((cur) => (cur === l.id ? null : cur))}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const sym = e.dataTransfer.getData("stockSymbol");
+                                if (sym) addSymbolToList(sym, l.id);
+                                const wlId = e.dataTransfer.getData("watchlistId");
+                                if (wlId && wlId !== l.id) reorderWatchlistBefore(wlId, l.id);
+                                setStockDragOverListId(null);
+                                setDraggedWatchlistId(null);
+                                setDragOverWatchlistFolderId(null);
+                              }}
+                            >
+                              <div
+                                draggable
+                                onDragStart={(e) => { e.dataTransfer.setData("watchlistId", l.id); e.dataTransfer.effectAllowed = "move"; setDraggedWatchlistId(l.id); }}
+                                onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); }}
+                                className={`flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedWatchlistId === l.id ? "opacity-50" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }}
+                                  onDoubleClick={(e) => { e.preventDefault(); setEditingWatchlistNameId(l.id); setEditingWatchlistNameValue(l.name); }}
+                                  className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                                >
+                                  <span className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1" title="Drag to reorder" aria-hidden>
+                                    <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><circle cx="2" cy="2" r="1" /><circle cx="8" cy="2" r="1" /><circle cx="2" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="2" cy="10" r="1" /><circle cx="8" cy="10" r="1" /></svg>
+                                  </span>
+                                  {editingWatchlistNameId === l.id ? (
+                                    <input
+                                      autoFocus
+                                      type="text"
+                                      value={editingWatchlistNameValue}
+                                      onChange={(e) => setEditingWatchlistNameValue(e.target.value)}
+                                      onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="flex-1 min-w-0 bg-transparent border-b border-blue-400 outline-none text-sm px-0 py-0"
+                                    />
+                                  ) : (
+                                    <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
+                                  )}
+                                </button>
+                              </div>
                               <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
@@ -3346,6 +3566,8 @@ export default function WatchlistPanel({
                       return (
                         <tr
                           key={row.symbol}
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.setData("stockSymbol", row.symbol); e.dataTransfer.effectAllowed = "copy"; }}
                           className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${onSymbolSelect ? "cursor-pointer" : ""} ${isActiveSymbol ? "bg-blue-100 dark:bg-blue-900/35" : selectedSymbols.has(row.symbol) ? "bg-blue-50/80 dark:bg-blue-900/20" : ""}`}
                           onClick={(e) => {
                             if (!onSymbolSelect) return;

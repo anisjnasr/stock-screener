@@ -14,7 +14,7 @@ import {
   HistogramSeries,
   LineSeries,
 } from "lightweight-charts";
-import { DEFAULT_CHART_SETTINGS, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
+import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
 
 type Candle = {
   date: string;
@@ -40,6 +40,10 @@ type StockChartProps = {
   onToggleCrosshairSync?: () => void;
   showGlobalControls?: boolean;
   chartInstanceId?: string;
+  stockFlag?: "red" | "yellow" | "green" | "blue" | null;
+  onFlagChange?: (flag: "red" | "yellow" | "green" | "blue" | null) => void;
+  watchlists?: Array<{ id: string; name: string }>;
+  onAddToWatchlist?: (watchlistId: string) => void;
 };
 
 type DrawMode = "none" | "ray" | "trend";
@@ -218,8 +222,8 @@ const TEMPLATE_STYLES: Record<Exclude<DrawTemplate, "custom">, DrawingStyle> = {
     color: "#f59e0b",
     lineWidth: 2,
     lineStyle: 0,
-    showLabel: true,
-    label: "Weekly",
+    showLabel: false,
+    label: "",
   },
   daily: {
     color: "#d946ef",
@@ -266,6 +270,10 @@ export default function StockChart({
   onToggleCrosshairSync,
   showGlobalControls = false,
   chartInstanceId = "single",
+  stockFlag,
+  onFlagChange,
+  watchlists,
+  onAddToWatchlist,
 }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
@@ -291,7 +299,10 @@ export default function StockChart({
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showSelectedDrawingSettings, setShowSelectedDrawingSettings] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [snapToOhlc, setSnapToOhlc] = useState(true);
+  const [snapToOhlc, setSnapToOhlc] = useState(false);
+  const [showFlagPicker, setShowFlagPicker] = useState(false);
+  const [showWatchlistPicker, setShowWatchlistPicker] = useState(false);
+  const [pendingTrendDrawingId, setPendingTrendDrawingId] = useState<string | null>(null);
   const suppressCrosshairBroadcastRef = useRef(false);
   const suppressDrawingBroadcastRef = useRef(false);
   const suppressViewportMemoryRef = useRef(false);
@@ -368,6 +379,15 @@ export default function StockChart({
     },
     []
   );
+
+  const isLightBackground = useMemo(() => {
+    const hex = settings.backgroundColor.replace("#", "");
+    if (hex.length < 6) return false;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150;
+  }, [settings.backgroundColor]);
 
   const activeDrawingStyle = useMemo<DrawingStyle>(() => {
     if (drawTemplate === "custom") return customStyle;
@@ -469,10 +489,10 @@ export default function StockChart({
     const chart = createChart(el, {
       layout: {
         background: { type: ColorType.Solid, color: settings.backgroundColor },
-        textColor: "#D9D9D9",
+        textColor: isLightBackground ? "#333333" : "#D9D9D9",
         panes: {
-          separatorColor: "rgba(113,113,122,0.4)",
-          separatorHoverColor: "rgba(113,113,122,0.6)",
+          separatorColor: isLightBackground ? "rgba(0,0,0,0.15)" : "rgba(113,113,122,0.4)",
+          separatorHoverColor: isLightBackground ? "rgba(0,0,0,0.3)" : "rgba(113,113,122,0.6)",
         },
       },
       grid: {
@@ -484,12 +504,12 @@ export default function StockChart({
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "rgba(113,113,122,0.4)",
+        borderColor: isLightBackground ? "rgba(0,0,0,0.2)" : "rgba(113,113,122,0.4)",
       },
       rightPriceScale: {
         visible: true,
         borderVisible: true,
-        borderColor: "rgba(113,113,122,0.5)",
+        borderColor: isLightBackground ? "rgba(0,0,0,0.2)" : "rgba(113,113,122,0.5)",
         scaleMargins: { top: 0.1, bottom: 0.02 },
         minimumWidth: 80,
         entireTextOnly: false,
@@ -500,16 +520,16 @@ export default function StockChart({
           visible: true,
           width: 1,
           style: 1,
-          color: "rgba(233,236,243,0.9)",
-          labelBackgroundColor: "rgba(28,30,34,0.96)",
+          color: isLightBackground ? "rgba(50,50,50,0.5)" : "rgba(233,236,243,0.9)",
+          labelBackgroundColor: isLightBackground ? "rgba(240,240,240,0.96)" : "rgba(28,30,34,0.96)",
         },
         horzLine: {
           visible: true,
           width: 1,
           style: 1,
           labelVisible: true,
-          color: "rgba(233,236,243,0.9)",
-          labelBackgroundColor: "rgba(28,30,34,0.96)",
+          color: isLightBackground ? "rgba(50,50,50,0.5)" : "rgba(233,236,243,0.9)",
+          labelBackgroundColor: isLightBackground ? "rgba(240,240,240,0.96)" : "rgba(28,30,34,0.96)",
         },
       },
     });
@@ -766,25 +786,36 @@ export default function StockChart({
         setSelectedDrawingId(ray.id);
         setDrawMode("none");
         setPendingTrendStart(null);
+        setPendingTrendDrawingId(null);
         return;
       }
 
       if (pendingTrendStart == null) {
+        const trend: TrendLineDrawing = {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          kind: "trend",
+          startTime: snapped.time,
+          startPrice: snapped.price,
+          endTime: snapped.time,
+          endPrice: snapped.price,
+          style: activeDrawingStyle,
+        };
+        setDrawings((prev) => [...prev, trend]);
         setPendingTrendStart({ time: snapped.time, price: snapped.price });
+        setPendingTrendDrawingId(trend.id);
         return;
       }
 
-      const trend: TrendLineDrawing = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        kind: "trend",
-        startTime: pendingTrendStart.time,
-        startPrice: pendingTrendStart.price,
-        endTime: snapped.time,
-        endPrice: snapped.price,
-        style: activeDrawingStyle,
-      };
-      setDrawings((prev) => [...prev, trend]);
-      setSelectedDrawingId(trend.id);
+      const finalSnapped = snapped;
+      setDrawings((prev) =>
+        prev.map((d) =>
+          d.id === pendingTrendDrawingId && d.kind === "trend"
+            ? { ...d, endTime: finalSnapped.time, endPrice: finalSnapped.price }
+            : d
+        )
+      );
+      setSelectedDrawingId(pendingTrendDrawingId);
+      setPendingTrendDrawingId(null);
       setPendingTrendStart(null);
       setDrawMode("none");
     };
@@ -915,10 +946,12 @@ export default function StockChart({
     ema200Data,
     ema40Data,
     settings,
+    isLightBackground,
     drawings,
     drawMode,
     activeDrawingStyle,
     pendingTrendStart,
+    pendingTrendDrawingId,
     snapPointToCandle,
     selectedDrawingId,
     timeToCandle,
@@ -973,6 +1006,20 @@ export default function StockChart({
   useEffect(() => {
     if (!selectedDrawing) setShowSelectedDrawingSettings(false);
   }, [selectedDrawing]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedDrawingId) return;
+      if (e.key === "Delete") {
+        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+        setDrawings((prev) => prev.filter((d) => d.id !== selectedDrawingId));
+        setSelectedDrawingId(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedDrawingId]);
 
   const getHandlePoint = useCallback(
     (d: ChartDrawing, handle: DragHandle): { x: number; y: number } | null => {
@@ -1046,6 +1093,35 @@ export default function StockChart({
     };
   }, [dragState, snapPointToCandle]);
 
+  useEffect(() => {
+    if (!pendingTrendDrawingId) return;
+    const chart = chartRef.current;
+    const series = mainSeriesRef.current;
+    const el = containerRef.current;
+    if (!chart || !series || !el) return;
+
+    const onMove = (evt: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      const x = evt.clientX - rect.left;
+      const y = evt.clientY - rect.top;
+      const rawTime = chart.timeScale().coordinateToTime(x);
+      const time0 = normalizeTime(rawTime);
+      const price0 = series.coordinateToPrice(y);
+      if (time0 == null || price0 == null || !Number.isFinite(price0)) return;
+      const snapped = snapPointToCandle(time0, price0);
+
+      setDrawings((prev) =>
+        prev.map((d) =>
+          d.id === pendingTrendDrawingId && d.kind === "trend"
+            ? { ...d, endTime: snapped.time, endPrice: snapped.price }
+            : d
+        )
+      );
+    };
+    el.addEventListener("mousemove", onMove);
+    return () => el.removeEventListener("mousemove", onMove);
+  }, [pendingTrendDrawingId, snapPointToCandle]);
+
   const selectedHandles = useMemo(() => {
     if (!selectedDrawing) return [];
     if (selectedDrawing.kind === "ray") {
@@ -1058,6 +1134,17 @@ export default function StockChart({
       ...(start ? [{ key: "trend-start", handle: "trend-start" as DragHandle, point: start }] : []),
       ...(end ? [{ key: "trend-end", handle: "trend-end" as DragHandle, point: end }] : []),
     ];
+  }, [selectedDrawing, getHandlePoint]);
+
+  const selectedDrawingScreenPos = useMemo<{ x: number; y: number } | null>(() => {
+    if (!selectedDrawing) return null;
+    if (selectedDrawing.kind === "ray") {
+      return getHandlePoint(selectedDrawing, "ray-anchor");
+    }
+    const start = getHandlePoint(selectedDrawing, "trend-start");
+    const end = getHandlePoint(selectedDrawing, "trend-end");
+    if (start && end) return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+    return start ?? end ?? null;
   }, [selectedDrawing, getHandlePoint]);
 
   return (
@@ -1088,6 +1175,7 @@ export default function StockChart({
             onClick={() => {
               setDrawMode((m) => (m === "ray" ? "none" : "ray"));
               setPendingTrendStart(null);
+              setPendingTrendDrawingId(null);
             }}
             className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
               drawMode === "ray"
@@ -1103,6 +1191,7 @@ export default function StockChart({
             onClick={() => {
               setDrawMode((m) => (m === "trend" ? "none" : "trend"));
               setPendingTrendStart(null);
+              setPendingTrendDrawingId(null);
             }}
             className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
               drawMode === "trend"
@@ -1112,6 +1201,18 @@ export default function StockChart({
             title="Draw trend line"
           >
             Trend
+          </button>
+          <button
+            type="button"
+            onClick={() => setSnapToOhlc((v) => !v)}
+            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              snapToOhlc
+                ? "bg-cyan-300 text-zinc-900"
+                : "text-zinc-500 hover:bg-zinc-600/35"
+            }`}
+            title="Snap to OHLC"
+          >
+            Snap
           </button>
           </div>
           {showGlobalControls && (
@@ -1169,6 +1270,70 @@ export default function StockChart({
           >
             Reset
           </button>
+          {onFlagChange && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistPicker(false); }}
+                className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35 flex items-center gap-1"
+                title="Flag stock"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} aria-hidden>
+                  <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
+                </svg>
+              </button>
+              {showFlagPicker && (
+                <div className="absolute top-full left-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg p-2 flex items-center gap-2">
+                  {(["red", "yellow", "green", "blue"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
+                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
+                      style={{ backgroundColor: { red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[c] }}
+                      title={c}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => { onFlagChange(null); setShowFlagPicker(false); }}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-[9px] text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
+                    title="No flag"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {onAddToWatchlist && watchlists && watchlists.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setShowWatchlistPicker((v) => !v); setShowFlagPicker(false); }}
+                className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35"
+                title="Add to watchlist"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+              </button>
+              {showWatchlistPicker && (
+                <div className="absolute top-full left-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg py-1 min-w-[140px]">
+                  {watchlists.map((wl) => (
+                    <button
+                      key={wl.id}
+                      type="button"
+                      onClick={() => { onAddToWatchlist(wl.id); setShowWatchlistPicker(false); }}
+                      className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+                    >
+                      {wl.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <span className="text-[10px] text-zinc-400">TradingView Lightweight Charts</span>
       </div>
@@ -1213,8 +1378,15 @@ export default function StockChart({
               aria-label="Drag drawing handle"
             />
           ))}
-          {selectedDrawing && (
-            <div className="absolute top-2 right-12 z-20 flex items-center gap-1">
+          {selectedDrawing && selectedDrawingScreenPos && (
+            <div
+              className="absolute z-20 flex items-center gap-1"
+              style={{
+                left: `${selectedDrawingScreenPos.x}px`,
+                top: `${Math.max(4, selectedDrawingScreenPos.y - 36)}px`,
+                transform: "translateX(-50%)",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setShowSelectedDrawingSettings((v) => !v)}
@@ -1372,6 +1544,7 @@ export default function StockChart({
                       onClick={() => {
                         setDrawMode((m) => (m === "ray" ? "none" : "ray"));
                         setPendingTrendStart(null);
+                        setPendingTrendDrawingId(null);
                       }}
                       className={`px-2 py-0.5 rounded border text-[11px] ${
                         drawMode === "ray"
@@ -1386,6 +1559,7 @@ export default function StockChart({
                       onClick={() => {
                         setDrawMode((m) => (m === "trend" ? "none" : "trend"));
                         setPendingTrendStart(null);
+                        setPendingTrendDrawingId(null);
                       }}
                       className={`px-2 py-0.5 rounded border text-[11px] ${
                         drawMode === "trend"
@@ -1400,6 +1574,7 @@ export default function StockChart({
                       onClick={() => {
                         setDrawings([]);
                         setPendingTrendStart(null);
+                        setPendingTrendDrawingId(null);
                         setDrawMode("none");
                       }}
                       className="px-2 py-0.5 rounded border text-[11px] border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1607,7 +1782,17 @@ export default function StockChart({
                     />
                   </div>
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings(LIGHT_CHART_THEME);
+                      saveChartSettings(LIGHT_CHART_THEME);
+                    }}
+                    className="text-[11px] text-zinc-500 dark:text-zinc-400 hover:underline"
+                  >
+                    Light theme
+                  </button>
                   <button
                     type="button"
                     onClick={() => {

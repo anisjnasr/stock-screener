@@ -10,7 +10,15 @@ import MarketMonitorTable from "@/components/MarketMonitorTable";
 import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
 import BreadthPage from "@/components/BreadthPage";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
-import { savePanelHeightPx } from "@/lib/watchlist-storage";
+import {
+  savePanelHeightPx,
+  loadFlags,
+  saveFlags,
+  loadWatchlists,
+  saveWatchlists,
+  type StockFlag,
+  type Watchlist,
+} from "@/lib/watchlist-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -47,6 +55,8 @@ export default function Home() {
   } | null>(null);
   const [scanSymbols, setScanSymbols] = useState<string[]>([]);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
+  const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const secondaryPagesPrefetchedRef = useRef(false);
   const { cycleTheme } = useTheme();
 
@@ -106,6 +116,49 @@ export default function Home() {
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
     setScanSymbols(symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0));
+  }, []);
+
+  const handleFlagChange = useCallback((flag: StockFlag | null) => {
+    setFlags((prev) => {
+      const next = { ...prev };
+      const sym = symbol.toUpperCase();
+      if (flag) next[sym] = flag;
+      else delete next[sym];
+      saveFlags(next);
+      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next }));
+      return next;
+    });
+  }, [symbol]);
+
+  const handleAddToWatchlist = useCallback((watchlistId: string) => {
+    setWatchlists((prev) => {
+      const sym = symbol.toUpperCase();
+      const next = prev.map((l) =>
+        l.id === watchlistId && !l.symbols.includes(sym)
+          ? { ...l, symbols: [...l.symbols, sym] }
+          : l
+      );
+      saveWatchlists(next);
+      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
+      return next;
+    });
+  }, [symbol]);
+
+  useEffect(() => {
+    const onFlagsChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail === "object") setFlags(detail);
+    };
+    const onWatchlistsChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (Array.isArray(detail)) setWatchlists(detail);
+    };
+    window.addEventListener("stock-flags-changed", onFlagsChanged);
+    window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    return () => {
+      window.removeEventListener("stock-flags-changed", onFlagsChanged);
+      window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    };
   }, []);
 
   // Load candles for current chart
@@ -218,6 +271,12 @@ export default function Home() {
   const atrPctEffective = data?.quote?.atrPct21d ?? undefined;
   const computed52WHighEffective = data?.quote?.yearHigh ?? undefined;
   const avgVolume30dEffective = data?.quote?.avgVolume ?? undefined;
+
+  const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
+  const chartWatchlists = useMemo(
+    () => watchlists.map((l) => ({ id: l.id, name: l.name })),
+    [watchlists]
+  );
 
   const scanIndex = useMemo(
     () => scanSymbols.findIndex((s) => s === symbol.toUpperCase()),
@@ -427,6 +486,10 @@ export default function Home() {
                         onToggleCrosshairSync={() => setSyncCrosshair((v) => !v)}
                         showGlobalControls
                         chartInstanceId="dual-left"
+                        stockFlag={currentStockFlag}
+                        onFlagChange={handleFlagChange}
+                        watchlists={chartWatchlists}
+                        onAddToWatchlist={handleAddToWatchlist}
                       />
                     </div>
                     <div className="flex-1 min-w-0 min-h-0">
@@ -439,6 +502,10 @@ export default function Home() {
                         dualModeEnabled={dualChartMode}
                         crosshairSyncEnabled={syncCrosshair}
                         chartInstanceId="dual-right"
+                        stockFlag={currentStockFlag}
+                        onFlagChange={handleFlagChange}
+                        watchlists={chartWatchlists}
+                        onAddToWatchlist={handleAddToWatchlist}
                       />
                     </div>
                   </div>
@@ -455,6 +522,10 @@ export default function Home() {
                     onToggleCrosshairSync={() => setSyncCrosshair((v) => !v)}
                     showGlobalControls
                     chartInstanceId="single"
+                    stockFlag={currentStockFlag}
+                    onFlagChange={handleFlagChange}
+                    watchlists={chartWatchlists}
+                    onAddToWatchlist={handleAddToWatchlist}
                   />
                 )}
                 <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700">

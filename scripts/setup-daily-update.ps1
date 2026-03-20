@@ -48,7 +48,7 @@ Log "=== Daily refresh finished ==="
 Get-ChildItem `$logDir -Filter "refresh-*.log" | Where-Object { `$_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force
 "@
 
-$wrapperPath = Join-Path $repo "scripts" "daily-refresh-runner.ps1"
+$wrapperPath = Join-Path (Join-Path $repo "scripts") "daily-refresh-runner.ps1"
 Set-Content -Path $wrapperPath -Value $wrapperScript -Encoding UTF8
 
 $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapperPath`""
