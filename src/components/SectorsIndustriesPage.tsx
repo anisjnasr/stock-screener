@@ -142,7 +142,7 @@ function HorizontalBars({
         </button>
         <TimeframePills value={timeframe} onChange={onTimeframeChange} />
       </div>
-      <div className="mb-1 grid grid-cols-[minmax(220px,420px)_1fr] items-center gap-1">
+      <div className="mb-1 grid grid-cols-[minmax(120px,220px)_1fr] sm:grid-cols-[minmax(220px,420px)_1fr] items-center gap-1">
         <span />
         <div className="relative h-5">
         <button
@@ -182,7 +182,7 @@ function HorizontalBars({
                 }`}
                 style={{ transitionDelay: `${Math.min(idx, 20) * 8}ms` }}
               >
-                <div className="grid grid-cols-[minmax(220px,420px)_1fr] items-center gap-1 text-xs">
+                <div className="grid grid-cols-[minmax(120px,220px)_1fr] sm:grid-cols-[minmax(220px,420px)_1fr] items-center gap-1 text-xs">
                   <span
                     className="text-zinc-700 dark:text-zinc-200 whitespace-nowrap overflow-x-auto"
                     title={item.name}
@@ -351,7 +351,7 @@ export default function SectorsIndustriesPage({
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-4">
+    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-2 sm:p-4">
       <div className="relative mb-3">
         <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
           Sectors / Industries

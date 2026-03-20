@@ -21,6 +21,11 @@
 
 html {
   font-size: calc(1.125rem * var(--font-scale, 1));
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  html { font-size: 14px; }
 }
 
 body {
@@ -50,4 +55,12 @@ body {
 }
 .dark *::-webkit-scrollbar-corner {
   background: #27272a;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }

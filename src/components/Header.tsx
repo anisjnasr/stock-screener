@@ -167,7 +167,7 @@ export default function Header({
   return (
     <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-sm">
       <div className="relative px-4 py-3">
-        <div className="absolute right-4 top-3 flex items-center gap-2">
+        <div className="absolute right-2 sm:right-4 top-3 flex items-center gap-1 sm:gap-2">
           <button
             type="button"
             onClick={cycleTheme}
@@ -186,38 +186,39 @@ export default function Header({
           <img
             src="/brand/stockstalker-lockup.svg"
             alt={brandName}
-            className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
+            className="hidden sm:block h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
           />
         </div>
-        <div className="flex items-center justify-center pr-28">
-          <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
+        <div className="flex items-center justify-center pr-10 sm:pr-28">
+          <div className="inline-flex items-center gap-0.5 sm:gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-0.5 sm:p-1">
             {[
-              { id: "home" as HeaderPage, label: "Home" },
-              { id: "market-breadth" as HeaderPage, label: "Sectors / Industries" },
-              { id: "market-monitor" as HeaderPage, label: "Market Monitor" },
-              { id: "breadth" as HeaderPage, label: "Breadth" },
+              { id: "home" as HeaderPage, label: "Home", shortLabel: "Home" },
+              { id: "market-breadth" as HeaderPage, label: "Sectors / Industries", shortLabel: "Sectors" },
+              { id: "market-monitor" as HeaderPage, label: "Market Monitor", shortLabel: "Monitor" },
+              { id: "breadth" as HeaderPage, label: "Breadth", shortLabel: "Breadth" },
             ].map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => onPageChange?.(item.id)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                className={`px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-medium rounded transition-colors ${
                   currentPage === item.id
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                 }`}
               >
-                {item.label}
+                <span className="sm:hidden">{item.shortLabel}</span>
+                <span className="hidden sm:inline">{item.label}</span>
               </button>
             ))}
           </div>
         </div>
         {currentPage === "home" && (
           <div
-            className="mt-3 pr-28 relative"
+            className="mt-2 sm:mt-3 relative"
           >
             <div
-              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-visible min-w-0 whitespace-nowrap"
+              className="-ml-2 flex flex-nowrap items-center justify-start gap-x-2 sm:gap-x-3 overflow-x-auto sm:overflow-visible min-w-0 whitespace-nowrap pr-2 sm:pr-28 pb-1 sm:pb-0 scrollbar-none"
               style={{ fontSize: "clamp(11px, 0.75vw, 14px)" }}
             >
               <div className="inline-flex items-center gap-1 rounded-md bg-transparent p-1 shrink-0">
@@ -259,7 +260,7 @@ export default function Header({
                       }}
                       onKeyDown={handleKeyDown}
                       placeholder="Search"
-                      className="w-44 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                      className="w-28 sm:w-44 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
                       aria-label="Stock search"
                       autoComplete="off"
                       aria-autocomplete="list"
@@ -372,7 +373,7 @@ export default function Header({
                 </span>
               </span>
             </div>
-            <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
+            <span className="hidden sm:inline-flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
               Last Update:{" "}
               <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
                 {latestDataDate ? formatDisplayDate(latestDataDate) : "NA"}

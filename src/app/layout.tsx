@@ -15,6 +15,13 @@ const geistMono = Geist_Mono({
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://stock-screener-orfz.onrender.com";
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: "Stock Stalker",
   description: "Stock Stalker - fundamentals, charts, screener, and market insights",

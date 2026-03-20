@@ -344,14 +344,25 @@ export default function Home() {
           <>
         <div className="min-w-0 flex-1 min-h-0 overflow-hidden border-b border-zinc-200 dark:border-zinc-800 flex flex-col">
           <div className="relative flex flex-1 min-h-0 min-w-0 gap-0 overflow-hidden">
+            {/* Mobile overlay backdrop */}
+            {!leftSidebarHidden && (
+              <div
+                className="md:hidden fixed inset-0 z-30 bg-black/40"
+                onClick={handleLeftSidebarToggle}
+                aria-hidden
+              />
+            )}
             <div
-              className={`relative min-h-0 shrink-0 overflow-hidden border-r border-zinc-200 dark:border-zinc-700 transition-[width] duration-300 ease-in-out ${
-                leftSidebarHidden ? "w-0" : "w-[22rem]"
-              }`}
+              className={`
+                max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[min(22rem,85vw)] max-md:shadow-xl
+                md:relative min-h-0 shrink-0 overflow-hidden border-r border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900
+                transition-all duration-300 ease-in-out
+                ${leftSidebarHidden ? "max-md:-translate-x-full md:w-0" : "max-md:translate-x-0 md:w-[22rem]"}
+              `}
             >
               <div
                 className={`h-full min-h-0 transition-transform duration-300 ease-in-out ${
-                  leftSidebarHidden ? "-translate-x-full" : "translate-x-0"
+                  leftSidebarHidden ? "max-md:translate-x-0 md:-translate-x-full" : "translate-x-0"
                 }`}
               >
                 <LeftSidebar
@@ -480,7 +491,7 @@ export default function Home() {
                         Quarterly Revenue & EPS
                       </span>
                     </div>
-                    <div className="w-[86px] shrink-0" aria-hidden />
+                    <div className="hidden md:block w-[86px] shrink-0" aria-hidden />
                   </button>
                   <div
                     className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-in-out ${

@@ -310,8 +310,8 @@ export default function BreadthPage() {
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-3">
-      <div className="mx-auto w-full max-w-[1800px] space-y-3">
+    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-2 sm:p-3">
+      <div className="mx-auto w-full max-w-[1800px] space-y-2 sm:space-y-3">
         <div className="flex flex-col items-center justify-center pt-1">
           <h1 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide text-center">
             Breadth
@@ -334,7 +334,7 @@ export default function BreadthPage() {
           </div>
         </div>
 
-        <div className="h-[460px] min-h-[360px] border border-zinc-200 dark:border-zinc-700 rounded-md overflow-hidden">
+        <div className="h-[280px] sm:h-[360px] lg:h-[460px] min-h-[220px] border border-zinc-200 dark:border-zinc-700 rounded-md overflow-hidden">
           {dualChartMode ? (
             <div className="flex h-full min-h-0 min-w-0">
               <div className="flex flex-1 min-w-0 min-h-0 border-r border-zinc-200 dark:border-zinc-700">

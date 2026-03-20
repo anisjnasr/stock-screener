@@ -227,7 +227,7 @@ export default function MarketMonitorTable() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 px-4 py-4">
+    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 px-2 sm:px-4 py-3 sm:py-4">
       <div className="relative mb-3">
         <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
           Market Monitor
@@ -239,7 +239,7 @@ export default function MarketMonitorTable() {
           </span>
         </p>
       </div>
-      <div className="mb-4 rounded border border-zinc-200 dark:border-zinc-700 p-3 bg-white dark:bg-zinc-900 shadow-sm">
+      <div className="mb-4 rounded border border-zinc-200 dark:border-zinc-700 p-2 sm:p-3 bg-white dark:bg-zinc-900 shadow-sm">
         <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2 text-center">
           Net New Highs
         </p>
@@ -251,7 +251,7 @@ export default function MarketMonitorTable() {
         </div>
       </div>
       <div className="max-w-full overflow-auto border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-900 shadow-sm">
-        <table className="min-w-full text-sm text-center border-collapse">
+        <table className="min-w-full text-xs sm:text-sm text-center border-collapse">
           <thead>
             <tr>
               <th className="sticky top-0 z-10 bg-zinc-900 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-r border-zinc-300 dark:border-zinc-700" />

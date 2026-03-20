@@ -2028,7 +2028,7 @@ export default function WatchlistPanel({
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left sidebar: tabs + watchlists or predefined lists */}
           <aside
-            className="shrink-0 border-r border-zinc-200 dark:border-zinc-700 flex flex-col overflow-hidden"
+            className="hidden sm:flex shrink-0 border-r border-zinc-200 dark:border-zinc-700 flex-col overflow-hidden"
             style={{ width: sidebarWidthPx }}
           >
             <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
