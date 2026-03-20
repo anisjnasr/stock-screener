@@ -186,8 +186,8 @@ jobs:
             echo "Running full 2-year backfill..."
             node scripts/compute-market-aggregates.mjs --days 504
           else
-            echo "Running incremental (1-day) update..."
-            node scripts/compute-market-aggregates.mjs --days 1
+            echo "Running incremental update (auto-fills gaps + latest 5 days)..."
+            node scripts/compute-market-aggregates.mjs --days 5
           fi
         timeout-minutes: 30
 

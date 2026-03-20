@@ -116,12 +116,31 @@ db.exec(`
   );
 `);
 
-// Get dates to process
-const targetDates = db.prepare(`
-  SELECT DISTINCT date FROM daily_bars
-  ORDER BY date DESC
-  LIMIT ?
-`).all(Math.max(backfillDays, 1)).map(r => r.date).reverse();
+// Get dates to process.
+// For incremental runs (small --days), auto-detect all dates in daily_bars that
+// are missing from market_monitor_daily so we never leave gaps.
+let targetDates;
+if (backfillDays <= 10) {
+  const missingDates = db.prepare(`
+    SELECT DISTINCT d.date FROM daily_bars d
+    LEFT JOIN market_monitor_daily m ON m.date = d.date
+    WHERE m.date IS NULL
+    ORDER BY d.date ASC
+  `).all().map(r => r.date);
+  const latestNDates = db.prepare(`
+    SELECT DISTINCT date FROM daily_bars
+    ORDER BY date DESC
+    LIMIT ?
+  `).all(Math.max(backfillDays, 1)).map(r => r.date);
+  const combined = new Set([...missingDates, ...latestNDates]);
+  targetDates = [...combined].sort();
+} else {
+  targetDates = db.prepare(`
+    SELECT DISTINCT date FROM daily_bars
+    ORDER BY date DESC
+    LIMIT ?
+  `).all(backfillDays).map(r => r.date).reverse();
+}
 
 if (targetDates.length === 0) {
   console.log("No dates to process.");

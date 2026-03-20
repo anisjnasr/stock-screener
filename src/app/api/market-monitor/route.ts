@@ -78,7 +78,9 @@ export async function GET() {
           cached.latestDate === latestDate &&
           Array.isArray(cached.rows)
         ) {
-          return NextResponse.json(cached);
+          return NextResponse.json(cached, {
+            headers: { "Cache-Control": "private, no-store" },
+          });
         }
       } catch {
         // ignore cache errors and recompute below
@@ -86,9 +88,10 @@ export async function GET() {
       }
     }
 
-    // Fast path: try precomputed table first
+    // Fast path: try precomputed table first (only if it covers the latest date)
     const precomputed = getPrecomputedMarketMonitor(queryStartDate, latestDate);
-    if (precomputed.length > 0) {
+    const precomputedLatest = precomputed.length > 0 ? precomputed[0]?.date : null;
+    if (precomputed.length > 0 && precomputedLatest === latestDate) {
       const rows = precomputed.map((r) => ({
         date: r.date,
         up4pct: r.up4pct,
@@ -128,7 +131,7 @@ export async function GET() {
       };
       recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "precomputed" } });
       return NextResponse.json(payload, {
-        headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+        headers: { "Cache-Control": "private, no-store" },
       });
     }
 
@@ -272,7 +275,7 @@ export async function GET() {
 
     recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "computed" } });
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch (e) {
     recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { status: 500 });
