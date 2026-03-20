@@ -52,9 +52,13 @@ try {
   // Column already exists
 }
 
-// Drop and recreate precomputed tables to handle schema changes from older DBs
-db.exec("DROP TABLE IF EXISTS market_monitor_daily");
-db.exec("DROP TABLE IF EXISTS breadth_daily");
+// For large backfills (>10 days), drop and recreate to handle schema changes.
+// For incremental runs (--days 1), preserve existing history.
+if (backfillDays > 10) {
+  console.log("Full backfill requested – dropping and recreating precomputed tables.");
+  db.exec("DROP TABLE IF EXISTS market_monitor_daily");
+  db.exec("DROP TABLE IF EXISTS breadth_daily");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS market_monitor_daily (

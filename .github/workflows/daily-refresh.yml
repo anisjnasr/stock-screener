@@ -143,6 +143,10 @@ jobs:
           console.log('DB size', Math.round(fs.statSync(p).size/1024/1024), 'MB');
           "
 
+      # Ensure companies table reflects the full all-stocks.json universe
+      - name: Refresh companies table
+        run: node scripts/seed-companies.mjs
+
       # Daily bars + indicators refresh
       - name: Refresh daily bars & indicators
         if: ${{ github.event.inputs.skip_daily != 'true' }}
@@ -164,10 +168,28 @@ jobs:
         run: node scripts/optimize-db.mjs
 
       # Precompute market monitor and breadth aggregates directly into DB tables.
-      # This is faster and more reliable than spinning up a dev server in CI.
+      # Uses --days 504 for a full 2-year backfill when the table is empty,
+      # otherwise appends just the latest day.
       - name: Precompute market aggregates
-        run: node scripts/compute-market-aggregates.mjs --days 1
-        timeout-minutes: 15
+        run: |
+          ROWS=$(node -e "
+            const Database = require('better-sqlite3');
+            const db = new Database('data/screener.db');
+            try {
+              const r = db.prepare('SELECT COUNT(*) AS n FROM market_monitor_daily').get();
+              console.log(r.n);
+            } catch { console.log('0'); }
+            db.close();
+          ")
+          echo "Existing precomputed rows: $ROWS"
+          if [ "$ROWS" -lt 50 ]; then
+            echo "Running full 2-year backfill..."
+            node scripts/compute-market-aggregates.mjs --days 504
+          else
+            echo "Running incremental (1-day) update..."
+            node scripts/compute-market-aggregates.mjs --days 1
+          fi
+        timeout-minutes: 30
 
       # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).
       - name: Warm secondary page caches
