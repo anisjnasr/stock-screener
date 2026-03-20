@@ -352,14 +352,17 @@ export default function SectorsIndustriesPage({
 
   return (
     <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-4">
-      <div className="mb-4 relative flex flex-wrap items-center justify-end gap-3">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 absolute left-1/2 -translate-x-1/2">
+      <div className="relative mb-3">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
           Sectors / Industries
         </h2>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 text-right">
+          Last Update:{" "}
+          <span className="tabular-nums">
+            {payload?.date ? formatDisplayDate(payload.date) : "—"}
+          </span>
+        </p>
       </div>
-      <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-        As of: {payload?.date ? formatDisplayDate(payload.date) : "—"}.
-      </p>
       {refreshing && (
         <div className="mb-3 overflow-hidden rounded border border-zinc-200 dark:border-zinc-700 h-1.5">
           <div className="h-full w-full animate-pulse bg-gradient-to-r from-transparent via-emerald-500/70 to-transparent" />

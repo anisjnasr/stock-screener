@@ -3127,7 +3127,7 @@ export default function WatchlistPanel({
                 </p>
                 {tableSource.fromScreener && screenerDbDate && (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                    As of {formatDisplayDate(screenerDbDate)}
+                    Last Update: {formatDisplayDate(screenerDbDate)}
                   </p>
                 )}
               </div>

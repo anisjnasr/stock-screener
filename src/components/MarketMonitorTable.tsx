@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDisplayDate } from "@/lib/date-format";
 import {
   Bar,
   BarChart,
@@ -61,24 +62,6 @@ function formatDateDmy(input: string): string {
   const month = MONTHS[d.getMonth()];
   const year = d.getFullYear();
   return `${day}-${month}-${year}`;
-}
-
-function formatLongDate(input: string): string {
-  const d = new Date(input.trim());
-  if (Number.isNaN(d.getTime())) return input;
-  const day = d.getDate();
-  const rem10 = day % 10;
-  const rem100 = day % 100;
-  const suffix =
-    rem10 === 1 && rem100 !== 11
-      ? "st"
-      : rem10 === 2 && rem100 !== 12
-        ? "nd"
-        : rem10 === 3 && rem100 !== 13
-          ? "rd"
-          : "th";
-  const month = d.toLocaleString("en-GB", { month: "long" });
-  return `${day}${suffix} ${month} ${d.getFullYear()}`;
 }
 
 function getPairCellClass(up: number | null | undefined, down: number | null | undefined): string {
@@ -250,9 +233,9 @@ export default function MarketMonitorTable() {
           Market Monitor
         </h2>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 text-right">
-          Last updated:{" "}
+          Last Update:{" "}
           <span className="tabular-nums">
-            {latestDate ? formatLongDate(latestDate) : "—"}
+            {latestDate ? formatDisplayDate(latestDate) : "—"}
           </span>
         </p>
       </div>

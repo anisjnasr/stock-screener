@@ -38,7 +38,7 @@ export default function Home() {
   const [dualLeftLoading, setDualLeftLoading] = useState(true);
   const [dualRightLoading, setDualRightLoading] = useState(true);
   const [relatedStocks, setRelatedStocks] = useState<Array<{ symbol: string; name: string }>>([]);
-  const [dbUpdateCompletedAt, setDbUpdateCompletedAt] = useState<Date | null>(null);
+  const [latestDataDate, setLatestDataDate] = useState<string | null>(null);
   const [openToRelatedListTrigger, setOpenToRelatedListTrigger] = useState<number | null>(null);
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<{
     kind: "sector" | "industry" | "theme" | "index";
@@ -65,26 +65,16 @@ export default function Home() {
   const { yearlyRows, quarterlyRows, sidebarLoading, quarterlyLoading } = useFundamentals(symbol);
   const { ownershipData, ownershipQuarters } = useOwnership(symbol);
 
-  // Fetch health for DB update timestamp
   useEffect(() => {
     let cancelled = false;
     const fetchHealth = async () => {
       try {
         const res = await fetch("/api/health");
-        const json = (await res.json()) as {
-          dbUpdatedAt?: string | null;
-          latestScreenerDate?: string | null;
-        };
+        const json = (await res.json()) as { latestScreenerDate?: string | null };
         if (cancelled) return;
-        const ts = json?.dbUpdatedAt ?? (json?.latestScreenerDate ? `${json.latestScreenerDate}T00:00:00.000Z` : null);
-        if (ts) {
-          const d = new Date(String(ts));
-          setDbUpdateCompletedAt(Number.isNaN(d.getTime()) ? null : d);
-        } else {
-          setDbUpdateCompletedAt(null);
-        }
+        setLatestDataDate(json?.latestScreenerDate ?? null);
       } catch {
-        if (!cancelled) setDbUpdateCompletedAt(null);
+        if (!cancelled) setLatestDataDate(null);
       }
     };
     fetchHealth();
@@ -330,7 +320,7 @@ export default function Home() {
         loading={loading}
         currentPage={page}
         onPageChange={setPage}
-        dbUpdateCompletedAt={dbUpdateCompletedAt}
+        latestDataDate={latestDataDate}
         leftSidebarHidden={leftSidebarHidden}
         onLeftSidebarToggle={handleLeftSidebarToggle}
       />

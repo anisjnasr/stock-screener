@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "@/hooks/useTheme";
+import { formatDisplayDate } from "@/lib/date-format";
 
 type SearchSuggestion = {
   symbol: string;
@@ -46,46 +47,10 @@ type HeaderProps = {
   loading?: boolean;
   currentPage?: HeaderPage;
   onPageChange?: (page: HeaderPage) => void;
-  dbUpdateCompletedAt?: Date | null;
+  latestDataDate?: string | null;
   leftSidebarHidden?: boolean;
   onLeftSidebarToggle?: () => void;
 };
-
-function ordinal(day: number): string {
-  const rem10 = day % 10;
-  const rem100 = day % 100;
-  if (rem10 === 1 && rem100 !== 11) return `${day}st`;
-  if (rem10 === 2 && rem100 !== 12) return `${day}nd`;
-  if (rem10 === 3 && rem100 !== 13) return `${day}rd`;
-  return `${day}th`;
-}
-
-function formatDbUpdateTimestamp(input: Date | null | undefined): string {
-  if (!input || Number.isNaN(input.getTime())) return "NA";
-  const d = input;
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-  const day = ordinal(d.getDate());
-  const month = months[d.getMonth()];
-  const year = d.getFullYear();
-  const h24 = d.getHours();
-  const hour12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  const minutes = d.getMinutes().toString().padStart(2, "0");
-  const ampm = h24 < 12 ? "am" : "pm";
-  return `${day} ${month} ${year} ${hour12}:${minutes}${ampm}`;
-}
 
 function fmtNum(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return "NA";
@@ -112,7 +77,7 @@ export default function Header({
   loading,
   currentPage,
   onPageChange,
-  dbUpdateCompletedAt,
+  latestDataDate,
   leftSidebarHidden = false,
   onLeftSidebarToggle,
 }: HeaderProps) {
@@ -408,9 +373,9 @@ export default function Header({
               </span>
             </div>
             <span className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
-              DB Update:{" "}
+              Last Update:{" "}
               <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
-                {formatDbUpdateTimestamp(dbUpdateCompletedAt)}
+                {latestDataDate ? formatDisplayDate(latestDataDate) : "NA"}
               </span>
             </span>
           </div>
