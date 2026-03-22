@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { existsSync, unlinkSync, statSync, createWriteStream, renameSync } from "fs";
+import {
+  existsSync,
+  unlinkSync,
+  statSync,
+  writeFileSync,
+  createReadStream,
+  createWriteStream,
+  renameSync,
+  mkdirSync,
+} from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
-import { Readable } from "stream";
+import { createGunzip } from "zlib";
 import { pipeline } from "stream/promises";
 
 const DATA_DIR = join(process.cwd(), "data");
 const DB_PATH = join(DATA_DIR, "screener.db");
-const GITHUB_REPO = "anisjnasr/stock-screener";
 
 const STALE_CACHES = [
   "market-monitor-cache.json",
@@ -15,129 +22,73 @@ const STALE_CACHES = [
   "breadth-cache.json",
 ];
 
-type Artifact = {
-  id: number;
-  name: string;
-  archive_download_url: string;
-  expired: boolean;
-  created_at: string;
-  size_in_bytes: number;
-};
-
 function log(msg: string) {
   console.log(`[sync-db] ${msg}`);
 }
 
 /**
- * Downloads a GitHub artifact ZIP and extracts screener.db to `dest`.
+ * Receives a gzipped screener.db directly from the GitHub Actions workflow.
+ * The workflow compresses and uploads the DB in a single curl call — no
+ * GitHub artifact API, no GITHUB_TOKEN, no shell tools (curl/wget/unzip)
+ * needed on the server side.
  *
- * Uses Node.js native fetch (streaming to disk) + unzip command.
- * No curl/funzip/bash dependency — works on Alpine minimal images.
+ * Workflow sends: curl --data-binary @screener.db.gz ... /api/admin/sync-db
+ * This route:     receives body → write to disk → gunzip → swap DB file
  */
-async function downloadAndExtract(
-  url: string,
-  token: string,
-  dest: string
-): Promise<void> {
-  const tmpZip = `${dest}.zip`;
-  try {
-    log("Downloading artifact via Node.js fetch (streaming to disk)...");
-    const res = await fetch(url, {
-      headers: { Authorization: `token ${token}` },
-      redirect: "follow",
-    });
-    if (!res.ok || !res.body) {
-      throw new Error(`Artifact download failed: HTTP ${res.status}`);
-    }
-
-    await pipeline(
-      Readable.fromWeb(res.body as import("stream/web").ReadableStream),
-      createWriteStream(tmpZip)
-    );
-
-    const zipMb = Math.round(statSync(tmpZip).size / 1024 / 1024);
-    log(`Downloaded ZIP: ${zipMb}MB`);
-
-    execSync(`unzip -o -p "${tmpZip}" screener.db > "${dest}"`, {
-      timeout: 300_000,
-      stdio: "pipe",
-    });
-  } finally {
-    try { if (existsSync(tmpZip)) unlinkSync(tmpZip); } catch { /* best effort */ }
-  }
-}
-
 export async function POST(request: NextRequest) {
   const adminSecret = process.env.ADMIN_SECRET;
-  const githubToken = process.env.GITHUB_TOKEN;
-
   const auth = request.headers.get("authorization");
   if (!adminSecret || auth !== `Bearer ${adminSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!githubToken) {
-    return NextResponse.json(
-      { error: "GITHUB_TOKEN not configured on server" },
-      { status: 500 }
-    );
-  }
-
-  const tmpDb = join(DATA_DIR, `sync-${Date.now()}.db`);
+  const ts = Date.now();
+  const tmpGz = join(DATA_DIR, `sync-${ts}.gz`);
+  const tmpDb = join(DATA_DIR, `sync-${ts}.db`);
 
   const cleanup = () => {
-    for (const p of [tmpDb, `${tmpDb}.zip`]) {
-      try { if (existsSync(p)) unlinkSync(p); } catch { /* best effort */ }
+    for (const p of [tmpGz, tmpDb]) {
+      try {
+        if (existsSync(p)) unlinkSync(p);
+      } catch {
+        /* best effort */
+      }
     }
   };
 
   try {
-    log("Fetching artifact list from GitHub...");
-    const listRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts?per_page=20`,
-      {
-        headers: {
-          Authorization: `token ${githubToken}`,
-          Accept: "application/vnd.github+json",
-        },
-      }
-    );
-    if (!listRes.ok) {
-      const text = await listRes.text();
+    mkdirSync(DATA_DIR, { recursive: true });
+
+    log("Receiving gzipped DB upload...");
+    const body = Buffer.from(await request.arrayBuffer());
+    if (body.length < 1024) {
       return NextResponse.json(
-        { error: `GitHub API ${listRes.status}: ${text.slice(0, 200)}` },
-        { status: 502 }
+        { error: "Request body too small — expected gzipped screener.db" },
+        { status: 400 }
       );
     }
+    writeFileSync(tmpGz, body);
+    const gzMb = (body.length / 1024 / 1024).toFixed(1);
+    log(`Received ${gzMb}MB compressed`);
 
-    const listData = (await listRes.json()) as { artifacts: Artifact[] };
-    const artifact = listData.artifacts?.find(
-      (a) => a.name.startsWith("screener-db-") && !a.expired
+    log("Decompressing...");
+    await pipeline(
+      createReadStream(tmpGz),
+      createGunzip(),
+      createWriteStream(tmpDb)
     );
-    if (!artifact) {
-      return NextResponse.json(
-        { error: "No unexpired screener-db artifact found" },
-        { status: 404 }
-      );
-    }
-
-    log(
-      `Found artifact: ${artifact.name} (${Math.round(artifact.size_in_bytes / 1024 / 1024)}MB, created ${artifact.created_at})`
-    );
-
-    log("Downloading and extracting artifact...");
-    await downloadAndExtract(artifact.archive_download_url, githubToken, tmpDb);
+    unlinkSync(tmpGz);
 
     if (!existsSync(tmpDb) || statSync(tmpDb).size < 1024) {
       cleanup();
       return NextResponse.json(
-        { error: "Extracted DB is missing or too small" },
+        { error: "Decompressed DB is missing or too small" },
         { status: 422 }
       );
     }
 
-    const dbSize = Math.round(statSync(tmpDb).size / 1024 / 1024);
-    log(`Extracted DB: ${dbSize}MB`);
+    const dbMb = Math.round(statSync(tmpDb).size / 1024 / 1024);
+    log(`Decompressed DB: ${dbMb}MB`);
 
     log("Swapping DB file...");
     renameSync(tmpDb, DB_PATH);
@@ -145,16 +96,18 @@ export async function POST(request: NextRequest) {
     log("Clearing stale disk caches...");
     for (const name of STALE_CACHES) {
       const p = join(DATA_DIR, name);
-      try { if (existsSync(p)) unlinkSync(p); } catch { /* best effort */ }
+      try {
+        if (existsSync(p)) unlinkSync(p);
+      } catch {
+        /* best effort */
+      }
     }
 
     const finalSize = Math.round(statSync(DB_PATH).size / 1024 / 1024);
-    log(`Sync complete. DB: ${finalSize}MB, artifact: ${artifact.name}`);
+    log(`Sync complete. DB: ${finalSize}MB`);
 
     return NextResponse.json({
       ok: true,
-      artifact: artifact.name,
-      artifactCreated: artifact.created_at,
       dbSizeMb: finalSize,
       syncedAt: new Date().toISOString(),
     });

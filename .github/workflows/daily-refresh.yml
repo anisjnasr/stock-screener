@@ -241,7 +241,10 @@ jobs:
           retention-days: 3
           compression-level: 1
 
-      # Sync refreshed DB to Render persistent disk
+      # Push DB directly to Render (gzip + upload).
+      # The sync-db endpoint receives the gzipped DB, decompresses, and swaps
+      # the file on the persistent disk. No GITHUB_TOKEN or artifact API needed
+      # on the Render side.
       - name: Sync DB to Render
         continue-on-error: true
         env:
@@ -252,14 +255,20 @@ jobs:
             echo "Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET not configured"
             exit 0
           fi
-          echo "Triggering DB sync on Render..."
+          echo "Compressing DB for upload..."
+          gzip -1 -c data/screener.db > /tmp/screener.db.gz
+          SIZE_MB=$(du -m /tmp/screener.db.gz | cut -f1)
+          echo "Compressed size: ${SIZE_MB}MB"
+          echo "Uploading to Render..."
           STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
             --max-time 600 \
             -X POST "${RENDER_APP_URL}/api/admin/sync-db" \
             -H "Authorization: Bearer ${ADMIN_SECRET}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/gzip" \
+            --data-binary @/tmp/screener.db.gz)
           echo "Response status: $STATUS"
           cat /tmp/sync-response.json
+          rm -f /tmp/screener.db.gz
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
             echo "DB sync successful"
           else
