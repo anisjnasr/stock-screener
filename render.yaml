@@ -20,7 +20,8 @@ services:
         sync: false
 
     # Persistent disk for data/screener.db (init and refresh scripts write here)
+    # mountPath must match the Docker container's data directory (/app/data)
     disk:
       name: screener-data
-      mountPath: /opt/render/project/src/data
+      mountPath: /app/data
       sizeGB: 5

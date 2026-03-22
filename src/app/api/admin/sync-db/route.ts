@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { existsSync, unlinkSync, statSync } from "fs";
+import { existsSync, unlinkSync, statSync, createWriteStream, renameSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 const DATA_DIR = join(process.cwd(), "data");
 const DB_PATH = join(DATA_DIR, "screener.db");
@@ -27,43 +29,39 @@ function log(msg: string) {
 }
 
 /**
- * Downloads a GitHub artifact and extracts screener.db to `dest`.
+ * Downloads a GitHub artifact ZIP and extracts screener.db to `dest`.
  *
- * Strategy 1 (preferred): curl | funzip  — streams the ZIP through funzip
- *   directly to the output file. Peak memory: ~256KB (curl buffer + funzip).
- *   Peak disk: only the output file (no ZIP stored).
- *
- * Strategy 2 (fallback): curl → disk ZIP → unzip -p → output file.
- *   Used when funzip is not available. Needs temporary disk space for the ZIP.
+ * Uses Node.js native fetch (streaming to disk) + unzip command.
+ * No curl/funzip/bash dependency — works on Alpine minimal images.
  */
-function downloadAndExtract(
+async function downloadAndExtract(
   url: string,
   token: string,
   dest: string
-): void {
-  const authHeader = `Authorization: token ${token}`;
-  const curlBase = `curl -fSL --max-time 900 -H "${authHeader}"`;
-
-  try {
-    execSync(
-      `${curlBase} "${url}" | funzip > "${dest}"`,
-      { timeout: 960_000, stdio: "pipe", shell: "/bin/bash" }
-    );
-    return;
-  } catch {
-    log("funzip not available, falling back to download-then-extract");
-  }
-
+): Promise<void> {
   const tmpZip = `${dest}.zip`;
   try {
-    execSync(
-      `${curlBase} -o "${tmpZip}" "${url}"`,
-      { timeout: 960_000, stdio: "pipe" }
+    log("Downloading artifact via Node.js fetch (streaming to disk)...");
+    const res = await fetch(url, {
+      headers: { Authorization: `token ${token}` },
+      redirect: "follow",
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`Artifact download failed: HTTP ${res.status}`);
+    }
+
+    await pipeline(
+      Readable.fromWeb(res.body as import("stream/web").ReadableStream),
+      createWriteStream(tmpZip)
     );
-    execSync(
-      `unzip -p "${tmpZip}" screener.db > "${dest}"`,
-      { timeout: 300_000, stdio: "pipe", shell: "/bin/bash" }
-    );
+
+    const zipMb = Math.round(statSync(tmpZip).size / 1024 / 1024);
+    log(`Downloaded ZIP: ${zipMb}MB`);
+
+    execSync(`unzip -o -p "${tmpZip}" screener.db > "${dest}"`, {
+      timeout: 300_000,
+      stdio: "pipe",
+    });
   } finally {
     try { if (existsSync(tmpZip)) unlinkSync(tmpZip); } catch { /* best effort */ }
   }
@@ -127,8 +125,8 @@ export async function POST(request: NextRequest) {
       `Found artifact: ${artifact.name} (${Math.round(artifact.size_in_bytes / 1024 / 1024)}MB, created ${artifact.created_at})`
     );
 
-    log("Downloading and extracting via curl (memory-safe)...");
-    downloadAndExtract(artifact.archive_download_url, githubToken, tmpDb);
+    log("Downloading and extracting artifact...");
+    await downloadAndExtract(artifact.archive_download_url, githubToken, tmpDb);
 
     if (!existsSync(tmpDb) || statSync(tmpDb).size < 1024) {
       cleanup();
@@ -142,7 +140,7 @@ export async function POST(request: NextRequest) {
     log(`Extracted DB: ${dbSize}MB`);
 
     log("Swapping DB file...");
-    execSync(`mv "${tmpDb}" "${DB_PATH}"`, { stdio: "pipe" });
+    renameSync(tmpDb, DB_PATH);
 
     log("Clearing stale disk caches...");
     for (const name of STALE_CACHES) {
