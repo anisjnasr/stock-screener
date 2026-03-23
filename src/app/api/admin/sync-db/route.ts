@@ -3,7 +3,6 @@ import {
   existsSync,
   unlinkSync,
   statSync,
-  writeFileSync,
   createReadStream,
   createWriteStream,
   renameSync,
@@ -21,6 +20,33 @@ const STALE_CACHES = [
   "sectors-industries-cache.json",
   "breadth-cache.json",
 ];
+
+/** Stream request body to disk without buffering the whole upload in RAM (512MB Render limit). */
+async function streamRequestBodyToFile(
+  body: ReadableStream<Uint8Array>,
+  destPath: string
+): Promise<void> {
+  const ws = createWriteStream(destPath);
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value?.byteLength) {
+        await new Promise<void>((resolve, reject) => {
+          ws.write(Buffer.from(value), (err: Error | null | undefined) =>
+            err ? reject(err) : resolve()
+          );
+        });
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  await new Promise<void>((resolve, reject) => {
+    ws.end((err: Error | null | undefined) => (err ? reject(err) : resolve()));
+  });
+}
 
 function log(msg: string) {
   console.log(`[sync-db] ${msg}`);
@@ -59,16 +85,21 @@ export async function POST(request: NextRequest) {
   try {
     mkdirSync(DATA_DIR, { recursive: true });
 
-    log("Receiving gzipped DB upload...");
-    const body = Buffer.from(await request.arrayBuffer());
-    if (body.length < 1024) {
+    log("Receiving gzipped DB upload (streaming to disk)...");
+    const body = request.body;
+    if (!body) {
+      return NextResponse.json({ error: "Missing request body" }, { status: 400 });
+    }
+    await streamRequestBodyToFile(body, tmpGz);
+    const gzBytes = statSync(tmpGz).size;
+    if (gzBytes < 1024) {
+      cleanup();
       return NextResponse.json(
         { error: "Request body too small — expected gzipped screener.db" },
         { status: 400 }
       );
     }
-    writeFileSync(tmpGz, body);
-    const gzMb = (body.length / 1024 / 1024).toFixed(1);
+    const gzMb = (gzBytes / 1024 / 1024).toFixed(1);
     log(`Received ${gzMb}MB compressed`);
 
     log("Decompressing...");
