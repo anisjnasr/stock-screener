@@ -99,11 +99,12 @@ export async function POST(request: NextRequest) {
     ).join("\n");
     const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // Two-step: download ZIP to disk, then extract with `unzip -p` (handles
-    // ZIP64 which funzip cannot). Disk budget on 10 GB:
+    // Two-step: download ZIP to disk, then extract with `unzip -o` directly
+    // to the data directory (avoids stdout pipe corruption on large files).
+    // Disk budget on 10 GB:
     //   1. Delete old DB + caches → ~0 GB used
     //   2. Download ZIP → ~2.2 GB
-    //   3. Extract: unzip -p reads ZIP, pipes to screener.db → peak ~7.2 GB
+    //   3. Extract directly to disk → peak ~7.2 GB (ZIP + extracted DB)
     //   4. Delete ZIP → ~5 GB final
     const script = [
       `set -e`,
@@ -116,8 +117,10 @@ export async function POST(request: NextRequest) {
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
       `  -o "${tmpZip}" "$SYNC_URL" 2>> "${SYNC_LOG}"`,
       `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
-      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB. Extracting..." >> "${SYNC_LOG}"`,
-      `unzip -p "${tmpZip}" > "${DB_PATH}"`,
+      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB. Listing contents:" >> "${SYNC_LOG}"`,
+      `unzip -l "${tmpZip}" >> "${SYNC_LOG}" 2>&1`,
+      `echo "[sync] Extracting to ${DATA_DIR}..." >> "${SYNC_LOG}"`,
+      `unzip -o "${tmpZip}" -d "${DATA_DIR}" >> "${SYNC_LOG}" 2>&1`,
       `rm -f "${tmpZip}"`,
       `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
       `echo "[sync] $(date -u) Complete. DB: \${SIZE}MB" >> "${SYNC_LOG}"`,
