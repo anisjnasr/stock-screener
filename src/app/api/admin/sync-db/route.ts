@@ -108,6 +108,10 @@ export async function POST(request: NextRequest) {
     //   4. Delete ZIP → ~5 GB final
     const script = [
       `set -e`,
+      `echo "[sync] Tool check:"`,
+      `echo "  curl: $(which curl 2>&1 || echo NOT FOUND)"`,
+      `echo "  bsdtar: $(which bsdtar 2>&1 || echo NOT FOUND)"`,
+      `echo "  unzip: $(which unzip 2>&1 || echo NOT FOUND)"`,
       `echo "[sync] $(date -u) Downloading ${artifact.name}..."`,
       `rm -f "${DB_PATH}"`,
       `rm -f "${tmpZip}"`,
@@ -118,12 +122,17 @@ export async function POST(request: NextRequest) {
       `  -o "${tmpZip}" "$SYNC_URL"`,
       `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
       `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB"`,
-      `echo "[sync] Extracting with bsdtar to ${DATA_DIR}..."`,
-      `bsdtar xf "${tmpZip}" -C "${DATA_DIR}"`,
+      // Use bsdtar if available (handles ZIP64), fallback to unzip
+      `if command -v bsdtar >/dev/null 2>&1; then`,
+      `  echo "[sync] Extracting with bsdtar..."`,
+      `  bsdtar xf "${tmpZip}" -C "${DATA_DIR}"`,
+      `else`,
+      `  echo "[sync] bsdtar not found, trying unzip..."`,
+      `  unzip -o "${tmpZip}" -d "${DATA_DIR}"`,
+      `fi`,
       `rm -f "${tmpZip}"`,
       `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
       `echo "[sync] $(date -u) Extracted. DB: \${SIZE}MB"`,
-      // Verify SQLite header magic bytes
       `HEADER=$(head -c 15 "${DB_PATH}")`,
       `if [ "$HEADER" = "SQLite format 3" ]; then`,
       `  echo "[sync] SQLite header OK"`,
@@ -142,17 +151,26 @@ export async function POST(request: NextRequest) {
       `/bin/sh "${scriptPath}"`,
       {
         timeout: 960_000,
+        maxBuffer: 10 * 1024 * 1024,
         env: {
           ...process.env,
           SYNC_TOKEN: githubToken,
           SYNC_URL: artifact.archive_download_url,
         },
       },
-      (error: Error | null, _stdout: string, stderr: string) => {
+      (error: Error | null, stdout: string, stderr: string) => {
+        if (stdout) {
+          for (const line of stdout.split("\n").filter(Boolean)) {
+            log(line);
+          }
+        }
+        if (stderr) {
+          for (const line of stderr.split("\n").filter(Boolean)) {
+            log(`stderr: ${line}`);
+          }
+        }
         if (error) {
-          log(
-            `Background sync FAILED: ${error.message}${stderr ? ` | ${stderr.slice(0, 500)}` : ""}`
-          );
+          log(`Background sync FAILED: ${error.message}`);
         } else {
           try {
             const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
