@@ -35,11 +35,11 @@ function log(msg: string) {
 /**
  * Trigger-based DB sync. GH Actions calls this with a small request (no body);
  * the endpoint looks up the latest artifact from the GitHub API, then spawns a
- * background `curl | funzip` to download + extract the DB directly on the
- * persistent disk. Returns immediately so HTTP timeouts are not an issue.
+ * background shell process: curl downloads the ZIP to disk, then unzip -p
+ * extracts screener.db. Requires ~7 GB peak disk (ZIP + extracted DB).
  *
- * Requirements on the Docker image: curl, unzip (provides funzip).
- * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with actions:read).
+ * Requirements on the Docker image: curl, unzip.
+ * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with repo scope).
  */
 export async function POST(request: NextRequest) {
   const adminSecret = process.env.ADMIN_SECRET;
@@ -96,20 +96,28 @@ export async function POST(request: NextRequest) {
     const cacheRm = STALE_CACHES.map(
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
+    const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // Delete old DB first to free disk space (the DB is ~5 GB and disk may
-    // only be 5-10 GB). This causes brief downtime during download (~1-3 min)
-    // but is the only way to fit on a small disk. The stream goes through
-    // funzip directly to the final path — no temp file needed.
+    // Two-step: download ZIP to disk, then extract with `unzip -p` (handles
+    // ZIP64 which funzip cannot). Disk budget on 10 GB:
+    //   1. Delete old DB + caches → ~0 GB used
+    //   2. Download ZIP → ~2.2 GB
+    //   3. Extract: unzip -p reads ZIP, pipes to screener.db → peak ~7.2 GB
+    //   4. Delete ZIP → ~5 GB final
     const script = [
       `set -e`,
       `echo "[sync] $(date -u) Downloading ${artifact.name}..." > "${SYNC_LOG}"`,
       `rm -f "${DB_PATH}"`,
+      `rm -f "${tmpZip}"`,
       cacheRm,
-      `echo "[sync] Old DB removed. Downloading..." >> "${SYNC_LOG}"`,
+      `echo "[sync] Old DB removed. Downloading ZIP..." >> "${SYNC_LOG}"`,
       `curl -fSL --max-time 900 \\`,
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
-      `  "$SYNC_URL" 2>> "${SYNC_LOG}" | funzip > "${DB_PATH}"`,
+      `  -o "${tmpZip}" "$SYNC_URL" 2>> "${SYNC_LOG}"`,
+      `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
+      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB. Extracting..." >> "${SYNC_LOG}"`,
+      `unzip -p "${tmpZip}" > "${DB_PATH}"`,
+      `rm -f "${tmpZip}"`,
       `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
       `echo "[sync] $(date -u) Complete. DB: \${SIZE}MB" >> "${SYNC_LOG}"`,
     ].join("\n");
@@ -152,7 +160,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       message:
-        "DB sync started in background. The download runs via curl+funzip on the server. Check Render logs for progress.",
+        "DB sync started in background. Downloads ZIP then extracts via unzip. Check Render logs for [sync-db] progress.",
       artifact: artifact.name,
       artifactCreated: artifact.created_at,
       artifactSizeMb: sizeMb,
