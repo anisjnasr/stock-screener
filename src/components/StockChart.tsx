@@ -1278,7 +1278,7 @@ export default function StockChart({
                 className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35 flex items-center gap-1"
                 title="Flag stock"
               >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
                 </svg>
               </button>
@@ -1360,6 +1360,126 @@ export default function StockChart({
               <span>V {fmtVol(crosshairCandle.volume)}</span>
             </div>
           )}
+          <div className="absolute top-10 left-2 z-10 flex items-center gap-1.5">
+            {timeframe === "daily" && (
+              <button
+                type="button"
+                onClick={() => handleUpdateSettings({ showEma50: !settings.showEma50 })}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                style={{
+                  color: settings.showEma50 ? "#2196F3" : "#2196F380",
+                  borderColor: settings.showEma50 ? "#2196F350" : "#2196F320",
+                  backgroundColor: settings.showEma50 ? "#2196F315" : "transparent",
+                  textDecoration: settings.showEma50 ? "none" : "line-through",
+                }}
+                title="Toggle EMA 50"
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  {settings.showEma50 ? (
+                    <>
+                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+                      <circle cx="8" cy="8" r="2.5" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 2l12 12" />
+                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
+                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
+                    </>
+                  )}
+                </svg>
+                EMA(50)
+              </button>
+            )}
+            {timeframe === "daily" && (
+              <button
+                type="button"
+                onClick={() => handleUpdateSettings({ showEma200: !settings.showEma200 })}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                style={{
+                  color: settings.showEma200 ? "#FF5252" : "#FF525280",
+                  borderColor: settings.showEma200 ? "#FF525250" : "#FF525220",
+                  backgroundColor: settings.showEma200 ? "#FF525215" : "transparent",
+                  textDecoration: settings.showEma200 ? "none" : "line-through",
+                }}
+                title="Toggle EMA 200"
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  {settings.showEma200 ? (
+                    <>
+                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+                      <circle cx="8" cy="8" r="2.5" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 2l12 12" />
+                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
+                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
+                    </>
+                  )}
+                </svg>
+                EMA(200)
+              </button>
+            )}
+            {timeframe === "weekly" && (
+              <button
+                type="button"
+                onClick={() => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly })}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                style={{
+                  color: settings.showEma40Weekly ? "#9C27B0" : "#9C27B080",
+                  borderColor: settings.showEma40Weekly ? "#9C27B050" : "#9C27B020",
+                  backgroundColor: settings.showEma40Weekly ? "#9C27B015" : "transparent",
+                  textDecoration: settings.showEma40Weekly ? "none" : "line-through",
+                }}
+                title="Toggle EMA 40 Weekly"
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  {settings.showEma40Weekly ? (
+                    <>
+                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+                      <circle cx="8" cy="8" r="2.5" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 2l12 12" />
+                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
+                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
+                    </>
+                  )}
+                </svg>
+                EMA(40W)
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleUpdateSettings({ showVolume: !settings.showVolume })}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+              style={{
+                color: settings.showVolume ? "#7B8794" : "#7B879480",
+                borderColor: settings.showVolume ? "#7B879450" : "#7B879420",
+                backgroundColor: settings.showVolume ? "#7B879415" : "transparent",
+                textDecoration: settings.showVolume ? "none" : "line-through",
+              }}
+              title="Toggle Volume"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                {settings.showVolume ? (
+                  <>
+                    <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+                    <circle cx="8" cy="8" r="2.5" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M2 2l12 12" />
+                    <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
+                    <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
+                  </>
+                )}
+              </svg>
+              Vol
+            </button>
+          </div>
           {selectedHandles.map((h) => (
             <button
               key={h.key}

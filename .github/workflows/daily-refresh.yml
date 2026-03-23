@@ -241,10 +241,10 @@ jobs:
           retention-days: 3
           compression-level: 1
 
-      # Push DB directly to Render (gzip + upload).
-      # The sync-db endpoint receives the gzipped DB, decompresses, and swaps
-      # the file on the persistent disk. No GITHUB_TOKEN or artifact API needed
-      # on the Render side.
+      # Trigger DB sync on Render. The sync-db endpoint looks up the latest
+      # artifact from the GitHub API and downloads it directly on the server
+      # via curl+funzip (background process). No large upload needed.
+      # Requires GITHUB_TOKEN to be set on Render's environment.
       - name: Sync DB to Render
         continue-on-error: true
         env:
@@ -255,23 +255,16 @@ jobs:
             echo "Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET not configured"
             exit 0
           fi
-          echo "Compressing DB for upload..."
-          # -9 = smaller payload (less RAM if proxy buffers body); runner has plenty of CPU
-          gzip -9 -c data/screener.db > /tmp/screener.db.gz
-          SIZE_MB=$(du -m /tmp/screener.db.gz | cut -f1)
-          echo "Compressed size: ${SIZE_MB}MB"
-          echo "Uploading to Render..."
+          echo "Triggering DB sync on Render..."
           STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
-            --max-time 600 \
+            --max-time 30 \
             -X POST "${RENDER_APP_URL}/api/admin/sync-db" \
             -H "Authorization: Bearer ${ADMIN_SECRET}" \
-            -H "Content-Type: application/gzip" \
-            --data-binary @/tmp/screener.db.gz)
+            -H "Content-Type: application/json")
           echo "Response status: $STATUS"
           cat /tmp/sync-response.json
-          rm -f /tmp/screener.db.gz
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
-            echo "DB sync successful"
+            echo "DB sync triggered successfully (download runs in background on Render)"
           else
-            echo "::warning::DB sync returned status $STATUS (non-fatal)"
+            echo "::warning::DB sync trigger returned status $STATUS (non-fatal)"
           fi

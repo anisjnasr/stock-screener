@@ -70,6 +70,7 @@ export type Quote = {
   price: number;
   changesPercentage: number;
   change: number;
+  open: number;
   dayLow: number;
   dayHigh: number;
   yearHigh: number;
@@ -79,6 +80,7 @@ export type Quote = {
   marketCap?: number;
   priceAvg50?: number;
   priceAvg200?: number;
+  previousClose: number;
 };
 
 export type Profile = {
@@ -188,6 +190,7 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
     price: displayPrice,
     changesPercentage: changePct,
     change,
+    open: pickPositive(day.o, prev.o, close) ?? close,
     dayLow: pickPositive(day.l, prev.l, close) ?? close,
     dayHigh: pickPositive(day.h, prev.h, close) ?? close,
     yearHigh: pickPositive(day.h, prev.h, close) ?? close,
@@ -197,6 +200,7 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
     marketCap: undefined,
     priceAvg50: undefined,
     priceAvg200: undefined,
+    previousClose: prevClose,
   };
 }
 

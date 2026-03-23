@@ -31,6 +31,29 @@ db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 30000");
 db.pragma("cache_size = -64000");
 
+// Backfill shares_outstanding from quote_daily market_cap where missing
+const backfillResult = db.prepare(`
+  UPDATE companies
+  SET shares_outstanding = (
+    SELECT q.market_cap / q.last_price
+    FROM quote_daily q
+    WHERE q.symbol = companies.symbol
+      AND q.last_price > 0
+      AND q.market_cap > 0
+    ORDER BY q.date DESC
+    LIMIT 1
+  ),
+  updated_at = datetime('now')
+  WHERE shares_outstanding IS NULL
+    AND EXISTS (
+      SELECT 1 FROM quote_daily q
+      WHERE q.symbol = companies.symbol
+        AND q.market_cap > 0
+        AND q.last_price > 0
+    )
+`).run();
+console.log(`Backfilled shares_outstanding for ${backfillResult.changes} companies`);
+
 function loadIndexSymbols(filename) {
   const path = join(__dirname, "..", "data", filename);
   if (!existsSync(path)) return [];

@@ -578,6 +578,7 @@ export default function WatchlistPanel({
   const dragStartHeight = useRef<number>(32);
   const lastDraggedHeightPx = useRef<number>(32);
   const isDraggingPanel = useRef(false);
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
   const resizeColRef = useRef<TableColumnId | null>(null);
@@ -2010,7 +2011,24 @@ export default function WatchlistPanel({
         className="flex items-center h-8 shrink-0 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 px-2"
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest("button") != null) return;
+          mouseDownPos.current = { x: e.clientX, y: e.clientY };
           handleDragStart(e);
+        }}
+        onMouseUp={(e) => {
+          if ((e.target as HTMLElement).closest("button") != null) return;
+          if (mouseDownPos.current == null) return;
+          const dx = e.clientX - mouseDownPos.current.x;
+          const dy = e.clientY - mouseDownPos.current.y;
+          mouseDownPos.current = null;
+          if (Math.sqrt(dx * dx + dy * dy) >= 5) return;
+          if (isMinimized) {
+            const h = Math.round(getMaxPanelHeightPx() * 0.5);
+            onHeightChange(h);
+            savePanelHeightPx(h);
+          } else {
+            onHeightChange(MIN_PANEL_HEIGHT_PX);
+            savePanelHeightPx(MIN_PANEL_HEIGHT_PX);
+          }
         }}
         role="button"
         tabIndex={0}

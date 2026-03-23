@@ -186,7 +186,7 @@ export default function Header({
           <img
             src="/brand/stockstalker-lockup.svg"
             alt={brandName}
-            className="hidden sm:block h-8 w-auto rounded border border-zinc-200 dark:border-zinc-700"
+            className="hidden sm:block h-8 w-auto"
           />
         </div>
         <div className="flex items-center justify-center pr-10 sm:pr-28">

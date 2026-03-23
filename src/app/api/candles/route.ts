@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
+import { fetchQuote } from "@/lib/massive";
 
 type Candle = {
   date: string;
@@ -16,6 +17,13 @@ type CandleCacheEntry = {
 };
 
 const API_CANDLES_TTL_MS = 60 * 1000;
+const API_CANDLES_LIVE_TTL_MS = 15 * 1000;
+
+function getTodayET(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+  }).format(new Date());
+}
 
 function getApiCandlesCache(): Map<string, CandleCacheEntry> {
   const globalWithCache = globalThis as typeof globalThis & {
@@ -100,16 +108,44 @@ export async function GET(request: NextRequest) {
         close: b.close,
         volume: b.volume,
       }));
+
+    let hasLiveCandle = false;
+    if (process.env.MASSIVE_API_KEY) {
+      const todayStr = getTodayET();
+      const lastBarDate =
+        dailyChrono.length > 0 ? dailyChrono[dailyChrono.length - 1].date : "";
+      if (lastBarDate && lastBarDate < todayStr) {
+        try {
+          const quote = await fetchQuote(symbol);
+          if (quote && quote.price > 0) {
+            dailyChrono.push({
+              date: todayStr,
+              open: quote.open || quote.price,
+              high: quote.dayHigh || quote.price,
+              low: quote.dayLow || quote.price,
+              close: quote.price,
+              volume: quote.volume || 0,
+            });
+            hasLiveCandle = true;
+          }
+        } catch {
+          // Live quote unavailable; proceed with historical data only
+        }
+      }
+    }
+
     let data: Candle[] = dailyChrono;
     if (interval === "weekly" || interval === "monthly") {
       data = aggregateCandles(dailyChrono, interval as "weekly" | "monthly");
     }
+    const ttl = hasLiveCandle ? API_CANDLES_LIVE_TTL_MS : API_CANDLES_TTL_MS;
+    const maxAge = hasLiveCandle ? 15 : 60;
     cache.set(cacheKey, {
       data,
-      expiresAt: Date.now() + API_CANDLES_TTL_MS,
+      expiresAt: Date.now() + ttl,
     });
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
+      headers: { "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=300` },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Candles error";

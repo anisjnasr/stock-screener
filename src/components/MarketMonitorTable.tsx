@@ -232,6 +232,9 @@ export default function MarketMonitorTable() {
         <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
           Market Monitor
         </h2>
+        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 text-center -mt-0.5">
+          Credit: Stockbee
+        </p>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 text-right">
           Last Update:{" "}
           <span className="tabular-nums">
