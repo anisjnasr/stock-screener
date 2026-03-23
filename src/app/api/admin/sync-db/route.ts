@@ -182,7 +182,18 @@ export async function POST(request: NextRequest) {
           log("DB connection reset — next query will open fresh connection");
           try {
             const Database = require("better-sqlite3");
-            const testDb = new Database(DB_PATH, { readonly: true });
+            const testDb = new Database(DB_PATH);
+            // Detailed integrity check (first 20 issues)
+            const ic = testDb.pragma("integrity_check(20)") as Array<Record<string, string>>;
+            const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
+            if (firstResult === "ok") {
+              log("DB integrity_check: ok");
+            } else {
+              log(`DB integrity_check FAILED (${ic.length} issues):`);
+              for (const row of ic.slice(0, 10)) {
+                log(`  ${Object.values(row)[0]}`);
+              }
+            }
             const row = testDb.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number };
             const dateRow = testDb.prepare("SELECT MAX(date) AS d FROM daily_bars").get() as { d: string };
             log(`DB verification: ${row.c} companies, latest daily_bars date: ${dateRow.d}`);
