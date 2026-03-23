@@ -256,7 +256,8 @@ jobs:
             exit 0
           fi
           echo "Compressing DB for upload..."
-          gzip -1 -c data/screener.db > /tmp/screener.db.gz
+          # -9 = smaller payload (less RAM if proxy buffers body); runner has plenty of CPU
+          gzip -9 -c data/screener.db > /tmp/screener.db.gz
           SIZE_MB=$(du -m /tmp/screener.db.gz | cut -f1)
           echo "Compressed size: ${SIZE_MB}MB"
           echo "Uploading to Render..."
