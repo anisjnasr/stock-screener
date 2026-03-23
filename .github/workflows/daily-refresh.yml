@@ -290,7 +290,7 @@ jobs:
           name: screener-db-${{ github.run_id }}
           path: data/screener.db
           retention-days: 3
-          compression-level: 0
+          compression-level: 1
 
       # Trigger DB sync on Render. The sync-db endpoint looks up the latest
       # artifact from the GitHub API and downloads it directly on the server
