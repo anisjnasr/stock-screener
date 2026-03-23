@@ -583,6 +583,7 @@ export default function WatchlistPanel({
   const resizeStartWidth = useRef(0);
   const resizeColRef = useRef<TableColumnId | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(224);
   const sidebarResizeStartX = useRef(0);
   const sidebarResizeStartWidth = useRef(224);
@@ -1891,6 +1892,8 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     if (!resizingCol) return;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
     const onMove = (e: MouseEvent) => {
       const col = resizeColRef.current;
       if (!col) return;
@@ -1903,21 +1906,62 @@ export default function WatchlistPanel({
       });
     };
     const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
       setResizingCol(null);
       resizeColRef.current = null;
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
   }, [resizingCol]);
 
   const handleAutoSizeColumns = useCallback(() => {
-    setColumnWidths({});
-    saveColumnWidths({});
-  }, []);
+    const table = tableRef.current;
+    if (!table) {
+      setColumnWidths({});
+      saveColumnWidths({});
+      return;
+    }
+    const headerCells = table.querySelectorAll("thead th");
+    const colOffset = 2; // checkbox + flag columns
+    const allRows = table.querySelectorAll("tr");
+    const origStyles: { el: HTMLElement; w: string; mw: string }[] = [];
+    allRows.forEach((row) => {
+      tableColumns.forEach((_, i) => {
+        const cell = row.children[colOffset + i] as HTMLElement | undefined;
+        if (cell) {
+          origStyles.push({ el: cell, w: cell.style.width, mw: cell.style.minWidth });
+          cell.style.width = "auto";
+          cell.style.minWidth = "auto";
+        }
+      });
+    });
+    // Force synchronous reflow so measurements reflect auto-sized content
+    void table.offsetHeight;
+    const newWidths: Partial<Record<ColumnId, number>> = {};
+    tableColumns.forEach((col, i) => {
+      const th = headerCells[colOffset + i] as HTMLElement | undefined;
+      if (!th) return;
+      let maxW = th.getBoundingClientRect().width;
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        const td = row.children[colOffset + i] as HTMLElement | undefined;
+        if (td) maxW = Math.max(maxW, td.getBoundingClientRect().width);
+      });
+      newWidths[col as ColumnId] = Math.max(60, Math.ceil(maxW) + 4);
+    });
+    origStyles.forEach(({ el, w, mw }) => {
+      el.style.width = w;
+      el.style.minWidth = mw;
+    });
+    setColumnWidths(newWidths);
+    saveColumnWidths(newWidths);
+  }, [tableColumns]);
 
   const handleColumnHeaderDragStart = useCallback((index: number) => (e: React.DragEvent) => {
     if (resizeColRef.current !== null) {
@@ -1962,11 +2006,15 @@ export default function WatchlistPanel({
     setColDropIndex(null);
   }, []);
 
-  // Smooth drag: update height continuously; clamp to [MIN_PANEL_HEIGHT_PX, max]
+  // Smooth drag: update height continuously; clamp to [MIN_PANEL_HEIGHT_PX, max].
+  // Drag only starts after mouse moves >5px from the mousedown point so that
+  // simple clicks don't trigger resizing (click-to-toggle is handled separately).
+  const panelDragPending = useRef(false);
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      isDraggingPanel.current = true;
+      panelDragPending.current = true;
+      isDraggingPanel.current = false;
       dragStartY.current = e.clientY;
       dragStartHeight.current = panelHeightPx;
     },
@@ -1976,8 +2024,14 @@ export default function WatchlistPanel({
   useEffect(() => {
     if (resizingCol) return;
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingPanel.current) return;
-      const dy = dragStartY.current - e.clientY; // positive = drag up = increase height
+      if (!panelDragPending.current && !isDraggingPanel.current) return;
+      if (panelDragPending.current && !isDraggingPanel.current) {
+        const dy = Math.abs(e.clientY - dragStartY.current);
+        if (dy < 5) return;
+        isDraggingPanel.current = true;
+        panelDragPending.current = false;
+      }
+      const dy = dragStartY.current - e.clientY;
       const maxH = getMaxPanelHeightPx();
       const newHeight = Math.round(
         Math.max(MIN_PANEL_HEIGHT_PX, Math.min(maxH, dragStartHeight.current + dy))
@@ -1990,6 +2044,7 @@ export default function WatchlistPanel({
         savePanelHeightPx(lastDraggedHeightPx.current);
       }
       isDraggingPanel.current = false;
+      panelDragPending.current = false;
       dragStartY.current = 0;
     };
     document.addEventListener("mousemove", onMove);
@@ -3465,7 +3520,7 @@ export default function WatchlistPanel({
             )}
 
             <div className="flex-1 overflow-x-auto overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-sm">
-              <table className="w-full border-collapse text-sm whitespace-nowrap" style={{ minWidth: "max-content" }}>
+              <table ref={tableRef} className="w-full border-collapse text-sm whitespace-nowrap" style={{ minWidth: "max-content" }}>
                 <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/98 border-b border-zinc-200 dark:border-zinc-700 z-10 shadow-sm">
                   <tr>
                     <th className="w-10 min-w-[2.5rem] py-1.5 pl-2 pr-1 border-b border-zinc-200 dark:border-zinc-700 align-middle">
@@ -3496,8 +3551,8 @@ export default function WatchlistPanel({
                           onDragLeave={!isScriptCol ? () => setColDropIndex(null) : undefined}
                           onDrop={!isScriptCol ? handleColumnHeaderDrop(colIndex) : undefined}
                           onDragEnd={handleColumnHeaderDragEnd}
-                          className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-700 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
-                          style={{ width: getColWidth(col), minWidth: 60 }}
+                          className={`relative py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-700 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
+                          style={{ width: getColWidth(col), minWidth: getColWidth(col) }}
                         >
                           <div className={`flex items-center gap-0.5 ${isNumericCol ? "justify-end" : ""} ${!isScriptCol ? "cursor-grab active:cursor-grabbing" : ""}`}>
                             <button
@@ -3520,19 +3575,19 @@ export default function WatchlistPanel({
                                 )
                               ) : null}
                             </button>
-                            {!isScriptCol && (
-                              <span
-                                className="cursor-col-resize w-1.5 flex-shrink-0 hover:bg-blue-400/30 rounded"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleResizeStart(col)(e);
-                                }}
-                                role="separator"
-                                aria-label={`Resize ${getColumnLabel(col)}`}
-                              />
-                            )}
                           </div>
+                          {!isScriptCol && (
+                            <div
+                              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400/40 z-10"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleResizeStart(col)(e);
+                              }}
+                              role="separator"
+                              aria-label={`Resize ${getColumnLabel(col)}`}
+                            />
+                          )}
                         </th>
                       );
                     })}
@@ -3708,6 +3763,7 @@ export default function WatchlistPanel({
                                 className={cellClass}
                                 style={{
                                   width: getColWidth(col),
+                                  minWidth: getColWidth(col),
                                   ...(col === "name" || col === "industry" || col === "sector" ? { maxWidth: getColWidth(col) } : {}),
                                 }}
                                 title={typeof content === "string" && content.length > 20 ? content : undefined}

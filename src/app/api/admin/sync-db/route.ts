@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  existsSync,
   statSync,
   writeFileSync,
   unlinkSync,
@@ -94,23 +93,23 @@ export async function POST(request: NextRequest) {
       `Found artifact: ${artifact.name} (${sizeMb}MB, created ${artifact.created_at})`
     );
 
-    const tmpDb = join(DATA_DIR, "screener.db.new");
     const cacheRm = STALE_CACHES.map(
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
 
-    // Write a sync script that runs entirely via shell tools (curl + funzip).
-    // This keeps Node.js memory at zero for the download/extract.
-    // The script writes to a .new file first, then atomically renames over
-    // the old DB so the app is never left without a DB file.
+    // Delete old DB first to free disk space (the DB is ~5 GB and disk may
+    // only be 5-10 GB). This causes brief downtime during download (~1-3 min)
+    // but is the only way to fit on a small disk. The stream goes through
+    // funzip directly to the final path — no temp file needed.
     const script = [
       `set -e`,
       `echo "[sync] $(date -u) Downloading ${artifact.name}..." > "${SYNC_LOG}"`,
+      `rm -f "${DB_PATH}"`,
       cacheRm,
+      `echo "[sync] Old DB removed. Downloading..." >> "${SYNC_LOG}"`,
       `curl -fSL --max-time 900 \\`,
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
-      `  "$SYNC_URL" 2>> "${SYNC_LOG}" | funzip > "${tmpDb}"`,
-      `mv -f "${tmpDb}" "${DB_PATH}"`,
+      `  "$SYNC_URL" 2>> "${SYNC_LOG}" | funzip > "${DB_PATH}"`,
       `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
       `echo "[sync] $(date -u) Complete. DB: \${SIZE}MB" >> "${SYNC_LOG}"`,
     ].join("\n");
@@ -134,11 +133,6 @@ export async function POST(request: NextRequest) {
           log(
             `Background sync FAILED: ${error.message}${stderr ? ` | ${stderr.slice(0, 500)}` : ""}`
           );
-          try {
-            unlinkSync(tmpDb);
-          } catch {
-            /* best effort */
-          }
         } else {
           try {
             const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
