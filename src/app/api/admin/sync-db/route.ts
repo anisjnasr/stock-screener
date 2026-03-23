@@ -39,7 +39,7 @@ function log(msg: string) {
  * background shell process: curl downloads the ZIP to disk, then unzip -p
  * extracts screener.db. Requires ~7 GB peak disk (ZIP + extracted DB).
  *
- * Requirements on the Docker image: curl, unzip.
+ * Requirements on the Docker image: curl, libarchive-tools (bsdtar).
  * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with repo scope).
  */
 export async function POST(request: NextRequest) {
@@ -99,31 +99,38 @@ export async function POST(request: NextRequest) {
     ).join("\n");
     const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // Two-step: download ZIP to disk, then extract with `unzip -o` directly
-    // to the data directory (avoids stdout pipe corruption on large files).
-    // Disk budget on 10 GB:
+    // Two-step: download ZIP to disk, then extract with bsdtar (from
+    // libarchive-tools) which handles ZIP64 reliably — Alpine's unzip
+    // silently corrupts files >4 GB. Disk budget on 10 GB:
     //   1. Delete old DB + caches → ~0 GB used
     //   2. Download ZIP → ~2.2 GB
     //   3. Extract directly to disk → peak ~7.2 GB (ZIP + extracted DB)
     //   4. Delete ZIP → ~5 GB final
     const script = [
       `set -e`,
-      `echo "[sync] $(date -u) Downloading ${artifact.name}..." > "${SYNC_LOG}"`,
+      `echo "[sync] $(date -u) Downloading ${artifact.name}..."`,
       `rm -f "${DB_PATH}"`,
       `rm -f "${tmpZip}"`,
       cacheRm,
-      `echo "[sync] Old DB removed. Downloading ZIP..." >> "${SYNC_LOG}"`,
+      `echo "[sync] Old DB removed. Downloading ZIP..."`,
       `curl -fSL --max-time 900 \\`,
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
-      `  -o "${tmpZip}" "$SYNC_URL" 2>> "${SYNC_LOG}"`,
+      `  -o "${tmpZip}" "$SYNC_URL"`,
       `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
-      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB. Listing contents:" >> "${SYNC_LOG}"`,
-      `unzip -l "${tmpZip}" >> "${SYNC_LOG}" 2>&1`,
-      `echo "[sync] Extracting to ${DATA_DIR}..." >> "${SYNC_LOG}"`,
-      `unzip -o "${tmpZip}" -d "${DATA_DIR}" >> "${SYNC_LOG}" 2>&1`,
+      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB"`,
+      `echo "[sync] Extracting with bsdtar to ${DATA_DIR}..."`,
+      `bsdtar xf "${tmpZip}" -C "${DATA_DIR}"`,
       `rm -f "${tmpZip}"`,
       `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
-      `echo "[sync] $(date -u) Complete. DB: \${SIZE}MB" >> "${SYNC_LOG}"`,
+      `echo "[sync] $(date -u) Extracted. DB: \${SIZE}MB"`,
+      // Verify SQLite header magic bytes
+      `HEADER=$(head -c 15 "${DB_PATH}")`,
+      `if [ "$HEADER" = "SQLite format 3" ]; then`,
+      `  echo "[sync] SQLite header OK"`,
+      `else`,
+      `  echo "[sync] ERROR: SQLite header invalid — file is corrupt"`,
+      `  exit 1`,
+      `fi`,
     ].join("\n");
 
     const scriptPath = join(DATA_DIR, ".sync-download.sh");
