@@ -224,6 +224,24 @@ jobs:
           fi
           pkill -f "next dev" || true
 
+      # Checkpoint WAL so all data is in the main DB file before upload.
+      # Scripts after optimize-db (market aggregates, cache warmup) may have
+      # written to the DB in WAL mode, leaving data in screener.db-wal.
+      # Without this, the uploaded screener.db is incomplete/corrupt.
+      - name: Checkpoint WAL before upload
+        run: |
+          node -e "
+          const Database = require('better-sqlite3');
+          const db = new Database('data/screener.db');
+          db.pragma('wal_checkpoint(TRUNCATE)');
+          const ic = db.pragma('integrity_check');
+          console.log('Integrity:', ic[0].integrity_check);
+          const latest = db.prepare('SELECT MAX(date) AS d FROM daily_bars').get();
+          console.log('Latest daily_bars date:', latest.d);
+          db.close();
+          console.log('WAL checkpoint complete — DB ready for upload');
+          "
+
       # Save updated DB to cache
       - name: Save DB to cache
         uses: actions/cache/save@v4
