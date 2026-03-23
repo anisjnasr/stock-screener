@@ -7,6 +7,7 @@ import {
 } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
+import { resetDbConnection } from "@/lib/screener-db-native";
 
 const DATA_DIR = join(process.cwd(), "data");
 const DB_PATH = join(DATA_DIR, "screener.db");
@@ -125,7 +126,8 @@ export async function POST(request: NextRequest) {
     const scriptPath = join(DATA_DIR, ".sync-download.sh");
     writeFileSync(scriptPath, script, { mode: 0o755 });
 
-    log("Starting background download...");
+    resetDbConnection();
+    log("DB connection closed before sync. Starting background download...");
     exec(
       `/bin/sh "${scriptPath}"`,
       {
@@ -147,6 +149,19 @@ export async function POST(request: NextRequest) {
             log(`Background sync complete. DB: ${size}MB`);
           } catch {
             log("Background sync callback: DB file not found after script");
+          }
+          resetDbConnection();
+          log("DB connection reset — next query will open fresh connection");
+          try {
+            const Database = require("better-sqlite3");
+            const testDb = new Database(DB_PATH, { readonly: true });
+            const row = testDb.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number };
+            const dateRow = testDb.prepare("SELECT MAX(date) AS d FROM daily_bars").get() as { d: string };
+            log(`DB verification: ${row.c} companies, latest daily_bars date: ${dateRow.d}`);
+            testDb.close();
+          } catch (verifyErr: unknown) {
+            const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+            log(`DB verification FAILED: ${msg}`);
           }
         }
         try {

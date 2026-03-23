@@ -210,6 +210,17 @@ function openDb(): BetterSqlite3Database {
   return db;
 }
 
+export function resetDbConnection(): void {
+  if (globalForDb._screenerDb) {
+    try { globalForDb._screenerDb.close(); } catch { /* ignore */ }
+  }
+  globalForDb._screenerDb = undefined;
+  globalForDb._screenerDbPath = undefined;
+  globalForDb._screenerDbMtimeMs = undefined;
+  globalForDb._screenerDbIno = undefined;
+  globalForDb._screenerDbLastStatCheck = undefined;
+}
+
 function getDb(): BetterSqlite3Database | null {
   if (globalForDb._screenerDb && globalForDb._screenerDbPath === DB_PATH) {
     if (dbFileChanged()) {
