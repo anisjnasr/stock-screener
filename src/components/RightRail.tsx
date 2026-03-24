@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
-import BreadthPage from "@/components/BreadthPage";
 
 type YearlyRow = {
   year: string;
@@ -138,16 +137,6 @@ export default function RightRail({
   const [quarterlyTab, setQuarterlyTab] = useState<FinancialTab>("revenue");
   const [railTab, setRailTab] = useState<RailTab>("fundamentals");
 
-  // Market mode: breadth indicators
-  if (section === "market") {
-    return (
-      <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
-        <BreadthPage />
-      </div>
-    );
-  }
-
-  // Stock mode
   if (loading) {
     return (
       <div className="h-full p-3 flex items-start" style={{ background: "var(--ws-bg2)" }}>

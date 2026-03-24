@@ -4,7 +4,7 @@
  * for API data and a network-first strategy for app shell resources.
  */
 
-const CACHE_VERSION = "ss-v1";
+const CACHE_VERSION = "ss-v2";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -69,12 +69,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // App shell: cache-first
+  // App shell: network-first so deploys take effect immediately
   if (
     url.origin === self.location.origin &&
     (url.pathname === "/" || url.pathname.startsWith("/_next/"))
   ) {
-    event.respondWith(cacheFirstWithNetwork(request));
+    event.respondWith(networkFirstWithShellCache(request));
     return;
   }
 });
@@ -113,17 +113,17 @@ async function networkFirstWithCache(request) {
   }
 }
 
-async function cacheFirstWithNetwork(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
+async function networkFirstWithShellCache(request) {
+  const cache = await caches.open(APP_SHELL_CACHE);
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(APP_SHELL_CACHE);
       cache.put(request, response.clone());
     }
     return response;
   } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
     return new Response("Offline", { status: 503 });
   }
 }

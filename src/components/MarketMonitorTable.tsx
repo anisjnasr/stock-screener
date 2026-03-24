@@ -1,34 +1,11 @@
 import { useEffect, useState } from "react";
 import { formatDisplayDate } from "@/lib/date-format";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  type TooltipContentProps,
-} from "recharts";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 
 type ApiResponse = {
   rows: MarketMonitorRow[];
   latestDate: string | null;
   startDate: string | null;
-  breadth?: {
-    sp500PctAbove50d: number | null;
-    nasdaqPctAbove50d: number | null;
-    sp500PctAbove200d: number | null;
-    nasdaqPctAbove200d: number | null;
-  };
-  netNewHighs?: {
-    oneMonth: Array<{ date: string; highs: number; lows: number; net: number }>;
-    threeMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
-    sixMonths: Array<{ date: string; highs: number; lows: number; net: number }>;
-    fiftyTwoWeek: Array<{ date: string; highs: number; lows: number; net: number }>;
-  };
   error?: string;
 };
 
@@ -72,106 +49,10 @@ function getPairCellClass(up: number | null | undefined, down: number | null | u
   return "";
 }
 
-function NetTooltip({
-  active,
-  payload,
-  label,
-}: TooltipContentProps) {
-  if (!active || !payload || payload.length === 0) return null;
-  const rawValue = payload[0]?.value;
-  const net =
-    typeof rawValue === "number"
-      ? rawValue
-      : Array.isArray(rawValue)
-        ? Number(rawValue[0] ?? 0)
-        : Number(rawValue ?? 0);
-  return (
-    <div
-      style={{
-        background: "#1c1c1f",
-        border: "1px solid #2e2e35",
-        borderRadius: 6,
-        padding: "4px 8px",
-        fontSize: 12,
-        lineHeight: 1.3,
-      }}
-    >
-      <div style={{ color: "#d4d4d8" }}>{formatDateDmy(String(label ?? ""))}</div>
-      <div style={{ color: net >= 0 ? "#0a8963" : "#a54557" }}>
-        Net: {net >= 0 ? "+" : ""}
-        {net}
-      </div>
-    </div>
-  );
-}
-
-function MiniBarSeries({
-  title,
-  series,
-}: {
-  title: string;
-  series: Array<{ date: string; net: number }>;
-}) {
-  if (!series || series.length === 0) {
-    return (
-      <div className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
-        <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{title}</p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">No data</p>
-      </div>
-    );
-  }
-
-  const displaySeries = series.slice(-63);
-  const displayMaxAbs = Math.max(1, ...displaySeries.map((s) => Math.abs(s.net)));
-  const latest = displaySeries[displaySeries.length - 1]?.net ?? 0;
-  const interval = Math.max(0, Math.floor(displaySeries.length / 5));
-  return (
-    <div className="rounded border border-zinc-200 dark:border-zinc-700 px-2 py-2 bg-zinc-50/40 dark:bg-zinc-800/30">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{title}</p>
-        <p
-          className={`text-xs tabular-nums ml-2 shrink-0 ${
-            latest >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-          }`}
-        >
-          {latest >= 0 ? "+" : ""}
-          {latest}
-        </p>
-      </div>
-      <div className="mt-1">
-        <ResponsiveContainer width="100%" height={130}>
-          <BarChart data={displaySeries} margin={{ top: 0, right: 1, left: -18, bottom: -2 }} barCategoryGap="2%">
-            <XAxis
-              dataKey="date"
-              axisLine={false}
-              tickLine={false}
-              interval={interval}
-              tick={{ fontSize: 7, fill: "#4a475a", fontFamily: "Outfit" }}
-            />
-            <YAxis tick={false} axisLine={false} tickLine={false} domain={[-displayMaxAbs, displayMaxAbs]} />
-            <ReferenceLine y={0} stroke="#2e2e35" />
-            <Tooltip content={NetTooltip} />
-            <Bar dataKey="net" maxBarSize={5} minPointSize={2} radius={[2, 2, 0, 0]}>
-              {displaySeries.map((entry) => (
-                <Cell
-                  key={entry.date}
-                  fill={entry.net >= 0 ? "#0a8963" : "#a54557"}
-                  fillOpacity={1}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
 export default function MarketMonitorTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestDate, setLatestDate] = useState<string | null>(null);
-  const [netNewHighs, setNetNewHighs] = useState<ApiResponse["netNewHighs"]>(undefined);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
 
   useEffect(() => {
@@ -185,7 +66,6 @@ export default function MarketMonitorTable() {
         } else {
           setError(null);
           setLatestDate(json.latestDate ?? null);
-          setNetNewHighs(json.netNewHighs);
           const all = json.rows ?? [];
           if (all.length > 0) {
             const latest = new Date(`${all[0].date}T00:00:00Z`);
@@ -241,17 +121,6 @@ export default function MarketMonitorTable() {
             {latestDate ? formatDisplayDate(latestDate) : "—"}
           </span>
         </p>
-      </div>
-      <div className="mb-4 rounded border border-zinc-200 dark:border-zinc-700 p-2 sm:p-3 bg-white dark:bg-zinc-900 shadow-sm">
-        <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide mb-2 text-center">
-          Net New Highs
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-          <MiniBarSeries title="1M" series={netNewHighs?.oneMonth ?? []} />
-          <MiniBarSeries title="3M" series={netNewHighs?.threeMonths ?? []} />
-          <MiniBarSeries title="6M" series={netNewHighs?.sixMonths ?? []} />
-          <MiniBarSeries title="52W" series={netNewHighs?.fiftyTwoWeek ?? []} />
-        </div>
       </div>
       <div className="max-w-full overflow-auto border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-900 shadow-sm">
         <table className="min-w-full text-xs sm:text-sm text-center border-collapse">

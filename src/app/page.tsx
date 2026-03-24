@@ -7,9 +7,10 @@ import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import NNHPanel from "@/components/NNHPanel";
 import WatchlistPanel from "@/components/WatchlistPanel";
-import MarketMonitorTable from "@/components/MarketMonitorTable";
+import MarketLeftPanel from "@/components/MarketLeftPanel";
 import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
 import RightRail from "@/components/RightRail";
+import MarketBreadthRail from "@/components/MarketBreadthRail";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import {
   loadFlags,
@@ -41,6 +42,12 @@ export default function Home() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [visibleDateRange, setVisibleDateRange] = useState<{ from: string; to: string } | null>(null);
   const [nnhCollapsed, setNnhCollapsed] = useState(false);
+  const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<
+    | { kind: "sector" | "industry"; value: string; nonce: number }
+    | { kind: "theme"; value: string; nonce: number }
+    | { kind: "index"; value: string; nonce: number }
+    | null
+  >(null);
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const secondaryPagesPrefetchedRef = useRef(false);
@@ -250,10 +257,11 @@ export default function Home() {
   const leftPanel = (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
       {section === "market" ? (
-        <MarketMonitorTable />
+        <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} />
       ) : section === "sectors-industries" ? (
         <SectorsIndustriesPage
-          onOpenCollection={() => {
+          onOpenCollection={(target) => {
+            setOpenToCollectionTrigger({ kind: target.kind, value: target.value, nonce: Date.now() } as typeof openToCollectionTrigger);
             setSection("lists");
           }}
         />
@@ -264,6 +272,7 @@ export default function Home() {
           onSymbolSelect={handleSymbolSelect}
           selectedSymbol={symbol}
           onOrderedSymbolsChange={handleOrderedSymbolsChange}
+          openToCollectionTrigger={openToCollectionTrigger}
         />
       )}
     </div>
@@ -298,7 +307,9 @@ export default function Home() {
     </div>
   );
 
-  const rightPanel = (
+  const rightPanel = section === "market" ? (
+    <MarketBreadthRail />
+  ) : (
     <RightRail
       section={section}
       symbol={symbol}
