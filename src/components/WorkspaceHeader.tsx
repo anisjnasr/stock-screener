@@ -4,18 +4,17 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
 import { type StockFlag } from "@/lib/watchlist-storage";
 
-type SearchSuggestion = {
-  symbol: string;
-  name?: string;
-  exchange?: string;
-};
+type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
 const FLAG_COLORS: Record<StockFlag, string> = {
-  red: "bg-red-500",
-  yellow: "bg-yellow-400",
-  green: "bg-emerald-500",
-  blue: "bg-blue-500",
+  red: "#ff4d6a",
+  yellow: "#ffc107",
+  green: "#22c55e",
+  blue: "#4da6ff",
 };
+
+export type SectorSubTab = "sectors" | "industries" | "thematic";
+export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "y" | "ytd";
 
 type WorkspaceHeaderProps = {
   section: WorkspaceSection;
@@ -26,9 +25,57 @@ type WorkspaceHeaderProps = {
   onSearchChange: (s: string) => void;
   onSearchSubmit: () => void;
   flags: Record<string, StockFlag>;
-  onFlagFilter?: (flag: StockFlag) => void;
-  favoritePills?: { id: string; label: string; onClick: () => void }[];
+  onFlagFilter?: (flag: StockFlag | null) => void;
+  activeFlagFilter?: StockFlag | null;
+  // Sectors contextual
+  sectorSubTab?: SectorSubTab;
+  onSectorSubTabChange?: (t: SectorSubTab) => void;
+  sectorTimeframe?: SectorTimeframe;
+  onSectorTimeframeChange?: (t: SectorTimeframe) => void;
+  // Scans contextual
+  scanList?: string[];
+  activeScan?: string;
+  onScanChange?: (name: string) => void;
+  onNewScan?: () => void;
+  // Lists contextual
+  watchlistNames?: { id: string; name: string }[];
+  activeWatchlistId?: string | null;
+  onWatchlistChange?: (id: string) => void;
+  onNewList?: () => void;
 };
+
+function Pill({
+  on,
+  children,
+  onClick,
+  small,
+  color,
+}: {
+  on?: boolean;
+  children: React.ReactNode;
+  onClick?: () => void;
+  small?: boolean;
+  color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="transition-colors cursor-pointer font-medium"
+      style={{
+        background: on ? "var(--ws-cyan-dim, rgba(0,229,204,0.08))" : "transparent",
+        border: `1px solid ${on ? "rgba(0,229,204,0.2)" : "transparent"}`,
+        color: on ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+        padding: small ? "2px 6px" : "4px 12px",
+        borderRadius: 4,
+        fontSize: small ? 10 : 12,
+        fontFamily: "inherit",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function WorkspaceHeader({
   section,
@@ -40,13 +87,27 @@ export default function WorkspaceHeader({
   onSearchSubmit,
   flags,
   onFlagFilter,
-  favoritePills = [],
+  activeFlagFilter,
+  sectorSubTab = "sectors",
+  onSectorSubTabChange,
+  sectorTimeframe = "1w",
+  onSectorTimeframeChange,
+  scanList = [],
+  activeScan = "",
+  onScanChange,
+  onNewScan,
+  watchlistNames = [],
+  activeWatchlistId,
+  onWatchlistChange,
+  onNewList,
 }: WorkspaceHeaderProps) {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [scanDDOpen, setScanDDOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const scanDDRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!searchValue.trim()) {
@@ -64,10 +125,7 @@ export default function WorkspaceHeader({
           setSuggestionsOpen(list.length > 0);
           setHighlightedIndex(-1);
         })
-        .catch(() => {
-          setSuggestions([]);
-          setSuggestionsOpen(false);
-        })
+        .catch(() => { setSuggestions([]); setSuggestionsOpen(false); })
         .finally(() => setSuggestionsLoading(false));
     }, 200);
     return () => clearTimeout(t);
@@ -88,6 +146,9 @@ export default function WorkspaceHeader({
     const handleClickOutside = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setSuggestionsOpen(false);
+      }
+      if (scanDDRef.current && !scanDDRef.current.contains(e.target as Node)) {
+        setScanDDOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -111,25 +172,15 @@ export default function WorkspaceHeader({
     }
   };
 
-  // Aggregate flag counts
   const flagCounts = Object.values(flags).reduce<Partial<Record<StockFlag, number>>>(
-    (acc, f) => {
-      acc[f] = (acc[f] ?? 0) + 1;
-      return acc;
-    },
+    (acc, f) => { acc[f] = (acc[f] ?? 0) + 1; return acc; },
     {}
-  );
-  const visibleFlags = (["red", "yellow", "green", "blue"] as StockFlag[]).filter(
-    (f) => (flagCounts[f] ?? 0) > 0
   );
 
   return (
     <header
-      className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b"
-      style={{
-        background: "var(--ws-bg2)",
-        borderColor: "var(--ws-border)",
-      }}
+      className="shrink-0 flex items-center gap-2 px-3 h-[42px]"
+      style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}
     >
       {/* Brand */}
       <img
@@ -139,7 +190,7 @@ export default function WorkspaceHeader({
       />
 
       {/* Section pills */}
-      <nav className="flex items-center gap-0.5 rounded-md p-0.5 ml-3" style={{ background: "var(--ws-bg)" }}>
+      <nav className="flex items-center gap-0.5 rounded p-0.5 ml-3" style={{ background: "var(--ws-bg)" }}>
         {WORKSPACE_SECTIONS.map((s) => (
           <button
             key={s.id}
@@ -151,46 +202,125 @@ export default function WorkspaceHeader({
               color: section === s.id ? "var(--ws-bg)" : "var(--ws-text-dim)",
             }}
           >
-            <span className="sm:hidden">{s.shortLabel}</span>
-            <span className="hidden sm:inline">{s.label}</span>
+            {s.label}
           </button>
         ))}
       </nav>
 
-      {/* Favorite pills + flag pills */}
-      <div className="flex items-center gap-1 ml-2">
-        {favoritePills.map((pill) => (
+      {/* Divider */}
+      <div className="shrink-0" style={{ width: 1, height: 20, background: "var(--ws-border)", margin: "0 6px" }} />
+
+      {/* ---- CONTEXTUAL CONTROLS ---- */}
+
+      {section === "sectors-industries" && (
+        <div className="flex items-center gap-1">
+          {(["sectors", "industries", "thematic"] as SectorSubTab[]).map((t) => (
+            <Pill key={t} on={sectorSubTab === t} onClick={() => onSectorSubTabChange?.(t)}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </Pill>
+          ))}
+          <div className="shrink-0 mx-1.5" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+          {(["1d", "1w", "1m", "q", "y", "ytd"] as SectorTimeframe[]).map((t) => (
+            <Pill key={t} small on={sectorTimeframe === t} onClick={() => onSectorTimeframeChange?.(t)}>
+              {t.toUpperCase()}
+            </Pill>
+          ))}
+        </div>
+      )}
+
+      {section === "scans" && (
+        <div className="flex items-center gap-1.5">
+          {/* Scan dropdown */}
+          <div ref={scanDDRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setScanDDOpen((v) => !v)}
+              className="flex items-center gap-2 px-3 py-1 rounded text-xs cursor-pointer"
+              style={{
+                background: "var(--ws-bg3)",
+                border: "1px solid var(--ws-border)",
+                color: "var(--ws-text)",
+                minWidth: 140,
+              }}
+            >
+              {activeScan || "Select scan"}
+              <span style={{ color: "var(--ws-text-vdim)", fontSize: 10 }}>▾</span>
+            </button>
+            {scanDDOpen && scanList.length > 0 && (
+              <div
+                className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
+                style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+              >
+                {scanList.map((s) => (
+                  <div
+                    key={s}
+                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1"
+                    style={{
+                      color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                      background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
+                    }}
+                    onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            key={pill.id}
             type="button"
-            onClick={pill.onClick}
-            className="px-2 py-0.5 text-[11px] font-medium rounded transition-colors"
+            onClick={onNewScan}
+            className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
-              background: "var(--ws-bg3)",
-              color: "var(--ws-text)",
-              border: "1px solid var(--ws-border)",
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.2)",
+              color: "#a78bfa",
             }}
           >
-            {pill.label}
+            + New scan
           </button>
-        ))}
-        {visibleFlags.map((f) => (
+          <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+          {/* Flag filters */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Flags:</span>
+            <Pill small on={!activeFlagFilter} onClick={() => onFlagFilter?.(null)}>All</Pill>
+            {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+              const cnt = flagCounts[f] ?? 0;
+              if (cnt === 0) return null;
+              return (
+                <Pill key={f} small on={activeFlagFilter === f} onClick={() => onFlagFilter?.(activeFlagFilter === f ? null : f)}>
+                  <span className="inline-flex items-center gap-1">
+                    <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
+                    {cnt}
+                  </span>
+                </Pill>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {section === "lists" && (
+        <div className="flex items-center gap-1.5">
+          {watchlistNames.slice(0, 6).map((wl) => (
+            <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
+              {wl.name}
+            </Pill>
+          ))}
           <button
-            key={f}
             type="button"
-            onClick={() => onFlagFilter?.(f)}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-mono rounded transition-colors"
+            onClick={onNewList}
+            className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
-              background: "var(--ws-bg3)",
-              color: "var(--ws-text)",
-              border: "1px solid var(--ws-border)",
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.2)",
+              color: "#a78bfa",
             }}
           >
-            <span className={`inline-block w-2 h-2 rounded-full ${FLAG_COLORS[f]}`} />
-            {flagCounts[f]}
+            + New list
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -237,15 +367,10 @@ export default function WorkspaceHeader({
             id="ws-search-suggestions"
             role="listbox"
             className="absolute right-0 top-full z-50 mt-1 max-h-60 w-[28rem] max-w-[90vw] overflow-auto rounded py-1 shadow-lg"
-            style={{
-              background: "var(--ws-bg2)",
-              border: "1px solid var(--ws-border-hover)",
-            }}
+            style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
           >
             {suggestionsLoading ? (
-              <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>
-                Searching…
-              </li>
+              <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
             ) : (
               suggestions.map((s, i) => (
                 <li
@@ -254,21 +379,14 @@ export default function WorkspaceHeader({
                   role="option"
                   aria-selected={i === highlightedIndex}
                   className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
-                  style={{
-                    background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent",
-                  }}
+                  style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
                   onMouseEnter={() => setHighlightedIndex(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectSymbol(s.symbol);
-                  }}
+                  onMouseDown={(e) => { e.preventDefault(); selectSymbol(s.symbol); }}
                 >
                   <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
                     {s.symbol}
                   </span>
-                  {s.name && (
-                    <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>
-                  )}
+                  {s.name && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
                 </li>
               ))
             )}

@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
-import WorkspaceHeader from "@/components/WorkspaceHeader";
+import WorkspaceHeader, { type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import NNHPanel from "@/components/NNHPanel";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketLeftPanel from "@/components/MarketLeftPanel";
-import SectorsIndustriesPage from "@/components/SectorsIndustriesPage";
+import SectorPerfPanel from "@/components/SectorPerfPanel";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
@@ -42,12 +42,22 @@ export default function Home() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [visibleDateRange, setVisibleDateRange] = useState<{ from: string; to: string } | null>(null);
   const [nnhCollapsed, setNnhCollapsed] = useState(false);
+
+  // Sectors contextual state
+  const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>("sectors");
+  const [sectorTimeframe, setSectorTimeframe] = useState<SectorTimeframe>("1w");
+
+  // Scans contextual state
+  const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
+
+  // Collection drill-down
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<
     | { kind: "sector" | "industry"; value: string; nonce: number }
     | { kind: "theme"; value: string; nonce: number }
     | { kind: "index"; value: string; nonce: number }
     | null
   >(null);
+
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const secondaryPagesPrefetchedRef = useRef(false);
@@ -66,18 +76,11 @@ export default function Home() {
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(symbol);
   const { ownershipQuarters } = useOwnership(symbol);
 
-  // Prefetch secondary pages
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
     secondaryPagesPrefetchedRef.current = true;
     const timer = window.setTimeout(() => {
-      const urls = [
-        "/api/market-monitor",
-        "/api/sectors-industries",
-        "/api/breadth?index=sp500",
-        "/api/breadth?index=nasdaq",
-      ];
-      for (const url of urls) {
+      for (const url of ["/api/market-monitor", "/api/sectors-industries", "/api/breadth?index=sp500"]) {
         fetch(url).catch(() => {});
       }
     }, 600);
@@ -136,71 +139,43 @@ export default function Home() {
     };
   }, []);
 
-  // Load candles for current chart
   useEffect(() => {
     if (!symbol) return;
     let cancelled = false;
     const controller = new AbortController();
     const cached = getCachedCandles(symbol, chartTimeframe);
-    if (cached) {
-      setCandles(cached);
-      setChartLoading(false);
-    } else {
-      setChartLoading(true);
-    }
+    if (cached) { setCandles(cached); setChartLoading(false); }
+    else { setChartLoading(true); }
     fetchCandlesFor(symbol, chartTimeframe, { signal: controller.signal })
-      .then((rows) => {
-        if (cancelled || controller.signal.aborted) return;
-        setCandles(rows);
-      })
-      .finally(() => {
-        if (!cancelled && !controller.signal.aborted) setChartLoading(false);
-      });
+      .then((rows) => { if (!cancelled && !controller.signal.aborted) setCandles(rows); })
+      .finally(() => { if (!cancelled && !controller.signal.aborted) setChartLoading(false); });
     return () => { cancelled = true; controller.abort(); };
   }, [symbol, chartTimeframe, fetchCandlesFor, getCachedCandles]);
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
-    if (s) {
-      setSymbol(s);
-      setSearchValue("");
-    }
+    if (s) { setSymbol(s); setSearchValue(""); }
   };
 
   const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
-  const chartWatchlists = useMemo(
-    () => watchlists.map((l) => ({ id: l.id, name: l.name })),
-    [watchlists]
-  );
+  const chartWatchlists = useMemo(() => watchlists.map((l) => ({ id: l.id, name: l.name })), [watchlists]);
+  const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === symbol.toUpperCase()), [scanSymbols, symbol]);
 
-  const scanIndex = useMemo(
-    () => scanSymbols.findIndex((s) => s === symbol.toUpperCase()),
-    [scanSymbols, symbol]
-  );
-
-  // Prefetch neighboring candles
   useEffect(() => {
     if (scanIndex < 0) return;
     const neighbors = new Set<string>();
     for (let d = 1; d <= PREFETCH_NEIGHBOR_COUNT; d++) {
-      const up = scanSymbols[scanIndex - d];
-      const down = scanSymbols[scanIndex + d];
-      if (up) neighbors.add(up);
-      if (down) neighbors.add(down);
+      if (scanSymbols[scanIndex - d]) neighbors.add(scanSymbols[scanIndex - d]);
+      if (scanSymbols[scanIndex + d]) neighbors.add(scanSymbols[scanIndex + d]);
     }
     neighbors.forEach((sym) => { void fetchCandlesFor(sym, chartTimeframe); });
   }, [scanIndex, scanSymbols, chartTimeframe, fetchCandlesFor]);
 
-  // Keyboard navigation (arrow up/down through scan results)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" || target.isContentEditable)
-      ) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
       if (scanSymbols.length === 0) return;
       const idx = scanSymbols.findIndex((s) => s === symbol.toUpperCase());
       if (idx < 0) return;
@@ -216,8 +191,7 @@ export default function Home() {
   useKeyboardShortcuts(useMemo(() => [
     { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
       const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
-      el?.focus();
-      el?.select();
+      el?.focus(); el?.select();
     }},
     { key: "Escape", description: "Unfocus / close", category: "general" as const, action: () => {
       if (shortcutsOpen) { setShortcutsOpen(false); return; }
@@ -238,14 +212,8 @@ export default function Home() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4" style={{ background: "var(--ws-bg)" }}>
         <p style={{ color: "var(--ws-red)" }}>{error}</p>
-        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>
-          Add MASSIVE_API_KEY to .env.local or check the symbol.
-        </p>
-        <button
-          onClick={() => setSymbol(DEFAULT_SYMBOL)}
-          className="rounded px-4 py-2 text-sm"
-          style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}
-        >
+        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>Add MASSIVE_API_KEY to .env.local or check the symbol.</p>
+        <button onClick={() => setSymbol(DEFAULT_SYMBOL)} className="rounded px-4 py-2 text-sm" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
           Try {DEFAULT_SYMBOL}
         </button>
       </div>
@@ -259,9 +227,12 @@ export default function Home() {
       {section === "market" ? (
         <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} />
       ) : section === "sectors-industries" ? (
-        <SectorsIndustriesPage
-          onOpenCollection={(target) => {
-            setOpenToCollectionTrigger({ kind: target.kind, value: target.value, nonce: Date.now() } as typeof openToCollectionTrigger);
+        <SectorPerfPanel
+          subTab={sectorSubTab}
+          timeframe={sectorTimeframe}
+          onSymbolSelect={handleSymbolSelect}
+          onDrillDown={(kind, value) => {
+            setOpenToCollectionTrigger({ kind, value, nonce: Date.now() } as typeof openToCollectionTrigger);
             setSection("lists");
           }}
         />
@@ -273,6 +244,7 @@ export default function Home() {
           selectedSymbol={symbol}
           onOrderedSymbolsChange={handleOrderedSymbolsChange}
           openToCollectionTrigger={openToCollectionTrigger}
+          hideSidebar
         />
       )}
     </div>
@@ -333,6 +305,13 @@ export default function Home() {
         onSearchChange={setSearchValue}
         onSearchSubmit={handleSearchSubmit}
         flags={flags}
+        activeFlagFilter={activeFlagFilter}
+        onFlagFilter={setActiveFlagFilter}
+        sectorSubTab={sectorSubTab}
+        onSectorSubTabChange={setSectorSubTab}
+        sectorTimeframe={sectorTimeframe}
+        onSectorTimeframeChange={setSectorTimeframe}
+        watchlistNames={chartWatchlists}
       />
       <WorkspaceLayout
         chartLeftPx={chartLeftPx}

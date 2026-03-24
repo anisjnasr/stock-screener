@@ -149,6 +149,8 @@ type WatchlistPanelProps = {
     | { kind: "theme"; value: string; nonce: number }
     | { kind: "index"; value: string; nonce: number }
     | null;
+  /** Hide the left sidebar and resize controls, showing only the data table. */
+  hideSidebar?: boolean;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -479,6 +481,7 @@ export default function WatchlistPanel({
   relatedStocksList,
   openToRelatedListTrigger,
   openToCollectionTrigger,
+  hideSidebar = false,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
@@ -2058,11 +2061,11 @@ export default function WatchlistPanel({
   return (
     <div
       ref={panelRef}
-      className={`flex flex-col border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden ${isMinimized ? "shrink-0" : "flex-1 min-h-0"}`}
-      style={isMinimized ? { height: "32px", minHeight: "32px" } : undefined}
+      className={`flex flex-col ${hideSidebar ? "" : "border-t border-zinc-200 dark:border-zinc-800"} bg-white dark:bg-zinc-900 overflow-hidden ${hideSidebar ? "flex-1 min-h-0" : isMinimized ? "shrink-0" : "flex-1 min-h-0"}`}
+      style={!hideSidebar && isMinimized ? { height: "32px", minHeight: "32px" } : undefined}
     >
       {/* Drag bar + view mode icons */}
-      <div
+      {!hideSidebar && <div
         className="flex items-center h-8 shrink-0 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 px-2"
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest("button") != null) return;
@@ -2170,12 +2173,12 @@ export default function WatchlistPanel({
             </svg>
           </button>
         </div>
-      </div>
+      </div>}
 
-      {!isMinimized && (
+      {(hideSidebar || !isMinimized) && (
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left sidebar: tabs + watchlists or predefined lists */}
-          <aside
+          {!hideSidebar && <aside
             className="hidden sm:flex shrink-0 border-r border-zinc-200 dark:border-zinc-700 flex-col overflow-hidden"
             style={{ width: sidebarWidthPx }}
           >
@@ -2733,8 +2736,8 @@ export default function WatchlistPanel({
                 </li>
               </ul>
             )}
-          </aside>
-          <button
+          </aside>}
+          {!hideSidebar && <button
             type="button"
             onMouseDown={startSidebarResize}
             className="shrink-0 w-1.5 flex flex-col justify-center items-center cursor-col-resize border-0 bg-transparent hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors group"
@@ -2742,7 +2745,7 @@ export default function WatchlistPanel({
             aria-label="Resize sidebar"
           >
             <span className="w-0.5 h-8 rounded-full bg-zinc-300 dark:bg-zinc-600 group-hover:bg-zinc-500 dark:group-hover:bg-zinc-400 pointer-events-none" />
-          </button>
+          </button>}
 
           {/* Edit watchlist popup (add/remove stocks) */}
           {addPopupMode != null && (() => {
