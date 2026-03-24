@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { existsSync, statSync, readdirSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
 import {
   getLatestScreenerDate,
   getOwnershipNative,
@@ -91,54 +90,8 @@ export async function GET() {
   }
 
   let dbSizeMB: number | null = null;
-  let diskFreeMB: number | null = null;
-  let diskTotalMB: number | null = null;
-  let dataFiles: string[] = [];
   if (hasDb) {
     try { dbSizeMB = Math.round(statSync(dbPath).size / 1024 / 1024); } catch {}
-  }
-  try {
-    const dataDir = join(process.cwd(), "data");
-    dataFiles = readdirSync(dataDir).map(f => {
-      try { return `${f} (${Math.round(statSync(join(dataDir, f)).size / 1024 / 1024)}MB)`; }
-      catch { return f; }
-    });
-  } catch {}
-  try {
-    const dfOut = execSync("df -m /app/data 2>/dev/null || df -m . 2>/dev/null", { encoding: "utf8" });
-    const lines = dfOut.trim().split("\n");
-    if (lines.length >= 2) {
-      const parts = lines[1].split(/\s+/);
-      diskTotalMB = parseInt(parts[1]) || null;
-      diskFreeMB = parseInt(parts[3]) || null;
-    }
-  } catch {}
-
-  let sqliteIntegrityOk: boolean | null = null;
-  if (hasDb) {
-    try {
-      const db2 = new Database(dbPath, { readonly: true });
-      const result = db2.prepare("PRAGMA quick_check(1)").get() as { quick_check: string } | undefined;
-      sqliteIntegrityOk = result?.quick_check === "ok";
-      db2.close();
-    } catch {
-      sqliteIntegrityOk = false;
-    }
-  }
-
-  let tableRowCounts: Record<string, number> = {};
-  if (hasDb) {
-    try {
-      const db3 = new Database(dbPath, { readonly: true });
-      const tables = db3.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
-      for (const t of tables) {
-        try {
-          const r = db3.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get() as CountRow | undefined;
-          tableRowCounts[t.name] = r?.c ?? 0;
-        } catch {}
-      }
-      db3.close();
-    } catch {}
   }
 
   if (latestScreenerDate) {
@@ -178,9 +131,7 @@ export async function GET() {
         requireFinancials,
       },
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
-      disk: { dbSizeMB, diskFreeMB, diskTotalMB, dataFiles },
-      sqliteIntegrityOk,
-      tableRowCounts,
+      dbSizeMB,
       timestamp: new Date().toISOString(),
     },
     {
