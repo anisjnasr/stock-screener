@@ -69,7 +69,6 @@ export default function Home() {
 
   const {
     chartLeftPx,
-    setChartLeftPx,
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,
@@ -344,8 +343,7 @@ export default function Home() {
         onNewList={() => setSection("lists")}
       />
       <WorkspaceLayout
-        chartLeftPx={chartLeftPx}
-        onChartLeftChange={setChartLeftPx}
+        leftWidthPx={chartLeftPx}
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}
