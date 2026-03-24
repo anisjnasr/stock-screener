@@ -44,48 +44,22 @@ const COMPANY_REFERENCE_DELAY_MS = Number(process.env.DAILY_REFRESH_COMPANY_REFE
 const REFRESH_INDEX_CONSTITUENTS = String(process.env.DAILY_REFRESH_INDEX_CONSTITUENTS ?? "1") !== "0";
 const REFRESH_THEMATIC_ETF_CONSTITUENTS =
   String(process.env.DAILY_REFRESH_THEMATIC_ETF_CONSTITUENTS ?? "1") !== "0";
+const REFRESH_SECTOR_INDUSTRY_ETF_CONSTITUENTS =
+  String(process.env.DAILY_REFRESH_SECTOR_INDUSTRY_ETF_CONSTITUENTS ?? "1") !== "0";
 const REQUIRED_ETF_SYMBOLS = [
-  "SPY",
-  "QQQ",
-  "IWM",
-  "BOTZ",
-  "SMH",
-  "SKYY",
-  "CIBR",
-  "DTCR",
-  "SNSR",
-  "QTUM",
-  "ARKX",
-  "ARKK",
-  "XOP",
-  "ICLN",
-  "TAN",
-  "URA",
-  "HYDR",
-  "PHO",
-  "LIT",
-  "PAVE",
-  "ITA",
-  "GRID",
-  "GDX",
-  "SIL",
-  "COPX",
-  "REMX",
-  "MOO",
-  "IBIT",
-  "BLOK",
-  "FINX",
-  "XBI",
-  "OZEM",
-  "MSOS",
-  "BETZ",
-  "ESPO",
-  "ITB",
-  "JETS",
-  "SOCL",
-  "IBUY",
-  "KWEB",
-  "INDA",
+  // Major indices
+  "SPY", "QQQ", "IWM",
+  // Sector SPDRs (11 GICS sectors)
+  "XLK", "XLF", "XLV", "XLY", "XLP", "XLC", "XLI", "XLE", "XLB", "XLRE", "XLU",
+  // Industry ETFs (23 -- only industries with a dedicated liquid ETF)
+  "ITA", "JETS", "CARZ", "KBE", "KRE", "PBJ", "XBI", "KCE", "XPH", "BETZ",
+  "GDX", "IHF", "ITB", "KIE", "IHI", "XME", "XOP", "VNQ", "SMH", "IGV",
+  "XRT", "IYZ", "IYT",
+  // Thematic ETFs
+  "BOTZ", "SKYY", "CIBR", "DTCR", "SNSR", "QTUM", "ARKX", "ARKK",
+  "ICLN", "TAN", "URA", "HYDR", "PHO", "LIT", "PAVE", "GRID",
+  "SIL", "COPX", "REMX", "MOO", "IBIT", "BLOK", "FINX", "OZEM",
+  "MSOS", "ESPO", "SOCL", "IBUY", "KWEB", "INDA",
 ];
 
 const BASE = "https://api.polygon.io";
@@ -741,6 +715,16 @@ async function main() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`Warning: thematic ETF constituents refresh failed (${msg}). Keeping existing file.`);
+    }
+  }
+
+  if (REFRESH_SECTOR_INDUSTRY_ETF_CONSTITUENTS) {
+    try {
+      console.log("Refreshing sector/industry ETF constituents...");
+      runScript("scripts/build-sector-industry-etf-constituents.mjs");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: sector/industry ETF constituents refresh failed (${msg}). Keeping existing files.`);
     }
   }
 

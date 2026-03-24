@@ -1,5 +1,5 @@
 param(
-  [string]$TaskName = "StockTool-DailyRefresh",
+  [string]$TaskName = "StockTool-DailyDBSync",
   [string]$RunAt = "18:00"
 )
 
@@ -9,12 +9,12 @@ $repo = Split-Path -Parent $PSScriptRoot
 $logDir = Join-Path $repo "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 
-# The wrapper script that the scheduler calls: runs refresh then optimize, with logging
+# The wrapper script that the scheduler calls: downloads latest DB artifact, with logging
 $wrapperScript = @"
 `$ErrorActionPreference = 'Continue'
 `$repo = '$repo'
 `$logDir = '$logDir'
-`$logFile = Join-Path `$logDir ("refresh-" + (Get-Date -Format 'yyyy-MM-dd') + ".log")
+`$logFile = Join-Path `$logDir ("db-sync-" + (Get-Date -Format 'yyyy-MM-dd') + ".log")
 
 function Log(`$msg) {
     `$ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -22,40 +22,39 @@ function Log(`$msg) {
 }
 
 Set-Location `$repo
-Log "=== Daily refresh started ==="
+Log "=== DB sync started ==="
 
 try {
-    Log "Running refresh-daily..."
-    & node scripts/refresh-daily.mjs 2>&1 | Tee-Object -Append -FilePath `$logFile
-    if (`$LASTEXITCODE -ne 0) { Log "ERROR: refresh-daily exited with code `$LASTEXITCODE" }
-    else { Log "refresh-daily completed successfully" }
+    Log "Downloading latest DB artifact from GitHub..."
+    & node scripts/download-latest-db.mjs 2>&1 | Tee-Object -Append -FilePath `$logFile
+    if (`$LASTEXITCODE -ne 0) { Log "ERROR: download-latest-db exited with code `$LASTEXITCODE" }
+    else { Log "DB sync completed successfully" }
 } catch {
-    Log "ERROR: refresh-daily failed: `$_"
+    Log "ERROR: download-latest-db failed: `$_"
 }
 
-try {
-    Log "Running optimize-db..."
-    & node scripts/optimize-db.mjs 2>&1 | Tee-Object -Append -FilePath `$logFile
-    if (`$LASTEXITCODE -ne 0) { Log "ERROR: optimize-db exited with code `$LASTEXITCODE" }
-    else { Log "optimize-db completed successfully" }
-} catch {
-    Log "ERROR: optimize-db failed: `$_"
-}
-
-Log "=== Daily refresh finished ==="
+Log "=== DB sync finished ==="
 
 # Clean up old logs (keep 30 days)
-Get-ChildItem `$logDir -Filter "refresh-*.log" | Where-Object { `$_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force
+Get-ChildItem `$logDir -Filter "db-sync-*.log" | Where-Object { `$_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force
 "@
 
-$wrapperPath = Join-Path (Join-Path $repo "scripts") "daily-refresh-runner.ps1"
+$wrapperPath = Join-Path (Join-Path $repo "scripts") "daily-db-sync-runner.ps1"
 Set-Content -Path $wrapperPath -Value $wrapperScript -Encoding UTF8
 
 $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapperPath`""
 
+# Remove the old refresh task if it exists
+$oldTaskName = "StockTool-DailyRefresh"
+$oldTask = schtasks /Query /TN $oldTaskName 2>&1
+if ($LASTEXITCODE -eq 0) {
+  Write-Host "Removing old task '$oldTaskName'..."
+  schtasks /Delete /TN $oldTaskName /F | Out-Null
+  Write-Host "  Removed."
+}
+
 Write-Host "Creating/updating scheduled task '$TaskName' at $RunAt (daily, weekdays)..."
 
-# Create the task to run Mon-Fri at the specified time
 schtasks /Create `
   /TN $TaskName `
   /TR $command `
@@ -68,6 +67,9 @@ Write-Host ""
 Write-Host "Task '$TaskName' is configured to run at $RunAt on weekdays."
 Write-Host "Wrapper script: $wrapperPath"
 Write-Host "Logs directory: $logDir"
+Write-Host ""
+Write-Host "Prerequisites:"
+Write-Host "  gh auth login   (GitHub CLI must be authenticated)"
 Write-Host ""
 Write-Host "To run once now:"
 Write-Host "  schtasks /Run /TN `"$TaskName`""

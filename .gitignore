@@ -49,6 +49,11 @@ scripts/stock-type-counts.json
 # artifacts & backups
 .tmp-gh-artifacts/
 data/backups/
+data/.download-tmp/
+
+# generated runner scripts (created by setup-daily-update.ps1)
+scripts/daily-refresh-runner.ps1
+scripts/daily-db-sync-runner.ps1
 
 # logs
 /logs/

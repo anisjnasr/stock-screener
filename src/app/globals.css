@@ -19,6 +19,26 @@
   --foreground: #ededed;
 }
 
+/* Workspace design system (dark-only v1) */
+:root {
+  --ws-bg: #0a0e14;
+  --ws-bg2: #0d1117;
+  --ws-bg3: #131820;
+  --ws-border: rgba(255, 255, 255, 0.06);
+  --ws-border-hover: rgba(255, 255, 255, 0.12);
+  --ws-text: #c9d1d9;
+  --ws-text-dim: rgba(201, 209, 217, 0.45);
+  --ws-text-vdim: rgba(201, 209, 217, 0.25);
+  --ws-cyan: #00e5cc;
+  --ws-red: #ff4d6a;
+  --ws-yellow: #ffc107;
+  --ws-blue: #4da6ff;
+  --ws-green: #22c55e;
+  --ws-purple: #a78bfa;
+  --ws-font-mono: "JetBrains Mono", "SF Mono", monospace;
+  --ws-font-sans: "DM Sans", sans-serif;
+}
+
 html {
   font-size: calc(1.125rem * var(--font-scale, 1));
   -webkit-text-size-adjust: 100%;
@@ -63,4 +83,11 @@ body {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* Workspace responsive: on small screens, collapse to chart-only with scrollable panels */
+@media (max-width: 767px) {
+  [role="separator"][aria-orientation="vertical"] {
+    display: none;
+  }
 }

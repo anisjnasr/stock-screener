@@ -11,6 +11,7 @@
     "build-stocks-db": "node scripts/build-stocks-db.mjs",
     "build-index-constituents": "node scripts/build-index-constituents.mjs",
     "build-thematic-etf-constituents": "node scripts/build-thematic-etf-constituents.mjs",
+    "build-sector-industry-etf-constituents": "node scripts/build-sector-industry-etf-constituents.mjs",
     "enrich-stocks": "node scripts/enrich-stocks-yfinance.mjs",
     "check-gics-coverage": "node scripts/check-gics-coverage.mjs",
     "check-and-enrich-gics": "node scripts/check-and-enrich-gics.mjs",
@@ -36,6 +37,7 @@
     "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
     "market-monitor:stats": "node scripts/market-monitor-stats.mjs",
+    "download-latest-db": "node scripts/download-latest-db.mjs",
     "setup-daily-update": "powershell -ExecutionPolicy Bypass -File scripts/setup-daily-update.ps1",
     "setup-github-runner": "powershell -ExecutionPolicy Bypass -File scripts/setup-github-runner.ps1"
   },
