@@ -173,10 +173,19 @@ export async function GET(request: NextRequest) {
         typeof dbRow?.atr_pct_21d === "number" && dbRow.atr_pct_21d > 0 ? dbRow.atr_pct_21d : null,
     };
 
+    const rsRank = dbRow ? {
+      rs_pct_1w: dbRow.rs_pct_1w ?? null,
+      rs_pct_1m: dbRow.rs_pct_1m ?? null,
+      rs_pct_3m: dbRow.rs_pct_3m ?? null,
+      rs_pct_6m: dbRow.rs_pct_6m ?? null,
+      rs_pct_12m: dbRow.rs_pct_12m ?? null,
+    } : null;
+
     const payload = {
       quote: quoteWithFallback,
       profile: mergedProfile,
       nextEarnings,
+      rsRank,
     };
     cache.set(cacheKey, { payload, expiresAt: Date.now() + STOCK_API_TTL_MS });
     return NextResponse.json(payload, {

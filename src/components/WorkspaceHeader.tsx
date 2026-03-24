@@ -282,8 +282,6 @@ export default function WorkspaceHeader({
           <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
           {/* Flag filters */}
           <div className="flex items-center gap-1">
-            <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Flags:</span>
-            <Pill small on={!activeFlagFilter} onClick={() => onFlagFilter?.(null)}>All</Pill>
             {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
               const cnt = flagCounts[f] ?? 0;
               if (cnt === 0) return null;

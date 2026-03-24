@@ -19,11 +19,25 @@ export type StockData = {
   };
   profile?: {
     companyName: string;
+    description?: string;
+    website?: string;
     sector: string;
     industry: string;
+    exchange?: string;
+    country?: string;
+    ipoDate?: string;
+    floatShares?: number;
+    sharesOutstanding?: number;
     mktCap?: number;
   };
   nextEarnings?: string;
+  rsRank?: {
+    rs_pct_1w: number | null;
+    rs_pct_1m: number | null;
+    rs_pct_3m: number | null;
+    rs_pct_6m: number | null;
+    rs_pct_12m: number | null;
+  } | null;
 };
 
 export function useStockData(symbol: string) {

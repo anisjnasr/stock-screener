@@ -20,6 +20,7 @@ import {
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
+import { loadScreens, seedDefaultScreensIfEmpty, type SavedScreen } from "@/lib/screener-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -49,6 +50,9 @@ export default function Home() {
 
   // Scans contextual state
   const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
+  const [screens, setScreens] = useState<SavedScreen[]>([]);
+  const [activeScanName, setActiveScanName] = useState("");
+  const [openToScreenerTrigger, setOpenToScreenerTrigger] = useState<{ name: string; nonce: number } | null>(null);
 
   // Collection drill-down
   const [openToCollectionTrigger, setOpenToCollectionTrigger] = useState<
@@ -74,7 +78,14 @@ export default function Home() {
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
   const { data, loading, error } = useStockData(symbol);
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(symbol);
-  const { ownershipQuarters } = useOwnership(symbol);
+  const { ownershipQuarters, fundCount } = useOwnership(symbol);
+
+  useEffect(() => {
+    seedDefaultScreensIfEmpty();
+    const loaded = loadScreens();
+    setScreens(loaded);
+    if (loaded.length > 0) setActiveScanName(loaded[0].name);
+  }, []);
 
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
@@ -244,6 +255,7 @@ export default function Home() {
           selectedSymbol={symbol}
           onOrderedSymbolsChange={handleOrderedSymbolsChange}
           openToCollectionTrigger={openToCollectionTrigger}
+          openToScreenerTrigger={section === "scans" ? openToScreenerTrigger : null}
           hideSidebar
         />
       )}
@@ -280,7 +292,7 @@ export default function Home() {
   );
 
   const rightPanel = section === "market" ? (
-    <MarketBreadthRail />
+    <MarketBreadthRail selectedSymbol={symbol} />
   ) : (
     <RightRail
       section={section}
@@ -290,6 +302,8 @@ export default function Home() {
       yearlyRows={yearlyRows}
       quarterlyRows={quarterlyRows}
       ownershipQuarters={ownershipQuarters}
+      fundCount={fundCount}
+      rsRank={data?.rsRank}
       loading={sidebarLoading}
     />
   );
@@ -298,7 +312,12 @@ export default function Home() {
     <div className="h-screen min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--ws-bg)" }}>
       <WorkspaceHeader
         section={section}
-        onSectionChange={setSection}
+        onSectionChange={(s) => {
+          setSection(s);
+          if (s === "scans" && activeScanName && !openToScreenerTrigger) {
+            setOpenToScreenerTrigger({ name: activeScanName, nonce: Date.now() });
+          }
+        }}
         symbol={symbol}
         onSymbolChange={setSymbol}
         searchValue={searchValue}
@@ -311,7 +330,18 @@ export default function Home() {
         onSectorSubTabChange={setSectorSubTab}
         sectorTimeframe={sectorTimeframe}
         onSectorTimeframeChange={setSectorTimeframe}
+        scanList={screens.map((s) => s.name)}
+        activeScan={activeScanName}
+        onScanChange={(name) => {
+          setActiveScanName(name);
+          setOpenToScreenerTrigger({ name, nonce: Date.now() });
+        }}
+        onNewScan={() => {
+          setSection("scans");
+          setOpenToScreenerTrigger({ name: "__new__", nonce: Date.now() });
+        }}
         watchlistNames={chartWatchlists}
+        onNewList={() => setSection("lists")}
       />
       <WorkspaceLayout
         chartLeftPx={chartLeftPx}

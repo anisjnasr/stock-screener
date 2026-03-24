@@ -151,6 +151,8 @@ type WatchlistPanelProps = {
     | null;
   /** Hide the left sidebar and resize controls, showing only the data table. */
   hideSidebar?: boolean;
+  /** When this changes, switch to screener tab and select the named screen. */
+  openToScreenerTrigger?: { name: string; nonce: number } | null;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -482,6 +484,7 @@ export default function WatchlistPanel({
   openToRelatedListTrigger,
   openToCollectionTrigger,
   hideSidebar = false,
+  openToScreenerTrigger,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
@@ -1056,6 +1059,28 @@ export default function WatchlistPanel({
       return next;
     });
   }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols]);
+
+  useEffect(() => {
+    if (!openToScreenerTrigger?.name?.trim()) return;
+    setSidebarTab("screener");
+    if (openToScreenerTrigger.name === "__new__") {
+      setEditingScreenId(null);
+      setNewScreenForm({
+        name: "",
+        universe: "all",
+        filters: {},
+        pctOperatorRows: {},
+        includeExcludeRows: {},
+        expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
+      });
+      setShowNewScreenerModal(true);
+    } else {
+      const target = screens.find((s) => s.name === openToScreenerTrigger.name);
+      if (target) {
+        setSelectedScreenId(target.id);
+      }
+    }
+  }, [openToScreenerTrigger, screens]);
 
   useEffect(() => {
     if (!selectedCollectionId) return;
@@ -3413,48 +3438,43 @@ export default function WatchlistPanel({
 
           {/* Right: table */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between gap-2 p-2 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 uppercase truncate">
-                  {tableSource.title}
-                </h3>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Results: {loading ? "..." : rows.length.toLocaleString()}
-                </p>
-                {tableSource.fromScreener && screenerDbDate && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                    Last Update: {formatDisplayDate(screenerDbDate)}
-                  </p>
-                )}
-              </div>
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
+              <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
+                {loading ? "…" : `${rows.length} results`}
+              </span>
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowColumnPicker(true)}
-                  className="p-1.5 rounded border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors hover:brightness-125"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
                   title="Customize columns"
                   aria-label="Customize columns"
                 >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.5"><path d="M2 2h4v12H2zm5 0h4v12H7zm5 0h3v12h-3z"/></svg>
                   Columns
                 </button>
                 <button
                   type="button"
                   onClick={handleAutoSizeColumns}
-                  className="p-1.5 rounded border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium"
-                  title="Auto-size columns to default widths"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors hover:brightness-125"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  title="Auto-size columns"
                   aria-label="Auto-size columns"
                 >
-                  Auto-size
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.5"><path d="M2 8l3-3v2h6V5l3 3-3 3V9H5v2z"/></svg>
+                  Fit
                 </button>
                 <button
                   type="button"
                   onClick={() => fetchRows()}
                   disabled={loading}
-                  className="p-1.5 rounded border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-125 disabled:opacity-30"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
                   title="Refresh"
                   aria-label="Refresh"
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" className={loading ? "animate-spin" : ""}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={loading ? "animate-spin" : ""}>
                     <path d="M8 3a5 5 0 1 0 4.547 2.909A.5.5 0 0 1 13 6.5a6 6 0 1 1-5.5-5.96.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h1.14A5 5 0 0 0 8 3z" />
                   </svg>
                 </button>
