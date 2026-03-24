@@ -1,49 +1,19 @@
-<svg viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <pattern id="gr" width="60" height="60" patternUnits="userSpaceOnUse">
-      <path d="M60 0 L0 0 0 60" fill="none" stroke="#3BBFCF" stroke-width="0.6"/>
-    </pattern>
-  </defs>
-  <rect width="1200" height="630" fill="#171717"/>
-  <rect width="1200" height="630" fill="url(#gr)" opacity="0.04"/>
-  <circle cx="430" cy="315" r="122" fill="none" stroke="#3BBFCF" stroke-width="4"/>
-  <circle cx="430" cy="315" r="77"  fill="none" stroke="#3BBFCF" stroke-width="2.2" opacity=".45"/>
-  <line x1="430" y1="179" x2="430" y2="227" stroke="#3BBFCF" stroke-width="4" stroke-linecap="round"/>
-  <line x1="430" y1="403" x2="430" y2="451" stroke="#3BBFCF" stroke-width="4" stroke-linecap="round"/>
-  <line x1="292" y1="315" x2="340" y2="315" stroke="#3BBFCF" stroke-width="4" stroke-linecap="round"/>
-  <line x1="520" y1="315" x2="568" y2="315" stroke="#3BBFCF" stroke-width="4" stroke-linecap="round"/>
-  <line x1="430" y1="231" x2="430" y2="244" stroke="#3BBFCF" stroke-width="2" opacity=".4"/>
-  <line x1="430" y1="386" x2="430" y2="399" stroke="#3BBFCF" stroke-width="2" opacity=".4"/>
-  <line x1="305" y1="315" x2="318" y2="315" stroke="#3BBFCF" stroke-width="2" opacity=".4"/>
-  <line x1="542" y1="315" x2="555" y2="315" stroke="#3BBFCF" stroke-width="2" opacity=".4"/>
-  <line x1="366" y1="347" x2="366" y2="353" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="350" y="353" width="16" height="22" fill="#3BBFCF" rx="1.5"/>
-  <line x1="366" y1="375" x2="366" y2="381" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="398" y1="325" x2="398" y2="331" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="382" y="331" width="16" height="22" fill="#3BBFCF" rx="1.5"/>
-  <line x1="398" y1="353" x2="398" y2="359" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="430" y1="315" x2="430" y2="325" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="414" y="325" width="16" height="19" fill="none" stroke="#3BBFCF" stroke-width="3.2" rx="1.5"/>
-  <line x1="430" y1="344" x2="430" y2="354" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="462" y1="325" x2="462" y2="335" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="446" y="335" width="16" height="19" fill="none" stroke="#3BBFCF" stroke-width="3.2" rx="1.5"/>
-  <line x1="462" y1="354" x2="462" y2="364" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="494" y1="335" x2="494" y2="345" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="478" y="345" width="16" height="19" fill="none" stroke="#3BBFCF" stroke-width="3.2" rx="1.5"/>
-  <line x1="494" y1="364" x2="494" y2="374" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <line x1="526" y1="277" x2="526" y2="283" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="510" y="283" width="16" height="58" fill="#3BBFCF" rx="1.5"/>
-  <line x1="526" y1="341" x2="526" y2="351" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <rect x="542" y="250" width="16" height="54" fill="#3BBFCF" rx="1.5"/>
-  <line x1="550" y1="304" x2="550" y2="316" stroke="#3BBFCF" stroke-width="3.2" stroke-linecap="round"/>
-  <circle cx="430" cy="315" r="5" fill="#3BBFCF" opacity=".35"/>
-  <line x1="620" y1="160" x2="620" y2="470" stroke="#E8E8E8" stroke-width="1" opacity=".12"/>
-  <text x="660" y="272" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="26" font-weight="400" letter-spacing="18" fill="#E8E8E8" opacity=".35">STOCK</text>
-  <text x="652" y="378" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="80" font-weight="500" letter-spacing="1" fill="#E8E8E8">STALKER</text>
-  <g stroke="#3BBFCF" stroke-width="1.5" opacity=".15" fill="none">
-    <path d="M48,48 L48,80 M48,48 L80,48"/>
-    <path d="M1152,48 L1152,80 M1152,48 L1120,48"/>
-    <path d="M48,582 L48,550 M48,582 L80,582"/>
-    <path d="M1152,582 L1152,550 M1152,582 L1120,582"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0a0e14"/>
+  <g transform="translate(600, 315)">
+    <g transform="translate(-140, 0) scale(3.5)">
+      <circle cx="12" cy="12" r="10" stroke="#00e5cc" stroke-width="1" opacity="0.3"/>
+      <circle cx="12" cy="12" r="6" stroke="#00e5cc" stroke-width="1" opacity="0.5"/>
+      <line x1="12" y1="1" x2="12" y2="5" stroke="#00e5cc" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+      <line x1="12" y1="19" x2="12" y2="23" stroke="#00e5cc" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+      <line x1="1" y1="12" x2="5" y2="12" stroke="#00e5cc" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+      <line x1="19" y1="12" x2="23" y2="12" stroke="#00e5cc" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+      <line x1="12" y1="8" x2="12" y2="10" stroke="#00e5cc" stroke-width="1" stroke-linecap="round" opacity="0.4"/>
+      <line x1="12" y1="14" x2="12" y2="16" stroke="#00e5cc" stroke-width="1" stroke-linecap="round" opacity="0.4"/>
+      <line x1="8" y1="12" x2="10" y2="12" stroke="#00e5cc" stroke-width="1" stroke-linecap="round" opacity="0.4"/>
+      <line x1="14" y1="12" x2="16" y2="12" stroke="#00e5cc" stroke-width="1" stroke-linecap="round" opacity="0.4"/>
+      <circle cx="12" cy="12" r="0.8" fill="#00e5cc"/>
+    </g>
+    <text x="30" y="10" font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace" font-weight="600" font-size="42" fill="#00e5cc" letter-spacing="-1">StockStalker</text>
   </g>
 </svg>
