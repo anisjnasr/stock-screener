@@ -79,11 +79,20 @@ export default function Home() {
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(symbol);
   const { ownershipQuarters, fundCount } = useOwnership(symbol);
 
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
   useEffect(() => {
     seedDefaultScreensIfEmpty();
     const loaded = loadScreens();
     setScreens(loaded);
     if (loaded.length > 0) setActiveScanName(loaded[0].name);
+    fetch("/api/health").then((r) => r.json()).then((d) => {
+      if (d.latestScreenerDate) setLastUpdated(d.latestScreenerDate);
+      else if (d.dbUpdatedAt) {
+        const dt = new Date(d.dbUpdatedAt);
+        setLastUpdated(dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+      }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -340,7 +349,16 @@ export default function Home() {
           setOpenToScreenerTrigger({ name: "__new__", nonce: Date.now() });
         }}
         watchlistNames={chartWatchlists}
-        onNewList={() => setSection("lists")}
+        lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
+        onNewList={() => {
+          const name = prompt("New watchlist name:");
+          if (!name?.trim()) return;
+          const newList: Watchlist = { id: `wl-${Date.now()}`, name: name.trim(), symbols: [] };
+          const updated = [...watchlists, newList];
+          setWatchlists(updated);
+          saveWatchlists(updated);
+          setSection("lists");
+        }}
       />
       <WorkspaceLayout
         leftWidthPx={chartLeftPx}

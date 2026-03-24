@@ -3014,9 +3014,28 @@ export default function WatchlistPanel({
               >
                 <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h2 id="new-script-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide mb-3">
-                      {editingScriptScreenId ? "Edit Script" : "New Script"}
-                    </h2>
+                    <div className="flex items-center gap-3 mb-3">
+                      <h2 id="new-script-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+                        {editingScriptScreenId ? "Edit Script" : "New Script"}
+                      </h2>
+                      <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}>
+                        <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                          style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
+                          onClick={() => {
+                            setShowNewScriptModal(false);
+                            setEditingScriptScreenId(null);
+                            setEditingScreenId(null);
+                            setNewScreenForm({ name: "", universe: "all", filters: {}, pctOperatorRows: {}, includeExcludeRows: {}, expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) });
+                            setShowNewScreenerModal(true);
+                          }}>
+                          Traditional
+                        </button>
+                        <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                          style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}>
+                          NinoScript
+                        </button>
+                      </div>
+                    </div>
                     <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Custom Screener Name</label>
                     <input
                       type="text"
@@ -3120,9 +3139,30 @@ export default function WatchlistPanel({
                   onMouseDown={startScreenerModalDrag}
                   role="presentation"
                 >
-                  <h2 id="new-screener-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
-                    {editingScreenId ? "Edit Screener" : "New Screener"}
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 id="new-screener-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+                      {editingScreenId ? "Edit Screener" : "New Screener"}
+                    </h2>
+                    <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}
+                      onMouseDown={(e) => e.stopPropagation()}>
+                      <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}
+                        onClick={() => {}}>
+                        Traditional
+                      </button>
+                      <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                        style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
+                        onClick={() => {
+                          setShowNewScreenerModal(false);
+                          setEditingScriptScreenId(null);
+                          setNewScriptName("");
+                          setNewScriptBody("");
+                          setShowNewScriptModal(true);
+                        }}>
+                        NinoScript
+                      </button>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onMouseDown={(e) => e.stopPropagation()}
@@ -3443,44 +3483,23 @@ export default function WatchlistPanel({
                 {loading ? "…" : `${rows.length} results`}
               </span>
               <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowColumnPicker(true)}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors hover:brightness-125"
-                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  title="Customize columns"
-                  aria-label="Customize columns"
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.5"><path d="M2 2h4v12H2zm5 0h4v12H7zm5 0h3v12h-3z"/></svg>
-                  Columns
+                <button type="button" onClick={() => setShowColumnPicker(true)}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                  style={{ color: "rgba(201,209,217,0.5)" }} title="Columns" aria-label="Columns">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h4v12H2zm5 0h4v12H7zm5 0h3v12h-3z"/></svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleAutoSizeColumns}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors hover:brightness-125"
-                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  title="Auto-size columns"
-                  aria-label="Auto-size columns"
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.5"><path d="M2 8l3-3v2h6V5l3 3-3 3V9H5v2z"/></svg>
-                  Fit
+                <button type="button" onClick={handleAutoSizeColumns}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                  style={{ color: "rgba(201,209,217,0.5)" }} title="Auto-size" aria-label="Auto-size">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 8l3-3v2h6V5l3 3-3 3V9H5v2z"/></svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => fetchRows()}
-                  disabled={loading}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-125 disabled:opacity-30"
-                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(201,209,217,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  title="Refresh"
-                  aria-label="Refresh"
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={loading ? "animate-spin" : ""}>
+                <button type="button" onClick={() => fetchRows()} disabled={loading}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150 disabled:opacity-30"
+                  style={{ color: "rgba(201,209,217,0.5)" }} title="Refresh" aria-label="Refresh">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className={loading ? "animate-spin" : ""}>
                     <path d="M8 3a5 5 0 1 0 4.547 2.909A.5.5 0 0 1 13 6.5a6 6 0 1 1-5.5-5.96.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h1.14A5 5 0 0 0 8 3z" />
                   </svg>
                 </button>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                  {lastRefresh ? formatDisplayDateTime(lastRefresh) : "NA"}
-                </span>
               </div>
             </div>
 

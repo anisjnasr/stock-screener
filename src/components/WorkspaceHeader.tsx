@@ -42,6 +42,7 @@ type WorkspaceHeaderProps = {
   activeWatchlistId?: string | null;
   onWatchlistChange?: (id: string) => void;
   onNewList?: () => void;
+  lastUpdated?: string | null;
 };
 
 function Pill({
@@ -100,6 +101,7 @@ export default function WorkspaceHeader({
   activeWatchlistId,
   onWatchlistChange,
   onNewList,
+  lastUpdated,
 }: WorkspaceHeaderProps) {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -254,11 +256,13 @@ export default function WorkspaceHeader({
                 {scanList.map((s) => (
                   <div
                     key={s}
-                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1"
+                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors"
                     style={{
                       color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                       background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
                     }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
                     onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
                   >
                     {s}
@@ -272,12 +276,12 @@ export default function WorkspaceHeader({
             onClick={onNewScan}
             className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
-              background: "rgba(139,92,246,0.08)",
-              border: "1px solid rgba(139,92,246,0.2)",
-              color: "#a78bfa",
+              background: "rgba(0,229,204,0.08)",
+              border: "1px solid rgba(0,229,204,0.2)",
+              color: "var(--ws-cyan)",
             }}
           >
-            + New scan
+            + New
           </button>
           <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
           {/* Flag filters */}
@@ -310,12 +314,12 @@ export default function WorkspaceHeader({
             onClick={onNewList}
             className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
-              background: "rgba(139,92,246,0.08)",
-              border: "1px solid rgba(139,92,246,0.2)",
-              color: "#a78bfa",
+              background: "rgba(0,229,204,0.08)",
+              border: "1px solid rgba(0,229,204,0.2)",
+              color: "var(--ws-cyan)",
             }}
           >
-            + New list
+            + New
           </button>
         </div>
       )}
@@ -391,6 +395,13 @@ export default function WorkspaceHeader({
           </ul>
         )}
       </div>
+
+      {/* Last updated */}
+      {lastUpdated && (
+        <span className="shrink-0 text-[10px] tabular-nums ml-2" style={{ color: "var(--ws-text-vdim)" }}>
+          {lastUpdated}
+        </span>
+      )}
     </header>
   );
 }

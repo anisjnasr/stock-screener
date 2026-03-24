@@ -98,8 +98,10 @@ export default function SectorPerfPanel({
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="px-3 py-1.5 text-[10px]" style={{ color: "var(--ws-text-vdim)", borderBottom: "1px solid var(--ws-border)" }}>
-        {sorted.length} items
+      <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+        <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+          {loading ? "…" : `${sorted.length} results`}
+        </span>
       </div>
       <div className="flex-1 overflow-auto">
         {sorted.map((s, i) => {

@@ -24,4 +24,4 @@ services:
     disk:
       name: screener-data
       mountPath: /app/data
-      sizeGB: 5
+      sizeGB: 10

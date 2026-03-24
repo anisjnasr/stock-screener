@@ -92,15 +92,15 @@ function QuarterlyBars({
   const maxVal = Math.max(...values.map(Math.abs), 1);
 
   return (
-    <div className="flex items-end gap-1.5 mt-1.5">
+    <div className="flex items-end gap-2 mt-1.5">
       {display.map((d, i) => {
         const val = Number(d[valueKey] ?? 0);
         const growth = d[growthKey] as number | null;
-        const barH = Math.max(4, (Math.abs(val) / maxVal) * 36);
+        const barH = Math.max(5, (Math.abs(val) / maxVal) * 44);
         return (
-          <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 28 }}>
+          <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 32 }}>
             <span
-              className="text-[9px] font-medium tabular-nums leading-none"
+              className="text-[10px] font-medium tabular-nums leading-none"
               style={{ color: growth != null && growth >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
             >
               {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
@@ -245,18 +245,18 @@ export default function RightRail({
 
           {/* REVENUE */}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
               Revenue
             </div>
-            <div className="text-[13px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
+            <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
               {revenueRange}
             </div>
             {revenueYoY != null && (
-              <div className="text-[12px] font-semibold mt-0.5" style={{ color: revenueYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
+              <div className="text-[13px] font-semibold mt-0.5" style={{ color: revenueYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
                 {fmtPctSigned(revenueYoY)} YoY
               </div>
             )}
-            <div className="text-[10px] mt-1 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
+            <div className="text-[11px] mt-2 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
             <QuarterlyBars data={qtrData} valueKey="sales" growthKey="salesGrowth" color="var(--ws-cyan)" />
           </div>
 
@@ -264,18 +264,18 @@ export default function RightRail({
 
           {/* EARNINGS */}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
               Earnings
             </div>
-            <div className="text-[13px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
+            <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
               {epsRange}
             </div>
             {epsYoY != null && (
-              <div className="text-[12px] font-semibold mt-0.5" style={{ color: epsYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
+              <div className="text-[13px] font-semibold mt-0.5" style={{ color: epsYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
                 {fmtPctSigned(epsYoY)} YoY
               </div>
             )}
-            <div className="text-[10px] mt-1 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
+            <div className="text-[11px] mt-2 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
             <QuarterlyBars data={qtrData} valueKey="eps" growthKey="epsGrowth" color="var(--ws-cyan)" />
             {/* Surprise row */}
             {qtrData.some((q) => q.epsGrowth != null) && (
@@ -297,19 +297,27 @@ export default function RightRail({
 
           {/* INSTITUTIONAL */}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
               Institutional
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-[16px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>
+              <span className="text-[18px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>
                 {(fundCount ?? latestOwnership?.value ?? 0).toLocaleString()}
               </span>
-              <span className="text-[11px]" style={{ color: "var(--ws-text-dim)" }}>holders</span>
+              <span className="text-[12px]" style={{ color: "var(--ws-text-dim)" }}>holders</span>
+              {ownershipTrend && (
+                <span className="text-[11px] font-medium" style={{ color: ownershipTrend === "increasing" ? "var(--ws-green)" : ownershipTrend === "decreasing" ? "var(--ws-red)" : "var(--ws-text-dim)" }}>
+                  {ownershipTrend === "increasing" ? "▲ Increasing" : ownershipTrend === "decreasing" ? "▼ Decreasing" : "— Flat"}
+                </span>
+              )}
             </div>
-            {ownershipTrend && (
-              <div className="text-[11px] mt-0.5" style={{ color: ownershipTrend === "increasing" ? "var(--ws-green)" : ownershipTrend === "decreasing" ? "var(--ws-red)" : "var(--ws-text-dim)" }}>
-                {ownershipTrend === "increasing" ? "▲" : ownershipTrend === "decreasing" ? "▼" : "—"} {ownershipTrend.charAt(0).toUpperCase() + ownershipTrend.slice(1)}
-              </div>
+            {ownershipData.length > 0 && (
+              <QuarterlyBars
+                data={ownershipData.slice(0, 4)}
+                valueKey="value"
+                growthKey="change"
+                color="var(--ws-purple, #a78bfa)"
+              />
             )}
           </div>
 
@@ -318,7 +326,7 @@ export default function RightRail({
           {/* RS RANK */}
           {rsRank && bestRs != null && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
                 RS Rank
               </div>
               <div className="flex items-baseline gap-1.5 mb-2">
@@ -332,7 +340,7 @@ export default function RightRail({
                   Top {(100 - bestRs).toFixed(0)}%
                 </span>
               </div>
-              <table className="w-full text-[10px]" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
