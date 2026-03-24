@@ -193,7 +193,9 @@ function dbFileChanged(): boolean {
 
 function openDb(): BetterSqlite3Database {
   const db = new Database(DB_PATH, { readonly: true });
-  db.exec("PRAGMA journal_mode = WAL");
+  // journal_mode = WAL requires write access; the VACUUM'd DB from CI arrives
+  // in DELETE mode so this would throw SQLITE_READONLY on a readonly connection.
+  try { db.exec("PRAGMA journal_mode = WAL"); } catch { /* readonly — keep existing mode */ }
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec("PRAGMA cache_size = -64000");
   db.exec("PRAGMA mmap_size = 268435456");
