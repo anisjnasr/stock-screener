@@ -3,10 +3,7 @@ import {
   statSync,
   writeFileSync,
   unlinkSync,
-  readFileSync,
-  existsSync,
   mkdirSync,
-  appendFileSync,
 } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
@@ -33,76 +30,16 @@ type Artifact = {
 };
 
 function log(msg: string) {
-  const line = `[sync-db] ${msg}`;
-  console.log(line);
-  try { appendFileSync(SYNC_LOG, `${new Date().toISOString()} ${line}\n`); } catch {}
-}
-
-async function findLatestArtifact(githubToken: string): Promise<Artifact | null> {
-  const listRes = await fetch(
-    `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts?per_page=20`,
-    {
-      headers: {
-        Authorization: `token ${githubToken}`,
-        Accept: "application/vnd.github+json",
-      },
-    }
-  );
-  if (!listRes.ok) return null;
-  const listData = (await listRes.json()) as { artifacts: Artifact[] };
-  return listData.artifacts?.find(
-    (a) => a.name.startsWith("screener-db-") && !a.expired
-  ) ?? null;
+  console.log(`[sync-db] ${msg}`);
 }
 
 /**
- * GET: Check sync status — returns last sync log, disk info, DB state.
- */
-export async function GET() {
-  let syncLog = "";
-  try { syncLog = readFileSync(SYNC_LOG, "utf8").split("\n").slice(-50).join("\n"); } catch {}
-  let dbSizeMB: number | null = null;
-  let dbExists = existsSync(DB_PATH);
-  if (dbExists) {
-    try { dbSizeMB = Math.round(statSync(DB_PATH).size / 1024 / 1024); } catch {}
-  }
-  let diskInfo = "";
-  try {
-    const { execSync } = require("child_process");
-    diskInfo = execSync("df -h /app/data 2>/dev/null || df -h . 2>/dev/null || echo 'df unavailable'", { encoding: "utf8" });
-  } catch {}
-  let tableCheck = "";
-  if (dbExists) {
-    try {
-      const Database = require("better-sqlite3");
-      const db = new Database(DB_PATH, { readonly: true });
-      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
-      for (const t of tables) {
-        try {
-          const r = db.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get() as { c: number };
-          tableCheck += `${t.name}: ${r.c} rows\n`;
-        } catch {}
-      }
-      db.close();
-    } catch (e: unknown) {
-      tableCheck = `DB open error: ${e instanceof Error ? e.message : String(e)}`;
-    }
-  }
-  return NextResponse.json({
-    dbExists,
-    dbSizeMB,
-    diskInfo: diskInfo.trim(),
-    tableCheck: tableCheck.trim(),
-    recentLog: syncLog.trim(),
-  }, { headers: { "Cache-Control": "no-cache" } });
-}
-
-/**
- * POST: Trigger DB sync. Downloads the latest GitHub artifact using streaming
- * extraction (pipe curl directly into bsdtar) so the ZIP is never stored on
- * disk. Peak disk usage = only the extracted DB (~4-5 GB).
+ * Trigger-based DB sync. GH Actions calls this with a small request (no body);
+ * the endpoint looks up the latest artifact from the GitHub API, then spawns a
+ * background shell process: curl downloads the ZIP to disk, then unzip -p
+ * extracts screener.db. Requires ~7 GB peak disk (ZIP + extracted DB).
  *
- * Requirements on Docker image: curl, libarchive-tools (bsdtar).
+ * Requirements on the Docker image: curl, libarchive-tools (bsdtar).
  * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with repo scope).
  */
 export async function POST(request: NextRequest) {
@@ -124,7 +61,27 @@ export async function POST(request: NextRequest) {
 
   try {
     log("Fetching artifact list from GitHub...");
-    const artifact = await findLatestArtifact(githubToken);
+    const listRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts?per_page=20`,
+      {
+        headers: {
+          Authorization: `token ${githubToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      }
+    );
+    if (!listRes.ok) {
+      const text = await listRes.text();
+      return NextResponse.json(
+        { error: `GitHub API ${listRes.status}: ${text.slice(0, 200)}` },
+        { status: 502 }
+      );
+    }
+
+    const listData = (await listRes.json()) as { artifacts: Artifact[] };
+    const artifact = listData.artifacts?.find(
+      (a) => a.name.startsWith("screener-db-") && !a.expired
+    );
     if (!artifact) {
       return NextResponse.json(
         { error: "No unexpired screener-db artifact found" },
@@ -133,92 +90,70 @@ export async function POST(request: NextRequest) {
     }
 
     const sizeMb = Math.round(artifact.size_in_bytes / 1024 / 1024);
-    log(`Found artifact: ${artifact.name} (${sizeMb}MB compressed, created ${artifact.created_at})`);
+    log(
+      `Found artifact: ${artifact.name} (${sizeMb}MB, created ${artifact.created_at})`
+    );
 
     const cacheRm = STALE_CACHES.map(
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
+    const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // STREAMING EXTRACTION: pipe curl directly into bsdtar.
-    // The ZIP is never written to disk — peak disk = extracted DB only.
-    // This is critical because the ZIP (~2 GB) + DB (~5 GB) would exceed
-    // the Render disk if both existed simultaneously.
-    const extractDir = join(DATA_DIR, ".extract-tmp");
+    // Two-step: download ZIP to disk, then extract with bsdtar (from
+    // libarchive-tools) which handles ZIP64 reliably — Alpine's unzip
+    // silently corrupts files >4 GB. Disk budget on 10 GB:
+    //   1. Delete old DB + caches → ~0 GB used
+    //   2. Download ZIP → ~2.2 GB
+    //   3. Extract directly to disk → peak ~7.2 GB (ZIP + extracted DB)
+    //   4. Delete ZIP → ~5 GB final
     const script = [
       `set -e`,
-      `exec 2>&1`,
-      `echo "[sync] ===== SYNC START $(date -u) ====="`,
-      `echo "[sync] Tools: curl=$(which curl 2>&1 || echo MISSING) bsdtar=$(which bsdtar 2>&1 || echo MISSING)"`,
-      ``,
-      `echo "[sync] Disk BEFORE cleanup:"`,
-      `df -h "${DATA_DIR}" 2>/dev/null || df -h . 2>/dev/null || true`,
-      ``,
-      `echo "[sync] Removing old DB and caches..."`,
-      `rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm"`,
+      `echo "[sync] Tool check:"`,
+      `echo "  curl: $(which curl 2>&1 || echo NOT FOUND)"`,
+      `echo "  bsdtar: $(which bsdtar 2>&1 || echo NOT FOUND)"`,
+      `echo "  unzip: $(which unzip 2>&1 || echo NOT FOUND)"`,
+      `echo "[sync] $(date -u) Downloading ${artifact.name}..."`,
+      `rm -f "${DB_PATH}"`,
+      `rm -f "${tmpZip}"`,
       cacheRm,
-      `rm -rf "${extractDir}"`,
-      ``,
-      `echo "[sync] Disk AFTER cleanup:"`,
-      `df -h "${DATA_DIR}" 2>/dev/null || df -h . 2>/dev/null || true`,
-      ``,
-      `mkdir -p "${extractDir}"`,
-      ``,
-      `# METHOD 1: Streaming extraction (no ZIP saved to disk)`,
-      `echo "[sync] $(date -u) Streaming download -> bsdtar extraction..."`,
-      `if curl -fSL --max-time 900 \\`,
+      `echo "[sync] Old DB removed. Downloading ZIP..."`,
+      `curl -fSL --max-time 900 \\`,
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
-      `  "$SYNC_URL" | bsdtar xf - -C "${extractDir}"; then`,
-      `  echo "[sync] Streaming extraction succeeded"`,
+      `  -o "${tmpZip}" "$SYNC_URL"`,
+      `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
+      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB"`,
+      // Use bsdtar if available (handles ZIP64), fallback to unzip
+      `EXTRACT_TMP="${DATA_DIR}/.extract-tmp"`,
+      `rm -rf "$EXTRACT_TMP"`,
+      `mkdir -p "$EXTRACT_TMP"`,
+      `if command -v bsdtar >/dev/null 2>&1; then`,
+      `  echo "[sync] Extracting with bsdtar..."`,
+      `  bsdtar xf "${tmpZip}" -C "$EXTRACT_TMP"`,
       `else`,
-      `  STREAM_EXIT=$?`,
-      `  echo "[sync] Streaming extraction failed (exit $STREAM_EXIT), trying download-then-extract..."`,
-      `  rm -rf "${extractDir}"`,
-      `  mkdir -p "${extractDir}"`,
-      `  # METHOD 2: Download ZIP to disk then extract (needs more disk space)`,
-      `  TMP_ZIP="${DATA_DIR}/artifact.zip"`,
-      `  curl -fSL --max-time 900 \\`,
-      `    -H "Authorization: token $SYNC_TOKEN" \\`,
-      `    -o "$TMP_ZIP" "$SYNC_URL"`,
-      `  echo "[sync] ZIP downloaded: $(du -m "$TMP_ZIP" | cut -f1)MB"`,
-      `  bsdtar xf "$TMP_ZIP" -C "${extractDir}"`,
-      `  rm -f "$TMP_ZIP"`,
+      `  echo "[sync] bsdtar not found, trying unzip..."`,
+      `  unzip -o "${tmpZip}" -d "$EXTRACT_TMP"`,
       `fi`,
-      ``,
-      `echo "[sync] $(date -u) Extraction complete. Finding screener.db..."`,
-      `echo "[sync] Extracted contents:"`,
-      `find "${extractDir}" -type f -exec ls -lh {} \\;`,
-      ``,
-      `# Handle possible nesting (upload-artifact may or may not preserve paths)`,
-      `FOUND_DB=$(find "${extractDir}" -name "screener.db" -type f | head -1)`,
-      `if [ -z "$FOUND_DB" ]; then`,
-      `  echo "[sync] ERROR: screener.db not found in extracted archive!"`,
-      `  echo "[sync] Full listing:"`,
-      `  ls -laR "${extractDir}"`,
+      `rm -f "${tmpZip}"`,
+      `# GitHub artifacts may nest under data/ — find the actual .db file`,
+      `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
+      `if [ -n "$FOUND_DB" ]; then`,
+      `  mv "$FOUND_DB" "${DB_PATH}"`,
+      `  echo "[sync] Moved $FOUND_DB -> ${DB_PATH}"`,
+      `else`,
+      `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
+      `  ls -laR "$EXTRACT_TMP"`,
       `  exit 1`,
       `fi`,
-      ``,
-      `DB_SIZE=$(du -m "$FOUND_DB" | cut -f1)`,
-      `echo "[sync] Found: $FOUND_DB (\${DB_SIZE}MB)"`,
-      ``,
-      `# Move to final location (same filesystem = instant rename)`,
-      `mv "$FOUND_DB" "${DB_PATH}"`,
-      `rm -rf "${extractDir}"`,
-      ``,
-      `echo "[sync] Disk AFTER extraction:"`,
-      `df -h "${DATA_DIR}" 2>/dev/null || df -h . 2>/dev/null || true`,
-      ``,
-      `# Verify SQLite header`,
+      `rm -rf "$EXTRACT_TMP"`,
+      `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
+      `echo "[sync] $(date -u) Extracted. DB: \${SIZE}MB"`,
       `HEADER=$(head -c 15 "${DB_PATH}")`,
       `if [ "$HEADER" = "SQLite format 3" ]; then`,
-      `  echo "[sync] SQLite header: OK"`,
+      `  echo "[sync] SQLite header OK"`,
       `else`,
-      `  echo "[sync] ERROR: Invalid SQLite header — file corrupt"`,
-      `  xxd -l 64 "${DB_PATH}" 2>/dev/null || od -A x -t x1z -N 64 "${DB_PATH}" 2>/dev/null || true`,
+      `  echo "[sync] ERROR: SQLite header invalid — file is corrupt"`,
       `  exit 1`,
       `fi`,
-      ``,
-      `FINAL_SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
-      `echo "[sync] ===== SYNC COMPLETE $(date -u) ===== DB: \${FINAL_SIZE}MB"`,
     ].join("\n");
 
     const scriptPath = join(DATA_DIR, ".sync-download.sh");
@@ -226,10 +161,6 @@ export async function POST(request: NextRequest) {
 
     resetDbConnection();
     log("DB connection closed before sync. Starting background download...");
-
-    // Truncate log for this sync run
-    try { writeFileSync(SYNC_LOG, `=== Sync triggered ${new Date().toISOString()} ===\n`); } catch {}
-
     exec(
       `/bin/sh "${scriptPath}"`,
       {
@@ -242,58 +173,65 @@ export async function POST(request: NextRequest) {
         },
       },
       (error: Error | null, stdout: string, stderr: string) => {
-        const output = (stdout || "") + (stderr || "");
-        for (const line of output.split("\n").filter(Boolean)) {
-          log(line);
+        if (stdout) {
+          for (const line of stdout.split("\n").filter(Boolean)) {
+            log(line);
+          }
+        }
+        if (stderr) {
+          for (const line of stderr.split("\n").filter(Boolean)) {
+            log(`stderr: ${line}`);
+          }
         }
         if (error) {
-          log(`SYNC FAILED: ${error.message}`);
-          return;
-        }
-        try {
-          const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
-          log(`Background sync complete. DB: ${size}MB`);
-        } catch {
-          log("ERROR: DB file not found after sync script");
-          return;
-        }
-        resetDbConnection();
-        log("DB connection reset — next query will open fresh connection");
-        try {
-          const Database = require("better-sqlite3");
-          const testDb = new Database(DB_PATH, { readonly: true });
-          const ic = testDb.pragma("quick_check(1)") as Array<Record<string, string>>;
-          const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
-          log(`DB quick_check: ${firstResult}`);
-          const tables = ["companies", "daily_bars", "quote_daily", "indicators_daily", "ownership", "financials", "breadth_daily"];
-          for (const t of tables) {
-            try {
-              const r = testDb.prepare(`SELECT COUNT(*) AS c FROM "${t}"`).get() as { c: number };
-              let dateInfo = "";
-              try {
-                const d = testDb.prepare(`SELECT MAX(date) AS d FROM "${t}"`).get() as { d: string | null };
-                if (d?.d) dateInfo = ` (latest: ${d.d})`;
-              } catch {}
-              log(`  ${t}: ${r.c.toLocaleString()} rows${dateInfo}`);
-            } catch {}
+          log(`Background sync FAILED: ${error.message}`);
+        } else {
+          try {
+            const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
+            log(`Background sync complete. DB: ${size}MB`);
+          } catch {
+            log("Background sync callback: DB file not found after script");
           }
-          testDb.close();
-          log("DB verification complete — sync successful");
-        } catch (verifyErr: unknown) {
-          const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
-          log(`DB verification FAILED: ${msg}`);
+          resetDbConnection();
+          log("DB connection reset — next query will open fresh connection");
+          try {
+            const Database = require("better-sqlite3");
+            const testDb = new Database(DB_PATH);
+            // Detailed integrity check (first 20 issues)
+            const ic = testDb.pragma("integrity_check(20)") as Array<Record<string, string>>;
+            const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
+            if (firstResult === "ok") {
+              log("DB integrity_check: ok");
+            } else {
+              log(`DB integrity_check FAILED (${ic.length} issues):`);
+              for (const row of ic.slice(0, 10)) {
+                log(`  ${Object.values(row)[0]}`);
+              }
+            }
+            const row = testDb.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number };
+            const dateRow = testDb.prepare("SELECT MAX(date) AS d FROM daily_bars").get() as { d: string };
+            log(`DB verification: ${row.c} companies, latest daily_bars date: ${dateRow.d}`);
+            testDb.close();
+          } catch (verifyErr: unknown) {
+            const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+            log(`DB verification FAILED: ${msg}`);
+          }
         }
-        try { unlinkSync(scriptPath); } catch {}
+        try {
+          unlinkSync(scriptPath);
+        } catch {
+          /* best effort */
+        }
       }
     );
 
     return NextResponse.json({
       ok: true,
-      message: "DB sync started in background (streaming extraction). Check GET /api/admin/sync-db for progress.",
+      message:
+        "DB sync started in background. Downloads ZIP then extracts via unzip. Check Render logs for [sync-db] progress.",
       artifact: artifact.name,
       artifactCreated: artifact.created_at,
       artifactSizeMb: sizeMb,
-      monitorUrl: "/api/admin/sync-db",
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
