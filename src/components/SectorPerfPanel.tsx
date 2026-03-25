@@ -112,7 +112,7 @@ export default function SectorPerfPanel({
           return (
             <div
               key={s.id}
-              className="flex items-center gap-1.5 px-3 py-[7px] cursor-pointer"
+              className="flex items-center gap-2 px-3 py-[7px] cursor-pointer"
               style={{
                 background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
                 borderBottom: "1px solid var(--ws-border)",
@@ -123,7 +123,7 @@ export default function SectorPerfPanel({
               }}
             >
               <span
-                className="shrink-0 font-mono text-xs"
+                className="shrink-0 font-mono text-xs leading-snug"
                 style={{
                   width: 44,
                   fontWeight: isSelected ? 600 : 400,
@@ -132,20 +132,47 @@ export default function SectorPerfPanel({
               >
                 {s.ticker ?? s.id}
               </span>
-              <span className="shrink-0 text-[10px] truncate" style={{ width: 80, color: "var(--ws-text-dim)" }}>
+              <span
+                className="text-[10px] leading-snug break-words min-w-0"
+                style={{
+                  minWidth: 120,
+                  flex: "1 1 140px",
+                  maxWidth: "min(42vw, 220px)",
+                  color: "var(--ws-text-dim)",
+                }}
+              >
                 {s.name}
               </span>
-              <div className="flex-1 flex items-center" style={{ justifyContent: isPos ? "flex-start" : "flex-end" }}>
+              <div className="flex-1 flex items-center min-w-[72px] min-h-[6px]">
                 <div
-                  style={{
-                    width: barWidth,
-                    maxWidth: "80%",
-                    height: 6,
-                    borderRadius: 3,
-                    background: isPos ? "var(--ws-green)" : "var(--ws-red)",
-                    opacity: 0.5,
-                  }}
-                />
+                  className="flex-1 flex justify-end items-center min-w-0 self-stretch border-r"
+                  style={{ borderColor: "var(--ws-border)" }}
+                >
+                  {!isPos && (
+                    <div
+                      style={{
+                        width: barWidth,
+                        height: 6,
+                        borderRadius: "3px 0 0 3px",
+                        background: "var(--ws-red)",
+                        opacity: 0.55,
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex-1 flex justify-start items-center min-w-0 self-stretch">
+                  {isPos && (
+                    <div
+                      style={{
+                        width: barWidth,
+                        height: 6,
+                        borderRadius: "0 3px 3px 0",
+                        background: "var(--ws-green)",
+                        opacity: 0.55,
+                      }}
+                    />
+                  )}
+                </div>
               </div>
               <span
                 className="shrink-0 text-right font-mono text-[11px] tabular-nums"

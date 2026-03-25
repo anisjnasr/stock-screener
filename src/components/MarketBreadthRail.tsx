@@ -45,7 +45,31 @@ function BreadthMetric({
   color: string;
 }) {
   const displayVal = value != null ? `${value.toFixed(1)}%` : "—";
-  const isHealthy = value != null && value >= 50;
+  const amber = "#f59e0b";
+  const pctColor =
+    value == null
+      ? "var(--ws-text-vdim)"
+      : value > 45
+        ? "var(--ws-text)"
+        : value >= 25
+          ? amber
+          : "var(--ws-red)";
+  const status =
+    value == null
+      ? null
+      : value > 45
+        ? { label: "Healthy" as const, color: "var(--ws-green)" }
+        : value >= 25
+          ? { label: "Caution" as const, color: amber }
+          : { label: "Weak" as const, color: "var(--ws-red)" };
+  const barFill =
+    value == null
+      ? undefined
+      : value > 45
+        ? "var(--ws-text)"
+        : value >= 25
+          ? amber
+          : "var(--ws-red)";
 
   return (
     <div className="rounded-lg p-3" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
@@ -56,13 +80,13 @@ function BreadthMetric({
         <div>
           <div
             className="text-2xl font-bold font-mono tabular-nums"
-            style={{ color: isHealthy ? color : "var(--ws-red)", lineHeight: 1 }}
+            style={{ color: pctColor, lineHeight: 1 }}
           >
             {displayVal}
           </div>
-          {value != null && (
-            <div className="text-[10px] mt-1" style={{ color: isHealthy ? "var(--ws-green)" : "var(--ws-red)" }}>
-              {isHealthy ? "Healthy" : "Weak"}
+          {status != null && (
+            <div className="text-[10px] mt-1" style={{ color: status.color }}>
+              {status.label}
             </div>
           )}
         </div>
@@ -73,7 +97,7 @@ function BreadthMetric({
         <div className="mt-2.5 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.04)" }}>
           <div
             className="h-1 rounded-full transition-all"
-            style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color, opacity: 0.6 }}
+            style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: barFill, opacity: 0.75 }}
           />
         </div>
       )}

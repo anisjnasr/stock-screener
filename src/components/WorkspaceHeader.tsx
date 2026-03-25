@@ -303,17 +303,13 @@ export default function WorkspaceHeader({
       )}
 
       {section === "lists" && (
-        <div className="flex items-center gap-1.5">
-          {watchlistNames.slice(0, 6).map((wl) => (
-            <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
-              {wl.name}
-            </Pill>
-          ))}
+        <div className="flex items-center gap-1.5 min-w-0">
           <button
             type="button"
             onClick={onNewList}
-            className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
+            className="shrink-0 px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
+              order: 0,
               background: "rgba(0,229,204,0.08)",
               border: "1px solid rgba(0,229,204,0.2)",
               color: "var(--ws-cyan)",
@@ -321,6 +317,13 @@ export default function WorkspaceHeader({
           >
             + New
           </button>
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+            {watchlistNames.slice(0, 6).map((wl) => (
+              <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
+                {wl.name}
+              </Pill>
+            ))}
+          </div>
         </div>
       )}
 

@@ -37,6 +37,7 @@ type ProfileData = {
   ipoDate?: string;
   floatShares?: number;
   sharesOutstanding?: number;
+  mktCap?: number;
 } | null;
 
 type RsRank = {
@@ -51,6 +52,8 @@ type RightRailProps = {
   section: WorkspaceSection;
   symbol: string;
   profile: ProfileData;
+  /** Fallback when profile.mktCap is missing (e.g. from quote.marketCap). */
+  marketCap?: number;
   nextEarnings?: string;
   yearlyRows: YearlyRow[];
   quarterlyRows: QuarterlyRow[];
@@ -68,6 +71,30 @@ function fmtCompact(n: number): string {
   if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
   if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
   return `$${n.toFixed(2)}`;
+}
+
+function fmtShares(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return n.toLocaleString();
+}
+
+function exchangeFriendlyName(code: string | undefined): string {
+  if (code == null || !String(code).trim()) return "—";
+  const upper = String(code).trim().toUpperCase();
+  const map: Record<string, string> = {
+    XNAS: "Nasdaq",
+    XNYS: "NYSE",
+    XASE: "NYSE American (AMEX)",
+    ARCX: "NYSE Arca",
+    BATS: "Cboe BZX",
+    XNCM: "Nasdaq Capital",
+    XNGS: "Nasdaq Global Select",
+    XNMS: "Nasdaq Global",
+  };
+  return map[upper] ?? String(code).trim();
 }
 
 function fmtPctSigned(n: number | null): string {
@@ -118,6 +145,7 @@ export default function RightRail({
   section,
   symbol,
   profile,
+  marketCap,
   nextEarnings,
   yearlyRows,
   quarterlyRows,
@@ -174,6 +202,18 @@ export default function RightRail({
   const desc = profile?.description ?? "";
   const truncatedDesc = desc.length > 150 ? desc.slice(0, 150) + "…" : desc;
 
+  const capValue = profile?.mktCap ?? marketCap;
+  const marketCapLabel =
+    capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtCompact(capValue) : "—";
+  const floatLabel =
+    profile?.floatShares != null && Number.isFinite(profile.floatShares) && profile.floatShares > 0
+      ? fmtShares(profile.floatShares)
+      : "—";
+
+  const pillClass =
+    "text-[10px] px-1.5 py-0.5 rounded inline-block leading-tight";
+  const pillStyle = { background: "var(--ws-bg3)", color: "var(--ws-text)" } as const;
+
   const SectionDivider = () => (
     <div style={{ height: 1, background: "var(--ws-border)", margin: "0 -12px" }} />
   );
@@ -182,31 +222,70 @@ export default function RightRail({
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
       {/* Profile header */}
       <div className="px-3 py-2.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        <div className="flex items-baseline gap-2">
-          <span className="text-base font-bold font-mono" style={{ color: "var(--ws-text)" }}>
-            {symbol}
-          </span>
-          <span className="text-[11px] truncate" style={{ color: "var(--ws-text-dim)" }}>
-            {profile?.companyName ?? ""}
-          </span>
+        <div className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+          {symbol}
         </div>
-        {(profile?.sector || profile?.industry) && (
-          <div className="mt-1 flex items-center gap-1 flex-wrap">
-            {profile?.sector && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}>
-                {profile.sector}
-              </span>
-            )}
-            {profile?.industry && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}>
-                {profile.industry}
-              </span>
-            )}
+        {profile?.companyName && (
+          <div className="text-[12px] mt-1 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+            {profile.companyName}
           </div>
         )}
+
+        <div
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-[11px] items-center"
+          style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
+        >
+          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
+            Exchange
+          </span>
+          <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>
+            {exchangeFriendlyName(profile?.exchange)}
+          </span>
+
+          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
+            Mkt cap
+          </span>
+          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+            {marketCapLabel}
+          </span>
+
+          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
+            Float
+          </span>
+          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+            {floatLabel}
+          </span>
+
+          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
+            Sector
+          </span>
+          <span className="min-w-0 flex flex-wrap gap-1">
+            {profile?.sector ? (
+              <span className={pillClass} style={pillStyle}>
+                {profile.sector}
+              </span>
+            ) : (
+              <span style={{ color: "var(--ws-text)" }}>—</span>
+            )}
+          </span>
+
+          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
+            Industry
+          </span>
+          <span className="min-w-0 flex flex-wrap gap-1">
+            {profile?.industry ? (
+              <span className={pillClass} style={pillStyle}>
+                {profile.industry}
+              </span>
+            ) : (
+              <span style={{ color: "var(--ws-text)" }}>—</span>
+            )}
+          </span>
+        </div>
+
         {desc && (
-          <div className="mt-1.5">
-            <p className="text-[10px] leading-relaxed" style={{ color: "var(--ws-text-vdim)" }}>
+          <div className="mt-2.5">
+            <p className="text-[11px] leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
               {showFullDesc ? desc : truncatedDesc}
             </p>
             {desc.length > 150 && (
@@ -218,7 +297,7 @@ export default function RightRail({
         )}
         {profile?.website && (
           <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[10px]" style={{ color: "var(--ws-cyan)" }}>
+            target="_blank" rel="noopener noreferrer" className="inline-block mt-1.5 text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
             {profile.website.replace(/^https?:\/\//, "")}
           </a>
         )}

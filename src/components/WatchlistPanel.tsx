@@ -153,6 +153,9 @@ type WatchlistPanelProps = {
   hideSidebar?: boolean;
   /** When this changes, switch to screener tab and select the named screen. */
   openToScreenerTrigger?: { name: string; nonce: number } | null;
+  /** Sync active user watchlist with workspace header (non-null id selects that list). */
+  activeWatchlistIdSync?: string | null;
+  onActiveWatchlistIdChange?: (id: string | null) => void;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -485,9 +488,17 @@ export default function WatchlistPanel({
   openToCollectionTrigger,
   hideSidebar = false,
   openToScreenerTrigger,
+  activeWatchlistIdSync,
+  onActiveWatchlistIdChange,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
-  const [activeListId, setActiveListId] = useState<string | null>(null);
+  const [activeListId, setActiveListIdState] = useState<string | null>(null);
+  const emitActiveWatchlistRef = useRef<((id: string | null) => void) | undefined>(undefined);
+  emitActiveWatchlistRef.current = onActiveWatchlistIdChange;
+  const setActiveListId = useCallback((id: string | null) => {
+    setActiveListIdState(id);
+    emitActiveWatchlistRef.current?.(id);
+  }, []);
   const [rows, setRows] = useState<WatchlistRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -807,10 +818,15 @@ export default function WatchlistPanel({
   }, []);
 
   useEffect(() => {
+    if (activeWatchlistIdSync != null && activeWatchlistIdSync !== "") {
+      if (!lists.some((l) => l.id === activeWatchlistIdSync)) return;
+      if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
+      return;
+    }
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
     else if (activeListId && !lists.find((l) => l.id === activeListId))
       setActiveListId(lists[0]?.id ?? null);
-  }, [lists, activeListId]);
+  }, [lists, activeListId, activeWatchlistIdSync, setActiveListId]);
 
   useEffect(() => {
     saveWatchlists(lists);
@@ -1518,20 +1534,6 @@ export default function WatchlistPanel({
     });
   }, []);
 
-  const toggleSelect = useCallback((symbol: string) => {
-    setSelectedSymbols((prev) => {
-      const next = new Set(prev);
-      const s = symbol.toUpperCase();
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }, []);
-
-  const selectAll = useCallback(() => {
-    setSelectedSymbols(new Set(rows.map((r) => r.symbol)));
-  }, [rows]);
-
   const clearSelection = useCallback(() => {
     setSelectedSymbols(new Set());
     setShowAddToListMenu(false);
@@ -1957,7 +1959,7 @@ export default function WatchlistPanel({
       return;
     }
     const headerCells = table.querySelectorAll("thead th");
-    const colOffset = 2; // checkbox + flag columns
+    const colOffset = 1; // flag column
     const allRows = table.querySelectorAll("tr");
     const origStyles: { el: HTMLElement; w: string; mw: string }[] = [];
     allRows.forEach((row) => {
@@ -3565,19 +3567,6 @@ export default function WatchlistPanel({
               <table ref={tableRef} className="w-full border-collapse text-sm whitespace-nowrap" style={{ minWidth: "max-content" }}>
                 <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/98 border-b border-zinc-200 dark:border-zinc-700 z-10 shadow-sm">
                   <tr>
-                    <th className="w-10 min-w-[2.5rem] py-1.5 pl-2 pr-1 border-b border-zinc-200 dark:border-zinc-700 align-middle">
-                      <div className="flex items-center justify-start">
-                        <input
-                          type="checkbox"
-                          checked={rows.length > 0 && selectedSymbols.size === rows.length}
-                          onChange={(e) =>
-                            e.target.checked ? selectAll() : clearSelection()
-                          }
-                          className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600"
-                          aria-label="Select all"
-                        />
-                      </div>
-                    </th>
                     <th className="w-9 min-w-[2.25rem] py-1.5 px-1 border-b border-zinc-200 dark:border-zinc-700 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400">
                       Flag
                     </th>
@@ -3638,13 +3627,13 @@ export default function WatchlistPanel({
                 <tbody>
                   {loading && rows.length === 0 ? (
                     <tr>
-                      <td colSpan={tableColumns.length + 2} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
+                      <td colSpan={tableColumns.length + 1} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
                         Loading…
                       </td>
                     </tr>
                   ) : sortedRows.length === 0 ? (
                     <tr>
-                      <td colSpan={tableColumns.length + 2} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
+                      <td colSpan={tableColumns.length + 1} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
                         {sidebarTab === "watchlists" &&
                         selectedCollectionId != null &&
                         ((selectedCollectionId.startsWith(INDEX_LIST_PREFIX) &&
@@ -3683,7 +3672,14 @@ export default function WatchlistPanel({
                           key={row.symbol}
                           draggable
                           onDragStart={(e) => { e.dataTransfer.setData("stockSymbol", row.symbol); e.dataTransfer.effectAllowed = "copy"; }}
-                          className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${onSymbolSelect ? "cursor-pointer" : ""} ${isActiveSymbol ? "bg-blue-100 dark:bg-blue-900/35" : selectedSymbols.has(row.symbol) ? "bg-blue-50/80 dark:bg-blue-900/20" : ""}`}
+                          className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-[rgba(0,229,204,0.04)] ${onSymbolSelect ? "cursor-pointer" : ""}`}
+                          style={
+                            isActiveSymbol
+                              ? { background: "rgba(0,229,204,0.1)" }
+                              : selectedSymbols.has(row.symbol)
+                                ? { background: "rgba(0,229,204,0.06)" }
+                                : undefined
+                          }
                           onClick={(e) => {
                             if (!onSymbolSelect) return;
                             const target = e.target as HTMLElement | null;
@@ -3697,17 +3693,6 @@ export default function WatchlistPanel({
                             onSymbolSelect(row.symbol);
                           }}
                         >
-                          <td className="w-10 min-w-[2.5rem] py-1.5 pl-2 pr-1 align-middle">
-                            <div className="flex items-center justify-start">
-                              <input
-                                type="checkbox"
-                                checked={selectedSymbols.has(row.symbol)}
-                                onChange={() => toggleSelect(row.symbol)}
-                                className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600"
-                                aria-label={`Select ${row.symbol}`}
-                              />
-                            </div>
-                          </td>
                           <td className="py-1.5 px-1 align-middle w-9" data-flag-picker>
                             <div className="relative inline-block">
                               <button
@@ -3792,7 +3777,8 @@ export default function WatchlistPanel({
                                 <button
                                   type="button"
                                   onClick={() => onSymbolSelect(row.symbol)}
-                                  className="text-blue-600 dark:text-blue-400 hover:underline text-left font-mono"
+                                  className="hover:underline text-left font-mono"
+                                  style={{ color: "var(--ws-cyan)" }}
                                 >
                                   {row.symbol}
                                 </button>

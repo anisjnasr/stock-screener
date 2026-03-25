@@ -64,11 +64,13 @@ export default function Home() {
 
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(null);
   const secondaryPagesPrefetchedRef = useRef(false);
   const { cycleTheme } = useTheme();
 
   const {
     chartLeftPx,
+    setChartLeftPx,
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,
@@ -265,6 +267,8 @@ export default function Home() {
           openToCollectionTrigger={openToCollectionTrigger}
           openToScreenerTrigger={section === "scans" ? openToScreenerTrigger : null}
           hideSidebar
+          activeWatchlistIdSync={activeWatchlistId}
+          onActiveWatchlistIdChange={setActiveWatchlistId}
         />
       )}
     </div>
@@ -306,6 +310,7 @@ export default function Home() {
       section={section}
       symbol={symbol}
       profile={data?.profile ?? null}
+      marketCap={data?.quote?.marketCap}
       nextEarnings={data?.nextEarnings}
       yearlyRows={yearlyRows}
       quarterlyRows={quarterlyRows}
@@ -349,6 +354,8 @@ export default function Home() {
           setOpenToScreenerTrigger({ name: "__new__", nonce: Date.now() });
         }}
         watchlistNames={chartWatchlists}
+        activeWatchlistId={activeWatchlistId}
+        onWatchlistChange={setActiveWatchlistId}
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
         onNewList={() => {
           const name = prompt("New watchlist name:");
@@ -357,11 +364,14 @@ export default function Home() {
           const updated = [...watchlists, newList];
           setWatchlists(updated);
           saveWatchlists(updated);
+          window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: updated }));
+          setActiveWatchlistId(newList.id);
           setSection("lists");
         }}
       />
       <WorkspaceLayout
         leftWidthPx={chartLeftPx}
+        onLeftWidthChange={setChartLeftPx}
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}
