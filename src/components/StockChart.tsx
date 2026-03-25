@@ -1362,11 +1362,11 @@ export default function StockChart({
       ) : (
         <div className="relative w-full flex-1 min-h-0">
           <div ref={containerRef} className="absolute inset-0 w-full h-full" />
-          <div className="absolute top-3 right-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-right">
+          <div className="absolute top-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-right" style={{ right: 72 }}>
             {symbol.toUpperCase()}
           </div>
           {crosshairCandle && (
-            <div className="absolute top-2 right-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3">
+            <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 72 }}>
               <span>O {crosshairCandle.open.toFixed(2)}</span>
               <span>H {crosshairCandle.high.toFixed(2)}</span>
               <span>L {crosshairCandle.low.toFixed(2)}</span>
@@ -1374,7 +1374,7 @@ export default function StockChart({
               <span>V {fmtVol(crosshairCandle.volume)}</span>
             </div>
           )}
-          <div className="absolute top-10 right-2 z-10 flex items-center gap-1.5">
+          <div className="absolute top-10 z-10 flex items-center gap-1.5" style={{ right: 72 }}>
             {timeframe === "daily" && (
               <button
                 type="button"

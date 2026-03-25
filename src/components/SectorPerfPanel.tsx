@@ -156,12 +156,17 @@ export default function SectorPerfPanel({
     );
   }
 
+  const panelTitle = subTab === "sectors" ? "Sectors" : subTab === "industries" ? "Industries" : "Thematic ETFs";
+
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        <span className="text-[11px] tabular-nums shrink-0" style={{ color: "var(--ws-text-dim)" }}>
-          {loading ? "…" : `${sorted.length} results`}
-        </span>
+      <div className="flex items-center justify-between px-2 py-1.5" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-[14px] font-semibold" style={{ color: "var(--ws-text)" }}>{panelTitle}</span>
+          <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+            {loading ? "…" : sorted.length}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           {onTimeframeChange && (["1d", "1w", "1m", "q", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
             <button
@@ -222,7 +227,7 @@ export default function SectorPerfPanel({
                 style={{
                   width: 52,
                   fontWeight: isSelected ? 600 : 400,
-                  color: isSelected ? "#fff" : "var(--ws-text)",
+                  color: "var(--ws-cyan)",
                 }}
               >
                 {s.ticker ?? ""}

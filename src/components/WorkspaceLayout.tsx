@@ -8,6 +8,7 @@ type WorkspaceLayoutProps = {
   railWidthPx: number;
   onRailWidthChange: (px: number) => void;
   rightRailHidden: boolean;
+  onToggleRightRail?: () => void;
   leftPanel: ReactNode;
   centerPanel: ReactNode;
   rightPanel: ReactNode;
@@ -22,6 +23,7 @@ export default function WorkspaceLayout({
   railWidthPx,
   onRailWidthChange,
   rightRailHidden,
+  onToggleRightRail,
   leftPanel,
   centerPanel,
   rightPanel,
@@ -141,6 +143,35 @@ export default function WorkspaceLayout({
           ))}
         </div>
       </div>
+
+      {/* Right panel toggle button */}
+      {onToggleRightRail && (
+        <button
+          type="button"
+          onClick={onToggleRightRail}
+          className="absolute top-1/2 -translate-y-1/2 flex items-center justify-center rounded-l transition-colors hover:brightness-125"
+          style={{
+            right: rightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx,
+            width: 16,
+            height: 48,
+            zIndex: 25,
+            background: "var(--ws-bg3)",
+            border: "1px solid var(--ws-border)",
+            borderRight: rightRailHidden ? "1px solid var(--ws-border)" : "none",
+            color: "var(--ws-text-dim)",
+            cursor: "pointer",
+          }}
+          title={rightRailHidden ? "Open right panel" : "Collapse right panel"}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            {rightRailHidden ? (
+              <path d="M7 1L3 5l4 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M3 1l4 4-4 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+          </svg>
+        </button>
+      )}
 
       {/* Right rail area — fixed width on the right */}
       {!rightRailHidden && (

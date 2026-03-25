@@ -515,6 +515,10 @@ export default function WatchlistPanel({
   const [inlineTickerValue, setInlineTickerValue] = useState("");
   const [showInlineTickerRow, setShowInlineTickerRow] = useState(false);
   const inlineTickerRef = useRef<HTMLInputElement>(null);
+  const [inlineSuggestions, setInlineSuggestions] = useState<Array<{ symbol: string; name?: string }>>([]);
+  const [inlineSuggestionsOpen, setInlineSuggestionsOpen] = useState(false);
+  const [inlineHighlightIdx, setInlineHighlightIdx] = useState(-1);
+  const inlineSuggestionsRef = useRef<HTMLDivElement>(null);
   const [resizingCol, setResizingCol] = useState<TableColumnId | null>(null);
   const [colDragIndex, setColDragIndex] = useState<number | null>(null);
   const [colDropIndex, setColDropIndex] = useState<number | null>(null);
@@ -854,11 +858,34 @@ export default function WatchlistPanel({
   }, [listFolders]);
 
   useEffect(() => {
-    if (activeList && activeList.symbols.length === 0 && sidebarTab === "watchlists" && !selectedCollectionId) {
+    if (activeList && sidebarTab === "watchlists" && !selectedCollectionId) {
       setShowInlineTickerRow(true);
-      setTimeout(() => inlineTickerRef.current?.focus(), 80);
+      if (activeList.symbols.length === 0) {
+        setTimeout(() => inlineTickerRef.current?.focus(), 80);
+      }
     }
   }, [activeListId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!inlineTickerValue.trim()) {
+      setInlineSuggestions([]);
+      setInlineSuggestionsOpen(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      fetch(`/api/search-symbol?query=${encodeURIComponent(inlineTickerValue.trim())}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data.slice(0, 8) : [];
+          setInlineSuggestions(list);
+          setInlineSuggestionsOpen(list.length > 0);
+          setInlineHighlightIdx(-1);
+        })
+        .catch(() => { setInlineSuggestions([]); setInlineSuggestionsOpen(false); });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [inlineTickerValue]);
+
 
   // Fetch predefined index constituents when user selects an index list and we don't have it yet.
   useEffect(() => {
@@ -1476,6 +1503,21 @@ export default function WatchlistPanel({
       setShowAddToListMenu(false);
     },
     [activeListId]
+  );
+
+  const commitInlineTicker = useCallback(
+    (symbol: string) => {
+      const sym = symbol.toUpperCase().trim();
+      if (!sym) return;
+      addSymbolToList(sym);
+      setInlineTickerValue("");
+      setInlineSuggestions([]);
+      setInlineSuggestionsOpen(false);
+      setInlineHighlightIdx(-1);
+      setShowInlineTickerRow(true);
+      setTimeout(() => inlineTickerRef.current?.focus(), 50);
+    },
+    [addSymbolToList]
   );
 
   const openAddPopup = useCallback((listId: string) => {
@@ -3950,41 +3992,74 @@ export default function WatchlistPanel({
                     })
                   )}
                   {activeList && sidebarTab === "watchlists" && !selectedCollectionId && (
-                    <tr>
-                      <td className="py-1 px-1" style={{ borderBottom: showInlineTickerRow ? "1px solid var(--ws-border, rgba(255,255,255,0.06))" : undefined }} />
-                      <td className="py-1 px-2" colSpan={tableColumns.length} style={{ borderBottom: showInlineTickerRow ? "1px solid var(--ws-border, rgba(255,255,255,0.06))" : undefined }}>
-                        {showInlineTickerRow ? (
+                    <tr style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
+                      <td className="py-1.5 px-1" />
+                      <td className="py-1.5 px-2 relative" colSpan={tableColumns.length}>
+                        <div className="relative inline-block">
                           <input
                             ref={inlineTickerRef}
                             type="text"
                             value={inlineTickerValue}
                             onChange={(e) => setInlineTickerValue(e.target.value.toUpperCase())}
+                            onFocus={() => {
+                              setShowInlineTickerRow(true);
+                              if (inlineSuggestions.length > 0) setInlineSuggestionsOpen(true);
+                            }}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter" && inlineTickerValue.trim()) {
-                                addSymbolToList(inlineTickerValue.trim());
-                                setInlineTickerValue("");
-                                setTimeout(() => inlineTickerRef.current?.focus(), 50);
-                              }
-                              if (e.key === "Escape") {
-                                setShowInlineTickerRow(false);
-                                setInlineTickerValue("");
+                              if (e.key === "ArrowDown" && inlineSuggestionsOpen) {
+                                e.preventDefault();
+                                setInlineHighlightIdx((i) => (i < inlineSuggestions.length - 1 ? i + 1 : 0));
+                              } else if (e.key === "ArrowUp" && inlineSuggestionsOpen) {
+                                e.preventDefault();
+                                setInlineHighlightIdx((i) => (i > 0 ? i - 1 : inlineSuggestions.length - 1));
+                              } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (inlineSuggestionsOpen && inlineHighlightIdx >= 0 && inlineSuggestions[inlineHighlightIdx]) {
+                                  commitInlineTicker(inlineSuggestions[inlineHighlightIdx].symbol);
+                                } else if (inlineTickerValue.trim()) {
+                                  commitInlineTicker(inlineTickerValue.trim());
+                                }
+                              } else if (e.key === "Escape") {
+                                if (inlineSuggestionsOpen) {
+                                  setInlineSuggestionsOpen(false);
+                                } else {
+                                  setInlineTickerValue("");
+                                }
+                              } else if (e.key === "Tab" && inlineSuggestionsOpen && inlineSuggestions.length > 0) {
+                                e.preventDefault();
+                                const pick = inlineHighlightIdx >= 0 ? inlineSuggestions[inlineHighlightIdx] : inlineSuggestions[0];
+                                commitInlineTicker(pick.symbol);
                               }
                             }}
-                            placeholder="Enter ticker symbol..."
+                            placeholder="Type ticker..."
                             autoFocus
-                            className="w-32 rounded px-1.5 py-0.5 text-xs font-mono"
-                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-text)", border: "1px solid var(--ws-accent, #58a6ff)" }}
+                            className="w-28 rounded px-1.5 py-0.5 text-xs font-mono"
+                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-cyan)", border: "1px solid var(--ws-border)", outline: "none" }}
+                            autoComplete="off"
                           />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => { setShowInlineTickerRow(true); setTimeout(() => inlineTickerRef.current?.focus(), 50); }}
-                            className="text-[11px] transition-colors"
-                            style={{ color: "var(--ws-text-vdim)" }}
-                          >
-                            + Add ticker
-                          </button>
-                        )}
+                          {inlineSuggestionsOpen && inlineSuggestions.length > 0 && (
+                            <div
+                              ref={inlineSuggestionsRef}
+                              className="absolute left-0 top-full z-50 mt-1 max-h-52 w-[22rem] overflow-auto rounded py-1 shadow-lg"
+                              style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
+                            >
+                              {inlineSuggestions.map((s, i) => (
+                                <div
+                                  key={`${s.symbol}-${i}`}
+                                  className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
+                                  style={{ background: i === inlineHighlightIdx ? "var(--ws-bg3)" : "transparent" }}
+                                  onMouseEnter={() => setInlineHighlightIdx(i)}
+                                  onMouseDown={(e) => { e.preventDefault(); commitInlineTicker(s.symbol); }}
+                                >
+                                  <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-cyan)" }}>
+                                    {s.symbol}
+                                  </span>
+                                  {s.name && <span className="truncate" style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}

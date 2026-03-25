@@ -7,10 +7,10 @@ import { type StockFlag } from "@/lib/watchlist-storage";
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
 const FLAG_COLORS: Record<StockFlag, string> = {
-  red: "#ff4d6a",
-  yellow: "#ffc107",
-  green: "#22c55e",
-  blue: "#4da6ff",
+  red: "#9b2335",
+  yellow: "#9a7b00",
+  green: "#15703a",
+  blue: "#1a5fa0",
 };
 
 export type MarketSubTab = "indices" | "monitor";
@@ -260,7 +260,7 @@ export default function WorkspaceHeader({
                       className="transition-colors cursor-pointer font-medium"
                       style={{
                         background: FLAG_COLORS[f],
-                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        color: "#fff",
                         padding: "3px 10px",
                         fontSize: 11,
                         borderRadius: 4,
@@ -346,7 +346,7 @@ export default function WorkspaceHeader({
                       className="transition-colors cursor-pointer font-medium"
                       style={{
                         background: FLAG_COLORS[f],
-                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        color: "#fff",
                         padding: "3px 10px",
                         fontSize: 11,
                         borderRadius: 4,
@@ -439,7 +439,7 @@ export default function WorkspaceHeader({
                       className="transition-colors cursor-pointer font-medium"
                       style={{
                         background: FLAG_COLORS[f],
-                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        color: "#fff",
                         padding: "3px 10px",
                         fontSize: 11,
                         borderRadius: 4,

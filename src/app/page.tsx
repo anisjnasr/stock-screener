@@ -112,9 +112,7 @@ export default function Home() {
   const chartHidden = section === "market" && marketSubTab === "monitor";
 
   useEffect(() => {
-    if (section === "market" && marketSubTab === "indices") {
-      setRightRailHidden(false);
-    } else if (section === "market" && marketSubTab === "monitor") {
+    if (section === "market") {
       setRightRailHidden(true);
     } else if (section === "sectors-industries") {
       setRightRailHidden(true);
@@ -439,6 +437,7 @@ export default function Home() {
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}
+        onToggleRightRail={() => setRightRailHidden((v) => !v)}
         leftPanel={leftPanel}
         centerPanel={centerPanel}
         rightPanel={rightPanel}
