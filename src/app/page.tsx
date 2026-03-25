@@ -1,7 +1,36 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
+
+class PanelErrorBoundary extends React.Component<
+  { name: string; children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { name: string; children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[PanelError:${this.props.name}]`, error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 12, background: "var(--ws-bg2)", color: "var(--ws-red)", fontSize: 11, overflow: "auto" }}>
+          <strong>{this.props.name} error:</strong>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", marginTop: 4, fontSize: 10, color: "var(--ws-text-dim)" }}>
+            {this.state.error.message}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import WorkspaceHeader, { type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
@@ -245,6 +274,7 @@ export default function Home() {
   // ---- Panel contents ----
 
   const leftPanel = (
+    <PanelErrorBoundary name="LeftPanel">
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
       {section === "market" ? (
         <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} />
@@ -273,9 +303,11 @@ export default function Home() {
         />
       )}
     </div>
+    </PanelErrorBoundary>
   );
 
   const centerPanel = (
+    <PanelErrorBoundary name="CenterPanel">
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <StockChart
@@ -302,24 +334,29 @@ export default function Home() {
         />
       )}
     </div>
+    </PanelErrorBoundary>
   );
 
-  const rightPanel = section === "market" ? (
-    <MarketBreadthRail selectedSymbol={symbol} />
-  ) : (
-    <RightRail
-      section={section}
-      symbol={symbol}
-      profile={data?.profile ?? null}
-      marketCap={data?.quote?.marketCap}
-      nextEarnings={data?.nextEarnings}
-      yearlyRows={yearlyRows}
-      quarterlyRows={quarterlyRows}
-      ownershipQuarters={ownershipQuarters}
-      fundCount={fundCount}
-      rsRank={data?.rsRank}
-      loading={sidebarLoading}
-    />
+  const rightPanel = (
+    <PanelErrorBoundary name="RightPanel">
+    {section === "market" ? (
+      <MarketBreadthRail selectedSymbol={symbol} />
+    ) : (
+      <RightRail
+        section={section}
+        symbol={symbol}
+        profile={data?.profile ?? null}
+        marketCap={data?.quote?.marketCap}
+        nextEarnings={data?.nextEarnings}
+        yearlyRows={yearlyRows}
+        quarterlyRows={quarterlyRows}
+        ownershipQuarters={ownershipQuarters}
+        fundCount={fundCount}
+        rsRank={data?.rsRank}
+        loading={sidebarLoading}
+      />
+    )}
+    </PanelErrorBoundary>
   );
 
   return (

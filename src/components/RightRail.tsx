@@ -122,7 +122,8 @@ function QuarterlyBars({
     <div className="flex items-end gap-2 mt-1.5">
       {display.map((d, i) => {
         const val = Number(d[valueKey] ?? 0);
-        const growth = d[growthKey] as number | null;
+        const rawGrowth = d[growthKey];
+        const growth = typeof rawGrowth === "number" ? rawGrowth : null;
         const barH = Math.max(5, (Math.abs(val) / maxVal) * 44);
         return (
           <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 32 }}>
@@ -165,6 +166,14 @@ export default function RightRail({
     );
   }
 
+  const safe = (v: unknown): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number") return String(v);
+    if (typeof v === "boolean") return String(v);
+    return JSON.stringify(v);
+  };
+
   const qtrData = quarterlyRows.slice(0, 4);
   const latestQtr = qtrData[0];
   const latestYear = yearlyRows[0];
@@ -199,7 +208,7 @@ export default function RightRail({
     ? Math.max(rsRank.rs_pct_1w ?? 0, rsRank.rs_pct_1m ?? 0, rsRank.rs_pct_3m ?? 0, rsRank.rs_pct_6m ?? 0, rsRank.rs_pct_12m ?? 0)
     : null;
 
-  const desc = profile?.description ?? "";
+  const desc = safe(profile?.description);
   const truncatedDesc = desc.length > 150 ? desc.slice(0, 150) + "…" : desc;
 
   const capValue = profile?.mktCap ?? marketCap;
@@ -227,7 +236,7 @@ export default function RightRail({
         </div>
         {profile?.companyName && (
           <div className="text-[12px] mt-1 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
-            {profile.companyName}
+            {safe(profile.companyName)}
           </div>
         )}
 
@@ -239,7 +248,7 @@ export default function RightRail({
             Exchange
           </span>
           <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>
-            {exchangeFriendlyName(profile?.exchange)}
+            {safe(exchangeFriendlyName(profile?.exchange))}
           </span>
 
           <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
@@ -262,7 +271,7 @@ export default function RightRail({
           <span className="min-w-0 flex flex-wrap gap-1">
             {profile?.sector ? (
               <span className={pillClass} style={pillStyle}>
-                {profile.sector}
+                {safe(profile.sector)}
               </span>
             ) : (
               <span style={{ color: "var(--ws-text)" }}>—</span>
@@ -275,7 +284,7 @@ export default function RightRail({
           <span className="min-w-0 flex flex-wrap gap-1">
             {profile?.industry ? (
               <span className={pillClass} style={pillStyle}>
-                {profile.industry}
+                {safe(profile.industry)}
               </span>
             ) : (
               <span style={{ color: "var(--ws-text)" }}>—</span>
@@ -295,10 +304,10 @@ export default function RightRail({
             )}
           </div>
         )}
-        {profile?.website && (
+        {profile?.website && typeof profile.website === "string" && (
           <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
             target="_blank" rel="noopener noreferrer" className="inline-block mt-1.5 text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
-            {profile.website.replace(/^https?:\/\//, "")}
+            {safe(profile.website).replace(/^https?:\/\//, "")}
           </a>
         )}
       </div>
@@ -443,7 +452,7 @@ export default function RightRail({
 
           {nextEarnings && (
             <div className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>
-              Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{nextEarnings}</span>
+              Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
             </div>
           )}
         </div>

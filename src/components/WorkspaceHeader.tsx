@@ -391,7 +391,7 @@ export default function WorkspaceHeader({
                   <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
                     {s.symbol}
                   </span>
-                  {s.name && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
+                  {s.name && typeof s.name === "string" && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
                 </li>
               ))
             )}
