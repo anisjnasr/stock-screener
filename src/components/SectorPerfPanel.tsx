@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import type { SectorSubTab, SectorTimeframe } from "@/components/WorkspaceHeader";
 
 type PerfItem = {
@@ -78,7 +78,37 @@ export default function SectorPerfPanel({
     [sorted]
   );
 
+  const listRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => setSelectedIdx(0), [subTab, timeframe]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      e.preventDefault();
+      setSelectedIdx((prev) => {
+        const next = e.key === "ArrowDown" ? Math.min(sorted.length - 1, prev + 1) : Math.max(0, prev - 1);
+        const row = sorted[next];
+        if (row?.ticker) onSymbolSelect?.(row.ticker);
+        return next;
+      });
+    },
+    [sorted, onSymbolSelect]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    const row = container.children[selectedIdx] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [selectedIdx]);
 
   if (loading) {
     return (
@@ -103,7 +133,7 @@ export default function SectorPerfPanel({
           {loading ? "…" : `${sorted.length} results`}
         </span>
       </div>
-      <div className="flex-1 overflow-auto">
+      <div ref={listRef} className="flex-1 overflow-auto">
         {sorted.map((s, i) => {
           const pct = s.changePct ?? 0;
           const isPos = pct >= 0;
@@ -122,23 +152,27 @@ export default function SectorPerfPanel({
                 if (s.ticker) onSymbolSelect?.(s.ticker);
               }}
             >
+              {s.ticker && (
+                <span
+                  className="shrink-0 font-mono text-xs leading-snug"
+                  style={{
+                    width: 52,
+                    fontWeight: isSelected ? 600 : 400,
+                    color: isSelected ? "#fff" : "var(--ws-text)",
+                  }}
+                >
+                  {s.ticker}
+                </span>
+              )}
               <span
-                className="shrink-0 font-mono text-xs leading-snug"
+                className="text-[11px] leading-snug min-w-0 truncate"
                 style={{
-                  width: 44,
-                  fontWeight: isSelected ? 600 : 400,
-                  color: isSelected ? "#fff" : "var(--ws-text)",
-                }}
-              >
-                {s.ticker ?? s.id}
-              </span>
-              <span
-                className="text-[11px] leading-snug break-words min-w-0"
-                style={{
-                  minWidth: 140,
-                  flex: "1 1 50%",
-                  maxWidth: "50%",
-                  color: "var(--ws-text-dim)",
+                  flex: "1 1 auto",
+                  fontWeight: isSelected ? 500 : 400,
+                  color: s.ticker ? "var(--ws-text-dim)" : (isSelected ? "#fff" : "var(--ws-text)"),
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
                 {s.name}

@@ -93,7 +93,7 @@ export function useLayoutPreferences() {
   }, []);
 
   const setChartLeftPx = useCallback((px: number) => {
-    const clamped = Math.max(200, Math.min(600, px));
+    const clamped = Math.max(0, px);
     setChartLeftPxState(clamped);
     saveNumber(CHART_LEFT_KEY, clamped);
   }, []);

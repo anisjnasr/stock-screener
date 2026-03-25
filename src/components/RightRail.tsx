@@ -184,6 +184,14 @@ export default function RightRail({
   const [revenueView, setRevenueView] = useState<"annual" | "quarterly">("quarterly");
   const [epsView, setEpsView] = useState<"annual" | "quarterly">("quarterly");
 
+  const ownershipData = useMemo(() => {
+    return ownershipQuarters.slice(0, 8).map((q) => ({
+      period: q.report_date,
+      value: q.num_funds ?? 0,
+      change: q.num_funds_change ?? 0,
+    }));
+  }, [ownershipQuarters]);
+
   if (loading) {
     return (
       <div className="h-full p-3 flex items-start" style={{ background: "var(--ws-bg2)" }}>
@@ -215,14 +223,6 @@ export default function RightRail({
   const epsRange = yearlyRows.length >= 2
     ? `$${(yearlyRows[yearlyRows.length - 1]?.eps ?? 0).toFixed(2)} → $${(yearlyRows[0]?.eps ?? 0).toFixed(2)}`
     : latestEps != null ? `$${latestEps.toFixed(2)}` : "—";
-
-  const ownershipData = useMemo(() => {
-    return ownershipQuarters.slice(0, 8).map((q) => ({
-      period: q.report_date,
-      value: q.num_funds ?? 0,
-      change: q.num_funds_change ?? 0,
-    }));
-  }, [ownershipQuarters]);
 
   const latestOwnership = ownershipData[0];
   const prevOwnership = ownershipData[1];

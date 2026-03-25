@@ -13,7 +13,6 @@ type WorkspaceLayoutProps = {
   rightPanel: ReactNode;
 };
 
-const MIN_CHART_WIDTH = 300;
 const MIN_RAIL = 200;
 const MAX_RAIL = 400;
 const HANDLE_PX = 4;
@@ -44,7 +43,7 @@ export default function WorkspaceLayout({
       const onMove = (ev: MouseEvent) => {
         const delta = ev.clientX - startX;
         const cw = containerWidth();
-        const maxLeft = cw - railTotal - MIN_CHART_WIDTH;
+        const maxLeft = cw - railTotal - HANDLE_PX;
         let next = startLeft + delta;
         next = Math.max(0, Math.min(next, maxLeft));
         onChartLeftChange(next);
@@ -76,8 +75,6 @@ export default function WorkspaceLayout({
       const onMove = (ev: MouseEvent) => {
         const delta = startX - ev.clientX;
         const next = Math.max(MIN_RAIL, Math.min(MAX_RAIL, startWidth + delta));
-        const cw = containerWidth();
-        if (cw - chartLeftPx - HANDLE_PX - next - HANDLE_PX < MIN_CHART_WIDTH) return;
         onRailWidthChange(next);
       };
 
@@ -93,7 +90,7 @@ export default function WorkspaceLayout({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [railWidthPx, onRailWidthChange, chartLeftPx]
+    [railWidthPx, onRailWidthChange]
   );
 
   const handleKeyDown = useCallback(
@@ -102,7 +99,7 @@ export default function WorkspaceLayout({
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
       const cw = containerWidth();
-      const maxLeft = cw - railTotal - MIN_CHART_WIDTH;
+      const maxLeft = cw - railTotal - HANDLE_PX;
       const delta = e.key === "ArrowRight" ? 20 : -20;
       let next = chartLeftPx + delta;
       next = Math.max(0, Math.min(next, maxLeft));
@@ -117,55 +114,62 @@ export default function WorkspaceLayout({
       className="flex-1 min-h-0 overflow-hidden relative"
       style={{ background: "var(--ws-bg)" }}
     >
-      {/* Left panel — full width behind chart, up to rail edge */}
+      {/* Chart layer — always full width from left edge to right panel, never resizes */}
       <div
-        className="absolute inset-0 min-h-0 overflow-hidden"
-        style={{ right: railTotal }}
+        className="absolute top-0 bottom-0"
+        style={{
+          left: 0,
+          right: railTotal,
+          zIndex: 5,
+        }}
       >
-        {leftPanel}
+        {centerPanel}
       </div>
 
-      {/* Chart overlay — from chartLeftPx to the rail edge */}
+      {/* Left panel overlay — sits on top of chart, clipped to drag handle position */}
       <div
-        className="absolute top-0 bottom-0 flex"
+        className="absolute top-0 bottom-0 left-0 overflow-hidden"
         style={{
-          left: chartLeftPx,
-          right: rightRailHidden ? 0 : HANDLE_PX + railWidthPx,
+          width: chartLeftPx,
           zIndex: 10,
         }}
       >
-        {/* Chart left drag handle */}
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize chart left edge"
-          tabIndex={onChartLeftChange ? 0 : -1}
-          className="shrink-0 cursor-col-resize flex items-center justify-center transition-opacity"
-          style={{
-            width: HANDLE_PX,
-            background: draggingChart ? "var(--ws-cyan)" : "var(--ws-border)",
-            opacity: draggingChart ? 0.8 : 0.5,
-          }}
-          onMouseDown={onChartLeftChange ? startDragChartLeft : undefined}
-          onKeyDown={handleKeyDown}
+          className="h-full min-h-0 overflow-hidden"
+          style={{ width: `calc(100vw - ${railTotal}px)`, minWidth: `calc(100vw - ${railTotal}px)` }}
         >
-          <div
-            className="w-[2px] h-8 rounded-full"
-            style={{ background: "var(--ws-text-vdim)" }}
-          />
+          {leftPanel}
         </div>
+      </div>
 
-        {/* Chart content */}
-        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          {centerPanel}
-        </div>
+      {/* Chart left drag handle — controls the boundary between table and chart */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chart left edge"
+        tabIndex={onChartLeftChange ? 0 : -1}
+        className="absolute top-0 bottom-0 cursor-col-resize flex items-center justify-center transition-opacity"
+        style={{
+          left: chartLeftPx,
+          width: HANDLE_PX,
+          zIndex: 20,
+          background: draggingChart ? "var(--ws-cyan)" : "var(--ws-border)",
+          opacity: draggingChart ? 0.8 : 0.5,
+        }}
+        onMouseDown={onChartLeftChange ? startDragChartLeft : undefined}
+        onKeyDown={handleKeyDown}
+      >
+        <div
+          className="w-[2px] h-8 rounded-full"
+          style={{ background: "var(--ws-text-vdim)" }}
+        />
       </div>
 
       {/* Right rail area — fixed width on the right */}
       {!rightRailHidden && (
         <div
           className="absolute top-0 bottom-0 right-0 flex"
-          style={{ width: HANDLE_PX + railWidthPx, zIndex: 10 }}
+          style={{ width: HANDLE_PX + railWidthPx, zIndex: 20 }}
         >
           {/* Right drag handle */}
           <div

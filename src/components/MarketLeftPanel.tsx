@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 
 type Quote = {
@@ -102,6 +102,28 @@ function IndicesTable({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      if (quotes.length === 0) return;
+      const curIdx = quotes.findIndex((q) => q.symbol === selectedSymbol?.toUpperCase());
+      const nextIdx = e.key === "ArrowDown"
+        ? Math.min(quotes.length - 1, (curIdx < 0 ? 0 : curIdx + 1))
+        : Math.max(0, (curIdx < 0 ? 0 : curIdx - 1));
+      if (nextIdx === curIdx) return;
+      e.preventDefault();
+      onSymbolSelect?.(quotes[nextIdx].symbol);
+    },
+    [quotes, selectedSymbol, onSymbolSelect]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   return (
     <div className="flex-1 overflow-auto">

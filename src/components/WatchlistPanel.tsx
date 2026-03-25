@@ -853,6 +853,13 @@ export default function WatchlistPanel({
     saveWatchlistFolders(listFolders);
   }, [listFolders]);
 
+  useEffect(() => {
+    if (activeList && activeList.symbols.length === 0 && sidebarTab === "watchlists" && !selectedCollectionId) {
+      setShowInlineTickerRow(true);
+      setTimeout(() => inlineTickerRef.current?.focus(), 80);
+    }
+  }, [activeListId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch predefined index constituents when user selects an index list and we don't have it yet.
   useEffect(() => {
     if (!selectedCollectionId?.startsWith(INDEX_LIST_PREFIX)) return;
@@ -2023,6 +2030,16 @@ export default function WatchlistPanel({
     setColumnWidths(newWidths);
     saveColumnWidths(newWidths);
   }, [tableColumns]);
+
+  const prevRowCountRef = useRef(0);
+  useEffect(() => {
+    if (rows.length > 0 && rows.length !== prevRowCountRef.current) {
+      prevRowCountRef.current = rows.length;
+      const raf = requestAnimationFrame(() => handleAutoSizeColumns());
+      return () => cancelAnimationFrame(raf);
+    }
+    if (rows.length === 0) prevRowCountRef.current = 0;
+  }, [rows.length, handleAutoSizeColumns]);
 
   const handleColumnHeaderDragStart = useCallback((index: number) => (e: React.DragEvent) => {
     if (resizeColRef.current !== null) {
@@ -3625,7 +3642,7 @@ export default function WatchlistPanel({
             )}
 
             <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ background: "var(--ws-bg2, #161b22)" }}>
-              <table ref={tableRef} className="w-full border-collapse whitespace-nowrap" style={{ minWidth: "max-content", fontSize: "12px", lineHeight: "1.4" }}>
+              <table ref={tableRef} className="border-collapse whitespace-nowrap" style={{ fontSize: "12px", lineHeight: "1.4" }}>
                 <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c2128)", borderBottom: "1px solid var(--ws-border)" }}>
                   <tr>
                     <th className="w-9 min-w-[2.25rem] py-1.5 px-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
