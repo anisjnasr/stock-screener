@@ -312,7 +312,7 @@ export default function LeftSidebar({
             )}
           </div>
           <div className="p-2 min-h-0 flex-1 flex flex-col border-t border-zinc-200 dark:border-zinc-700">
-            <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1 shrink-0">
+            <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 tracking-wide mb-1 shrink-0">
               {onOpenRelatedStocksInWatchlist ? (
                 <button
                   type="button"
@@ -362,7 +362,7 @@ export default function LeftSidebar({
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           <div className="rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50/70 dark:bg-zinc-800/40 p-2 space-y-1.5">
-            <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">13F Summary</div>
+            <div className="text-xs tracking-wide text-zinc-500 dark:text-zinc-400">13F Summary</div>
             <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
               <span className="text-zinc-500 dark:text-zinc-400">Latest Quarter</span>
               <span className="text-zinc-900 dark:text-zinc-100">

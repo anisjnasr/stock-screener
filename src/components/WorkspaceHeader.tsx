@@ -13,6 +13,7 @@ const FLAG_COLORS: Record<StockFlag, string> = {
   blue: "#4da6ff",
 };
 
+export type MarketSubTab = "indices" | "monitor";
 export type SectorSubTab = "sectors" | "industries" | "thematic";
 export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "y" | "ytd";
 
@@ -27,6 +28,10 @@ type WorkspaceHeaderProps = {
   flags: Record<string, StockFlag>;
   onFlagFilter?: (flag: StockFlag | null) => void;
   activeFlagFilter?: StockFlag | null;
+  onFlagListOpen?: (flag: StockFlag) => void;
+  // Market contextual
+  marketSubTab?: MarketSubTab;
+  onMarketSubTabChange?: (t: MarketSubTab) => void;
   // Sectors contextual
   sectorSubTab?: SectorSubTab;
   onSectorSubTabChange?: (t: SectorSubTab) => void;
@@ -89,6 +94,9 @@ export default function WorkspaceHeader({
   flags,
   onFlagFilter,
   activeFlagFilter,
+  onFlagListOpen,
+  marketSubTab = "indices",
+  onMarketSubTabChange,
   sectorSubTab = "sectors",
   onSectorSubTabChange,
   sectorTimeframe = "1w",
@@ -108,8 +116,10 @@ export default function WorkspaceHeader({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [scanDDOpen, setScanDDOpen] = useState(false);
+  const [listDDOpen, setListDDOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
+  const listDDRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!searchValue.trim()) {
@@ -152,6 +162,9 @@ export default function WorkspaceHeader({
       if (scanDDRef.current && !scanDDRef.current.contains(e.target as Node)) {
         setScanDDOpen(false);
       }
+      if (listDDRef.current && !listDDRef.current.contains(e.target as Node)) {
+        setListDDOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -178,6 +191,8 @@ export default function WorkspaceHeader({
     (acc, f) => { acc[f] = (acc[f] ?? 0) + 1; return acc; },
     {}
   );
+
+  const hasFlaggedStocks = Object.values(flagCounts).some((c) => (c ?? 0) > 0);
 
   return (
     <header
@@ -214,6 +229,16 @@ export default function WorkspaceHeader({
 
       {/* ---- CONTEXTUAL CONTROLS ---- */}
 
+      {section === "market" && (
+        <div className="flex items-center gap-1">
+          {(["indices", "monitor"] as MarketSubTab[]).map((t) => (
+            <Pill key={t} on={marketSubTab === t} onClick={() => onMarketSubTabChange?.(t)}>
+              {t === "indices" ? "Indices" : "Market Monitor"}
+            </Pill>
+          ))}
+        </div>
+      )}
+
       {section === "sectors-industries" && (
         <div className="flex items-center gap-1">
           {(["sectors", "industries", "thematic"] as SectorSubTab[]).map((t) => (
@@ -227,12 +252,42 @@ export default function WorkspaceHeader({
               {t.toUpperCase()}
             </Pill>
           ))}
+          {hasFlaggedStocks && (
+            <>
+              <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+              <div className="flex items-center gap-1">
+                {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+                  const cnt = flagCounts[f] ?? 0;
+                  if (cnt === 0) return null;
+                  return (
+                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
+                      <span className="inline-flex items-center gap-1">
+                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
+                        {cnt}
+                      </span>
+                    </Pill>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {section === "scans" && (
         <div className="flex items-center gap-1.5">
-          {/* Scan dropdown */}
+          <button
+            type="button"
+            onClick={onNewScan}
+            className="shrink-0 px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
+            style={{
+              background: "rgba(0,229,204,0.08)",
+              border: "1px solid rgba(0,229,204,0.2)",
+              color: "var(--ws-cyan)",
+            }}
+          >
+            + New
+          </button>
           <div ref={scanDDRef} className="relative">
             <button
               type="button"
@@ -271,34 +326,25 @@ export default function WorkspaceHeader({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onNewScan}
-            className="px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
-            style={{
-              background: "rgba(0,229,204,0.08)",
-              border: "1px solid rgba(0,229,204,0.2)",
-              color: "var(--ws-cyan)",
-            }}
-          >
-            + New
-          </button>
-          <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
-          {/* Flag filters */}
-          <div className="flex items-center gap-1">
-            {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
-              const cnt = flagCounts[f] ?? 0;
-              if (cnt === 0) return null;
-              return (
-                <Pill key={f} small on={activeFlagFilter === f} onClick={() => onFlagFilter?.(activeFlagFilter === f ? null : f)}>
-                  <span className="inline-flex items-center gap-1">
-                    <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
-                    {cnt}
-                  </span>
-                </Pill>
-              );
-            })}
-          </div>
+          {hasFlaggedStocks && (
+            <>
+              <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+              <div className="flex items-center gap-1">
+                {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+                  const cnt = flagCounts[f] ?? 0;
+                  if (cnt === 0) return null;
+                  return (
+                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
+                      <span className="inline-flex items-center gap-1">
+                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
+                        {cnt}
+                      </span>
+                    </Pill>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -309,7 +355,6 @@ export default function WorkspaceHeader({
             onClick={onNewList}
             className="shrink-0 px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
             style={{
-              order: 0,
               background: "rgba(0,229,204,0.08)",
               border: "1px solid rgba(0,229,204,0.2)",
               color: "var(--ws-cyan)",
@@ -317,13 +362,70 @@ export default function WorkspaceHeader({
           >
             + New
           </button>
-          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+          <div ref={listDDRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setListDDOpen((v) => !v)}
+              className="flex items-center gap-2 px-3 py-1 rounded text-xs cursor-pointer"
+              style={{
+                background: "var(--ws-bg3)",
+                border: "1px solid var(--ws-border)",
+                color: "var(--ws-text)",
+                minWidth: 140,
+              }}
+            >
+              {watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list"}
+              <span style={{ color: "var(--ws-text-vdim)", fontSize: 10 }}>▾</span>
+            </button>
+            {listDDOpen && watchlistNames.length > 0 && (
+              <div
+                className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
+                style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+              >
+                {watchlistNames.map((wl) => (
+                  <div
+                    key={wl.id}
+                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors"
+                    style={{
+                      color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                      background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
+                    onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
+                  >
+                    {wl.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
             {watchlistNames.slice(0, 6).map((wl) => (
               <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
                 {wl.name}
               </Pill>
             ))}
           </div>
+          {hasFlaggedStocks && (
+            <>
+              <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+              <div className="flex items-center gap-1">
+                {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+                  const cnt = flagCounts[f] ?? 0;
+                  if (cnt === 0) return null;
+                  return (
+                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
+                      <span className="inline-flex items-center gap-1">
+                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
+                        {cnt}
+                      </span>
+                    </Pill>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 

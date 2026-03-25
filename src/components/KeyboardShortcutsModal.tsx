@@ -55,7 +55,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
         </div>
         {Object.entries(groups).map(([category, shortcuts]) => (
           <div key={category} className="mb-5 last:mb-0">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+            <h3 className="text-xs font-semibold tracking-wide text-zinc-400 dark:text-zinc-500 mb-2">
               {CATEGORY_LABELS[category] ?? category}
             </h3>
             <div className="space-y-1">

@@ -1009,10 +1009,25 @@ export default function StockChart({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!selectedDrawingId) return;
-      if (e.key === "Delete") {
-        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
-        if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+      if (e.altKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setDrawMode((m) => (m === "ray" ? "none" : "ray"));
+        setPendingTrendStart(null);
+        setPendingTrendDrawingId(null);
+        return;
+      }
+      if (e.altKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        setDrawMode((m) => (m === "trend" ? "none" : "trend"));
+        setPendingTrendStart(null);
+        setPendingTrendDrawingId(null);
+        return;
+      }
+
+      if (selectedDrawingId && e.key === "Delete") {
         setDrawings((prev) => prev.filter((d) => d.id !== selectedDrawingId));
         setSelectedDrawingId(null);
       }
@@ -1335,7 +1350,6 @@ export default function StockChart({
             </div>
           )}
         </div>
-        <span className="text-[10px] text-zinc-400">TradingView Lightweight Charts</span>
       </div>
       {loading ? (
         <div className="flex-1 min-h-[300px] flex items-center justify-center">

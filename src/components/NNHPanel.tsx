@@ -63,7 +63,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
         <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
           <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
+        <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
           Net New Highs
         </span>
       </button>
@@ -87,7 +87,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
           <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
             <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
+          <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             NNH
           </span>
         </button>

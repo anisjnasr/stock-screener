@@ -73,7 +73,7 @@ function BreadthMetric({
 
   return (
     <div className="rounded-lg p-3" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
-      <div className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: "var(--ws-text-vdim)" }}>
+      <div className="text-[10px] font-medium tracking-wide mb-2" style={{ color: "var(--ws-text-vdim)" }}>
         {label}
       </div>
       <div className="flex items-end justify-between gap-2">
@@ -113,8 +113,9 @@ export default function MarketBreadthRail({
   const [breadth, setBreadth] = useState<BreadthResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const indexId = selectedSymbol?.toUpperCase() === "QQQ" ? "nasdaq" : "sp500";
-  const indexLabel = indexId === "nasdaq" ? "Nasdaq" : "S&P 500";
+  const sym = selectedSymbol?.toUpperCase() ?? "SPY";
+  const indexId = sym === "QQQ" ? "nasdaq" : sym === "IWM" ? "russell2000" : "sp500";
+  const indexLabel = indexId === "nasdaq" ? "Nasdaq" : indexId === "russell2000" ? "Russell 2000" : "S&P 500";
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +144,7 @@ export default function MarketBreadthRail({
     <div className="h-full overflow-y-auto overflow-x-hidden p-3 space-y-3" style={{ background: "var(--ws-bg2)" }}>
       {/* Title */}
       <div className="text-center">
-        <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
+        <div className="text-[11px] font-semibold tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
           {indexLabel} Breadth
         </div>
         <div className="text-[10px] mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>

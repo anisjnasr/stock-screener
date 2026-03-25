@@ -102,41 +102,65 @@ function fmtPctSigned(n: number | null): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
 }
 
-function QuarterlyBars({
+function BarChart({
   data,
   valueKey,
   growthKey,
+  periodKey,
   color,
 }: {
   data: Array<Record<string, unknown>>;
   valueKey: string;
   growthKey: string;
+  periodKey?: string;
   color: string;
 }) {
-  const display = data.slice(0, 4);
+  const display = data.slice(0, 6);
   if (display.length === 0) return null;
   const values = display.map((d) => Number(d[valueKey] ?? 0));
   const maxVal = Math.max(...values.map(Math.abs), 1);
+  const hasNegative = values.some((v) => v < 0);
+  const barAreaH = 44;
 
   return (
-    <div className="flex items-end gap-2 mt-1.5">
-      {display.map((d, i) => {
-        const val = Number(d[valueKey] ?? 0);
-        const rawGrowth = d[growthKey];
-        const growth = typeof rawGrowth === "number" ? rawGrowth : null;
-        const barH = Math.max(5, (Math.abs(val) / maxVal) * 44);
-        return (
-          <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 32 }}>
-            <span
-              className="text-[10px] font-medium tabular-nums leading-none"
-              style={{ color: growth != null && growth >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
-            >
-              {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
-            </span>
-            <div className="w-full rounded-sm" style={{ height: barH, background: color, opacity: 0.85 }} />
-          </div>
-        );
-      })}
+    <div className="mt-1.5">
+      <div className="flex items-end gap-2" style={{ minHeight: hasNegative ? barAreaH * 2 + 8 : barAreaH + 8, position: "relative" }}>
+        {display.map((d, i) => {
+          const val = Number(d[valueKey] ?? 0);
+          const rawGrowth = d[growthKey];
+          const growth = typeof rawGrowth === "number" ? rawGrowth : null;
+          const barH = Math.max(4, (Math.abs(val) / maxVal) * barAreaH);
+          const isNeg = val < 0;
+          const period = periodKey ? String(d[periodKey] ?? "") : "";
+          const shortPeriod = period.length > 7 ? period.replace(/Quarter /, "Q").replace(/20(\d\d)/, "$1") : period;
+
+          return (
+            <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 36 }}>
+              {!isNeg && (
+                <span className="text-[10px] font-medium tabular-nums leading-none"
+                  style={{ color: growth != null && growth >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
+                  {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
+                </span>
+              )}
+              <div className="w-full rounded-sm" style={{
+                height: barH,
+                background: isNeg ? "var(--ws-red)" : color,
+                opacity: 0.85,
+                marginTop: isNeg ? 0 : "auto",
+              }} />
+              {isNeg && (
+                <span className="text-[10px] font-medium tabular-nums leading-none"
+                  style={{ color: "var(--ws-red)" }}>
+                  {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
+                </span>
+              )}
+              {shortPeriod && (
+                <span className="text-[9px] tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>{shortPeriod}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -157,6 +181,8 @@ export default function RightRail({
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("fundamentals");
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [revenueView, setRevenueView] = useState<"annual" | "quarterly">("quarterly");
+  const [epsView, setEpsView] = useState<"annual" | "quarterly">("quarterly");
 
   if (loading) {
     return (
@@ -229,7 +255,7 @@ export default function RightRail({
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
-      {/* Profile header */}
+      {/* Profile header — order: Ticker, Name, Website, Description, Exchange, Sector, Industry, Market Cap, Float */}
       <div className="px-3 py-2.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
         <div className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
           {symbol}
@@ -239,61 +265,15 @@ export default function RightRail({
             {safe(profile.companyName)}
           </div>
         )}
-
-        <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-[11px] items-center"
-          style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
-        >
-          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
-            Exchange
-          </span>
-          <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>
-            {safe(exchangeFriendlyName(profile?.exchange))}
-          </span>
-
-          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
-            Mkt cap
-          </span>
-          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-            {marketCapLabel}
-          </span>
-
-          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
-            Float
-          </span>
-          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-            {floatLabel}
-          </span>
-
-          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
-            Sector
-          </span>
-          <span className="min-w-0 flex flex-wrap gap-1">
-            {profile?.sector ? (
-              <span className={pillClass} style={pillStyle}>
-                {safe(profile.sector)}
-              </span>
-            ) : (
-              <span style={{ color: "var(--ws-text)" }}>—</span>
-            )}
-          </span>
-
-          <span className="font-medium uppercase tracking-wide text-[10px]" style={{ color: "var(--ws-text-dim)" }}>
-            Industry
-          </span>
-          <span className="min-w-0 flex flex-wrap gap-1">
-            {profile?.industry ? (
-              <span className={pillClass} style={pillStyle}>
-                {safe(profile.industry)}
-              </span>
-            ) : (
-              <span style={{ color: "var(--ws-text)" }}>—</span>
-            )}
-          </span>
-        </div>
+        {profile?.website && typeof profile.website === "string" && (
+          <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
+            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
+            {safe(profile.website).replace(/^https?:\/\//, "")}
+          </a>
+        )}
 
         {desc && (
-          <div className="mt-2.5">
+          <div className="mt-2">
             <p className="text-[11px] leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
               {showFullDesc ? desc : truncatedDesc}
             </p>
@@ -304,12 +284,30 @@ export default function RightRail({
             )}
           </div>
         )}
-        {profile?.website && typeof profile.website === "string" && (
-          <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-            target="_blank" rel="noopener noreferrer" className="inline-block mt-1.5 text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
-            {safe(profile.website).replace(/^https?:\/\//, "")}
-          </a>
-        )}
+
+        <div
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-[11px] items-center"
+          style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
+        >
+          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Exchange</span>
+          <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
+
+          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Sector</span>
+          <span className="min-w-0 flex flex-wrap gap-1">
+            {profile?.sector ? <span className={pillClass} style={pillStyle}>{safe(profile.sector)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
+          </span>
+
+          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Industry</span>
+          <span className="min-w-0 flex flex-wrap gap-1">
+            {profile?.industry ? <span className={pillClass} style={pillStyle}>{safe(profile.industry)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
+          </span>
+
+          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Market Cap</span>
+          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+
+          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Float</span>
+          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{floatLabel}</span>
+        </div>
       </div>
 
       {/* Tab row */}
@@ -333,8 +331,17 @@ export default function RightRail({
 
           {/* REVENUE */}
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
-              Revenue
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue</div>
+              <div className="flex gap-0.5">
+                {(["annual", "quarterly"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setRevenueView(v)}
+                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
+                    style={{ background: revenueView === v ? "var(--ws-bg3)" : "transparent", color: revenueView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
               {revenueRange}
@@ -344,16 +351,30 @@ export default function RightRail({
                 {fmtPctSigned(revenueYoY)} YoY
               </div>
             )}
-            <div className="text-[11px] mt-2 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
-            <QuarterlyBars data={qtrData} valueKey="sales" growthKey="salesGrowth" color="var(--ws-cyan)" />
+            <BarChart
+              data={revenueView === "annual" ? yearlyRows.slice(0, 6) : qtrData}
+              valueKey="sales"
+              growthKey="salesGrowth"
+              periodKey={revenueView === "annual" ? "year" : "period"}
+              color="var(--ws-cyan)"
+            />
           </div>
 
           <SectionDivider />
 
           {/* EARNINGS */}
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
-              Earnings
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Earnings (EPS)</div>
+              <div className="flex gap-0.5">
+                {(["annual", "quarterly"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setEpsView(v)}
+                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
+                    style={{ background: epsView === v ? "var(--ws-bg3)" : "transparent", color: epsView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
               {epsRange}
@@ -363,30 +384,21 @@ export default function RightRail({
                 {fmtPctSigned(epsYoY)} YoY
               </div>
             )}
-            <div className="text-[11px] mt-2 mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Quarterly</div>
-            <QuarterlyBars data={qtrData} valueKey="eps" growthKey="epsGrowth" color="var(--ws-cyan)" />
-            {/* Surprise row */}
-            {qtrData.some((q) => q.epsGrowth != null) && (
-              <div className="mt-1.5">
-                <div className="text-[10px] mb-0.5" style={{ color: "var(--ws-text-vdim)" }}>Surprise</div>
-                <div className="flex gap-1.5">
-                  {qtrData.slice(0, 4).map((q, i) => (
-                    <span key={i} className="text-[10px] font-medium tabular-nums"
-                      style={{ color: (q.epsGrowth ?? 0) >= 0 ? "var(--ws-green)" : "var(--ws-red)", width: 28, textAlign: "center", display: "inline-block" }}>
-                      {q.epsGrowth != null ? `${q.epsGrowth >= 0 ? "+" : ""}${q.epsGrowth.toFixed(0)}%` : "—"}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+            <BarChart
+              data={epsView === "annual" ? yearlyRows.slice(0, 6) : qtrData}
+              valueKey="eps"
+              growthKey="epsGrowth"
+              periodKey={epsView === "annual" ? "year" : "period"}
+              color="var(--ws-cyan)"
+            />
           </div>
 
           <SectionDivider />
 
           {/* INSTITUTIONAL */}
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ws-text-vdim)" }}>
-              Institutional
+            <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--ws-text)" }}>
+              Fund Counts
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-[18px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>
@@ -400,10 +412,11 @@ export default function RightRail({
               )}
             </div>
             {ownershipData.length > 0 && (
-              <QuarterlyBars
-                data={ownershipData.slice(0, 4)}
+              <BarChart
+                data={ownershipData.slice(0, 6)}
                 valueKey="value"
                 growthKey="change"
+                periodKey="period"
                 color="var(--ws-purple, #a78bfa)"
               />
             )}
@@ -414,7 +427,7 @@ export default function RightRail({
           {/* RS RANK */}
           {rsRank && bestRs != null && (
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+              <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
               <div className="flex items-baseline gap-1.5 mb-2">

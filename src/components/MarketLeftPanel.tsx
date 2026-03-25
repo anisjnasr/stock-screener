@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 
 type Quote = {
@@ -164,40 +164,20 @@ function IndicesTable({
   );
 }
 
+export type { MarketLeftTab };
+
 export default function MarketLeftPanel({
   onSymbolSelect,
   selectedSymbol,
+  activeTab = "indices",
 }: {
   onSymbolSelect?: (sym: string) => void;
   selectedSymbol?: string;
+  activeTab?: MarketLeftTab;
 }) {
-  const [tab, setTab] = useState<MarketLeftTab>("indices");
-
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      {/* Tab pills */}
-      <div className="shrink-0 flex items-center gap-0.5 px-2 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        {([
-          { id: "indices" as MarketLeftTab, label: "Indices" },
-          { id: "monitor" as MarketLeftTab, label: "Market Monitor" },
-        ]).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className="px-2 py-0.5 text-[10px] font-medium rounded transition-colors"
-            style={{
-              background: tab === t.id ? "var(--ws-cyan)" : "transparent",
-              color: tab === t.id ? "var(--ws-bg)" : "var(--ws-text-dim)",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      {tab === "indices" ? (
+      {activeTab === "indices" ? (
         <IndicesTable onSymbolSelect={onSymbolSelect} selectedSymbol={selectedSymbol} />
       ) : (
         <div className="flex-1 min-h-0 overflow-auto">

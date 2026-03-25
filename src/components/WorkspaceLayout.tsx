@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useCallback, type ReactNode } from "react";
+import { useRef, useCallback, useState, type ReactNode } from "react";
 
 type WorkspaceLayoutProps = {
-  leftWidthPx: number;
-  onLeftWidthChange?: (px: number) => void;
+  chartLeftPx: number;
+  onChartLeftChange?: (px: number) => void;
   railWidthPx: number;
   onRailWidthChange: (px: number) => void;
   rightRailHidden: boolean;
@@ -13,16 +13,14 @@ type WorkspaceLayoutProps = {
   rightPanel: ReactNode;
 };
 
-const MIN_CHART = 300;
-const MIN_LEFT = 200;
-const MAX_LEFT = 600;
+const MIN_CHART_WIDTH = 300;
 const MIN_RAIL = 200;
 const MAX_RAIL = 400;
-const LEFT_HANDLE_PX = 4;
+const HANDLE_PX = 4;
 
 export default function WorkspaceLayout({
-  leftWidthPx,
-  onLeftWidthChange,
+  chartLeftPx,
+  onChartLeftChange,
   railWidthPx,
   onRailWidthChange,
   rightRailHidden,
@@ -31,23 +29,25 @@ export default function WorkspaceLayout({
   rightPanel,
 }: WorkspaceLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [draggingChart, setDraggingChart] = useState(false);
 
-  const startDragLeft = useCallback(
+  const containerWidth = () => containerRef.current?.clientWidth ?? 1200;
+  const railTotal = rightRailHidden ? 0 : HANDLE_PX + railWidthPx;
+
+  const startDragChartLeft = useCallback(
     (e: React.MouseEvent) => {
-      if (!onLeftWidthChange) return;
+      if (!onChartLeftChange) return;
       e.preventDefault();
       const startX = e.clientX;
-      const startWidth = leftWidthPx;
+      const startLeft = chartLeftPx;
 
       const onMove = (ev: MouseEvent) => {
         const delta = ev.clientX - startX;
-        const containerWidth = containerRef.current?.clientWidth ?? 1200;
-        const rightFixed = rightRailHidden ? 0 : 4 + railWidthPx;
-        const maxLeftForChart = containerWidth - LEFT_HANDLE_PX - MIN_CHART - rightFixed;
-        let next = startWidth + delta;
-        next = Math.max(MIN_LEFT, Math.min(MAX_LEFT, next));
-        next = Math.min(next, maxLeftForChart);
-        onLeftWidthChange(next);
+        const cw = containerWidth();
+        const maxLeft = cw - railTotal - MIN_CHART_WIDTH;
+        let next = startLeft + delta;
+        next = Math.max(0, Math.min(next, maxLeft));
+        onChartLeftChange(next);
       };
 
       const onUp = () => {
@@ -55,14 +55,16 @@ export default function WorkspaceLayout({
         document.removeEventListener("mouseup", onUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        setDraggingChart(false);
       };
 
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
+      setDraggingChart(true);
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [leftWidthPx, onLeftWidthChange, rightRailHidden, railWidthPx]
+    [chartLeftPx, onChartLeftChange, railTotal]
   );
 
   const startDragRight = useCallback(
@@ -74,10 +76,8 @@ export default function WorkspaceLayout({
       const onMove = (ev: MouseEvent) => {
         const delta = startX - ev.clientX;
         const next = Math.max(MIN_RAIL, Math.min(MAX_RAIL, startWidth + delta));
-        const containerWidth = containerRef.current?.clientWidth ?? 1200;
-        const rightHandleAndRail = rightRailHidden ? 0 : 4 + next;
-        const fixed = leftWidthPx + LEFT_HANDLE_PX + rightHandleAndRail;
-        if (containerWidth - fixed < MIN_CHART) return;
+        const cw = containerWidth();
+        if (cw - chartLeftPx - HANDLE_PX - next - HANDLE_PX < MIN_CHART_WIDTH) return;
         onRailWidthChange(next);
       };
 
@@ -93,97 +93,109 @@ export default function WorkspaceLayout({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [railWidthPx, onRailWidthChange, leftWidthPx, rightRailHidden]
+    [railWidthPx, onRailWidthChange, chartLeftPx]
   );
 
-  const railW = rightRailHidden ? 0 : railWidthPx;
-  const gridTemplate = `${leftWidthPx}px 4px 1fr${rightRailHidden ? "" : ` 4px ${railW}px`}`;
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!onChartLeftChange) return;
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      e.preventDefault();
+      const cw = containerWidth();
+      const maxLeft = cw - railTotal - MIN_CHART_WIDTH;
+      const delta = e.key === "ArrowRight" ? 20 : -20;
+      let next = chartLeftPx + delta;
+      next = Math.max(0, Math.min(next, maxLeft));
+      onChartLeftChange(next);
+    },
+    [chartLeftPx, onChartLeftChange, railTotal]
+  );
 
   return (
     <div
       ref={containerRef}
-      className="flex-1 min-h-0 overflow-hidden"
-      style={{
-        display: "grid",
-        gridTemplateColumns: gridTemplate,
-        gridTemplateRows: "1fr",
-        background: "var(--ws-bg)",
-      }}
+      className="flex-1 min-h-0 overflow-hidden relative"
+      style={{ background: "var(--ws-bg)" }}
     >
-      {/* Left table panel */}
+      {/* Left panel — full width behind chart, up to rail edge */}
       <div
-        className="min-h-0 min-w-0 overflow-hidden"
-        style={{ borderRight: "1px solid var(--ws-border)" }}
+        className="absolute inset-0 min-h-0 overflow-hidden"
+        style={{ right: railTotal }}
       >
         {leftPanel}
       </div>
 
-      {/* Left drag handle (chart edge) */}
+      {/* Chart overlay — from chartLeftPx to the rail edge */}
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize left panel width"
-        tabIndex={onLeftWidthChange ? 0 : -1}
-        className="cursor-col-resize flex items-center justify-center hover:opacity-100 transition-opacity"
+        className="absolute top-0 bottom-0 flex"
         style={{
-          background: "var(--ws-border)",
-          opacity: 0.5,
+          left: chartLeftPx,
+          right: rightRailHidden ? 0 : HANDLE_PX + railWidthPx,
+          zIndex: 10,
         }}
-        onMouseDown={onLeftWidthChange ? startDragLeft : undefined}
-        onKeyDown={
-          onLeftWidthChange
-            ? (e) => {
-                if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-                e.preventDefault();
-                const containerWidth = containerRef.current?.clientWidth ?? 1200;
-                const rightFixed = rightRailHidden ? 0 : 4 + railWidthPx;
-                const maxLeftForChart = containerWidth - LEFT_HANDLE_PX - MIN_CHART - rightFixed;
-                const delta = e.key === "ArrowRight" ? 20 : -20;
-                let next = leftWidthPx + delta;
-                next = Math.max(MIN_LEFT, Math.min(MAX_LEFT, next));
-                next = Math.min(next, maxLeftForChart);
-                onLeftWidthChange(next);
-              }
-            : undefined
-        }
       >
-        <div
-          className="w-[2px] h-8 rounded-full"
-          style={{ background: "var(--ws-text-vdim)" }}
-        />
-      </div>
-
-      {/* Center chart */}
-      <div className="min-h-0 min-w-0 overflow-hidden">{centerPanel}</div>
-
-      {/* Right drag handle */}
-      {!rightRailHidden && (
+        {/* Chart left drag handle */}
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize right panel width"
-          tabIndex={0}
-          className="cursor-col-resize flex items-center justify-center hover:opacity-100 transition-opacity"
+          aria-label="Resize chart left edge"
+          tabIndex={onChartLeftChange ? 0 : -1}
+          className="shrink-0 cursor-col-resize flex items-center justify-center transition-opacity"
           style={{
-            background: "var(--ws-border)",
-            opacity: 0.5,
+            width: HANDLE_PX,
+            background: draggingChart ? "var(--ws-cyan)" : "var(--ws-border)",
+            opacity: draggingChart ? 0.8 : 0.5,
           }}
-          onMouseDown={startDragRight}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowRight") onRailWidthChange(Math.max(MIN_RAIL, railWidthPx - 20));
-            if (e.key === "ArrowLeft") onRailWidthChange(Math.min(MAX_RAIL, railWidthPx + 20));
-          }}
+          onMouseDown={onChartLeftChange ? startDragChartLeft : undefined}
+          onKeyDown={handleKeyDown}
         >
           <div
             className="w-[2px] h-8 rounded-full"
             style={{ background: "var(--ws-text-vdim)" }}
           />
         </div>
-      )}
 
-      {/* Right rail */}
+        {/* Chart content */}
+        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+          {centerPanel}
+        </div>
+      </div>
+
+      {/* Right rail area — fixed width on the right */}
       {!rightRailHidden && (
-        <div className="min-h-0 min-w-0 overflow-hidden">{rightPanel}</div>
+        <div
+          className="absolute top-0 bottom-0 right-0 flex"
+          style={{ width: HANDLE_PX + railWidthPx, zIndex: 10 }}
+        >
+          {/* Right drag handle */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize right panel width"
+            tabIndex={0}
+            className="shrink-0 cursor-col-resize flex items-center justify-center hover:opacity-100 transition-opacity"
+            style={{
+              width: HANDLE_PX,
+              background: "var(--ws-border)",
+              opacity: 0.5,
+            }}
+            onMouseDown={startDragRight}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight") onRailWidthChange(Math.max(MIN_RAIL, railWidthPx - 20));
+              if (e.key === "ArrowLeft") onRailWidthChange(Math.min(MAX_RAIL, railWidthPx + 20));
+            }}
+          >
+            <div
+              className="w-[2px] h-8 rounded-full"
+              style={{ background: "var(--ws-text-vdim)" }}
+            />
+          </div>
+
+          {/* Right rail content */}
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            {rightPanel}
+          </div>
+        </div>
       )}
     </div>
   );

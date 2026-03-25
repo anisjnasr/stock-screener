@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
-const inter = Inter({
+const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
+const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://stock-screener-orfz.onrender.com";
@@ -75,7 +76,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem("stock-research-theme");if(t==="light"){document.documentElement.classList.remove("dark");document.documentElement.classList.add("light")}else if(t==="dark"||!t){document.documentElement.classList.add("dark");document.documentElement.classList.remove("light")}else{var m=window.matchMedia("(prefers-color-scheme:dark)").matches;document.documentElement.classList.toggle("dark",m);document.documentElement.classList.toggle("light",!m)}}catch(e){}})()` }} />
       </head>
       <body
-        className={`${inter.variable} ${geistMono.variable} antialiased`}
+        className={`${plusJakarta.variable} ${ibmPlexMono.variable} antialiased`}
       >
         {children}
         <ServiceWorkerRegistration />

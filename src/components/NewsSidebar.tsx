@@ -67,7 +67,7 @@ export default function NewsSidebar({ symbol, embedded = false }: NewsSidebarPro
             : "p-2 border-b border-zinc-200 dark:border-zinc-700 shrink-0"
         }
       >
-        <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+        <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 tracking-wide">
           {symbol ? (
             <>NEWS (<span className="font-mono">{symbol.toUpperCase()}</span>)</>
           ) : (

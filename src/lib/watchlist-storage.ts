@@ -343,6 +343,13 @@ export const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
   "sector",
 ];
 
+export const SECTION_DEFAULT_COLUMNS: Record<string, ColumnId[]> = {
+  indices: ["ticker", "lastPrice", "changePct", "atrPct", "priceChange1mPct", "priceChange3mPct", "priceChange6mPct", "priceChange12mPct"],
+  sectors: ["ticker", "lastPrice", "changePct", "atrPct", "priceChange1mPct", "priceChange3mPct", "priceChange6mPct", "priceChange12mPct"],
+  scans: ["ticker", "lastPrice", "changePct"],
+  lists: ["ticker", "lastPrice", "changePct", "marketCap", "volume", "avgVolume", "atrPct"],
+};
+
 export function loadVisibleColumns(): ColumnId[] {
   if (typeof window === "undefined") return [...DEFAULT_VISIBLE_COLUMNS];
   try {

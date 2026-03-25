@@ -129,6 +129,7 @@ export function useLayoutPreferences() {
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,
+    setRightRailHidden,
     handleRightRailToggle,
   };
 }

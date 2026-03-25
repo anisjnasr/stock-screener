@@ -36,8 +36,8 @@
   --ws-blue: #4da6ff;
   --ws-green: #22c55e;
   --ws-purple: #a78bfa;
-  --ws-font-mono: "JetBrains Mono", "SF Mono", monospace;
-  --ws-font-sans: "DM Sans", sans-serif;
+  --ws-font-mono: var(--font-geist-mono), "IBM Plex Mono", "SF Mono", monospace;
+  --ws-font-sans: var(--font-inter), "Plus Jakarta Sans", sans-serif;
 }
 
 html {

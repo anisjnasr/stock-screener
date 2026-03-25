@@ -510,6 +510,11 @@ export default function WatchlistPanel({
   const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(() => loadVisibleColumns());
   const [columnSets, setColumnSets] = useState<ColumnSet[]>([]);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showTableMenu, setShowTableMenu] = useState(false);
+  const tableMenuRef = useRef<HTMLDivElement>(null);
+  const [inlineTickerValue, setInlineTickerValue] = useState("");
+  const [showInlineTickerRow, setShowInlineTickerRow] = useState(false);
+  const inlineTickerRef = useRef<HTMLInputElement>(null);
   const [resizingCol, setResizingCol] = useState<TableColumnId | null>(null);
   const [colDragIndex, setColDragIndex] = useState<number | null>(null);
   const [colDropIndex, setColDropIndex] = useState<number | null>(null);
@@ -744,6 +749,17 @@ export default function WatchlistPanel({
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
   }, [showWatchlistAddMenu]);
+
+  useEffect(() => {
+    if (!showTableMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (tableMenuRef.current && !tableMenuRef.current.contains(e.target as Node)) {
+        setShowTableMenu(false);
+      }
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [showTableMenu]);
 
   const MIN_SIDEBAR_WIDTH_PX = 240;
   const MAX_SIDEBAR_WIDTH_PX = 420;
@@ -1033,6 +1049,8 @@ export default function WatchlistPanel({
     }
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
   }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
+
+  const activeListTitle = tableSource.title;
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -1538,6 +1556,19 @@ export default function WatchlistPanel({
     setSelectedSymbols(new Set());
     setShowAddToListMenu(false);
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (selectedSymbols.size === 0) return;
+      if (e.key !== "Delete") return;
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      removeSymbolsFromList(Array.from(selectedSymbols));
+      clearSelection();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedSymbols, removeSymbolsFromList, clearSelection]);
 
   const openNewScreenerModal = useCallback(() => {
     setSidebarTab("screener");
@@ -2150,7 +2181,7 @@ export default function WatchlistPanel({
               </g>
             ))}
           </svg>
-          <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+          <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 tracking-wide">
             Watchlists & Screener
           </span>
         </div>
@@ -2790,7 +2821,7 @@ export default function WatchlistPanel({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-                    <h2 id="add-stocks-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+                    <h2 id="add-stocks-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-wide">
                       {addPopupMode === "create" ? "New Watchlist" : `Edit ${list?.name ?? "list"}`}
                     </h2>
                     <button
@@ -2806,7 +2837,7 @@ export default function WatchlistPanel({
                   </div>
                   <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 space-y-2">
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 tracking-wide mb-1">
                         Name
                       </label>
                       <input
@@ -2819,7 +2850,7 @@ export default function WatchlistPanel({
                       />
                     </div>
                     <div className="relative">
-                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 tracking-wide mb-1">
                         Search Tickers
                       </label>
                       <input
@@ -2965,7 +2996,7 @@ export default function WatchlistPanel({
                 className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-sm flex flex-col p-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <h2 id="new-folder-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide mb-3">
+                <h2 id="new-folder-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-wide mb-3">
                   New Folder
                 </h2>
                 <input
@@ -3017,7 +3048,7 @@ export default function WatchlistPanel({
                 <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 mb-3">
-                      <h2 id="new-script-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+                      <h2 id="new-script-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-wide">
                         {editingScriptScreenId ? "Edit Script" : "New Script"}
                       </h2>
                       <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}>
@@ -3128,21 +3159,24 @@ export default function WatchlistPanel({
             >
               <div
                 ref={screenerModalRef}
-                className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-4xl max-h-[90vh] flex flex-col"
-                style={
-                  screenerModalPosition
-                    ? { position: "fixed", left: screenerModalPosition.x, top: screenerModalPosition.y }
-                    : undefined
-                }
+                className="rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+                style={{
+                  background: "var(--ws-bg2, #0d1117)",
+                  border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))",
+                  ...(screenerModalPosition
+                    ? { position: "fixed" as const, left: screenerModalPosition.x, top: screenerModalPosition.y }
+                    : {}),
+                }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div
-                  className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 cursor-grab active:cursor-grabbing select-none"
+                  className="flex items-center justify-between p-3 shrink-0 cursor-grab active:cursor-grabbing select-none"
+                  style={{ borderBottom: "1px solid var(--ws-border)" }}
                   onMouseDown={startScreenerModalDrag}
                   role="presentation"
                 >
                   <div className="flex items-center gap-3">
-                    <h2 id="new-screener-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+                    <h2 id="new-screener-title" className="text-sm font-semibold tracking-wide" style={{ color: "var(--ws-text)" }}>
                       {editingScreenId ? "Edit Screener" : "New Screener"}
                     </h2>
                     <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}
@@ -3169,7 +3203,8 @@ export default function WatchlistPanel({
                     type="button"
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => setShowNewScreenerModal(false)}
-                    className="p-1 rounded text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400 dark:hover:text-zinc-200 shrink-0"
+                    className="p-1 rounded shrink-0 transition-colors"
+                    style={{ color: "var(--ws-text-dim)" }}
                     aria-label="Close"
                   >
                     <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
@@ -3179,18 +3214,19 @@ export default function WatchlistPanel({
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-4 space-y-3">
                   <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 w-36 shrink-0">Screen Name</label>
+                    <label className="text-xs font-medium w-36 shrink-0" style={{ color: "var(--ws-text-dim)" }}>Screen Name</label>
                     <input
                       type="text"
                       value={newScreenForm.name}
                       onChange={(e) => setNewScreenForm((p) => ({ ...p, name: e.target.value }))}
                       placeholder="e.g. Large Cap Growth"
-                      className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
+                      className="flex-1 min-w-0 rounded px-2 py-1 text-sm font-normal"
+                      style={{ background: "var(--ws-bg, #0a0e14)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                     />
                   </div>
                   <div className="flex gap-4">
                     {/* Left column: section labels */}
-                    <div className="w-48 shrink-0 flex flex-col gap-0.5 border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
+                      <div className="w-48 shrink-0 flex flex-col gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid var(--ws-border)" }}>
                       {SCREENER_FILTER_CATEGORIES.map((cat) => {
                         const { filled, total } = getCategoryCounts(cat);
                         const isSelected = selectedScreenerSectionId === cat.id;
@@ -3199,14 +3235,14 @@ export default function WatchlistPanel({
                             key={cat.id}
                             type="button"
                             onClick={() => setSelectedScreenerSectionId(cat.id)}
-                            className={`w-full flex items-center justify-between px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition-colors ${
-                              isSelected
-                                ? "bg-zinc-800 dark:bg-zinc-600 text-white"
-                                : "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700/80"
-                            }`}
+                            className="w-full flex items-center justify-between px-3 py-2.5 text-left text-xs font-semibold tracking-wide transition-colors"
+                            style={{
+                              background: isSelected ? "var(--ws-bg3)" : "var(--ws-bg2)",
+                              color: isSelected ? "var(--ws-text)" : "var(--ws-text-dim)",
+                            }}
                           >
                             <span>{cat.title}</span>
-                            <span className={`shrink-0 text-sm tabular-nums ${isSelected ? "text-zinc-300 dark:text-zinc-200" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            <span className="shrink-0 text-sm tabular-nums" style={{ color: isSelected ? "var(--ws-text-dim)" : "var(--ws-text-vdim)" }}>
                               {filled}/{total}
                             </span>
                           </button>
@@ -3356,7 +3392,7 @@ export default function WatchlistPanel({
                               if (field.type === "sectionHeading") {
                                 return (
                                   <div key={field.key} className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-600 first:pt-0 first:mt-0 first:border-t-0">
-                                    <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">{field.label}</div>
+                                    <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 tracking-wide">{field.label}</div>
                                   </div>
                                 );
                               }
@@ -3481,93 +3517,118 @@ export default function WatchlistPanel({
           {/* Right: table */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 px-2 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
-              <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
-                {loading ? "…" : `${rows.length} results`}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-semibold" style={{ color: "var(--ws-text, #e6edf3)" }}>
+                  {activeListTitle ?? "Results"}
+                </span>
+                <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
+                  Stocks: {loading ? "…" : rows.length}
+                </span>
+              </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setShowColumnPicker(true)}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                  style={{ color: "rgba(201,209,217,0.5)" }} title="Columns" aria-label="Columns">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h4v12H2zm5 0h4v12H7zm5 0h3v12h-3z"/></svg>
-                </button>
-                <button type="button" onClick={handleAutoSizeColumns}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                  style={{ color: "rgba(201,209,217,0.5)" }} title="Auto-size" aria-label="Auto-size">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 8l3-3v2h6V5l3 3-3 3V9H5v2z"/></svg>
-                </button>
-                <button type="button" onClick={() => fetchRows()} disabled={loading}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150 disabled:opacity-30"
-                  style={{ color: "rgba(201,209,217,0.5)" }} title="Refresh" aria-label="Refresh">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className={loading ? "animate-spin" : ""}>
-                    <path d="M8 3a5 5 0 1 0 4.547 2.909A.5.5 0 0 1 13 6.5a6 6 0 1 1-5.5-5.96.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h1.14A5 5 0 0 0 8 3z" />
-                  </svg>
-                </button>
+                {selectedSymbols.size > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                      style={{ color: "var(--ws-red, #ff4d6a)" }}
+                      title="Delete selected"
+                      aria-label="Delete selected"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2h3a1 1 0 011-1h3a1 1 0 011 1h3a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118z"/></svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddToListMenu((v) => !v)}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                      style={{ color: "var(--ws-cyan, #00e5cc)" }}
+                      title="Add/remove from watchlist"
+                      aria-label="Add/remove from watchlist"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
+                    </button>
+                  </>
+                )}
+                <div ref={tableMenuRef} className="relative">
+                  <button type="button" onClick={() => setShowTableMenu((v) => !v)}
+                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                    style={{ color: "rgba(201,209,217,0.5)" }} title="Table options" aria-label="Table options">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+                  </button>
+                  {showTableMenu && (
+                    <div className="absolute right-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
+                      <button type="button"
+                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                        style={{ color: "var(--ws-text-dim)" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        onClick={() => { setShowColumnPicker(true); setShowTableMenu(false); }}
+                      >
+                        Customize Columns
+                      </button>
+                      <button type="button"
+                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                        style={{ color: "var(--ws-text-dim)" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        onClick={() => { setShowColumnPicker(true); setShowTableMenu(false); }}
+                      >
+                        Saved Column Sets
+                      </button>
+                      <button type="button"
+                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                        style={{ color: "var(--ws-text-dim)" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        onClick={() => { handleAutoSizeColumns(); setShowTableMenu(false); }}
+                      >
+                        Auto Resize Columns
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {sidebarTab === "watchlists" && selectedSymbols.size > 0 && (
-              <div className="relative flex items-center gap-2 px-2 py-1.5 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0" ref={addToListMenuRef}>
-                <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            {selectedSymbols.size > 0 && (
+              <div className="relative flex items-center gap-2 px-2 py-1 shrink-0" ref={addToListMenuRef} style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg3)" }}>
+                <span className="text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
                   {selectedSymbols.size} selected
                 </span>
-                <button
-                  type="button"
-                  onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
-                  className="text-sm text-red-600 dark:text-red-400 hover:underline"
-                >
-                  Remove from list
-                </button>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddToListMenu((v) => !v)}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    Add to list…
-                  </button>
-                  {showAddToListMenu && (
-                    <ul className="absolute left-0 top-full z-50 mt-1 rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 max-h-40 overflow-auto min-w-32">
-                      {lists
-                        .filter((l) => l.id !== activeListId)
-                        .map((l) => (
-                          <li key={l.id}>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                              onClick={() => {
-                                Array.from(selectedSymbols).forEach((sym) =>
-                                  addSymbolToList(sym, l.id)
-                                );
-                                clearSelection();
-                              }}
-                            >
-                              {l.name}
-                            </button>
-                          </li>
-                        ))}
-                      {lists.filter((l) => l.id !== activeListId).length === 0 && (
-                        <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                          No other lists
-                        </li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="text-sm text-zinc-500 dark:text-zinc-400 hover:underline"
-                >
+                <button type="button" onClick={clearSelection} className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>
                   Clear
                 </button>
+                {showAddToListMenu && (
+                  <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg" style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}>
+                    {lists.map((l) => {
+                      const allIn = Array.from(selectedSymbols).every((s) => l.symbols.includes(s));
+                      return (
+                        <label key={l.id} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer" style={{ color: "var(--ws-text-dim)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          <input type="checkbox" checked={allIn} onChange={() => {
+                            if (allIn) {
+                              Array.from(selectedSymbols).forEach((sym) => removeSymbolsFromList([sym]));
+                            } else {
+                              Array.from(selectedSymbols).forEach((sym) => addSymbolToList(sym, l.id));
+                            }
+                          }} className="accent-[var(--ws-cyan)]" />
+                          {l.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
-            <div className="flex-1 overflow-x-auto overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-sm">
-              <table ref={tableRef} className="w-full border-collapse text-sm whitespace-nowrap" style={{ minWidth: "max-content" }}>
-                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800/98 border-b border-zinc-200 dark:border-zinc-700 z-10 shadow-sm">
+            <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ background: "var(--ws-bg2, #161b22)" }}>
+              <table ref={tableRef} className="w-full border-collapse whitespace-nowrap" style={{ minWidth: "max-content", fontSize: "12px", lineHeight: "1.4" }}>
+                <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c2128)", borderBottom: "1px solid var(--ws-border)" }}>
                   <tr>
-                    <th className="w-9 min-w-[2.25rem] py-1.5 px-1 border-b border-zinc-200 dark:border-zinc-700 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    <th className="w-9 min-w-[2.25rem] py-1.5 px-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
                       Flag
                     </th>
                     {tableColumns.map((col, colIndex) => {
@@ -3582,8 +3643,8 @@ export default function WatchlistPanel({
                           onDragLeave={!isScriptCol ? () => setColDropIndex(null) : undefined}
                           onDrop={!isScriptCol ? handleColumnHeaderDrop(colIndex) : undefined}
                           onDragEnd={handleColumnHeaderDragEnd}
-                          className={`relative py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-700 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
-                          style={{ width: getColWidth(col), minWidth: getColWidth(col) }}
+                          className={`relative py-1.5 px-2 font-medium whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
+                          style={{ width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)" }}
                         >
                           <div className={`flex items-center gap-0.5 ${isNumericCol ? "justify-end" : ""} ${!isScriptCol ? "cursor-grab active:cursor-grabbing" : ""}`}>
                             <button
@@ -3672,16 +3733,18 @@ export default function WatchlistPanel({
                           key={row.symbol}
                           draggable
                           onDragStart={(e) => { e.dataTransfer.setData("stockSymbol", row.symbol); e.dataTransfer.effectAllowed = "copy"; }}
-                          className={`border-b border-zinc-100 dark:border-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-[rgba(0,229,204,0.04)] ${onSymbolSelect ? "cursor-pointer" : ""}`}
-                          style={
-                            isActiveSymbol
-                              ? { background: "rgba(0,229,204,0.1)" }
+                          className={`${onSymbolSelect ? "cursor-pointer" : ""}`}
+                          style={{
+                            borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))",
+                            background: isActiveSymbol
+                              ? "rgba(0,229,204,0.15)"
                               : selectedSymbols.has(row.symbol)
-                                ? { background: "rgba(0,229,204,0.06)" }
-                                : undefined
-                          }
+                                ? "rgba(0,229,204,0.10)"
+                                : "transparent",
+                          }}
+                          onMouseEnter={(e) => { if (!isActiveSymbol && !selectedSymbols.has(row.symbol)) (e.currentTarget as HTMLElement).style.background = "rgba(0,229,204,0.05)"; }}
+                          onMouseLeave={(e) => { if (!isActiveSymbol && !selectedSymbols.has(row.symbol)) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                           onClick={(e) => {
-                            if (!onSymbolSelect) return;
                             const target = e.target as HTMLElement | null;
                             if (
                               target?.closest(
@@ -3690,7 +3753,27 @@ export default function WatchlistPanel({
                             ) {
                               return;
                             }
-                            onSymbolSelect(row.symbol);
+                            if (e.ctrlKey || e.metaKey) {
+                              setSelectedSymbols((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(row.symbol)) next.delete(row.symbol);
+                                else next.add(row.symbol);
+                                return next;
+                              });
+                              return;
+                            }
+                            if (e.shiftKey && sortedRows.length > 0) {
+                              const currentIdx = sortedRows.findIndex((r) => r.symbol === row.symbol);
+                              const lastSelected = [...selectedSymbols].pop();
+                              const anchorIdx = lastSelected ? sortedRows.findIndex((r) => r.symbol === lastSelected) : 0;
+                              const [start, end] = [Math.min(anchorIdx, currentIdx), Math.max(anchorIdx, currentIdx)];
+                              setSelectedSymbols(new Set(sortedRows.slice(start, end + 1).map((r) => r.symbol)));
+                              return;
+                            }
+                            if (selectedSymbols.size > 0) {
+                              clearSelection();
+                            }
+                            onSymbolSelect?.(row.symbol);
                           }}
                         >
                           <td className="py-1.5 px-1 align-middle w-9" data-flag-picker>
@@ -3803,6 +3886,45 @@ export default function WatchlistPanel({
                         </tr>
                       );
                     })
+                  )}
+                  {activeList && sidebarTab === "watchlists" && !selectedCollectionId && (
+                    <tr>
+                      <td className="py-1 px-1" />
+                      <td className="py-1 px-2" colSpan={tableColumns.length}>
+                        {showInlineTickerRow ? (
+                          <input
+                            ref={inlineTickerRef}
+                            type="text"
+                            value={inlineTickerValue}
+                            onChange={(e) => setInlineTickerValue(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && inlineTickerValue.trim()) {
+                                addSymbolToList(inlineTickerValue.trim());
+                                setInlineTickerValue("");
+                                setTimeout(() => inlineTickerRef.current?.focus(), 50);
+                              }
+                              if (e.key === "Escape") {
+                                setShowInlineTickerRow(false);
+                                setInlineTickerValue("");
+                              }
+                            }}
+                            placeholder="Type ticker + Enter"
+                            autoFocus
+                            className="w-24 rounded px-1.5 py-0.5 text-xs font-mono"
+                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setShowInlineTickerRow(true); setTimeout(() => inlineTickerRef.current?.focus(), 50); }}
+                            className="text-[11px] transition-colors"
+                            style={{ color: "var(--ws-text-vdim)" }}
+                          >
+                            + Add ticker
+                          </button>
+                        )}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

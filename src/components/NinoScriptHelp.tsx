@@ -18,7 +18,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-          <h2 id="nino-script-help-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">
+          <h2 id="nino-script-help-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-wide">
             Nino Script Help
           </h2>
           <button

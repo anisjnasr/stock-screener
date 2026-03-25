@@ -31,7 +31,7 @@ class PanelErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-import WorkspaceHeader, { type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
+import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import NNHPanel from "@/components/NNHPanel";
@@ -73,6 +73,9 @@ export default function Home() {
   const [visibleDateRange, setVisibleDateRange] = useState<{ from: string; to: string } | null>(null);
   const [nnhCollapsed, setNnhCollapsed] = useState(false);
 
+  // Market contextual state
+  const [marketSubTab, setMarketSubTab] = useState<MarketSubTab>("indices");
+
   // Sectors contextual state
   const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>("sectors");
   const [sectorTimeframe, setSectorTimeframe] = useState<SectorTimeframe>("1w");
@@ -103,7 +106,22 @@ export default function Home() {
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,
+    setRightRailHidden,
   } = useLayoutPreferences();
+
+  const chartHidden = section === "market" && marketSubTab === "monitor";
+
+  useEffect(() => {
+    if (section === "market" && marketSubTab === "indices") {
+      setRightRailHidden(false);
+    } else if (section === "market" && marketSubTab === "monitor") {
+      setRightRailHidden(true);
+    } else if (section === "sectors-industries") {
+      setRightRailHidden(true);
+    } else if (section === "scans" || section === "lists") {
+      setRightRailHidden(false);
+    }
+  }, [section, marketSubTab, setRightRailHidden]);
 
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
   const { data, loading, error } = useStockData(symbol);
@@ -277,7 +295,7 @@ export default function Home() {
     <PanelErrorBoundary name="LeftPanel">
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
       {section === "market" ? (
-        <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} />
+        <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} activeTab={marketSubTab} />
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
           subTab={sectorSubTab}
@@ -377,6 +395,13 @@ export default function Home() {
         flags={flags}
         activeFlagFilter={activeFlagFilter}
         onFlagFilter={setActiveFlagFilter}
+        onFlagListOpen={(flag) => {
+          const flagListId = `__flag_${flag}__`;
+          setSection("lists");
+          setOpenToCollectionTrigger({ kind: "index", value: flagListId, nonce: Date.now() });
+        }}
+        marketSubTab={marketSubTab}
+        onMarketSubTabChange={setMarketSubTab}
         sectorSubTab={sectorSubTab}
         onSectorSubTabChange={setSectorSubTab}
         sectorTimeframe={sectorTimeframe}
@@ -408,8 +433,8 @@ export default function Home() {
         }}
       />
       <WorkspaceLayout
-        leftWidthPx={chartLeftPx}
-        onLeftWidthChange={setChartLeftPx}
+        chartLeftPx={chartHidden ? 99999 : chartLeftPx}
+        onChartLeftChange={chartHidden ? undefined : setChartLeftPx}
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}

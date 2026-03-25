@@ -133,11 +133,11 @@ export default function SectorPerfPanel({
                 {s.ticker ?? s.id}
               </span>
               <span
-                className="text-[10px] leading-snug break-words min-w-0"
+                className="text-[11px] leading-snug break-words min-w-0"
                 style={{
-                  minWidth: 120,
-                  flex: "1 1 140px",
-                  maxWidth: "min(42vw, 220px)",
+                  minWidth: 140,
+                  flex: "1 1 50%",
+                  maxWidth: "50%",
                   color: "var(--ws-text-dim)",
                 }}
               >

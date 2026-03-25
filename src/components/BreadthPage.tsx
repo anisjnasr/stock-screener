@@ -81,7 +81,7 @@ function SubChart({
   return (
     <div className="w-full rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50/40 dark:bg-zinc-800/35 p-2">
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+        <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 tracking-wide">
           {title}
         </span>
         <span className={`text-xs font-semibold tabular-nums ${currentColor}`}>
@@ -313,7 +313,7 @@ export default function BreadthPage() {
     <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-2 sm:p-3">
       <div className="mx-auto w-full max-w-[1800px] space-y-2 sm:space-y-3">
         <div className="flex flex-col items-center justify-center pt-1">
-          <h1 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 uppercase tracking-wide text-center">
+          <h1 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 tracking-wide text-center">
             Breadth
           </h1>
           <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
