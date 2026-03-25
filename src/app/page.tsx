@@ -300,6 +300,7 @@ export default function Home() {
         <SectorPerfPanel
           subTab={sectorSubTab}
           timeframe={sectorTimeframe}
+          onTimeframeChange={setSectorTimeframe}
           onSymbolSelect={handleSymbolSelect}
           onDrillDown={(kind, value) => {
             setOpenToCollectionTrigger({ kind, value, nonce: Date.now() } as typeof openToCollectionTrigger);

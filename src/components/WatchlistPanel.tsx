@@ -1058,6 +1058,20 @@ export default function WatchlistPanel({
   }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
 
   const activeListTitle = tableSource.title;
+  const isUserWatchlist = Boolean(activeList) && sidebarTab === "watchlists" && !selectedCollectionId;
+
+  const [editingTitleValue, setEditingTitleValue] = useState<string | null>(null);
+  const commitTitleEdit = useCallback(() => {
+    const trimmed = editingTitleValue?.trim();
+    if (trimmed && activeList && trimmed !== activeList.name) {
+      setLists((prev) => {
+        const next = prev.map((l) => l.id === activeList.id ? { ...l, name: trimmed } : l);
+        saveWatchlists(next);
+        return next;
+      });
+    }
+    setEditingTitleValue(null);
+  }, [editingTitleValue, activeList]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -1080,8 +1094,10 @@ export default function WatchlistPanel({
       openToCollectionTrigger.kind === "industry"
         ? Object.keys(industryListSymbols).find((k) => k.toLowerCase() === normalized) ?? trimmedValue
         : trimmedValue;
-    const collectionId =
-      openToCollectionTrigger.kind === "sector"
+    const isFlagValue = trimmedValue.startsWith(FLAG_LIST_PREFIX);
+    const collectionId = isFlagValue
+      ? trimmedValue
+      : openToCollectionTrigger.kind === "sector"
         ? `${SECTOR_LIST_PREFIX}${matchedSectorName}`
         : openToCollectionTrigger.kind === "industry"
           ? `${INDUSTRY_LIST_PREFIX}${matchedIndustryName}`
@@ -1093,7 +1109,8 @@ export default function WatchlistPanel({
     setActiveListId(null);
     setExpandedListFolderIds((prev) => {
       const next = new Set(prev);
-      if (openToCollectionTrigger.kind === "sector") next.add("sectors");
+      if (isFlagValue) next.add(MY_LISTS_ROOT_ID);
+      else if (openToCollectionTrigger.kind === "sector") next.add("sectors");
       else if (openToCollectionTrigger.kind === "industry") next.add("industries");
       else if (openToCollectionTrigger.kind === "theme") next.add(THEMATIC_INDUSTRIES_FOLDER_ID);
       else next.add("indices");
@@ -1852,7 +1869,7 @@ export default function WatchlistPanel({
       expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
     });
     fetchScreenerResults(screen);
-  }, [newScreenForm, buildEffectiveFilters, fetchScreenerResults]);
+  }, [newScreenForm, editingScreenId, buildEffectiveFilters, fetchScreenerResults]);
 
   useEffect(() => {
     if (!showNewScreenerModal) return;
@@ -3069,7 +3086,7 @@ export default function WatchlistPanel({
                         {editingScriptScreenId ? "Edit Script" : "New Script"}
                       </h2>
                       <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}>
-                        <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                        <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                           style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
                           onClick={() => {
                             setShowNewScriptModal(false);
@@ -3080,7 +3097,7 @@ export default function WatchlistPanel({
                           }}>
                           Traditional
                         </button>
-                        <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                        <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                           style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}>
                           NinoScript
                         </button>
@@ -3198,12 +3215,12 @@ export default function WatchlistPanel({
                     </h2>
                     <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}
                       onMouseDown={(e) => e.stopPropagation()}>
-                      <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                      <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                         style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}
                         onClick={() => {}}>
                         Traditional
                       </button>
-                      <button type="button" className="px-2.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+                      <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                         style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
                         onClick={() => {
                           setShowNewScreenerModal(false);
@@ -3521,7 +3538,11 @@ export default function WatchlistPanel({
                       type="button"
                       onClick={saveNewScreener}
                       disabled={!newScreenForm.name.trim()}
-                      className="px-3 py-1.5 text-sm rounded bg-zinc-800 dark:bg-zinc-600 text-white hover:bg-zinc-700 dark:hover:bg-zinc-500 disabled:opacity-50 disabled:pointer-events-none"
+                      className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                      style={{
+                        background: newScreenForm.name.trim() ? "var(--ws-cyan, #00e5cc)" : "var(--ws-bg3, #333)",
+                        color: newScreenForm.name.trim() ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim)",
+                      }}
                     >
                       Save & Run
                     </button>
@@ -3533,11 +3554,35 @@ export default function WatchlistPanel({
 
           {/* Right: table */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between gap-2 px-2 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5 shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
               <div className="flex items-center gap-2">
-                <span className="text-[12px] font-semibold" style={{ color: "var(--ws-text, #e6edf3)" }}>
-                  {activeListTitle ?? "Results"}
-                </span>
+                {editingTitleValue !== null ? (
+                  <input
+                    autoFocus
+                    className="text-[14px] font-semibold rounded px-1 py-0"
+                    style={{ color: "var(--ws-text, #e6edf3)", background: "var(--ws-bg, #0d1117)", border: "1px solid var(--ws-accent, #58a6ff)", outline: "none", minWidth: 80 }}
+                    value={editingTitleValue}
+                    onChange={(e) => setEditingTitleValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { commitTitleEdit(); }
+                      if (e.key === "Escape") { setEditingTitleValue(null); }
+                    }}
+                    onBlur={commitTitleEdit}
+                  />
+                ) : (
+                  <span
+                    className="text-[14px] font-semibold"
+                    style={{ color: "var(--ws-text, #e6edf3)", cursor: isUserWatchlist ? "pointer" : "default" }}
+                    onDoubleClick={() => {
+                      if (isUserWatchlist && activeList) {
+                        setEditingTitleValue(activeList.name);
+                      }
+                    }}
+                    title={isUserWatchlist ? "Double-click to rename" : undefined}
+                  >
+                    {activeListTitle ?? "Results"}
+                  </span>
+                )}
                 <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
                   Stocks: {loading ? "…" : rows.length}
                 </span>
@@ -3734,8 +3779,8 @@ export default function WatchlistPanel({
                                 : sidebarTab === "screener" && sortedRows.length === 0 && !loading
                                   ? "No screener data or no results match. Run npm run refresh-daily to populate the database."
                                   : sidebarTab === "watchlists" && tableSource.symbols.length === 0
-                                ? "Select a watchlist or folder list from the sidebar."
-                                : "No stocks. Add from search in the left panel."}
+                                ? "No stocks"
+                                : "No stocks"}
                       </td>
                     </tr>
                   ) : (
@@ -3906,8 +3951,8 @@ export default function WatchlistPanel({
                   )}
                   {activeList && sidebarTab === "watchlists" && !selectedCollectionId && (
                     <tr>
-                      <td className="py-1 px-1" />
-                      <td className="py-1 px-2" colSpan={tableColumns.length}>
+                      <td className="py-1 px-1" style={{ borderBottom: showInlineTickerRow ? "1px solid var(--ws-border, rgba(255,255,255,0.06))" : undefined }} />
+                      <td className="py-1 px-2" colSpan={tableColumns.length} style={{ borderBottom: showInlineTickerRow ? "1px solid var(--ws-border, rgba(255,255,255,0.06))" : undefined }}>
                         {showInlineTickerRow ? (
                           <input
                             ref={inlineTickerRef}
@@ -3925,10 +3970,10 @@ export default function WatchlistPanel({
                                 setInlineTickerValue("");
                               }
                             }}
-                            placeholder="Type ticker + Enter"
+                            placeholder="Enter ticker symbol..."
                             autoFocus
-                            className="w-24 rounded px-1.5 py-0.5 text-xs font-mono"
-                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                            className="w-32 rounded px-1.5 py-0.5 text-xs font-mono"
+                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-text)", border: "1px solid var(--ws-accent, #58a6ff)" }}
                           />
                         ) : (
                           <button

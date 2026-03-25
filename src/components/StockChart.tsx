@@ -1165,7 +1165,7 @@ export default function StockChart({
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
       <div className="px-2 py-1 border-b border-zinc-600/30 bg-[#2A2D31] shrink-0 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-1 flex-wrap">
+        <div className="flex items-center gap-1 flex-wrap ml-auto">
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
               timeframes.map((tf) => (
@@ -1362,11 +1362,11 @@ export default function StockChart({
       ) : (
         <div className="relative w-full flex-1 min-h-0">
           <div ref={containerRef} className="absolute inset-0 w-full h-full" />
-          <div className="absolute top-3 left-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide">
+          <div className="absolute top-3 right-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-right">
             {symbol.toUpperCase()}
           </div>
           {crosshairCandle && (
-            <div className="absolute top-2 left-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3">
+            <div className="absolute top-2 right-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3">
               <span>O {crosshairCandle.open.toFixed(2)}</span>
               <span>H {crosshairCandle.high.toFixed(2)}</span>
               <span>L {crosshairCandle.low.toFixed(2)}</span>
@@ -1374,7 +1374,7 @@ export default function StockChart({
               <span>V {fmtVol(crosshairCandle.volume)}</span>
             </div>
           )}
-          <div className="absolute top-10 left-2 z-10 flex items-center gap-1.5">
+          <div className="absolute top-10 right-2 z-10 flex items-center gap-1.5">
             {timeframe === "daily" && (
               <button
                 type="button"

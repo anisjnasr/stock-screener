@@ -246,12 +246,6 @@ export default function WorkspaceHeader({
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </Pill>
           ))}
-          <div className="shrink-0 mx-1.5" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
-          {(["1d", "1w", "1m", "q", "y", "ytd"] as SectorTimeframe[]).map((t) => (
-            <Pill key={t} small on={sectorTimeframe === t} onClick={() => onSectorTimeframeChange?.(t)}>
-              {t.toUpperCase()}
-            </Pill>
-          ))}
           {hasFlaggedStocks && (
             <>
               <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
@@ -260,12 +254,23 @@ export default function WorkspaceHeader({
                   const cnt = flagCounts[f] ?? 0;
                   if (cnt === 0) return null;
                   return (
-                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
-                      <span className="inline-flex items-center gap-1">
-                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
-                        {cnt}
-                      </span>
-                    </Pill>
+                    <button
+                      key={f}
+                      type="button"
+                      className="transition-colors cursor-pointer font-medium"
+                      style={{
+                        background: FLAG_COLORS[f],
+                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        padding: "3px 10px",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
+                        fontFamily: "inherit",
+                      }}
+                      onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                    </button>
                   );
                 })}
               </div>
@@ -286,7 +291,7 @@ export default function WorkspaceHeader({
               color: "var(--ws-cyan)",
             }}
           >
-            + New
+            + New Scan
           </button>
           <div ref={scanDDRef} className="relative">
             <button
@@ -301,17 +306,17 @@ export default function WorkspaceHeader({
               }}
             >
               {activeScan || "Select scan"}
-              <span style={{ color: "var(--ws-text-vdim)", fontSize: 10 }}>▾</span>
+              <span style={{ color: "var(--ws-text-dim)", fontSize: 14 }}>▾</span>
             </button>
             {scanDDOpen && scanList.length > 0 && (
               <div
                 className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                 style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
               >
-                {scanList.map((s) => (
+                {scanList.map((s, idx) => (
                   <div
                     key={s}
-                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors"
+                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
                     style={{
                       color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                       background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
@@ -320,6 +325,7 @@ export default function WorkspaceHeader({
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
                     onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
                   >
+                    {idx === 0 && <span style={{ color: "var(--ws-yellow, #ffc107)", marginRight: 4 }}>★</span>}
                     {s}
                   </div>
                 ))}
@@ -334,12 +340,23 @@ export default function WorkspaceHeader({
                   const cnt = flagCounts[f] ?? 0;
                   if (cnt === 0) return null;
                   return (
-                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
-                      <span className="inline-flex items-center gap-1">
-                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
-                        {cnt}
-                      </span>
-                    </Pill>
+                    <button
+                      key={f}
+                      type="button"
+                      className="transition-colors cursor-pointer font-medium"
+                      style={{
+                        background: FLAG_COLORS[f],
+                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        padding: "3px 10px",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
+                        fontFamily: "inherit",
+                      }}
+                      onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                    </button>
                   );
                 })}
               </div>
@@ -360,7 +377,7 @@ export default function WorkspaceHeader({
               color: "var(--ws-cyan)",
             }}
           >
-            + New
+            + New List
           </button>
           <div ref={listDDRef} className="relative">
             <button
@@ -375,17 +392,17 @@ export default function WorkspaceHeader({
               }}
             >
               {watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list"}
-              <span style={{ color: "var(--ws-text-vdim)", fontSize: 10 }}>▾</span>
+              <span style={{ color: "var(--ws-text-dim)", fontSize: 14 }}>▾</span>
             </button>
             {listDDOpen && watchlistNames.length > 0 && (
               <div
                 className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                 style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
               >
-                {watchlistNames.map((wl) => (
+                {watchlistNames.map((wl, idx) => (
                   <div
                     key={wl.id}
-                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors"
+                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
                     style={{
                       color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                       background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
@@ -394,6 +411,7 @@ export default function WorkspaceHeader({
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
                     onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
                   >
+                    {idx === 0 && <span style={{ color: "var(--ws-yellow, #ffc107)", marginRight: 4 }}>★</span>}
                     {wl.name}
                   </div>
                 ))}
@@ -415,12 +433,23 @@ export default function WorkspaceHeader({
                   const cnt = flagCounts[f] ?? 0;
                   if (cnt === 0) return null;
                   return (
-                    <Pill key={f} small on={activeFlagFilter === f} onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}>
-                      <span className="inline-flex items-center gap-1">
-                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: FLAG_COLORS[f] }} />
-                        {cnt}
-                      </span>
-                    </Pill>
+                    <button
+                      key={f}
+                      type="button"
+                      className="transition-colors cursor-pointer font-medium"
+                      style={{
+                        background: FLAG_COLORS[f],
+                        color: f === "yellow" ? "#1a1a1a" : "#fff",
+                        padding: "3px 10px",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
+                        fontFamily: "inherit",
+                      }}
+                      onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                    </button>
                   );
                 })}
               </div>
@@ -445,29 +474,40 @@ export default function WorkspaceHeader({
           }}
           className="flex items-center gap-1"
         >
-          <input
-            type="text"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-            onFocus={(e) => {
-              (e.target as HTMLInputElement).select();
-              if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Search symbol…"
-            className="w-36 rounded px-2 py-1 text-xs"
-            style={{
-              background: "var(--ws-bg)",
-              color: "var(--ws-text)",
-              border: "1px solid var(--ws-border)",
-            }}
-            aria-label="Stock search"
-            autoComplete="off"
-            aria-autocomplete="list"
-            aria-expanded={suggestionsOpen}
-            aria-controls="ws-search-suggestions"
-            aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
-          />
+          <div className="relative w-44">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ width: 13, height: 13, color: "var(--ws-text-dim)" }}
+            >
+              <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+            </svg>
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
+              onFocus={(e) => {
+                (e.target as HTMLInputElement).select();
+                if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Search"
+              className="w-full rounded pl-7 pr-2 py-1 text-xs"
+              style={{
+                background: "var(--ws-bg3)",
+                color: "var(--ws-text)",
+                border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))",
+              }}
+              aria-label="Stock search"
+              autoComplete="off"
+              aria-autocomplete="list"
+              aria-expanded={suggestionsOpen}
+              aria-controls="ws-search-suggestions"
+              aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
+            />
+          </div>
         </form>
         {suggestionsOpen && (
           <ul

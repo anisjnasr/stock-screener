@@ -80,12 +80,12 @@ export async function GET(request: NextRequest) {
       withTimeout(fetchProfile(symbolUpper), 1200, null),
       withTimeout(fetchNextEarningsDate(symbolUpper), 1200, undefined),
     ]);
-    if (!quote && !dbRow && !stockRecord)
+    if (!quote && !dbRow && !stockRecord && !profile)
       return NextResponse.json({ error: "Symbol not found" }, { status: 404 });
 
     const baseQuote = quote ?? {
       symbol: symbolUpper,
-      name: dbRow?.name ?? stockRecord?.name ?? symbolUpper,
+      name: dbRow?.name ?? stockRecord?.name ?? profile?.companyName ?? symbolUpper,
       price: dbRow?.last_price ?? 0,
       changesPercentage: dbRow?.change_pct ?? 0,
       change: 0,
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       yearLow: dbRow?.last_price ?? 0,
       volume: dbRow?.volume ?? 0,
       avgVolume: dbRow?.avg_volume_30d_shares ?? undefined,
-      marketCap: dbRow?.market_cap ?? undefined,
+      marketCap: dbRow?.market_cap ?? profile?.mktCap ?? undefined,
       priceAvg50: undefined,
       priceAvg200: undefined,
     };

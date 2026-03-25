@@ -128,16 +128,16 @@ function IndicesTable({
   return (
     <div className="flex-1 overflow-auto">
       <table
-        className="w-full border-collapse text-[10px] leading-tight"
-        style={{ color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+        className="border-collapse text-[11px] leading-tight"
+        style={{ color: "var(--ws-text)", minWidth: "max-content" }}
       >
         <thead>
           <tr style={{ background: "var(--ws-bg3)", borderBottom: "1px solid var(--ws-border)" }}>
-            <th className="text-left px-1.5 py-0.5 font-medium border-r border-[var(--ws-border)]" style={{ color: "var(--ws-text-dim)" }}>Symbol</th>
-            <th className="text-right px-1.5 py-0.5 font-medium border-r border-[var(--ws-border)]" style={{ color: "var(--ws-text-dim)" }}>Last</th>
-            <th className="text-right px-1.5 py-0.5 font-medium border-r border-[var(--ws-border)]" style={{ color: "var(--ws-text-dim)" }}>Change</th>
-            <th className="text-right px-1.5 py-0.5 font-medium border-r border-[var(--ws-border)]" style={{ color: "var(--ws-text-dim)" }}>Volume</th>
-            <th className="text-right px-1.5 py-0.5 font-medium" style={{ color: "var(--ws-text-dim)" }}>Mkt Cap</th>
+            <th className="text-left px-1.5 py-[6px] font-medium" style={{ color: "var(--ws-text-dim)" }}>Symbol</th>
+            <th className="text-right px-1.5 py-[6px] font-medium" style={{ color: "var(--ws-text-dim)" }}>Last</th>
+            <th className="text-right px-1.5 py-[6px] font-medium" style={{ color: "var(--ws-text-dim)" }}>Change</th>
+            <th className="text-right px-1.5 py-[6px] font-medium" style={{ color: "var(--ws-text-dim)" }}>Volume</th>
+            <th className="text-right px-1.5 py-[6px] font-medium" style={{ color: "var(--ws-text-dim)" }}>Mkt Cap</th>
           </tr>
         </thead>
         <tbody>
@@ -166,16 +166,16 @@ function IndicesTable({
                   }}
                   onClick={() => onSymbolSelect?.(q.symbol)}
                 >
-                  <td className="px-1.5 py-0.5 font-mono font-medium border-r border-[var(--ws-border)]">{q.symbol}</td>
-                  <td className="px-1.5 py-0.5 text-right tabular-nums border-r border-[var(--ws-border)]">{fmtPrice(q.last_price)}</td>
+                  <td className="px-1.5 py-[6px] font-mono font-medium">{q.symbol}</td>
+                  <td className="px-1.5 py-[6px] text-right tabular-nums">{fmtPrice(q.last_price)}</td>
                   <td
-                    className="px-1.5 py-0.5 text-right tabular-nums border-r border-[var(--ws-border)]"
+                    className="px-1.5 py-[6px] text-right tabular-nums"
                     style={{ color: changeColor }}
                   >
                     {fmtPct(ch)}
                   </td>
-                  <td className="px-1.5 py-0.5 text-right tabular-nums border-r border-[var(--ws-border)]">{fmtVol(q.volume)}</td>
-                  <td className="px-1.5 py-0.5 text-right tabular-nums">{fmtCap(q.market_cap)}</td>
+                  <td className="px-1.5 py-[6px] text-right tabular-nums">{fmtVol(q.volume)}</td>
+                  <td className="px-1.5 py-[6px] text-right tabular-nums">{fmtCap(q.market_cap)}</td>
                 </tr>
               );
             })

@@ -92,41 +92,41 @@ export default function MarketMonitorTable() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white dark:bg-zinc-900">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading market monitor…</p>
+      <div className="flex-1 flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
+        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>Loading market monitor…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white dark:bg-zinc-900">
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      <div className="flex-1 flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
+        <p className="text-sm" style={{ color: "var(--ws-red)" }}>{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 px-2 sm:px-4 py-3 sm:py-4">
+    <div className="flex-1 min-h-0 overflow-auto px-2 sm:px-4 py-3 sm:py-4" style={{ background: "var(--ws-bg2)" }}>
       <div className="relative mb-3">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
+        <h2 className="text-base font-semibold text-center" style={{ color: "var(--ws-text)" }}>
           Market Monitor
         </h2>
-        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 text-center -mt-0.5">
+        <p className="text-[10px] text-center -mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>
           Credit: Stockbee
         </p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 text-right">
+        <p className="text-xs text-right" style={{ color: "var(--ws-text-dim)" }}>
           Last Update:{" "}
           <span className="tabular-nums">
             {latestDate ? formatDisplayDate(latestDate) : "—"}
           </span>
         </p>
       </div>
-      <div className="max-w-full overflow-auto border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-900 shadow-sm">
+      <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border)" }}>
         <table className="min-w-full text-xs sm:text-sm text-center border-collapse">
           <thead>
             <tr>
-              <th className="sticky top-0 z-10 bg-zinc-900 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-r border-zinc-300 dark:border-zinc-700" />
+              <th className="sticky top-0 z-10 bg-[var(--ws-bg3)] px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-r border-zinc-300 dark:border-zinc-700" />
               <th
                 className="sticky top-0 z-10 bg-emerald-100/80 dark:bg-emerald-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold text-emerald-900 dark:text-emerald-100"
                 colSpan={6}
@@ -151,62 +151,62 @@ export default function MarketMonitorTable() {
               >
                 Nasdaq Breadth
               </th>
-              <th className="sticky top-0 z-10 bg-zinc-900 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-zinc-300 dark:border-zinc-700" />
+              <th className="sticky top-0 z-10 bg-[var(--ws-bg3)] px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-zinc-300 dark:border-zinc-700" />
             </tr>
             <tr>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-r border-zinc-300 dark:border-zinc-700">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-r border-zinc-300 dark:border-zinc-700">
                 Date
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up %
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down %
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 5D Ratio
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 10D Ratio
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up 25% (Q)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 25% (Q)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
                 Up 25% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 25% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Up 50% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
                 Down 50% (M)
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium border-l border-zinc-300 dark:border-zinc-700">
                 % &gt; 50 SMA
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
                 % &gt; 200 SMA
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
                 % &gt; 50 SMA
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
                 % &gt; 200 SMA
               </th>
-              <th className="sticky top-8 z-10 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
                 Stock Universe
               </th>
             </tr>
           </thead>
           <tbody>
             {tableRowsToShow.map((row) => (
-              <tr key={row.date} className="odd:bg-white even:bg-zinc-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-900/60 border-b border-zinc-100 dark:border-zinc-800">
+              <tr key={row.date} className="odd:bg-[var(--ws-bg2)] even:bg-[var(--ws-bg)] border-b border-zinc-100 dark:border-zinc-800">
                 <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 whitespace-nowrap text-right tabular-nums border-l border-r border-zinc-300 dark:border-zinc-700">
                   {formatDateDmy(row.date)}
                 </td>

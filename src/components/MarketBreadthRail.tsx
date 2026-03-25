@@ -114,8 +114,11 @@ export default function MarketBreadthRail({
   const [loading, setLoading] = useState(true);
 
   const sym = selectedSymbol?.toUpperCase() ?? "SPY";
-  const indexId = sym === "QQQ" ? "nasdaq" : sym === "IWM" ? "russell2000" : "sp500";
-  const indexLabel = indexId === "nasdaq" ? "Nasdaq" : indexId === "russell2000" ? "Russell 2000" : "S&P 500";
+  // Russell 2000 breadth data is not currently in the database;
+  // fall back to S&P 500 breadth as a general market proxy for IWM.
+  // Nasdaq breadth may also have gaps — the UI shows "—" gracefully when data is null.
+  const indexId = sym === "QQQ" ? "nasdaq" : "sp500";
+  const indexLabel = indexId === "nasdaq" ? "Nasdaq" : "S&P 500";
 
   useEffect(() => {
     let cancelled = false;

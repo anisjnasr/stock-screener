@@ -13,9 +13,8 @@ type WorkspaceLayoutProps = {
   rightPanel: ReactNode;
 };
 
-const MIN_RAIL = 200;
-const MAX_RAIL = 400;
-const HANDLE_PX = 4;
+const HANDLE_PX = 8;
+const RIGHT_DIVIDER_PX = 2;
 
 export default function WorkspaceLayout({
   chartLeftPx,
@@ -31,7 +30,7 @@ export default function WorkspaceLayout({
   const [draggingChart, setDraggingChart] = useState(false);
 
   const containerWidth = () => containerRef.current?.clientWidth ?? 1200;
-  const railTotal = rightRailHidden ? 0 : HANDLE_PX + railWidthPx;
+  const railTotal = rightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
 
   const startDragChartLeft = useCallback(
     (e: React.MouseEvent) => {
@@ -64,33 +63,6 @@ export default function WorkspaceLayout({
       document.addEventListener("mouseup", onUp);
     },
     [chartLeftPx, onChartLeftChange, railTotal]
-  );
-
-  const startDragRight = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = railWidthPx;
-
-      const onMove = (ev: MouseEvent) => {
-        const delta = startX - ev.clientX;
-        const next = Math.max(MIN_RAIL, Math.min(MAX_RAIL, startWidth + delta));
-        onRailWidthChange(next);
-      };
-
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [railWidthPx, onRailWidthChange]
   );
 
   const handleKeyDown = useCallback(
@@ -154,46 +126,37 @@ export default function WorkspaceLayout({
           width: HANDLE_PX,
           zIndex: 20,
           background: draggingChart ? "var(--ws-cyan)" : "var(--ws-border)",
-          opacity: draggingChart ? 0.8 : 0.5,
+          opacity: draggingChart ? 0.8 : 0.7,
         }}
         onMouseDown={onChartLeftChange ? startDragChartLeft : undefined}
         onKeyDown={handleKeyDown}
       >
-        <div
-          className="w-[2px] h-8 rounded-full"
-          style={{ background: "var(--ws-text-vdim)" }}
-        />
+        <div className="flex flex-col items-center gap-[3px]">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="rounded-full"
+              style={{ width: 6, height: 2, background: "var(--ws-text-vdim)" }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Right rail area — fixed width on the right */}
       {!rightRailHidden && (
         <div
           className="absolute top-0 bottom-0 right-0 flex"
-          style={{ width: HANDLE_PX + railWidthPx, zIndex: 20 }}
+          style={{ width: RIGHT_DIVIDER_PX + railWidthPx, zIndex: 20 }}
         >
-          {/* Right drag handle */}
+          {/* Right panel divider */}
           <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize right panel width"
-            tabIndex={0}
-            className="shrink-0 cursor-col-resize flex items-center justify-center hover:opacity-100 transition-opacity"
+            className="shrink-0"
             style={{
-              width: HANDLE_PX,
+              width: RIGHT_DIVIDER_PX,
               background: "var(--ws-border)",
-              opacity: 0.5,
+              opacity: 0.4,
             }}
-            onMouseDown={startDragRight}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowRight") onRailWidthChange(Math.max(MIN_RAIL, railWidthPx - 20));
-              if (e.key === "ArrowLeft") onRailWidthChange(Math.min(MAX_RAIL, railWidthPx + 20));
-            }}
-          >
-            <div
-              className="w-[2px] h-8 rounded-full"
-              style={{ background: "var(--ws-text-vdim)" }}
-            />
-          </div>
+          />
 
           {/* Right rail content */}
           <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

@@ -18,6 +18,24 @@ type ApiResponse = {
   error?: string;
 };
 
+const SECTOR_ETF_MAP: Record<string, string> = {
+  "Technology": "XLK", "Financial Services": "XLF", "Healthcare": "XLV",
+  "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP", "Communication Services": "XLC",
+  "Industrials": "XLI", "Energy": "XLE", "Basic Materials": "XLB",
+  "Real Estate": "XLRE", "Utilities": "XLU",
+};
+
+const INDUSTRY_ETF_MAP: Record<string, string> = {
+  "Aerospace & Defense": "ITA", "Airlines": "JETS", "Auto Manufacturers": "CARZ",
+  "Banks - Diversified": "KBE", "Banks - Regional": "KRE", "Packaged Foods": "PBJ",
+  "Biotechnology": "XBI", "Capital Markets": "KCE", "Pharmaceutical Retailers": "XPH",
+  "Gambling": "BETZ", "Gold": "GDX", "Health Care Providers": "IHF",
+  "Residential Construction": "ITB", "Insurance - Diversified": "KIE",
+  "Medical Devices": "IHI", "Steel": "XME", "Oil & Gas E&P": "XOP",
+  "REIT - Diversified": "VNQ", "Semiconductors": "SMH", "Software - Infrastructure": "IGV",
+  "Specialty Retail": "XRT", "Telecom Services": "IYZ", "Integrated Freight & Logistics": "IYT",
+};
+
 const TF_API: Record<SectorTimeframe, string> = {
   "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "y": "year", "ytd": "day",
 };
@@ -29,11 +47,13 @@ function toSentenceCase(s: string): string {
 export default function SectorPerfPanel({
   subTab,
   timeframe,
+  onTimeframeChange,
   onDrillDown,
   onSymbolSelect,
 }: {
   subTab: SectorSubTab;
   timeframe: SectorTimeframe;
+  onTimeframeChange?: (tf: SectorTimeframe) => void;
   onDrillDown?: (kind: "sector" | "industry" | "theme" | "index", value: string) => void;
   onSymbolSelect?: (sym: string) => void;
 }) {
@@ -62,9 +82,19 @@ export default function SectorPerfPanel({
 
   const items: PerfItem[] = useMemo(() => {
     if (!payload) return [];
-    if (subTab === "sectors") return (payload.sectors ?? []).map((x) => ({ id: x.id, name: x.name, changePct: x.changePct }));
-    if (subTab === "industries") return (payload.industries ?? []).map((x) => ({ id: x.id, name: toSentenceCase(x.name), changePct: x.changePct }));
-    if (subTab === "thematic") return (payload.themes ?? []).map((x) => ({ id: x.id, name: toSentenceCase(x.name), ticker: x.ticker, changePct: x.changePct }));
+    if (subTab === "sectors")
+      return (payload.sectors ?? []).map((x) => ({
+        id: x.id, name: x.name, ticker: SECTOR_ETF_MAP[x.name], changePct: x.changePct,
+      }));
+    if (subTab === "industries")
+      return (payload.industries ?? [])
+        .map((x) => ({ id: x.id, name: toSentenceCase(x.name), changePct: x.changePct }))
+        .filter((x) => INDUSTRY_ETF_MAP[x.name])
+        .map((x) => ({ ...x, ticker: INDUSTRY_ETF_MAP[x.name] }));
+    if (subTab === "thematic")
+      return (payload.themes ?? []).map((x) => ({
+        id: x.id, name: toSentenceCase(x.name), ticker: x.ticker, changePct: x.changePct,
+      }));
     return [];
   }, [payload, subTab]);
 
@@ -128,10 +158,45 @@ export default function SectorPerfPanel({
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+      <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+        <span className="text-[11px] tabular-nums shrink-0" style={{ color: "var(--ws-text-dim)" }}>
           {loading ? "…" : `${sorted.length} results`}
         </span>
+        <div className="flex items-center gap-1">
+          {onTimeframeChange && (["1d", "1w", "1m", "q", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
+            <button
+              key={tf}
+              type="button"
+              onClick={() => onTimeframeChange(tf)}
+              className="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer"
+              style={{
+                background: timeframe === tf ? "rgba(0,229,204,0.12)" : "transparent",
+                color: timeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
+                border: timeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
+              }}
+            >
+              {tf.toUpperCase()}
+            </button>
+          ))}
+          {sorted[selectedIdx] && onDrillDown && (
+            <>
+              <div className="shrink-0 mx-0.5" style={{ width: 1, height: 14, background: "var(--ws-border)" }} />
+              <button
+                type="button"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
+                style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
+                title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
+                onClick={() => {
+                  const s = sorted[selectedIdx];
+                  const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
+                  onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div ref={listRef} className="flex-1 overflow-auto">
         {sorted.map((s, i) => {
@@ -142,7 +207,7 @@ export default function SectorPerfPanel({
           return (
             <div
               key={s.id}
-              className="flex items-center gap-2 px-3 py-[7px] cursor-pointer"
+              className="flex items-center gap-2 px-3 py-[6px] cursor-pointer"
               style={{
                 background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
                 borderBottom: "1px solid var(--ws-border)",
@@ -152,32 +217,30 @@ export default function SectorPerfPanel({
                 if (s.ticker) onSymbolSelect?.(s.ticker);
               }}
             >
-              {s.ticker && (
-                <span
-                  className="shrink-0 font-mono text-xs leading-snug"
-                  style={{
-                    width: 52,
-                    fontWeight: isSelected ? 600 : 400,
-                    color: isSelected ? "#fff" : "var(--ws-text)",
-                  }}
-                >
-                  {s.ticker}
-                </span>
-              )}
               <span
-                className="text-[11px] leading-snug min-w-0 truncate"
+                className="shrink-0 font-mono text-xs leading-snug"
                 style={{
-                  flex: "1 1 auto",
+                  width: 52,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: isSelected ? "#fff" : "var(--ws-text)",
+                }}
+              >
+                {s.ticker ?? ""}
+              </span>
+              <span
+                className="shrink-0 text-[11px] leading-snug truncate"
+                style={{
+                  maxWidth: 180,
                   fontWeight: isSelected ? 500 : 400,
-                  color: s.ticker ? "var(--ws-text-dim)" : (isSelected ? "#fff" : "var(--ws-text)"),
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  color: "var(--ws-text-dim)",
                 }}
               >
                 {s.name}
               </span>
-              <div className="flex-1 flex items-center min-w-[72px] min-h-[6px]">
+              <div
+                className="flex items-center min-h-[6px]"
+                style={{ maxWidth: 160, minWidth: 80, flex: "1 1 0%" }}
+              >
                 <div
                   className="flex-1 flex justify-end items-center min-w-0 self-stretch border-r"
                   style={{ borderColor: "var(--ws-border)" }}
@@ -210,27 +273,26 @@ export default function SectorPerfPanel({
               </div>
               <span
                 className="shrink-0 text-right font-mono text-[11px] tabular-nums"
-                style={{ width: 52, color: isPos ? "var(--ws-green)" : "var(--ws-red)" }}
+                style={{ width: 60, color: isPos ? "var(--ws-green)" : "var(--ws-red)" }}
               >
                 {isPos ? "+" : ""}{pct.toFixed(2)}%
               </span>
-              <div
-                className="shrink-0 flex items-center justify-center rounded text-[10px] cursor-pointer transition-opacity opacity-0 hover:opacity-100"
-                style={{ width: 20, height: 20, color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
-                  onDrillDown?.(kind, subTab === "thematic" ? s.id : s.name);
-                }}
-              >
-                →
-              </div>
+              {onDrillDown && (
+                <div
+                  className="shrink-0 flex items-center justify-center rounded text-[10px] cursor-pointer transition-opacity opacity-40 hover:opacity-100"
+                  style={{ width: 20, height: 20, color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
+                    onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+                  }}
+                >
+                  →
+                </div>
+              )}
             </div>
           );
         })}
-      </div>
-      <div className="shrink-0 px-3 py-1 text-center text-[10px]" style={{ color: "var(--ws-text-vdim)", borderTop: "1px solid var(--ws-border)" }}>
-        Click row → chart · Hover → to drill into holdings
       </div>
     </div>
   );
