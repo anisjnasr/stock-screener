@@ -164,7 +164,7 @@ export default function SectorPerfPanel({
         <div className="flex items-center gap-2">
           <span className="text-[14px] font-semibold" style={{ color: "var(--ws-text)" }}>{panelTitle}</span>
           <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
-            {loading ? "…" : sorted.length}
+            ({loading ? "…" : sorted.length})
           </span>
         </div>
         <div className="flex items-center gap-1">

@@ -842,6 +842,8 @@ export default function WatchlistPanel({
     if (activeWatchlistIdSync != null && activeWatchlistIdSync !== "") {
       if (!lists.some((l) => l.id === activeWatchlistIdSync)) return;
       if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
+      setSidebarTab("watchlists");
+      setSelectedCollectionId(null);
       return;
     }
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
@@ -873,18 +875,20 @@ export default function WatchlistPanel({
       setInlineSuggestionsOpen(false);
       return;
     }
+    const controller = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/search-symbol?query=${encodeURIComponent(inlineTickerValue.trim())}`)
+      fetch(`/api/search-symbol?query=${encodeURIComponent(inlineTickerValue.trim())}`, { signal: controller.signal })
         .then((r) => r.json())
         .then((data) => {
+          if (controller.signal.aborted) return;
           const list = Array.isArray(data) ? data.slice(0, 8) : [];
           setInlineSuggestions(list);
           setInlineSuggestionsOpen(list.length > 0);
           setInlineHighlightIdx(-1);
         })
-        .catch(() => { setInlineSuggestions([]); setInlineSuggestionsOpen(false); });
+        .catch(() => { if (!controller.signal.aborted) { setInlineSuggestions([]); setInlineSuggestionsOpen(false); } });
     }, 150);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); controller.abort(); };
   }, [inlineTickerValue]);
 
 
@@ -1087,19 +1091,28 @@ export default function WatchlistPanel({
 
   const activeListTitle = tableSource.title;
   const isUserWatchlist = Boolean(activeList) && sidebarTab === "watchlists" && !selectedCollectionId;
+  const isUserScreen = Boolean(selectedScreen) && sidebarTab === "screener";
+  const canEditTitle = isUserWatchlist || isUserScreen;
 
   const [editingTitleValue, setEditingTitleValue] = useState<string | null>(null);
   const commitTitleEdit = useCallback(() => {
     const trimmed = editingTitleValue?.trim();
-    if (trimmed && activeList && trimmed !== activeList.name) {
+    if (trimmed && isUserWatchlist && activeList && trimmed !== activeList.name) {
       setLists((prev) => {
         const next = prev.map((l) => l.id === activeList.id ? { ...l, name: trimmed } : l);
         saveWatchlists(next);
         return next;
       });
     }
+    if (trimmed && isUserScreen && selectedScreen && trimmed !== selectedScreen.name) {
+      setScreens((prev) => {
+        const next = prev.map((s) => s.id === selectedScreen.id ? { ...s, name: trimmed } : s);
+        saveScreens(next);
+        return next;
+      });
+    }
     setEditingTitleValue(null);
-  }, [editingTitleValue, activeList]);
+  }, [editingTitleValue, activeList, isUserWatchlist, isUserScreen, selectedScreen]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -2097,6 +2110,7 @@ export default function WatchlistPanel({
   }, [tableColumns]);
 
   const prevRowCountRef = useRef(0);
+  const prevLoadingRef = useRef(true);
   useEffect(() => {
     if (rows.length > 0 && rows.length !== prevRowCountRef.current) {
       prevRowCountRef.current = rows.length;
@@ -2105,6 +2119,14 @@ export default function WatchlistPanel({
     }
     if (rows.length === 0) prevRowCountRef.current = 0;
   }, [rows.length, handleAutoSizeColumns]);
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading && rows.length > 0) {
+      const raf = requestAnimationFrame(() => handleAutoSizeColumns());
+      prevLoadingRef.current = loading;
+      return () => cancelAnimationFrame(raf);
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, rows.length, handleAutoSizeColumns]);
 
   const handleColumnHeaderDragStart = useCallback((index: number) => (e: React.DragEvent) => {
     if (resizeColRef.current !== null) {
@@ -3601,19 +3623,19 @@ export default function WatchlistPanel({
                 ) : (
                   <span
                     className="text-[14px] font-semibold"
-                    style={{ color: "var(--ws-text, #e6edf3)", cursor: isUserWatchlist ? "pointer" : "default" }}
+                    style={{ color: "var(--ws-text, #e6edf3)", cursor: canEditTitle ? "pointer" : "default" }}
                     onDoubleClick={() => {
-                      if (isUserWatchlist && activeList) {
-                        setEditingTitleValue(activeList.name);
+                      if (canEditTitle) {
+                        setEditingTitleValue(activeListTitle ?? "");
                       }
                     }}
-                    title={isUserWatchlist ? "Double-click to rename" : undefined}
+                    title={canEditTitle ? "Double-click to rename" : undefined}
                   >
                     {activeListTitle ?? "Results"}
                   </span>
                 )}
-                <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
-                  Stocks: {loading ? "…" : rows.length}
+                <span className="text-[14px] font-semibold tabular-nums ml-2" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
+                  ({loading ? "…" : rows.length})
                 </span>
                 <div ref={tableMenuRef} className="relative">
                   <button type="button" onClick={() => setShowTableMenu((v) => !v)}
@@ -3653,8 +3675,6 @@ export default function WatchlistPanel({
                     </div>
                   )}
                 </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
                 {selectedSymbols.size > 0 && (
                   <>
                     <button
@@ -3735,7 +3755,7 @@ export default function WatchlistPanel({
                           onDrop={!isScriptCol ? handleColumnHeaderDrop(colIndex) : undefined}
                           onDragEnd={handleColumnHeaderDragEnd}
                           className={`relative py-1.5 px-2 font-medium whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
-                          style={{ width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)" }}
+                          style={{ width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)", background: sortKey === col ? "rgba(0,229,204,0.08)" : undefined }}
                         >
                           <div className={`flex items-center gap-0.5 ${isNumericCol ? "justify-end" : ""} ${!isScriptCol ? "cursor-grab active:cursor-grabbing" : ""}`}>
                             <button
@@ -3784,6 +3804,7 @@ export default function WatchlistPanel({
                       </td>
                     </tr>
                   ) : sortedRows.length === 0 ? (
+                    sidebarTab === "watchlists" && activeList && !selectedCollectionId && tableSource.symbols.length === 0 ? null : (
                     <tr>
                       <td colSpan={tableColumns.length + 1} className="py-4 text-center text-zinc-500 dark:text-zinc-400">
                         {sidebarTab === "watchlists" &&
@@ -3807,11 +3828,10 @@ export default function WatchlistPanel({
                                 ? "No results match your script."
                                 : sidebarTab === "screener" && sortedRows.length === 0 && !loading
                                   ? "No screener data or no results match. Run npm run refresh-daily to populate the database."
-                                  : sidebarTab === "watchlists" && tableSource.symbols.length === 0
-                                ? "No stocks"
-                                : "No stocks"}
+                                  : "No results"}
                       </td>
                     </tr>
+                    )
                   ) : (
                     sortedRows.map((row) => {
                       const flag = flags[row.symbol] ?? null;
@@ -3980,9 +4000,9 @@ export default function WatchlistPanel({
                   )}
                   {activeList && sidebarTab === "watchlists" && !selectedCollectionId && (
                     <tr style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
-                      <td className="py-1.5 px-1" />
-                      <td className="py-1.5 px-2 relative" colSpan={tableColumns.length}>
-                        <div className="relative inline-block">
+                      <td className="py-0 px-1" />
+                      <td className="py-0 px-0 relative" style={{ width: getColWidth(tableColumns[0] ?? "ticker"), minWidth: getColWidth(tableColumns[0] ?? "ticker") }}>
+                        <div className="relative">
                           <input
                             ref={inlineTickerRef}
                             type="text"
@@ -4020,8 +4040,8 @@ export default function WatchlistPanel({
                             }}
                             placeholder="Type ticker..."
                             autoFocus
-                            className="w-28 rounded px-1.5 py-0.5 text-xs font-mono"
-                            style={{ background: "var(--ws-bg, #0d1117)", color: "var(--ws-cyan)", border: "1px solid var(--ws-border)", outline: "none" }}
+                            className="w-full py-1.5 px-2 text-xs font-mono"
+                            style={{ background: "transparent", color: "var(--ws-cyan)", border: "none", outline: "none", borderBottom: "1px solid var(--ws-cyan)" }}
                             autoComplete="off"
                           />
                           {inlineSuggestionsOpen && inlineSuggestions.length > 0 && (

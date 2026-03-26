@@ -49,6 +49,7 @@ type WorkspaceHeaderProps = {
   onWatchlistChange?: (id: string) => void;
   onNewList?: () => void;
   lastUpdated?: string | null;
+  railWidthPx?: number;
 };
 
 function Pill({
@@ -111,6 +112,7 @@ export default function WorkspaceHeader({
   onWatchlistChange,
   onNewList,
   lastUpdated,
+  railWidthPx = 0,
 }: WorkspaceHeaderProps) {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -199,8 +201,8 @@ export default function WorkspaceHeader({
 
   return (
     <header
-      className="shrink-0 flex items-center gap-2 px-3 h-[42px]"
-      style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}
+      className="shrink-0 flex items-center gap-2 h-[42px]"
+      style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)", paddingLeft: 12, paddingRight: railWidthPx > 0 ? railWidthPx + 14 : 12 }}
     >
       {/* Brand */}
       <img
@@ -294,7 +296,7 @@ export default function WorkspaceHeader({
               color: "var(--ws-cyan)",
             }}
           >
-            + New Scan
+            New Scan
           </button>
           <div ref={scanDDRef} className="relative">
             <button
@@ -309,7 +311,6 @@ export default function WorkspaceHeader({
               }}
             >
               {activeScan || "Select scan"}
-              <span style={{ color: "var(--ws-text-dim)", fontSize: 14 }}>▾</span>
             </button>
             {scanDDOpen && scanList.length > 0 && (
               <div
@@ -397,7 +398,7 @@ export default function WorkspaceHeader({
               color: "var(--ws-cyan)",
             }}
           >
-            + New List
+            New List
           </button>
           <div ref={listDDRef} className="relative">
             <button
@@ -412,7 +413,6 @@ export default function WorkspaceHeader({
               }}
             >
               {watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list"}
-              <span style={{ color: "var(--ws-text-dim)", fontSize: 14 }}>▾</span>
             </button>
             {listDDOpen && watchlistNames.length > 0 && (
               <div
@@ -434,7 +434,8 @@ export default function WorkspaceHeader({
                       onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
                     >
                       <span
-                        style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 4, cursor: "pointer" }}
+                        className="text-[14px]"
+                        style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
                         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFavListIds(toggleFavoriteWatchlist(wl.id)); }}
                       >
                         {isFav ? "★" : "☆"}

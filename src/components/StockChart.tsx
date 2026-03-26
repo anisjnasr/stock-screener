@@ -505,6 +505,13 @@ export default function StockChart({
         timeVisible: true,
         secondsVisible: false,
         borderColor: isLightBackground ? "rgba(0,0,0,0.2)" : "rgba(113,113,122,0.4)",
+        allowBoldLabels: true,
+      },
+      handleScroll: {
+        mouseWheel: false,
+      },
+      handleScale: {
+        mouseWheel: false,
       },
       rightPriceScale: {
         visible: true,
@@ -827,6 +834,8 @@ export default function StockChart({
         {
           priceFormat: { type: "volume" },
           priceScaleId: "",
+          lastValueVisible: false,
+          priceLineVisible: false,
         },
         1
       ).setData(volumeData);
@@ -1182,7 +1191,7 @@ export default function StockChart({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
-      <div className="px-2 py-1 border-b border-zinc-600/30 bg-[#2A2D31] shrink-0 flex items-center justify-between gap-2 flex-wrap">
+      <div className="px-2 py-1 border-b border-zinc-600/30 bg-[#2A2D31] shrink-0 flex items-center justify-between gap-2 flex-wrap" style={{ paddingRight: 88 }}>
         <div className="flex items-center gap-1 flex-wrap ml-auto">
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
@@ -1390,7 +1399,7 @@ export default function StockChart({
               ? ((crosshairCandle.close - prevClose) / prevClose) * 100
               : null;
             return (
-              <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 72 }}>
+              <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 88 }}>
                 <span>O {crosshairCandle.open.toFixed(2)}</span>
                 <span>H {crosshairCandle.high.toFixed(2)}</span>
                 <span>L {crosshairCandle.low.toFixed(2)}</span>
@@ -1404,7 +1413,7 @@ export default function StockChart({
               </div>
             );
           })()}
-          <div className="absolute top-2 z-10 flex flex-col items-end gap-1" style={{ right: 80 }}>
+          <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 30, right: 88 }}>
             {timeframe === "daily" && (
               <button
                 type="button"

@@ -112,6 +112,9 @@ export default function Home() {
 
   const chartHidden = section === "market" && marketSubTab === "monitor";
 
+  const prevSectionRef = useRef(section);
+  const savedChartLeftRef = useRef<{ sectors: number | null; other: number | null }>({ sectors: null, other: null });
+
   useEffect(() => {
     if (section === "market") {
       setRightRailHidden(true);
@@ -120,7 +123,24 @@ export default function Home() {
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
     }
-  }, [section, marketSubTab, setRightRailHidden]);
+
+    const prev = prevSectionRef.current;
+    if (prev !== section) {
+      const isSectorNow = section === "sectors-industries";
+      const wasSector = prev === "sectors-industries";
+      if (isSectorNow && !wasSector) {
+        savedChartLeftRef.current.other = chartLeftPx;
+        const saved = savedChartLeftRef.current.sectors;
+        const minSectorLeft = Math.round(Math.max(500, window.innerWidth * 0.5));
+        setChartLeftPx(saved != null ? saved : Math.max(chartLeftPx, minSectorLeft));
+      } else if (!isSectorNow && wasSector) {
+        savedChartLeftRef.current.sectors = chartLeftPx;
+        const saved = savedChartLeftRef.current.other;
+        setChartLeftPx(saved != null ? saved : 340);
+      }
+      prevSectionRef.current = section;
+    }
+  }, [section, marketSubTab, setRightRailHidden, chartLeftPx, setChartLeftPx]);
 
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
   const { data, loading, error } = useStockData(symbol);
@@ -135,10 +155,15 @@ export default function Home() {
     setScreens(loaded);
     if (loaded.length > 0) setActiveScanName(loaded[0].name);
     fetch("/api/health").then((r) => r.json()).then((d) => {
-      if (d.latestScreenerDate) setLastUpdated(d.latestScreenerDate);
-      else if (d.dbUpdatedAt) {
-        const dt = new Date(d.dbUpdatedAt);
-        setLastUpdated(dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+      const raw = d.latestScreenerDate ?? d.dbUpdatedAt;
+      if (raw) {
+        const dt = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw);
+        if (!isNaN(dt.getTime())) {
+          const day = dt.getDate();
+          const suffix = [11,12,13].includes(day) ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
+          const month = dt.toLocaleDateString("en-US", { month: "long" });
+          setLastUpdated(`${day}${suffix} ${month} ${dt.getFullYear()}`);
+        }
       }
     }).catch(() => {});
   }, []);
@@ -420,6 +445,7 @@ export default function Home() {
         activeWatchlistId={activeWatchlistId}
         onWatchlistChange={setActiveWatchlistId}
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
+        railWidthPx={rightRailHidden ? 0 : railWidthPx}
         onNewList={() => {
           const name = prompt("New watchlist name:");
           if (!name?.trim()) return;

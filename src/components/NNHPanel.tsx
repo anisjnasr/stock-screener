@@ -26,7 +26,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/market-monitor")
+    fetch("/api/breadth?index=sp500")
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
@@ -131,15 +131,17 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
               const barHeight = (Math.abs(r.net) / maxAbs) * 45;
               const isPositive = r.net >= 0;
               return (
-                <rect
-                  key={r.date}
-                  x={i}
-                  y={isPositive ? 50 - barHeight : 50}
-                  width={Math.max(0.8, 1)}
-                  height={Math.max(0.5, barHeight)}
-                  fill={isPositive ? "var(--ws-green)" : "var(--ws-red)"}
-                  opacity={0.8}
-                />
+                <g key={r.date}>
+                  <line x1={i} y1="0" x2={i} y2="100" stroke="var(--ws-border)" strokeWidth="0.3" opacity="0.4" />
+                  <rect
+                    x={i + 0.1}
+                    y={isPositive ? 50 - barHeight : 50}
+                    width={0.8}
+                    height={Math.max(0.5, barHeight)}
+                    fill={isPositive ? "var(--ws-green)" : "var(--ws-red)"}
+                    opacity={0.8}
+                  />
+                </g>
               );
             })}
             <line x1="0" y1="50" x2={filteredData.length} y2="50" stroke="var(--ws-border-hover)" strokeWidth="0.5" />

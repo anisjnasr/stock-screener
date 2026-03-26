@@ -102,8 +102,24 @@ function fmtPctSigned(n: number | null): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
 }
 
+function fmtPeriodShort(period: string): string {
+  const qMatch = period.match(/^Q(\d)\s*(\d{4})$/);
+  if (qMatch) return `Q${qMatch[1]} ${qMatch[2].slice(2)}`;
+  const qdMatch = period.match(/Quarter\s*(\d)\s*(\d{4})/i);
+  if (qdMatch) return `Q${qdMatch[1]} ${qdMatch[2].slice(2)}`;
+  if (/^\d{4}$/.test(period)) return `'${period.slice(2)}`;
+  return period;
+}
 
+function fmtDateToQuarter(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  if (isNaN(d.getTime())) return dateStr;
+  const m = d.getUTCMonth();
+  const q = m < 3 ? 1 : m < 6 ? 2 : m < 9 ? 3 : 4;
+  return `Q${q} ${String(d.getUTCFullYear()).slice(2)}`;
+}
 
+type FinMetric = "revenue" | "eps";
 
 export default function RightRail({
   section,
@@ -119,8 +135,8 @@ export default function RightRail({
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("fundamentals");
   const [showFullDesc, setShowFullDesc] = useState(false);
-  const [revenueView, setRevenueView] = useState<"annual" | "quarterly">("quarterly");
-  const [epsView, setEpsView] = useState<"annual" | "quarterly">("quarterly");
+  const [finMetric, setFinMetric] = useState<FinMetric>("revenue");
+  const [finFreq, setFinFreq] = useState<"annual" | "quarterly">("quarterly");
 
   if (loading) {
     return (
@@ -149,10 +165,6 @@ export default function RightRail({
     profile?.floatShares != null && Number.isFinite(profile.floatShares) && profile.floatShares > 0
       ? fmtShares(profile.floatShares)
       : "—";
-
-  const pillClass =
-    "text-[10px] px-1.5 py-0.5 rounded inline-block leading-tight";
-  const pillStyle = { background: "var(--ws-bg3)", color: "var(--ws-text)" } as const;
 
   const SectionDivider = () => (
     <div style={{ height: 1, background: "var(--ws-border)", margin: "0 -12px" }} />
@@ -200,13 +212,13 @@ export default function RightRail({
           <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
 
           <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
-          <span className="min-w-0 flex flex-wrap gap-1">
-            {profile?.sector ? <span className={pillClass} style={pillStyle}>{safe(profile.sector)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
+          <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+            {profile?.sector ? safe(profile.sector) : "—"}
           </span>
 
           <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
-          <span className="min-w-0 flex flex-wrap gap-1">
-            {profile?.industry ? <span className={pillClass} style={pillStyle}>{safe(profile.industry)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
+          <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+            {profile?.industry ? safe(profile.industry) : "—"}
           </span>
 
           <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
@@ -218,10 +230,10 @@ export default function RightRail({
       </div>
 
       {/* Tab row */}
-      <div className="flex items-center gap-0.5 px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+      <div className="flex items-center gap-1 px-3 py-2" style={{ borderBottom: "1px solid var(--ws-border)" }}>
         {(["fundamentals", "news"] as RailTab[]).map((tab) => (
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
-            className="px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors capitalize"
+            className="px-3 py-1 text-[13px] font-semibold rounded transition-colors capitalize"
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : "transparent",
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
@@ -236,13 +248,13 @@ export default function RightRail({
       ) : (
         <div className="px-3 py-3 space-y-4">
 
-          {/* RS RANK — moved above revenue */}
+          {/* RS RANK */}
           {rsRank && (
             <div>
               <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
-              <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
@@ -253,7 +265,7 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[12px]"
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[13px]"
                         style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
@@ -266,43 +278,61 @@ export default function RightRail({
 
           {rsRank && <SectionDivider />}
 
-          {/* REVENUE — clean table */}
+          {/* REVENUE / EPS — unified table */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue</div>
-              <div className="flex gap-0.5">
-                {(["annual", "quarterly"] as const).map((v) => (
-                  <button key={v} type="button" onClick={() => setRevenueView(v)}
-                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
-                    style={{ background: revenueView === v ? "var(--ws-bg3)" : "transparent", color: revenueView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-1 mb-2">
+              {(["revenue", "eps"] as FinMetric[]).map((m) => (
+                <button key={m} type="button" onClick={() => setFinMetric(m)}
+                  className="px-3 py-0.5 text-[13px] font-semibold rounded transition-colors"
+                  style={{ background: finMetric === m ? "var(--ws-bg3)" : "transparent", color: finMetric === m ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                  {m === "revenue" ? "Revenue" : "EPS"}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-0.5 mb-2">
+              {(["annual", "quarterly"] as const).map((v) => (
+                <button key={v} type="button" onClick={() => setFinFreq(v)}
+                  className="px-2 py-0.5 text-[11px] rounded transition-colors capitalize"
+                  style={{ background: finFreq === v ? "var(--ws-bg3)" : "transparent", color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                  {v}
+                </button>
+              ))}
             </div>
             {nextEarnings && (
-              <div className="text-[10px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+              <div className="text-[11px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
                 Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
               </div>
             )}
-            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Revenue</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>
+                    {finMetric === "revenue" ? "Revenue" : "EPS"}
+                  </th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>YoY</th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Surprise</th>
                 </tr>
               </thead>
               <tbody>
-                {(revenueView === "annual"
-                  ? yearlyRows.slice(0, 8).map((r) => ({ period: r.year, value: r.sales, growth: r.salesGrowth }))
-                  : quarterlyRows.slice(0, 8).map((r) => ({ period: r.period, value: r.sales, growth: r.salesGrowth }))
+                {(finFreq === "annual"
+                  ? yearlyRows.slice(0, 8).map((r) => ({
+                      period: fmtPeriodShort(r.year),
+                      value: finMetric === "revenue" ? r.sales : r.eps,
+                      growth: finMetric === "revenue" ? r.salesGrowth : r.epsGrowth,
+                    }))
+                  : quarterlyRows.slice(0, 8).map((r) => ({
+                      period: fmtPeriodShort(r.period),
+                      value: finMetric === "revenue" ? r.sales : r.eps,
+                      growth: finMetric === "revenue" ? r.salesGrowth : r.epsGrowth,
+                    }))
                 ).map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
                     <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-                      {r.value != null ? fmtCompact(r.value) : "—"}
+                      {r.value != null
+                        ? (finMetric === "revenue" ? fmtCompact(r.value) : `$${r.value.toFixed(2)}`)
+                        : "—"}
                     </td>
                     <td className="py-1.5 text-right font-mono tabular-nums"
                       style={{ color: r.growth != null ? (r.growth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
@@ -311,7 +341,7 @@ export default function RightRail({
                     <td className="py-1.5 text-right tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>—</td>
                   </tr>
                 ))}
-                {(revenueView === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
+                {(finFreq === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
                   <tr><td colSpan={4} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
                 )}
               </tbody>
@@ -320,61 +350,12 @@ export default function RightRail({
 
           <SectionDivider />
 
-          {/* EPS — clean table */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>EPS</div>
-              <div className="flex gap-0.5">
-                {(["annual", "quarterly"] as const).map((v) => (
-                  <button key={v} type="button" onClick={() => setEpsView(v)}
-                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
-                    style={{ background: epsView === v ? "var(--ws-bg3)" : "transparent", color: epsView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>YoY</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Surprise</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(epsView === "annual"
-                  ? yearlyRows.slice(0, 8).map((r) => ({ period: r.year, value: r.eps, growth: r.epsGrowth }))
-                  : quarterlyRows.slice(0, 8).map((r) => ({ period: r.period, value: r.eps, growth: r.epsGrowth }))
-                ).map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
-                    <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-                      {r.value != null ? `$${r.value.toFixed(2)}` : "—"}
-                    </td>
-                    <td className="py-1.5 text-right font-mono tabular-nums"
-                      style={{ color: r.growth != null ? (r.growth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
-                      {r.growth != null ? fmtPctSigned(r.growth) : "—"}
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>—</td>
-                  </tr>
-                ))}
-                {(epsView === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
-                  <tr><td colSpan={4} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <SectionDivider />
-
-          {/* INSTITUTIONAL OWNERS — clean table */}
+          {/* INSTITUTIONAL OWNERS */}
           <div>
             <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
               Institutional Owners
             </div>
-            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
@@ -385,7 +366,7 @@ export default function RightRail({
               <tbody>
                 {ownershipQuarters.slice(0, 8).map((q, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{q.report_date}</td>
+                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{fmtDateToQuarter(q.report_date)}</td>
                     <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
                       {q.num_funds != null ? q.num_funds.toLocaleString() : "—"}
                     </td>
