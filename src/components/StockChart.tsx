@@ -904,6 +904,23 @@ export default function StockChart({
 
     chartRef.current = chart;
 
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      const ts = chart.timeScale();
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;
+      const from = Number(range.from);
+      const to = Number(range.to);
+      const visibleBars = to - from;
+      const zoomFactor = e.deltaY > 0 ? 0.1 : -0.1;
+      const delta = Math.max(1, Math.round(visibleBars * Math.abs(zoomFactor)));
+      const newFrom = e.deltaY > 0 ? from - delta : from + delta;
+      const clampedFrom = Math.max(-50, Math.min(to - 5, newFrom));
+      ts.setVisibleLogicalRange({ from: clampedFrom, to });
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+
     const handleResize = () => {
       if (!containerRef.current || !chartRef.current) return;
       const el = containerRef.current;
@@ -917,6 +934,7 @@ export default function StockChart({
     resizeObserver.observe(el);
 
     return () => {
+      el.removeEventListener("wheel", handleWheel);
       try {
         (unsubCrosshair as (() => void) | undefined)?.();
       } catch {
@@ -1362,19 +1380,31 @@ export default function StockChart({
       ) : (
         <div className="relative w-full flex-1 min-h-0">
           <div ref={containerRef} className="absolute inset-0 w-full h-full" />
-          <div className="absolute top-3 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-right" style={{ right: 72 }}>
+          <div className="absolute top-3 left-0 right-0 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-center">
             {symbol.toUpperCase()}
           </div>
-          {crosshairCandle && (
-            <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 border border-zinc-600 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 72 }}>
-              <span>O {crosshairCandle.open.toFixed(2)}</span>
-              <span>H {crosshairCandle.high.toFixed(2)}</span>
-              <span>L {crosshairCandle.low.toFixed(2)}</span>
-              <span>C {crosshairCandle.close.toFixed(2)}</span>
-              <span>V {fmtVol(crosshairCandle.volume)}</span>
-            </div>
-          )}
-          <div className="absolute top-10 z-10 flex items-center gap-1.5" style={{ right: 72 }}>
+          {crosshairCandle && (() => {
+            const idx = chronological.findIndex((c) => c.date === crosshairCandle.date);
+            const prevClose = idx > 0 ? chronological[idx - 1].close : null;
+            const chgPct = prevClose != null && prevClose > 0
+              ? ((crosshairCandle.close - prevClose) / prevClose) * 100
+              : null;
+            return (
+              <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 72 }}>
+                <span>O {crosshairCandle.open.toFixed(2)}</span>
+                <span>H {crosshairCandle.high.toFixed(2)}</span>
+                <span>L {crosshairCandle.low.toFixed(2)}</span>
+                <span>C {crosshairCandle.close.toFixed(2)}</span>
+                {chgPct != null && (
+                  <span style={{ color: chgPct >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
+                    {chgPct >= 0 ? "+" : ""}{chgPct.toFixed(2)}%
+                  </span>
+                )}
+                <span>V {fmtVol(crosshairCandle.volume)}</span>
+              </div>
+            );
+          })()}
+          <div className="absolute top-2 z-10 flex flex-col items-end gap-1" style={{ right: 80 }}>
             {timeframe === "daily" && (
               <button
                 type="button"

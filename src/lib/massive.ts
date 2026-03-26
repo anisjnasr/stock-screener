@@ -177,11 +177,37 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
   const prev = t.prevDay ?? {};
   const pickPositive = (...values: Array<number | undefined>): number | undefined =>
     values.find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
-  const close = pickPositive(day.c, prev.c, t.lastTrade?.p) ?? 0;
-  const prevClose = pickPositive(prev.c, close) ?? close;
-  const lastClosedSessionClose = pickPositive(day.c, prev.c, close) ?? close;
   const marketOpen = isUSMarketOpen();
-  const displayPrice = marketOpen ? close : lastClosedSessionClose;
+  const dayClose = (typeof day.c === "number" && Number.isFinite(day.c) && day.c > 0) ? day.c : undefined;
+  const prevDayClose = (typeof prev.c === "number" && Number.isFinite(prev.c) && prev.c > 0) ? prev.c : undefined;
+  const lastTradePrice = (typeof t.lastTrade?.p === "number" && Number.isFinite(t.lastTrade.p) && t.lastTrade.p > 0) ? t.lastTrade.p : undefined;
+
+  let displayPrice: number;
+  let prevClose: number;
+
+  if (marketOpen) {
+    displayPrice = dayClose ?? prevDayClose ?? lastTradePrice ?? 0;
+    prevClose = prevDayClose ?? displayPrice;
+  } else {
+    // Market closed: day = last completed session, prevDay = session before that.
+    // If day.c is available and differs from prev.c, use them directly.
+    // If day.c is zero/missing (e.g. weekend), Polygon hasn't rotated: use
+    // lastTrade or prev.c as the display price, but we can't distinguish the
+    // two sessions, so use prev.c for both (changePct will be 0).
+    if (dayClose && prevDayClose && dayClose !== prevDayClose) {
+      displayPrice = dayClose;
+      prevClose = prevDayClose;
+    } else if (dayClose && prevDayClose) {
+      // Same value -- likely the snapshot hasn't rotated yet.
+      // Use lastTrade as tiebreaker for display, keep prev as baseline.
+      displayPrice = lastTradePrice ?? dayClose;
+      prevClose = prevDayClose;
+    } else {
+      displayPrice = dayClose ?? prevDayClose ?? lastTradePrice ?? 0;
+      prevClose = prevDayClose ?? displayPrice;
+    }
+  }
+
   const change = prevClose > 0 && displayPrice > 0 ? displayPrice - prevClose : 0;
   const changePct = prevClose > 0 && displayPrice > 0 ? (change / prevClose) * 100 : 0;
   return {
@@ -190,11 +216,11 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
     price: displayPrice,
     changesPercentage: changePct,
     change,
-    open: pickPositive(day.o, prev.o, close) ?? close,
-    dayLow: pickPositive(day.l, prev.l, close) ?? close,
-    dayHigh: pickPositive(day.h, prev.h, close) ?? close,
-    yearHigh: pickPositive(day.h, prev.h, close) ?? close,
-    yearLow: pickPositive(day.l, prev.l, close) ?? close,
+    open: pickPositive(day.o, prev.o) ?? displayPrice,
+    dayLow: pickPositive(day.l, prev.l) ?? displayPrice,
+    dayHigh: pickPositive(day.h, prev.h) ?? displayPrice,
+    yearHigh: pickPositive(day.h, prev.h) ?? displayPrice,
+    yearLow: pickPositive(day.l, prev.l) ?? displayPrice,
     volume: pickPositive(day.v, prev.v) ?? 0,
     avgVolume: t.min?.av,
     marketCap: undefined,

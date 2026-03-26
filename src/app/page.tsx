@@ -58,7 +58,7 @@ import { useOwnership } from "@/hooks/useOwnership";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
 
-const DEFAULT_SYMBOL = "AAPL";
+const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
 
 export default function Home() {

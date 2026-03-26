@@ -263,24 +263,24 @@ export default function RightRail({
           {symbol}
         </div>
         {profile?.companyName && (
-          <div className="text-[12px] mt-1 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+          <div className="text-[13px] mt-1 leading-snug" style={{ color: "rgba(201,209,217,0.85)" }}>
             {safe(profile.companyName)}
           </div>
         )}
         {profile?.website && typeof profile.website === "string" && (
           <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
+            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[12px] font-medium" style={{ color: "var(--ws-cyan)" }}>
             {safe(profile.website).replace(/^https?:\/\//, "")}
           </a>
         )}
 
         {desc && (
           <div className="mt-2">
-            <p className="text-[11px] leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+            <p className="text-[12px] leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
               {showFullDesc ? desc : truncatedDesc}
             </p>
             {desc.length > 150 && (
-              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-[10px] mt-0.5" style={{ color: "var(--ws-cyan)" }}>
+              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-[11px] mt-0.5" style={{ color: "var(--ws-cyan)" }}>
                 {showFullDesc ? "Less" : "More"}
               </button>
             )}
@@ -288,26 +288,26 @@ export default function RightRail({
         )}
 
         <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-[11px] items-center"
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-[12px] items-center"
           style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
         >
-          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Exchange</span>
+          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
           <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
 
-          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Sector</span>
+          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
           <span className="min-w-0 flex flex-wrap gap-1">
             {profile?.sector ? <span className={pillClass} style={pillStyle}>{safe(profile.sector)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
           </span>
 
-          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Industry</span>
+          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
           <span className="min-w-0 flex flex-wrap gap-1">
             {profile?.industry ? <span className={pillClass} style={pillStyle}>{safe(profile.industry)}</span> : <span style={{ color: "var(--ws-text)" }}>—</span>}
           </span>
 
-          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Market Cap</span>
+          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
           <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
 
-          <span className="font-medium text-[10px]" style={{ color: "var(--ws-text-dim)" }}>Float</span>
+          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Float</span>
           <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{floatLabel}</span>
         </div>
       </div>
@@ -367,7 +367,7 @@ export default function RightRail({
           {/* EARNINGS */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Earnings (EPS)</div>
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>EPS</div>
               <div className="flex gap-0.5">
                 {(["annual", "quarterly"] as const).map((v) => (
                   <button key={v} type="button" onClick={() => setEpsView(v)}
@@ -400,7 +400,7 @@ export default function RightRail({
           {/* INSTITUTIONAL */}
           <div>
             <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--ws-text)" }}>
-              Institutional Holders
+              Institutional Owners
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-[18px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>

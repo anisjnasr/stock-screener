@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
 import { fetchQuote } from "@/lib/massive";
+import { isUSMarketOpen } from "@/lib/market-hours";
 
 type Candle = {
   date: string;
@@ -74,7 +75,7 @@ function aggregateCandles(daily: Candle[], interval: "weekly" | "monthly"): Cand
 }
 
 export async function GET(request: NextRequest) {
-  const symbol = (request.nextUrl.searchParams.get("symbol") || "AAPL").toUpperCase();
+  const symbol = (request.nextUrl.searchParams.get("symbol") || "SPY").toUpperCase();
   const interval = request.nextUrl.searchParams.get("interval") || "daily";
   try {
     const latest = getLatestScreenerDate();
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
       }));
 
     let hasLiveCandle = false;
-    if (process.env.MASSIVE_API_KEY) {
+    if (process.env.MASSIVE_API_KEY && isUSMarketOpen()) {
       const todayStr = getTodayET();
       const lastBarDate =
         dailyChrono.length > 0 ? dailyChrono[dailyChrono.length - 1].date : "";

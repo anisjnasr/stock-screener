@@ -92,7 +92,7 @@ export async function GET() {
     const precomputed = getPrecomputedMarketMonitor(queryStartDate, latestDate);
     const precomputedLatest = precomputed.length > 0 ? precomputed[0]?.date : null;
     if (precomputed.length > 0 && precomputedLatest === latestDate) {
-      const rows = precomputed.map((r) => ({
+      let rows = precomputed.map((r) => ({
         date: r.date,
         up4pct: r.up4pct,
         down4pct: r.down4pct,
@@ -110,6 +110,26 @@ export async function GET() {
         nasdaqPctAbove200d: r.nasdaq_pct_above_200d,
         universe: r.universe,
       })) satisfies MarketMonitorRow[];
+
+      // If precomputed breadth columns are all NULL, compute from raw data
+      const hasBreadth = rows.some((r) =>
+        r.sp500PctAbove50d != null || r.sp500PctAbove200d != null ||
+        r.nasdaqPctAbove50d != null || r.nasdaqPctAbove200d != null
+      );
+      if (!hasBreadth) {
+        const sp500Series = getIndexBreadthSeries("sp500", queryStartDate, latestDate);
+        const nasdaqSeries = getIndexBreadthSeries("nasdaq", queryStartDate, latestDate);
+        const sp500Map = new Map(sp500Series.rows.map((r) => [r.date, r]));
+        const nasdaqMap = new Map(nasdaqSeries.rows.map((r) => [r.date, r]));
+        rows = rows.map((r) => ({
+          ...r,
+          sp500PctAbove50d: sp500Map.get(r.date)?.pctAbove50d ?? null,
+          sp500PctAbove200d: sp500Map.get(r.date)?.pctAbove200d ?? null,
+          nasdaqPctAbove50d: nasdaqMap.get(r.date)?.pctAbove50d ?? null,
+          nasdaqPctAbove200d: nasdaqMap.get(r.date)?.pctAbove200d ?? null,
+        }));
+      }
+
       const latestRow = rows[0] ?? null;
       const payload: CachePayload = {
         version: CACHE_VERSION,

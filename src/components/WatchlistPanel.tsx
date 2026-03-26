@@ -547,6 +547,7 @@ export default function WatchlistPanel({
   const [showWatchlistAddMenu, setShowWatchlistAddMenu] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
+  const [scanModalMode, setScanModalMode] = useState<"traditional" | "script">("traditional");
   const [newFolderName, setNewFolderName] = useState("");
   const [newScriptName, setNewScriptName] = useState("");
   const [newScriptBody, setNewScriptBody] = useState("");
@@ -1158,6 +1159,7 @@ export default function WatchlistPanel({
         includeExcludeRows: {},
         expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
       });
+      setScanModalMode("traditional");
       setShowNewScreenerModal(true);
     } else {
       const target = screens.find((s) => s.name === openToScreenerTrigger.name);
@@ -1648,6 +1650,7 @@ export default function WatchlistPanel({
       includeExcludeRows: {},
       expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
     });
+    setScanModalMode("traditional");
     setShowNewScreenerModal(true);
   }, []);
 
@@ -1656,6 +1659,7 @@ export default function WatchlistPanel({
     setEditingScriptScreenId(null);
     setNewScriptName("");
     setNewScriptBody("");
+    setScanModalMode("script");
     setShowNewScriptModal(true);
   }, []);
 
@@ -1732,6 +1736,7 @@ export default function WatchlistPanel({
         SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])
       ),
     });
+    setScanModalMode("traditional");
     setShowNewScreenerModal(true);
   }, [buildPctOperatorRowsFromFilters, buildIncludeExcludeRowsFromFilters]);
 
@@ -1901,6 +1906,7 @@ export default function WatchlistPanel({
       setSelectedScreenId(screen.id);
     }
     setShowNewScreenerModal(false);
+    setShowNewScriptModal(false);
     setEditingScreenId(null);
     setNewScreenForm({
       name: "",
@@ -2477,7 +2483,7 @@ export default function WatchlistPanel({
                         </span>
                         <span className="truncate min-w-0">{s.name}</span>
                       </button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
@@ -2542,7 +2548,7 @@ export default function WatchlistPanel({
                                   </span>
                                   <span className="truncate min-w-0">{s.name}</span>
                                 </button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
@@ -3108,130 +3114,14 @@ export default function WatchlistPanel({
             </div>
           )}
 
-          {/* New Script modal */}
-          {showNewScriptModal && (
+          {/* Unified New Scan modal (Traditional + NinoScript tabs) */}
+          {(showNewScriptModal || showNewScreenerModal) && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-              onClick={(e) => e.target === e.currentTarget && (setShowNewScriptModal(false), setEditingScriptScreenId(null))}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+              onClick={(e) => { if (e.target === e.currentTarget) { setShowNewScriptModal(false); setShowNewScreenerModal(false); setEditingScriptScreenId(null); } }}
               role="dialog"
               aria-modal="true"
-              aria-labelledby="new-script-title"
-            >
-              <div
-                className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl max-h-[85vh] flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <h2 id="new-script-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-wide">
-                        {editingScriptScreenId ? "Edit Script" : "New Script"}
-                      </h2>
-                      <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}>
-                        <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
-                          style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
-                          onClick={() => {
-                            setShowNewScriptModal(false);
-                            setEditingScriptScreenId(null);
-                            setEditingScreenId(null);
-                            setNewScreenForm({ name: "", universe: "all", filters: {}, pctOperatorRows: {}, includeExcludeRows: {}, expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) });
-                            setShowNewScreenerModal(true);
-                          }}>
-                          Traditional
-                        </button>
-                        <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
-                          style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}>
-                          NinoScript
-                        </button>
-                      </div>
-                    </div>
-                    <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Custom Screener Name</label>
-                    <input
-                      type="text"
-                      value={newScriptName}
-                      onChange={(e) => setNewScriptName(e.target.value)}
-                      placeholder="e.g. My custom scan"
-                      className="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1.5 text-sm text-zinc-800 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowNinoScriptHelp(true)}
-                    className="shrink-0 p-2 rounded-full border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-200"
-                    title="Nino Script help"
-                    aria-label="Open Nino Script help"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                      <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
-                      <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.93-1.029-.93-.584 0-1.009.378-1.009.93z" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 flex flex-col p-3">
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Script</label>
-                  <NinoScriptEditor
-                    value={newScriptBody}
-                    onChange={setNewScriptBody}
-                    placeholder="e.g. P > 10 and MA(C, 50) > 500000"
-                    minHeight="200px"
-                  />
-                </div>
-                {showNinoScriptHelp && (
-                  <NinoScriptHelp onClose={() => setShowNinoScriptHelp(false)} />
-                )}
-                <div className="flex justify-end gap-2 p-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => (setShowNewScriptModal(false), setNewScriptName(""), setNewScriptBody(""), setEditingScriptScreenId(null))}
-                    className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const name = newScriptName.trim() || "Unnamed script";
-                      let savedScreen: SavedScreen;
-                      if (editingScriptScreenId) {
-                        updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
-                        const updated = loadScreens().find((s) => s.id === editingScriptScreenId);
-                        savedScreen = updated!;
-                      } else {
-                        savedScreen = addScreen({
-                          name,
-                          universe: "all",
-                          filters: {},
-                          type: "script",
-                          scriptBody: newScriptBody,
-                        });
-                      }
-                      setScreens(loadScreens());
-                      setShowNewScriptModal(false);
-                      setNewScriptName("");
-                      setNewScriptBody("");
-                      if (selectedScreenId === (editingScriptScreenId ?? savedScreen?.id)) {
-                        setSelectedScreenId(savedScreen.id);
-                        fetchScreenerResults(savedScreen);
-                      }
-                      setEditingScriptScreenId(null);
-                    }}
-                    className="px-3 py-1.5 text-sm rounded bg-zinc-800 dark:bg-zinc-600 text-white hover:bg-zinc-700 dark:hover:bg-zinc-500"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* New Screener modal */}
-          {showNewScreenerModal && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-              onClick={(e) => e.target === e.currentTarget && setShowNewScreenerModal(false)}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="new-screener-title"
+              aria-labelledby="new-scan-title"
             >
               <div
                 ref={screenerModalRef}
@@ -3252,42 +3142,137 @@ export default function WatchlistPanel({
                   role="presentation"
                 >
                   <div className="flex items-center gap-3">
-                    <h2 id="new-screener-title" className="text-sm font-semibold tracking-wide" style={{ color: "var(--ws-text)" }}>
-                      {editingScreenId ? "Edit Screener" : "New Screener"}
+                    <h2 id="new-scan-title" className="text-sm font-semibold tracking-wide" style={{ color: "var(--ws-text)" }}>
+                      {editingScreenId || editingScriptScreenId ? "Edit Scan" : "New Scan"}
                     </h2>
                     <div className="flex items-center rounded p-0.5" style={{ background: "var(--ws-bg, rgba(0,0,0,0.1))" }}
                       onMouseDown={(e) => e.stopPropagation()}>
                       <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
-                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}
-                        onClick={() => {}}>
+                        style={{
+                          background: scanModalMode === "traditional" ? "var(--ws-cyan, #00e5cc)" : "transparent",
+                          color: scanModalMode === "traditional" ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim, #9ca3af)",
+                        }}
+                        onClick={() => setScanModalMode("traditional")}>
                         Traditional
                       </button>
                       <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
-                        style={{ background: "transparent", color: "var(--ws-text-dim, #9ca3af)" }}
-                        onClick={() => {
-                          setShowNewScreenerModal(false);
-                          setEditingScriptScreenId(null);
-                          setNewScriptName("");
-                          setNewScriptBody("");
-                          setShowNewScriptModal(true);
-                        }}>
+                        style={{
+                          background: scanModalMode === "script" ? "var(--ws-cyan, #00e5cc)" : "transparent",
+                          color: scanModalMode === "script" ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim, #9ca3af)",
+                        }}
+                        onClick={() => setScanModalMode("script")}>
                         NinoScript
                       </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={() => setShowNewScreenerModal(false)}
-                    className="p-1 rounded shrink-0 transition-colors"
-                    style={{ color: "var(--ws-text-dim)" }}
-                    aria-label="Close"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                      <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {scanModalMode === "script" && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => setShowNinoScriptHelp(true)}
+                        className="shrink-0 p-1.5 rounded-full transition-colors"
+                        style={{ color: "var(--ws-text-dim)", border: "1px solid var(--ws-border)" }}
+                        title="Nino Script help"
+                        aria-label="Open Nino Script help"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                          <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
+                          <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.93-1.029-.93-.584 0-1.009.378-1.009.93z" />
+                        </svg>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => { setShowNewScriptModal(false); setShowNewScreenerModal(false); setEditingScriptScreenId(null); }}
+                      className="p-1 rounded shrink-0 transition-colors"
+                      style={{ color: "var(--ws-text-dim)" }}
+                      aria-label="Close"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                        <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
+
+                {/* NinoScript tab content */}
+                {scanModalMode === "script" && (
+                  <>
+                    <div className="p-3 shrink-0" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--ws-text-dim)" }}>Custom Screener Name</label>
+                      <input
+                        type="text"
+                        value={newScriptName}
+                        onChange={(e) => setNewScriptName(e.target.value)}
+                        placeholder="e.g. My custom scan"
+                        className="w-full rounded px-2 py-1.5 text-sm"
+                        style={{ background: "var(--ws-bg, #0a0e17)", border: "1px solid var(--ws-border)", color: "var(--ws-text)" }}
+                      />
+                    </div>
+                    <div className="flex-1 min-h-0 flex flex-col p-3">
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--ws-text-dim)" }}>Script</label>
+                      <NinoScriptEditor
+                        value={newScriptBody}
+                        onChange={setNewScriptBody}
+                        placeholder="e.g. P > 10 and MA(C, 50) > 500000"
+                        minHeight="200px"
+                      />
+                    </div>
+                    {showNinoScriptHelp && (
+                      <NinoScriptHelp onClose={() => setShowNinoScriptHelp(false)} />
+                    )}
+                    <div className="flex justify-end gap-2 p-3 shrink-0" style={{ borderTop: "1px solid var(--ws-border)" }}>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewScriptModal(false); setShowNewScreenerModal(false); setNewScriptName(""); setNewScriptBody(""); setEditingScriptScreenId(null); }}
+                        className="px-3 py-1.5 text-sm rounded transition-colors"
+                        style={{ border: "1px solid var(--ws-border)", color: "var(--ws-text-dim)" }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const name = newScriptName.trim() || "Unnamed script";
+                          let savedScreen: SavedScreen;
+                          if (editingScriptScreenId) {
+                            updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
+                            const updated = loadScreens().find((s) => s.id === editingScriptScreenId);
+                            savedScreen = updated!;
+                          } else {
+                            savedScreen = addScreen({
+                              name,
+                              universe: "all",
+                              filters: {},
+                              type: "script",
+                              scriptBody: newScriptBody,
+                            });
+                          }
+                          setScreens(loadScreens());
+                          setShowNewScriptModal(false);
+                          setShowNewScreenerModal(false);
+                          setNewScriptName("");
+                          setNewScriptBody("");
+                          if (selectedScreenId === (editingScriptScreenId ?? savedScreen?.id)) {
+                            setSelectedScreenId(savedScreen.id);
+                            fetchScreenerResults(savedScreen);
+                          }
+                          setEditingScriptScreenId(null);
+                        }}
+                        className="px-3 py-1.5 text-sm rounded text-white"
+                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Traditional tab content */}
+                {scanModalMode === "traditional" && (
+                  <>
                 <div className="flex-1 min-h-0 overflow-auto p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-medium w-36 shrink-0" style={{ color: "var(--ws-text-dim)" }}>Screen Name</label>
@@ -3571,7 +3556,7 @@ export default function WatchlistPanel({
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowNewScreenerModal(false)}
+                      onClick={() => { setShowNewScreenerModal(false); setShowNewScriptModal(false); }}
                       className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700"
                     >
                       Cancel
@@ -3590,6 +3575,8 @@ export default function WatchlistPanel({
                     </button>
                   </div>
                 </div>
+                </>
+                )}
               </div>
             </div>
           )}
@@ -3628,32 +3615,6 @@ export default function WatchlistPanel({
                 <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
                   Stocks: {loading ? "…" : rows.length}
                 </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {selectedSymbols.size > 0 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
-                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                      style={{ color: "var(--ws-red, #ff4d6a)" }}
-                      title="Delete selected"
-                      aria-label="Delete selected"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2h3a1 1 0 011-1h3a1 1 0 011 1h3a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118z"/></svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddToListMenu((v) => !v)}
-                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                      style={{ color: "var(--ws-cyan, #00e5cc)" }}
-                      title="Add/remove from watchlist"
-                      aria-label="Add/remove from watchlist"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
-                    </button>
-                  </>
-                )}
                 <div ref={tableMenuRef} className="relative">
                   <button type="button" onClick={() => setShowTableMenu((v) => !v)}
                     className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
@@ -3661,7 +3622,7 @@ export default function WatchlistPanel({
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                   </button>
                   {showTableMenu && (
-                    <div className="absolute right-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
+                    <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
                       <button type="button"
                         className="w-full text-left px-3 py-1.5 text-xs transition-colors"
                         style={{ color: "var(--ws-text-dim)" }}
@@ -3692,6 +3653,32 @@ export default function WatchlistPanel({
                     </div>
                   )}
                 </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedSymbols.size > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                      style={{ color: "var(--ws-red, #ff4d6a)" }}
+                      title="Delete selected"
+                      aria-label="Delete selected"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2h3a1 1 0 011-1h3a1 1 0 011 1h3a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118z"/></svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddToListMenu((v) => !v)}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                      style={{ color: "var(--ws-cyan, #00e5cc)" }}
+                      title="Add/remove from watchlist"
+                      aria-label="Add/remove from watchlist"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

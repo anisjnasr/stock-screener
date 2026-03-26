@@ -207,13 +207,18 @@ export default function SectorPerfPanel({
         {sorted.map((s, i) => {
           const pct = s.changePct ?? 0;
           const isPos = pct >= 0;
-          const barWidth = `${(Math.abs(pct) / maxAbs) * 100}%`;
+          const barPct = (Math.abs(pct) / maxAbs) * 100;
+          const barWidth = `${barPct}%`;
           const isSelected = i === selectedIdx;
+          const pctLabel = `${isPos ? "+" : ""}${pct.toFixed(2)}%`;
+          const labelInside = barPct > 65;
           return (
             <div
               key={s.id}
-              className="flex items-center gap-2 px-3 py-[6px] cursor-pointer"
+              className="grid items-center px-2 py-[5px] cursor-pointer"
               style={{
+                gridTemplateColumns: `auto minmax(0, 140px) 1fr ${onDrillDown ? "24px" : ""}`,
+                gap: "6px",
                 background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
                 borderBottom: "1px solid var(--ws-border)",
               }}
@@ -223,76 +228,101 @@ export default function SectorPerfPanel({
               }}
             >
               <span
-                className="shrink-0 font-mono text-xs leading-snug"
+                className="font-mono text-xs leading-snug whitespace-nowrap"
                 style={{
-                  width: 52,
                   fontWeight: isSelected ? 600 : 400,
                   color: "var(--ws-cyan)",
+                  minWidth: 40,
                 }}
               >
                 {s.ticker ?? ""}
               </span>
               <span
-                className="shrink-0 text-[11px] leading-snug truncate"
+                className="text-[11px] leading-snug truncate"
                 style={{
-                  maxWidth: 180,
                   fontWeight: isSelected ? 500 : 400,
                   color: "var(--ws-text-dim)",
                 }}
               >
                 {s.name}
               </span>
-              <div
-                className="flex items-center min-h-[6px]"
-                style={{ maxWidth: 160, minWidth: 80, flex: "1 1 0%" }}
-              >
+              <div className="flex items-center h-[14px]">
                 <div
-                  className="flex-1 flex justify-end items-center min-w-0 self-stretch border-r"
-                  style={{ borderColor: "var(--ws-border)" }}
+                  className="flex justify-end items-center self-stretch"
+                  style={{ width: "50%", borderRight: "1px solid var(--ws-border)" }}
                 >
                   {!isPos && (
-                    <div
-                      style={{
-                        width: barWidth,
-                        height: 6,
-                        borderRadius: "3px 0 0 3px",
-                        background: "var(--ws-red)",
-                        opacity: 0.55,
-                      }}
-                    />
+                    <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-start" : "flex-end" }}>
+                      {!labelInside && (
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums mr-1" style={{ color: "var(--ws-red)" }}>
+                          {pctLabel}
+                        </span>
+                      )}
+                      <div
+                        style={{
+                          width: "100%",
+                          height: 10,
+                          borderRadius: "3px 0 0 3px",
+                          background: "var(--ws-red)",
+                          opacity: 0.7,
+                          position: "relative",
+                        }}
+                      >
+                        {labelInside && (
+                          <span className="absolute inset-0 flex items-center justify-start pl-1 font-mono text-[9px] tabular-nums text-white/90">
+                            {pctLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 flex justify-start items-center min-w-0 self-stretch">
+                <div
+                  className="flex justify-start items-center self-stretch"
+                  style={{ width: "50%" }}
+                >
                   {isPos && (
-                    <div
-                      style={{
-                        width: barWidth,
-                        height: 6,
-                        borderRadius: "0 3px 3px 0",
-                        background: "var(--ws-green)",
-                        opacity: 0.55,
-                      }}
-                    />
+                    <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-end" : "flex-start" }}>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: 10,
+                          borderRadius: "0 3px 3px 0",
+                          background: "var(--ws-green)",
+                          opacity: 0.7,
+                          position: "relative",
+                        }}
+                      >
+                        {labelInside && (
+                          <span className="absolute inset-0 flex items-center justify-end pr-1 font-mono text-[9px] tabular-nums text-white/90">
+                            {pctLabel}
+                          </span>
+                        )}
+                      </div>
+                      {!labelInside && (
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums ml-1" style={{ color: "var(--ws-green)" }}>
+                          {pctLabel}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
-              <span
-                className="shrink-0 text-right font-mono text-[11px] tabular-nums"
-                style={{ width: 60, color: isPos ? "var(--ws-green)" : "var(--ws-red)" }}
-              >
-                {isPos ? "+" : ""}{pct.toFixed(2)}%
-              </span>
               {onDrillDown && (
                 <div
-                  className="shrink-0 flex items-center justify-center rounded text-[10px] cursor-pointer transition-opacity opacity-40 hover:opacity-100"
-                  style={{ width: 20, height: 20, color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
+                  className="flex items-center justify-center rounded cursor-pointer transition-opacity opacity-40 hover:opacity-100"
+                  style={{ width: 20, height: 20, color: "var(--ws-cyan)" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
                     onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
                   }}
                 >
-                  →
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="8" cy="8" r="6" />
+                    <line x1="8" y1="4" x2="8" y2="12" />
+                    <line x1="4" y1="8" x2="12" y2="8" />
+                  </svg>
                 </div>
               )}
             </div>

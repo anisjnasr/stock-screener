@@ -79,19 +79,13 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
         className="flex items-center gap-2 px-2 h-7"
         style={{ background: "var(--ws-bg2)" }}
       >
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex items-center gap-1"
-        >
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-            NNH
+        <div className="flex-1" />
+        {!loading && filteredData.length > 0 && (
+          <span className="text-[10px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+            {filteredData.length} bars
           </span>
-        </button>
-        <div className="flex items-center gap-0.5 ml-2 rounded p-0.5" style={{ background: "var(--ws-bg)" }}>
+        )}
+        <div className="flex items-center gap-0.5 rounded p-0.5" style={{ background: "var(--ws-bg)" }}>
           {(Object.keys(HORIZON_LABELS) as Horizon[]).map((h) => (
             <button
               key={h}
@@ -107,12 +101,18 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
             </button>
           ))}
         </div>
-        <div className="flex-1" />
-        {!loading && filteredData.length > 0 && (
-          <span className="text-[10px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
-            {filteredData.length} bars
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="flex items-center gap-1"
+        >
+          <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+            NNH
           </span>
-        )}
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
 
       {/* Chart area */}

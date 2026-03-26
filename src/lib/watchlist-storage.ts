@@ -429,3 +429,29 @@ export function saveColumnSets(sets: ColumnSet[]): void {
     /* ignore */
   }
 }
+
+const STORAGE_KEY_FAV_LISTS = "stock-research-favorite-watchlist-ids";
+
+export function loadFavoriteWatchlistIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FAV_LISTS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id: unknown) => typeof id === "string") : [];
+  } catch { return []; }
+}
+
+export function saveFavoriteWatchlistIds(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY_FAV_LISTS, JSON.stringify(ids));
+}
+
+export function toggleFavoriteWatchlist(listId: string): string[] {
+  const current = loadFavoriteWatchlistIds();
+  const next = current.includes(listId)
+    ? current.filter((id) => id !== listId)
+    : [...current, listId];
+  saveFavoriteWatchlistIds(next);
+  return next;
+}

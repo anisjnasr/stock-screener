@@ -249,3 +249,29 @@ export function seedDefaultScreensIfEmpty(): void {
   if (current.length > 0) return;
   getDefaultPrebuiltScreens().forEach((s) => addScreen(s));
 }
+
+const STORAGE_KEY_FAV_SCREENS = "stock-research-favorite-screen-ids";
+
+export function loadFavoriteScreenIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FAV_SCREENS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id: unknown) => typeof id === "string") : [];
+  } catch { return []; }
+}
+
+export function saveFavoriteScreenIds(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY_FAV_SCREENS, JSON.stringify(ids));
+}
+
+export function toggleFavoriteScreen(screenId: string): string[] {
+  const current = loadFavoriteScreenIds();
+  const next = current.includes(screenId)
+    ? current.filter((id) => id !== screenId)
+    : [...current, screenId];
+  saveFavoriteScreenIds(next);
+  return next;
+}

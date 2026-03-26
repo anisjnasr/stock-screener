@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
-import { type StockFlag } from "@/lib/watchlist-storage";
+import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist } from "@/lib/watchlist-storage";
+import { loadFavoriteScreenIds, toggleFavoriteScreen } from "@/lib/screener-storage";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
@@ -117,6 +118,8 @@ export default function WorkspaceHeader({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [scanDDOpen, setScanDDOpen] = useState(false);
   const [listDDOpen, setListDDOpen] = useState(false);
+  const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
+  const [favListIds, setFavListIds] = useState<string[]>(() => loadFavoriteWatchlistIds());
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
@@ -269,7 +272,7 @@ export default function WorkspaceHeader({
                       }}
                       onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
                     >
-                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                      {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
                     </button>
                   );
                 })}
@@ -313,25 +316,42 @@ export default function WorkspaceHeader({
                 className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                 style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
               >
-                {scanList.map((s, idx) => (
-                  <div
-                    key={s}
-                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
-                    style={{
-                      color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-                      background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                    onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
-                  >
-                    {idx === 0 && <span style={{ color: "var(--ws-yellow, #ffc107)", marginRight: 4 }}>★</span>}
-                    {s}
-                  </div>
-                ))}
+                {scanList.map((s) => {
+                  const isFav = favScreenIds.includes(s);
+                  return (
+                    <div
+                      key={s}
+                      className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                      style={{
+                        color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                        background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
+                      onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
+                    >
+                      <span
+                        style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 4, cursor: "pointer" }}
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
+                      >
+                        {isFav ? "★" : "☆"}
+                      </span>
+                      {s}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
+          {favScreenIds.filter((id) => scanList.includes(id)).length > 0 && (
+            <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+              {favScreenIds.filter((id) => scanList.includes(id)).map((s) => (
+                <Pill key={s} on={activeScan === s} onClick={() => onScanChange?.(s)}>
+                  {s}
+                </Pill>
+              ))}
+            </div>
+          )}
           {hasFlaggedStocks && (
             <>
               <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
@@ -355,7 +375,7 @@ export default function WorkspaceHeader({
                       }}
                       onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
                     >
-                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                      {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
                     </button>
                   );
                 })}
@@ -399,32 +419,46 @@ export default function WorkspaceHeader({
                 className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                 style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
               >
-                {watchlistNames.map((wl, idx) => (
-                  <div
-                    key={wl.id}
-                    className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
-                    style={{
-                      color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-                      background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                    onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
-                  >
-                    {idx === 0 && <span style={{ color: "var(--ws-yellow, #ffc107)", marginRight: 4 }}>★</span>}
-                    {wl.name}
-                  </div>
-                ))}
+                {watchlistNames.map((wl) => {
+                  const isFav = favListIds.includes(wl.id);
+                  return (
+                    <div
+                      key={wl.id}
+                      className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                      style={{
+                        color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                        background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
+                      onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
+                    >
+                      <span
+                        style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 4, cursor: "pointer" }}
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFavListIds(toggleFavoriteWatchlist(wl.id)); }}
+                      >
+                        {isFav ? "★" : "☆"}
+                      </span>
+                      {wl.name}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-            {watchlistNames.slice(0, 6).map((wl) => (
-              <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
-                {wl.name}
-              </Pill>
-            ))}
-          </div>
+          {(() => {
+            const favLists = watchlistNames.filter((wl) => favListIds.includes(wl.id));
+            if (favLists.length === 0) return null;
+            return (
+              <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+                {favLists.map((wl) => (
+                  <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
+                    {wl.name}
+                  </Pill>
+                ))}
+              </div>
+            );
+          })()}
           {hasFlaggedStocks && (
             <>
               <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
@@ -448,7 +482,7 @@ export default function WorkspaceHeader({
                       }}
                       onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
                     >
-                      {f.charAt(0).toUpperCase() + f.slice(1)} {cnt}
+                      {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
                     </button>
                   );
                 })}
