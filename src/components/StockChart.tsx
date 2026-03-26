@@ -220,14 +220,14 @@ function distanceToSegment(
 const TEMPLATE_STYLES: Record<Exclude<DrawTemplate, "custom">, DrawingStyle> = {
   weekly: {
     color: "#f59e0b",
-    lineWidth: 2,
+    lineWidth: 1,
     lineStyle: 0,
     showLabel: false,
     label: "",
   },
   daily: {
     color: "#d946ef",
-    lineWidth: 2,
+    lineWidth: 1,
     lineStyle: 0,
     showLabel: true,
     label: "Daily",
@@ -288,7 +288,7 @@ export default function StockChart({
   const [drawTemplate, setDrawTemplate] = useState<DrawTemplate>("weekly");
   const [customStyle, setCustomStyle] = useState<DrawingStyle>({
     color: "#22d3ee",
-    lineWidth: 2,
+    lineWidth: 1,
     lineStyle: 0,
     showLabel: false,
     label: "",
@@ -634,7 +634,7 @@ export default function StockChart({
     const drawingStepSeconds: number =
       timeframe === "monthly" ? 60 * 60 * 24 * 30 : timeframe === "weekly" ? 60 * 60 * 24 * 7 : 60 * 60 * 24;
     const lastSeriesTime = seriesData[seriesData.length - 1]?.time ?? (dateToTime("1970-01-01") as UTCTimestamp);
-    const farRightTime = (Number(lastSeriesTime) + drawingStepSeconds * 360) as UTCTimestamp;
+    const farRightTime = (Number(lastSeriesTime) + drawingStepSeconds * 3600) as UTCTimestamp;
 
     for (const d of drawings) {
       const baseWidth = Math.max(1, Math.min(4, Math.round(d.style.lineWidth)));
@@ -666,10 +666,17 @@ export default function StockChart({
       } else {
         const first = d.startTime <= d.endTime ? { t: d.startTime, p: d.startPrice } : { t: d.endTime, p: d.endPrice };
         const second = d.startTime <= d.endTime ? { t: d.endTime, p: d.endPrice } : { t: d.startTime, p: d.startPrice };
-        lineSeries.setData([
-          { time: first.t, value: first.p },
-          { time: second.t, value: second.p },
-        ]);
+        if (first.t === second.t) {
+          lineSeries.setData([
+            { time: first.t, value: first.p },
+            { time: (first.t + drawingStepSeconds) as UTCTimestamp, value: second.p },
+          ]);
+        } else {
+          lineSeries.setData([
+            { time: first.t, value: first.p },
+            { time: second.t, value: second.p },
+          ]);
+        }
       }
     }
     const unsubCrosshair = chart.subscribeCrosshairMove((param) => {

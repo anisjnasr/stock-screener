@@ -56,6 +56,8 @@ import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
 import NinoScriptEditor from "@/components/NinoScriptEditor";
 import NinoScriptHelp from "@/components/NinoScriptHelp";
 
+export const FULL_UNIVERSE_ID = "__full_universe__";
+
 /** Row shape: core fields + all optional screener/quote columns (camelCase). */
 type WatchlistRow = {
   symbol: string;
@@ -156,6 +158,8 @@ type WatchlistPanelProps = {
   /** Sync active user watchlist with workspace header (non-null id selects that list). */
   activeWatchlistIdSync?: string | null;
   onActiveWatchlistIdChange?: (id: string | null) => void;
+  /** Explicitly control whether the panel shows lists or screener data. */
+  sectionMode?: "scans" | "lists";
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -490,6 +494,7 @@ export default function WatchlistPanel({
   openToScreenerTrigger,
   activeWatchlistIdSync,
   onActiveWatchlistIdChange,
+  sectionMode,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListIdState] = useState<string | null>(null);
@@ -511,6 +516,10 @@ export default function WatchlistPanel({
   const [columnSets, setColumnSets] = useState<ColumnSet[]>([]);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showTableMenu, setShowTableMenu] = useState(false);
+  const [showColSetSubmenu, setShowColSetSubmenu] = useState(false);
+  const [showColCustomizeSubmenu, setShowColCustomizeSubmenu] = useState(false);
+  const [showSaveSetPrompt, setShowSaveSetPrompt] = useState(false);
+  const [saveSetName, setSaveSetName] = useState("");
   const tableMenuRef = useRef<HTMLDivElement>(null);
   const [inlineTickerValue, setInlineTickerValue] = useState("");
   const [showInlineTickerRow, setShowInlineTickerRow] = useState(false);
@@ -840,16 +849,22 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     if (activeWatchlistIdSync != null && activeWatchlistIdSync !== "") {
-      if (!lists.some((l) => l.id === activeWatchlistIdSync)) return;
+      const isFullUniverse = activeWatchlistIdSync === FULL_UNIVERSE_ID;
+      if (!isFullUniverse && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
       if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
       setSidebarTab("watchlists");
       setSelectedCollectionId(null);
       return;
     }
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
-    else if (activeListId && !lists.find((l) => l.id === activeListId))
+    else if (activeListId && activeListId !== FULL_UNIVERSE_ID && !lists.find((l) => l.id === activeListId))
       setActiveListId(lists[0]?.id ?? null);
   }, [lists, activeListId, activeWatchlistIdSync, setActiveListId]);
+
+  useEffect(() => {
+    if (sectionMode === "scans") setSidebarTab("screener");
+    else if (sectionMode === "lists") setSidebarTab("watchlists");
+  }, [sectionMode]);
 
   useEffect(() => {
     saveWatchlists(lists);
@@ -1083,11 +1098,14 @@ export default function WatchlistPanel({
     if (selectedFolder) {
       return { symbols: [], title: selectedFolder.name, fromScreener: false, screen: null };
     }
+    if (activeListId === FULL_UNIVERSE_ID) {
+      return { symbols: [], title: "Full Universe", fromScreener: false, screen: null };
+    }
     if (activeList) {
       return { symbols: activeList.symbols ?? [], title: activeList.name, fromScreener: false, screen: null };
     }
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
-  }, [sidebarTab, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
+  }, [sidebarTab, activeListId, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
 
   const activeListTitle = tableSource.title;
   const isUserWatchlist = Boolean(activeList) && sidebarTab === "watchlists" && !selectedCollectionId;
@@ -1429,18 +1447,36 @@ export default function WatchlistPanel({
     [buildScreenerParams, downloadSymbolsTxt]
   );
 
+  const fetchFullUniverse = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/screener?limit=20000");
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
+      const newRows: WatchlistRow[] = (data.rows ?? []).map((r) => mapScreenerRowToWatchlistRow(r));
+      setRows(newRows);
+      setLastRefresh(new Date());
+    } catch { setRows([]); } finally { setLoading(false); }
+  }, [mapScreenerRowToWatchlistRow]);
+
   const fetchRows = useCallback(
     () =>
-      tableSource.fromScreener && tableSource.screen
-        ? fetchScreenerResults(tableSource.screen)
-        : fetchRowsForSymbols(tableSource.symbols),
-    [fetchRowsForSymbols, fetchScreenerResults, tableSource.fromScreener, tableSource.screen, tableSource.symbols]
+      activeListId === FULL_UNIVERSE_ID
+        ? fetchFullUniverse()
+        : tableSource.fromScreener && tableSource.screen
+          ? fetchScreenerResults(tableSource.screen)
+          : fetchRowsForSymbols(tableSource.symbols),
+    [activeListId, fetchFullUniverse, fetchRowsForSymbols, fetchScreenerResults, tableSource.fromScreener, tableSource.screen, tableSource.symbols]
   );
 
   const isMinimized = panelHeightPx <= MIN_PANEL_HEIGHT_PX;
 
   useEffect(() => {
     if (isMinimized) return;
+    if (activeListId === FULL_UNIVERSE_ID) {
+      fetchFullUniverse();
+      return;
+    }
     if (tableSource.fromScreener && tableSource.screen) {
       fetchScreenerResults(tableSource.screen);
     } else if (tableSource.symbols.length > 0) {
@@ -1448,7 +1484,7 @@ export default function WatchlistPanel({
     } else {
       setRows([]);
     }
-  }, [isMinimized, tableSource.fromScreener, tableSource.screen?.id, tableSource.screen?.type, tableSource.symbols.join(","), fetchRowsForSymbols, fetchScreenerResults]);
+  }, [isMinimized, activeListId, tableSource.fromScreener, tableSource.screen?.id, tableSource.screen?.type, tableSource.symbols.join(","), fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
 
   // Popup: search autocomplete when add popup is open
   useEffect(() => {
@@ -1986,24 +2022,33 @@ export default function WatchlistPanel({
   }, [sortedRows, onOrderedSymbolsChange]);
 
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [addedColumns, setAddedColumns] = useState<string[]>([]);
+  useEffect(() => { setHiddenColumns(new Set()); setAddedColumns([]); }, [sidebarTab, selectedScreen?.id]);
+
   const tableColumns = useMemo((): TableColumnId[] => {
     const alwaysFirst = ["ticker", "lastPrice"];
+    let base: TableColumnId[];
     if (sidebarTab === "screener" && selectedScreen) {
       if (selectedScreen.type === "script" && scriptColumns.length > 0) {
         const rest = scriptColumns.filter((c) => c !== "ticker" && c !== "lastPrice");
-        return [...alwaysFirst, ...rest];
-      }
-      if (selectedScreen.type !== "script") {
+        base = [...alwaysFirst, ...rest];
+      } else if (selectedScreen.type !== "script") {
         const filterCols = getFilterCriteriaColumns(selectedScreen.filters).filter(
           (c) => c !== "ticker" && c !== "lastPrice"
         );
-        if (filterCols.length > 0) {
-          return [...alwaysFirst, ...filterCols];
-        }
+        base = filterCols.length > 0 ? [...alwaysFirst, ...filterCols] : visibleColumns;
+      } else {
+        base = visibleColumns;
       }
+    } else {
+      base = visibleColumns;
     }
-    return visibleColumns;
-  }, [sidebarTab, selectedScreen?.type, selectedScreen?.filters, scriptColumns, visibleColumns]);
+    const baseSet = new Set(base);
+    const extras = addedColumns.filter((c) => !baseSet.has(c)) as TableColumnId[];
+    const merged = [...base, ...extras];
+    return hiddenColumns.size > 0 ? merged.filter((c) => !hiddenColumns.has(c)) : merged;
+  }, [sidebarTab, selectedScreen?.type, selectedScreen?.filters, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
 
   const handleSort = useCallback((col: TableColumnId) => {
     if (sortKey === col) {
@@ -2136,6 +2181,7 @@ export default function WatchlistPanel({
     e.dataTransfer.setData("text/plain", String(index));
     e.dataTransfer.effectAllowed = "move";
     setColDragIndex(index);
+    colDragIndexRef.current = index;
   }, []);
 
   const handleColumnHeaderDragOver = useCallback((index: number) => (e: React.DragEvent) => {
@@ -2144,24 +2190,30 @@ export default function WatchlistPanel({
     setColDropIndex(index);
   }, []);
 
+  const colDragIndexRef = useRef<number | null>(null);
+  const tableColumnsRef = useRef(tableColumns);
+  tableColumnsRef.current = tableColumns;
+
   const handleColumnHeaderDrop = useCallback(
     (toIndex: number) => (e: React.DragEvent) => {
       e.preventDefault();
-      const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10);
-      if (Number.isNaN(fromIndex) || fromIndex === toIndex) {
+      const fromIndex = colDragIndexRef.current;
+      if (fromIndex == null || fromIndex === toIndex) {
         setColDragIndex(null);
         setColDropIndex(null);
+        colDragIndexRef.current = null;
         return;
       }
-      setVisibleColumns((prev) => {
-        const next = [...prev];
-        const [removed] = next.splice(fromIndex, 1);
-        next.splice(toIndex, 0, removed);
-        saveVisibleColumns(next);
-        return next;
-      });
+      const current = [...tableColumnsRef.current] as ColumnId[];
+      const [removed] = current.splice(fromIndex, 1);
+      current.splice(toIndex, 0, removed);
+      setVisibleColumns(current);
+      saveVisibleColumns(current);
+      setAddedColumns([]);
+      setHiddenColumns(new Set());
       setColDragIndex(null);
       setColDropIndex(null);
+      colDragIndexRef.current = null;
     },
     []
   );
@@ -2169,6 +2221,7 @@ export default function WatchlistPanel({
   const handleColumnHeaderDragEnd = useCallback(() => {
     setColDragIndex(null);
     setColDropIndex(null);
+    colDragIndexRef.current = null;
   }, []);
 
   // Smooth drag: update height continuously; clamp to [MIN_PANEL_HEIGHT_PX, max].
@@ -3645,24 +3698,122 @@ export default function WatchlistPanel({
                   </button>
                   {showTableMenu && (
                     <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
-                      <button type="button"
-                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
-                        style={{ color: "var(--ws-text-dim)" }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                        onClick={() => { setShowColumnPicker(true); setShowTableMenu(false); }}
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setShowColCustomizeSubmenu(true)}
+                        onMouseLeave={() => setShowColCustomizeSubmenu(false)}
                       >
-                        Customize Columns
-                      </button>
-                      <button type="button"
-                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
-                        style={{ color: "var(--ws-text-dim)" }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                        onClick={() => { setShowColumnPicker(true); setShowTableMenu(false); }}
+                        <button type="button"
+                          className="w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between"
+                          style={{ color: "var(--ws-text-dim)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          Customize Columns
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="ml-2 opacity-50"><path d="M2 1l4 3-4 3z" /></svg>
+                        </button>
+                        {showColCustomizeSubmenu && (
+                          <div
+                            className="absolute left-full top-0 z-50 rounded py-1 min-w-[180px] max-h-[400px] overflow-y-auto shadow-lg"
+                            style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
+                          >
+                            {ALL_COLUMN_IDS.map((col) => {
+                              const isOn = tableColumns.includes(col);
+                              return (
+                                <label
+                                  key={col}
+                                  className="flex items-center gap-2 px-3 py-1 text-xs cursor-pointer transition-colors"
+                                  style={{ color: isOn ? "var(--ws-text)" : "var(--ws-text-dim)" }}
+                                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isOn}
+                                    onChange={() => {
+                                      if (isOn) {
+                                        if (visibleColumns.includes(col)) {
+                                          const next = visibleColumns.filter((c) => c !== col);
+                                          setVisibleColumns(next);
+                                          saveVisibleColumns(next);
+                                        }
+                                        setHiddenColumns((prev) => new Set(prev).add(col));
+                                        setAddedColumns((prev) => prev.filter((c) => c !== col));
+                                      } else {
+                                        if (!visibleColumns.includes(col)) {
+                                          const next = [...visibleColumns, col];
+                                          setVisibleColumns(next);
+                                          saveVisibleColumns(next);
+                                        }
+                                        setHiddenColumns((prev) => { const n = new Set(prev); n.delete(col); return n; });
+                                        setAddedColumns((prev) => prev.includes(col) ? prev : [...prev, col]);
+                                      }
+                                    }}
+                                    className="accent-[var(--ws-cyan)]"
+                                    style={{ width: 12, height: 12 }}
+                                  />
+                                  {COLUMN_LABELS[col]}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setShowColSetSubmenu(true)}
+                        onMouseLeave={() => setShowColSetSubmenu(false)}
                       >
-                        Saved Column Sets
-                      </button>
+                        <button type="button"
+                          className="w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between"
+                          style={{ color: "var(--ws-text-dim)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          Saved Column Sets
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="ml-2 opacity-50"><path d="M2 1l4 3-4 3z" /></svg>
+                        </button>
+                        {showColSetSubmenu && columnSets.length > 0 && (
+                          <div
+                            className="absolute left-full top-0 z-50 rounded py-1 min-w-[160px] shadow-lg"
+                            style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
+                          >
+                            {columnSets.map((s) => (
+                              <div
+                                key={s.id}
+                                className="group flex items-center justify-between px-3 py-1.5 text-xs transition-colors cursor-pointer"
+                                style={{ color: "var(--ws-text-dim)" }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                                onClick={() => {
+                                  setVisibleColumns(s.columns);
+                                  setColumnWidths(s.widths ?? {});
+                                  saveVisibleColumns(s.columns);
+                                  saveColumnWidths(s.widths ?? {});
+                                  setShowTableMenu(false);
+                                  setShowColSetSubmenu(false);
+                                }}
+                              >
+                                <span>{s.name}</span>
+                                <button
+                                  type="button"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-900/40"
+                                  style={{ color: "var(--ws-red, #ff4d6a)" }}
+                                  title={`Delete "${s.name}"`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = columnSets.filter((cs) => cs.id !== s.id);
+                                    setColumnSets(next);
+                                    saveColumnSets(next);
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <button type="button"
                         className="w-full text-left px-3 py-1.5 text-xs transition-colors"
                         style={{ color: "var(--ws-text-dim)" }}
@@ -3671,6 +3822,61 @@ export default function WatchlistPanel({
                         onClick={() => { handleAutoSizeColumns(); setShowTableMenu(false); }}
                       >
                         Auto Resize Columns
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => { setShowSaveSetPrompt((v) => !v); setSaveSetName(""); }}
+                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                    style={{ color: "var(--ws-text-dim)" }}
+                    title="Save column set"
+                    aria-label="Save column set"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4.414a1 1 0 00-.293-.707l-2.414-2.414A1 1 0 0011.586 1H2zm0 1h1v3a1 1 0 001 1h6a1 1 0 001-1V2h.586L14 4.414V14H2V2zm3 0v3h4V2H5z"/></svg>
+                  </button>
+                  {showSaveSetPrompt && (
+                    <div
+                      className="absolute left-0 top-full z-50 mt-1 rounded p-2 shadow-lg flex items-center gap-1"
+                      style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
+                    >
+                      <input
+                        autoFocus
+                        type="text"
+                        value={saveSetName}
+                        onChange={(e) => setSaveSetName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && saveSetName.trim()) {
+                            const newSet: ColumnSet = { id: crypto.randomUUID(), name: saveSetName.trim(), columns: [...visibleColumns], widths: { ...columnWidths } };
+                            const next = [...columnSets, newSet];
+                            setColumnSets(next);
+                            saveColumnSets(next);
+                            setShowSaveSetPrompt(false);
+                            setSaveSetName("");
+                          }
+                          if (e.key === "Escape") { setShowSaveSetPrompt(false); setSaveSetName(""); }
+                        }}
+                        placeholder="Set name..."
+                        className="text-xs rounded px-2 py-1"
+                        style={{ background: "var(--ws-bg)", color: "var(--ws-text)", border: "1px solid var(--ws-border)", outline: "none", width: 120 }}
+                      />
+                      <button
+                        type="button"
+                        className="text-[10px] font-medium px-2 py-1 rounded"
+                        style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)", opacity: saveSetName.trim() ? 1 : 0.4 }}
+                        onClick={() => {
+                          if (!saveSetName.trim()) return;
+                          const newSet: ColumnSet = { id: crypto.randomUUID(), name: saveSetName.trim(), columns: [...visibleColumns], widths: { ...columnWidths } };
+                          const next = [...columnSets, newSet];
+                          setColumnSets(next);
+                          saveColumnSets(next);
+                          setShowSaveSetPrompt(false);
+                          setSaveSetName("");
+                        }}
+                      >
+                        Save
                       </button>
                     </div>
                   )}
@@ -3698,6 +3904,27 @@ export default function WatchlistPanel({
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
                     </button>
                   </>
+                )}
+                {isUserWatchlist && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInlineTickerRow(true);
+                      setInlineTickerValue("");
+                      setTimeout(() => inlineTickerRef.current?.focus(), 50);
+                    }}
+                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                    style={{ color: "var(--ws-text-dim)" }}
+                    title="Add new row"
+                    aria-label="Add new row"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <line x1="2" y1="3" x2="14" y2="3" />
+                      <line x1="2" y1="13" x2="14" y2="13" />
+                      <line x1="5" y1="8" x2="11" y2="8" />
+                      <line x1="8" y1="5" x2="8" y2="11" />
+                    </svg>
+                  </button>
                 )}
               </div>
             </div>
@@ -3754,14 +3981,24 @@ export default function WatchlistPanel({
                           onDragLeave={!isScriptCol ? () => setColDropIndex(null) : undefined}
                           onDrop={!isScriptCol ? handleColumnHeaderDrop(colIndex) : undefined}
                           onDragEnd={handleColumnHeaderDragEnd}
-                          className={`relative py-1.5 px-2 font-medium whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""} ${colDropIndex === colIndex ? "ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20" : ""}`}
-                          style={{ width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)", background: sortKey === col ? "rgba(0,229,204,0.08)" : undefined }}
+                          className={`relative py-1.5 px-2 font-medium whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""}`}
+                          style={{
+                            width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)",
+                            background: sortKey === col ? "rgba(0,229,204,0.08)" : undefined, cursor: "pointer",
+                            boxShadow: colDropIndex === colIndex && colDragIndex != null
+                              ? colDragIndex < colIndex
+                                ? "inset -2px 0 0 0 var(--ws-cyan, #00e5cc)"
+                                : "inset 2px 0 0 0 var(--ws-cyan, #00e5cc)"
+                              : undefined,
+                          }}
+                          onMouseEnter={(e) => { if (sortKey !== col) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = sortKey === col ? "rgba(0,229,204,0.08)" : ""; }}
                         >
                           <div className={`flex items-center gap-0.5 ${isNumericCol ? "justify-end" : ""} ${!isScriptCol ? "cursor-grab active:cursor-grabbing" : ""}`}>
                             <button
                               type="button"
                               onClick={() => handleSort(col)}
-                              className="flex items-center gap-0.5 min-w-0 rounded px-0.5 py-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                              className="flex items-center gap-0.5 min-w-0 px-0.5 py-0.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
                               title={sortKey === col ? (sortDir === "asc" ? "Sort descending" : "Sort ascending") : `Sort by ${getColumnLabel(col)}`}
                               aria-label={sortKey === col ? `Sorted ${sortDir === "asc" ? "ascending" : "descending"} — click to toggle` : `Sort by ${getColumnLabel(col)}`}
                             >
@@ -3881,9 +4118,7 @@ export default function WatchlistPanel({
                               setSelectedSymbols(new Set(sortedRows.slice(start, end + 1).map((r) => r.symbol)));
                               return;
                             }
-                            if (selectedSymbols.size > 0) {
-                              clearSelection();
-                            }
+                            setSelectedSymbols(new Set([row.symbol]));
                             onSymbolSelect?.(row.symbol);
                           }}
                         >

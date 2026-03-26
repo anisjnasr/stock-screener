@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
 import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist } from "@/lib/watchlist-storage";
+import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import { loadFavoriteScreenIds, toggleFavoriteScreen } from "@/lib/screener-storage";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
@@ -47,6 +48,7 @@ type WorkspaceHeaderProps = {
   watchlistNames?: { id: string; name: string }[];
   activeWatchlistId?: string | null;
   onWatchlistChange?: (id: string) => void;
+  onDeleteWatchlist?: (id: string) => void;
   onNewList?: () => void;
   lastUpdated?: string | null;
   railWidthPx?: number;
@@ -110,6 +112,7 @@ export default function WorkspaceHeader({
   watchlistNames = [],
   activeWatchlistId,
   onWatchlistChange,
+  onDeleteWatchlist,
   onNewList,
   lastUpdated,
   railWidthPx = 0,
@@ -211,14 +214,14 @@ export default function WorkspaceHeader({
         className="h-6 w-auto shrink-0 opacity-80"
       />
 
-      {/* Section pills */}
-      <nav className="flex items-center gap-0.5 rounded p-0.5 ml-3" style={{ background: "var(--ws-bg)" }}>
+      {/* Main navigation tabs */}
+      <nav className="flex items-center gap-1 ml-3">
         {WORKSPACE_SECTIONS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => onSectionChange(s.id)}
-            className="px-2.5 py-1 text-xs font-medium rounded transition-colors"
+            className="px-3 py-1 text-[13px] font-semibold rounded transition-colors"
             style={{
               background: section === s.id ? "var(--ws-cyan)" : "transparent",
               color: section === s.id ? "var(--ws-bg)" : "var(--ws-text-dim)",
@@ -229,8 +232,8 @@ export default function WorkspaceHeader({
         ))}
       </nav>
 
-      {/* Divider */}
-      <div className="shrink-0" style={{ width: 1, height: 20, background: "var(--ws-border)", margin: "0 6px" }} />
+      {/* Divider: nav | contextual */}
+      <div className="shrink-0" style={{ width: 1, height: 20, background: "var(--ws-border)", margin: "0 8px" }} />
 
       {/* ---- CONTEXTUAL CONTROLS ---- */}
 
@@ -289,10 +292,10 @@ export default function WorkspaceHeader({
           <button
             type="button"
             onClick={onNewScan}
-            className="shrink-0 px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
+            className="shrink-0 px-2.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
             style={{
-              background: "rgba(0,229,204,0.08)",
-              border: "1px solid rgba(0,229,204,0.2)",
+              background: "rgba(0,229,204,0.06)",
+              border: "1px solid rgba(0,229,204,0.25)",
               color: "var(--ws-cyan)",
             }}
           >
@@ -345,17 +348,20 @@ export default function WorkspaceHeader({
             )}
           </div>
           {favScreenIds.filter((id) => scanList.includes(id)).length > 0 && (
-            <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-              {favScreenIds.filter((id) => scanList.includes(id)).map((s) => (
-                <Pill key={s} on={activeScan === s} onClick={() => onScanChange?.(s)}>
-                  {s}
-                </Pill>
-              ))}
-            </div>
+            <>
+              <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
+              <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+                {favScreenIds.filter((id) => scanList.includes(id)).map((s) => (
+                  <Pill key={s} on={activeScan === s} onClick={() => onScanChange?.(s)}>
+                    {s}
+                  </Pill>
+                ))}
+              </div>
+            </>
           )}
           {hasFlaggedStocks && (
             <>
-              <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+              <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
               <div className="flex items-center gap-1">
                 {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
                   const cnt = flagCounts[f] ?? 0;
@@ -391,10 +397,10 @@ export default function WorkspaceHeader({
           <button
             type="button"
             onClick={onNewList}
-            className="shrink-0 px-3 py-1 rounded text-[11px] font-medium cursor-pointer"
+            className="shrink-0 px-2.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
             style={{
-              background: "rgba(0,229,204,0.08)",
-              border: "1px solid rgba(0,229,204,0.2)",
+              background: "rgba(0,229,204,0.06)",
+              border: "1px solid rgba(0,229,204,0.25)",
               color: "var(--ws-cyan)",
             }}
           >
@@ -421,10 +427,11 @@ export default function WorkspaceHeader({
               >
                 {watchlistNames.map((wl) => {
                   const isFav = favListIds.includes(wl.id);
+                  const isDeletable = wl.id !== FULL_UNIVERSE_ID;
                   return (
                     <div
                       key={wl.id}
-                      className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                      className="group/wl px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
                       style={{
                         color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                         background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
@@ -440,7 +447,21 @@ export default function WorkspaceHeader({
                       >
                         {isFav ? "★" : "☆"}
                       </span>
-                      {wl.name}
+                      <span className="flex-1 truncate">{wl.name}</span>
+                      {isDeletable && (
+                        <span
+                          className="ml-2 shrink-0 opacity-0 group-hover/wl:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
+                          title={`Delete ${wl.name}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onDeleteWatchlist?.(wl.id);
+                            setListDDOpen(false);
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -451,18 +472,21 @@ export default function WorkspaceHeader({
             const favLists = watchlistNames.filter((wl) => favListIds.includes(wl.id));
             if (favLists.length === 0) return null;
             return (
-              <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-                {favLists.map((wl) => (
-                  <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
-                    {wl.name}
-                  </Pill>
-                ))}
-              </div>
+              <>
+                <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
+                <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+                  {favLists.map((wl) => (
+                    <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
+                      {wl.name}
+                    </Pill>
+                  ))}
+                </div>
+              </>
             );
           })()}
           {hasFlaggedStocks && (
             <>
-              <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
+              <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
               <div className="flex items-center gap-1">
                 {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
                   const cnt = flagCounts[f] ?? 0;

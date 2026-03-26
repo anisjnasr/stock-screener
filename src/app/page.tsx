@@ -35,7 +35,7 @@ import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimef
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import NNHPanel from "@/components/NNHPanel";
-import WatchlistPanel from "@/components/WatchlistPanel";
+import WatchlistPanel, { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import MarketLeftPanel from "@/components/MarketLeftPanel";
 import SectorPerfPanel from "@/components/SectorPerfPanel";
 import RightRail from "@/components/RightRail";
@@ -96,7 +96,7 @@ export default function Home() {
 
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
-  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(null);
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(FULL_UNIVERSE_ID);
   const secondaryPagesPrefetchedRef = useRef(false);
   const { cycleTheme } = useTheme();
 
@@ -201,6 +201,17 @@ export default function Home() {
     });
   }, [symbol]);
 
+  const handleDeleteWatchlist = useCallback((id: string) => {
+    if (id === FULL_UNIVERSE_ID) return;
+    setWatchlists((prev) => {
+      const next = prev.filter((l) => l.id !== id);
+      saveWatchlists(next);
+      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
+      return next;
+    });
+    if (activeWatchlistId === id) setActiveWatchlistId(FULL_UNIVERSE_ID);
+  }, [activeWatchlistId]);
+
   const handleAddToWatchlist = useCallback((watchlistId: string) => {
     setWatchlists((prev) => {
       const sym = symbol.toUpperCase();
@@ -251,7 +262,10 @@ export default function Home() {
   };
 
   const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
-  const chartWatchlists = useMemo(() => watchlists.map((l) => ({ id: l.id, name: l.name })), [watchlists]);
+  const chartWatchlists = useMemo(() => [
+    { id: FULL_UNIVERSE_ID, name: "Full Universe" },
+    ...watchlists.map((l) => ({ id: l.id, name: l.name })),
+  ], [watchlists]);
   const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === symbol.toUpperCase()), [scanSymbols, symbol]);
 
   useEffect(() => {
@@ -343,6 +357,7 @@ export default function Home() {
           hideSidebar
           activeWatchlistIdSync={activeWatchlistId}
           onActiveWatchlistIdChange={setActiveWatchlistId}
+          sectionMode={section === "scans" ? "scans" : "lists"}
         />
       )}
     </div>
@@ -444,6 +459,7 @@ export default function Home() {
         watchlistNames={chartWatchlists}
         activeWatchlistId={activeWatchlistId}
         onWatchlistChange={setActiveWatchlistId}
+        onDeleteWatchlist={handleDeleteWatchlist}
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
         railWidthPx={rightRailHidden ? 0 : railWidthPx}
         onNewList={() => {
