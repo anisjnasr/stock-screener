@@ -108,14 +108,16 @@ function BarChart({
   growthKey,
   periodKey,
   color,
+  maxBars = 8,
 }: {
   data: Array<Record<string, unknown>>;
   valueKey: string;
   growthKey: string;
   periodKey?: string;
   color: string;
+  maxBars?: number;
 }) {
-  const display = data.slice(0, 6);
+  const display = data.slice(0, maxBars);
   if (display.length === 0) return null;
   const values = display.map((d) => Number(d[valueKey] ?? 0));
   const maxVal = Math.max(...values.map(Math.abs), 1);
@@ -124,7 +126,7 @@ function BarChart({
 
   return (
     <div className="mt-1.5">
-      <div className="flex items-end gap-2" style={{ minHeight: hasNegative ? barAreaH * 2 + 8 : barAreaH + 8, position: "relative" }}>
+      <div className="flex items-end gap-1" style={{ minHeight: hasNegative ? barAreaH * 2 + 8 : barAreaH + 8, position: "relative" }}>
         {display.map((d, i) => {
           const val = Number(d[valueKey] ?? 0);
           const rawGrowth = d[growthKey];
@@ -135,9 +137,9 @@ function BarChart({
           const shortPeriod = period.length > 7 ? period.replace(/Quarter /, "Q").replace(/20(\d\d)/, "$1") : period;
 
           return (
-            <div key={i} className="flex flex-col items-center gap-0.5 min-w-0" style={{ width: 36 }}>
+            <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
               {!isNeg && (
-                <span className="text-[10px] font-medium tabular-nums leading-none"
+                <span className="text-[9px] font-medium tabular-nums leading-none"
                   style={{ color: growth != null && growth >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
                   {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
                 </span>
@@ -149,13 +151,13 @@ function BarChart({
                 marginTop: isNeg ? 0 : "auto",
               }} />
               {isNeg && (
-                <span className="text-[10px] font-medium tabular-nums leading-none"
+                <span className="text-[9px] font-medium tabular-nums leading-none"
                   style={{ color: "var(--ws-red)" }}>
                   {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
                 </span>
               )}
               {shortPeriod && (
-                <span className="text-[9px] tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>{shortPeriod}</span>
+                <span className="text-[8px] tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>{shortPeriod}</span>
               )}
             </div>
           );
@@ -398,7 +400,7 @@ export default function RightRail({
           {/* INSTITUTIONAL */}
           <div>
             <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--ws-text)" }}>
-              Fund Counts
+              Institutional Holders
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-[18px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>
@@ -413,7 +415,7 @@ export default function RightRail({
             </div>
             {ownershipData.length > 0 && (
               <BarChart
-                data={ownershipData.slice(0, 6)}
+                data={ownershipData.slice(0, 8)}
                 valueKey="value"
                 growthKey="change"
                 periodKey="period"

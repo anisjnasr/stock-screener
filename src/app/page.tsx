@@ -107,6 +107,7 @@ export default function Home() {
     setRailWidthPx,
     rightRailHidden,
     setRightRailHidden,
+    handleRightRailToggle,
   } = useLayoutPreferences();
 
   const chartHidden = section === "market" && marketSubTab === "monitor";
@@ -437,7 +438,7 @@ export default function Home() {
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}
-        onToggleRightRail={() => setRightRailHidden((v) => !v)}
+        onToggleRightRail={handleRightRailToggle}
         leftPanel={leftPanel}
         centerPanel={centerPanel}
         rightPanel={rightPanel}
