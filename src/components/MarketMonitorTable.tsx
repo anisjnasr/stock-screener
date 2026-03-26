@@ -115,12 +115,6 @@ export default function MarketMonitorTable() {
         <p className="text-[10px] text-center -mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>
           Credit: Stockbee
         </p>
-        <p className="text-xs text-right" style={{ color: "var(--ws-text-dim)" }}>
-          Last Update:{" "}
-          <span className="tabular-nums">
-            {latestDate ? formatDisplayDate(latestDate) : "—"}
-          </span>
-        </p>
       </div>
       <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border)" }}>
         <table className="min-w-full text-xs sm:text-sm text-center border-collapse">

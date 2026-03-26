@@ -577,7 +577,7 @@ export default function WorkspaceHeader({
 
       {/* Last updated */}
       {lastUpdated && (
-        <span className="shrink-0 text-[10px] tabular-nums ml-2" style={{ color: "var(--ws-text-vdim)" }}>
+        <span className="shrink-0 text-[12px] tabular-nums ml-2" style={{ color: "rgba(201,209,217,0.6)" }}>
           {lastUpdated}
         </span>
       )}

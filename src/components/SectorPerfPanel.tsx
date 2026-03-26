@@ -203,7 +203,7 @@ export default function SectorPerfPanel({
           )}
         </div>
       </div>
-      <div ref={listRef} className="flex-1 overflow-auto">
+      <div ref={listRef} className="flex-1 overflow-auto" style={{ maxWidth: "50vw" }}>
         {sorted.map((s, i) => {
           const pct = s.changePct ?? 0;
           const isPos = pct >= 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
 
@@ -102,70 +102,7 @@ function fmtPctSigned(n: number | null): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
 }
 
-function BarChart({
-  data,
-  valueKey,
-  growthKey,
-  periodKey,
-  color,
-  maxBars = 8,
-}: {
-  data: Array<Record<string, unknown>>;
-  valueKey: string;
-  growthKey: string;
-  periodKey?: string;
-  color: string;
-  maxBars?: number;
-}) {
-  const display = data.slice(0, maxBars);
-  if (display.length === 0) return null;
-  const values = display.map((d) => Number(d[valueKey] ?? 0));
-  const maxVal = Math.max(...values.map(Math.abs), 1);
-  const hasNegative = values.some((v) => v < 0);
-  const barAreaH = 44;
 
-  return (
-    <div className="mt-1.5">
-      <div className="flex items-end gap-1" style={{ minHeight: hasNegative ? barAreaH * 2 + 8 : barAreaH + 8, position: "relative" }}>
-        {display.map((d, i) => {
-          const val = Number(d[valueKey] ?? 0);
-          const rawGrowth = d[growthKey];
-          const growth = typeof rawGrowth === "number" ? rawGrowth : null;
-          const barH = Math.max(4, (Math.abs(val) / maxVal) * barAreaH);
-          const isNeg = val < 0;
-          const period = periodKey ? String(d[periodKey] ?? "") : "";
-          const shortPeriod = period.length > 7 ? period.replace(/Quarter /, "Q").replace(/20(\d\d)/, "$1") : period;
-
-          return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-              {!isNeg && (
-                <span className="text-[9px] font-medium tabular-nums leading-none"
-                  style={{ color: growth != null && growth >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
-                  {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
-                </span>
-              )}
-              <div className="w-full rounded-sm" style={{
-                height: barH,
-                background: isNeg ? "var(--ws-red)" : color,
-                opacity: 0.85,
-                marginTop: isNeg ? 0 : "auto",
-              }} />
-              {isNeg && (
-                <span className="text-[9px] font-medium tabular-nums leading-none"
-                  style={{ color: "var(--ws-red)" }}>
-                  {growth != null ? `${growth >= 0 ? "+" : ""}${growth.toFixed(0)}%` : ""}
-                </span>
-              )}
-              {shortPeriod && (
-                <span className="text-[8px] tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>{shortPeriod}</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 
 export default function RightRail({
@@ -177,7 +114,6 @@ export default function RightRail({
   yearlyRows,
   quarterlyRows,
   ownershipQuarters,
-  fundCount,
   rsRank,
   loading,
 }: RightRailProps) {
@@ -185,14 +121,6 @@ export default function RightRail({
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [revenueView, setRevenueView] = useState<"annual" | "quarterly">("quarterly");
   const [epsView, setEpsView] = useState<"annual" | "quarterly">("quarterly");
-
-  const ownershipData = useMemo(() => {
-    return ownershipQuarters.slice(0, 8).map((q) => ({
-      period: q.report_date,
-      value: q.num_funds ?? 0,
-      change: q.num_funds_change ?? 0,
-    }));
-  }, [ownershipQuarters]);
 
   if (loading) {
     return (
@@ -210,31 +138,6 @@ export default function RightRail({
     return JSON.stringify(v);
   };
 
-  const qtrData = quarterlyRows.slice(0, 4);
-  const latestQtr = qtrData[0];
-  const latestYear = yearlyRows[0];
-
-  const latestRevenue = latestQtr?.sales;
-  const revenueYoY = latestYear?.salesGrowth;
-  const latestEps = latestQtr?.eps;
-  const epsYoY = latestYear?.epsGrowth;
-
-  const revenueRange = yearlyRows.length >= 2
-    ? `${fmtCompact(yearlyRows[yearlyRows.length - 1]?.sales ?? 0)} → ${fmtCompact(yearlyRows[0]?.sales ?? 0)}`
-    : latestRevenue != null ? fmtCompact(latestRevenue) : "—";
-  const epsRange = yearlyRows.length >= 2
-    ? `$${(yearlyRows[yearlyRows.length - 1]?.eps ?? 0).toFixed(2)} → $${(yearlyRows[0]?.eps ?? 0).toFixed(2)}`
-    : latestEps != null ? `$${latestEps.toFixed(2)}` : "—";
-
-  const latestOwnership = ownershipData[0];
-  const prevOwnership = ownershipData[1];
-  const ownershipTrend = latestOwnership && prevOwnership
-    ? latestOwnership.value > prevOwnership.value ? "increasing" : latestOwnership.value < prevOwnership.value ? "decreasing" : "flat"
-    : null;
-
-  const bestRs = rsRank
-    ? Math.max(rsRank.rs_pct_1w ?? 0, rsRank.rs_pct_1m ?? 0, rsRank.rs_pct_3m ?? 0, rsRank.rs_pct_6m ?? 0, rsRank.rs_pct_12m ?? 0)
-    : null;
 
   const desc = safe(profile?.description);
   const truncatedDesc = desc.length > 150 ? desc.slice(0, 150) + "…" : desc;
@@ -257,16 +160,18 @@ export default function RightRail({
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
-      {/* Profile header — order: Ticker, Name, Website, Description, Exchange, Sector, Industry, Market Cap, Float */}
+      {/* Profile header — order: Ticker + Name inline, Website, Description, Exchange, Sector, Industry, Market Cap, Float */}
       <div className="px-3 py-2.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        <div className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
-          {symbol}
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+            {symbol}
+          </span>
+          {profile?.companyName && (
+            <span className="text-[13px] leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+              {safe(profile.companyName)}
+            </span>
+          )}
         </div>
-        {profile?.companyName && (
-          <div className="text-[13px] mt-1 leading-snug" style={{ color: "rgba(201,209,217,0.85)" }}>
-            {safe(profile.companyName)}
-          </div>
-        )}
         {profile?.website && typeof profile.website === "string" && (
           <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
             target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[12px] font-medium" style={{ color: "var(--ws-cyan)" }}>
@@ -331,117 +236,11 @@ export default function RightRail({
       ) : (
         <div className="px-3 py-3 space-y-4">
 
-          {/* REVENUE */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue</div>
-              <div className="flex gap-0.5">
-                {(["annual", "quarterly"] as const).map((v) => (
-                  <button key={v} type="button" onClick={() => setRevenueView(v)}
-                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
-                    style={{ background: revenueView === v ? "var(--ws-bg3)" : "transparent", color: revenueView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
-              {revenueRange}
-            </div>
-            {revenueYoY != null && (
-              <div className="text-[13px] font-semibold mt-0.5" style={{ color: revenueYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
-                {fmtPctSigned(revenueYoY)} YoY
-              </div>
-            )}
-            <BarChart
-              data={revenueView === "annual" ? yearlyRows.slice(0, 6) : qtrData}
-              valueKey="sales"
-              growthKey="salesGrowth"
-              periodKey={revenueView === "annual" ? "year" : "period"}
-              color="var(--ws-cyan)"
-            />
-          </div>
-
-          <SectionDivider />
-
-          {/* EARNINGS */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>EPS</div>
-              <div className="flex gap-0.5">
-                {(["annual", "quarterly"] as const).map((v) => (
-                  <button key={v} type="button" onClick={() => setEpsView(v)}
-                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
-                    style={{ background: epsView === v ? "var(--ws-bg3)" : "transparent", color: epsView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="text-[14px] font-mono font-medium" style={{ color: "var(--ws-text)" }}>
-              {epsRange}
-            </div>
-            {epsYoY != null && (
-              <div className="text-[13px] font-semibold mt-0.5" style={{ color: epsYoY >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}>
-                {fmtPctSigned(epsYoY)} YoY
-              </div>
-            )}
-            <BarChart
-              data={epsView === "annual" ? yearlyRows.slice(0, 6) : qtrData}
-              valueKey="eps"
-              growthKey="epsGrowth"
-              periodKey={epsView === "annual" ? "year" : "period"}
-              color="var(--ws-cyan)"
-            />
-          </div>
-
-          <SectionDivider />
-
-          {/* INSTITUTIONAL */}
-          <div>
-            <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--ws-text)" }}>
-              Institutional Owners
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[18px] font-bold font-mono" style={{ color: "var(--ws-text)" }}>
-                {(fundCount ?? latestOwnership?.value ?? 0).toLocaleString()}
-              </span>
-              <span className="text-[12px]" style={{ color: "var(--ws-text-dim)" }}>holders</span>
-              {ownershipTrend && (
-                <span className="text-[11px] font-medium" style={{ color: ownershipTrend === "increasing" ? "var(--ws-green)" : ownershipTrend === "decreasing" ? "var(--ws-red)" : "var(--ws-text-dim)" }}>
-                  {ownershipTrend === "increasing" ? "▲ Increasing" : ownershipTrend === "decreasing" ? "▼ Decreasing" : "— Flat"}
-                </span>
-              )}
-            </div>
-            {ownershipData.length > 0 && (
-              <BarChart
-                data={ownershipData.slice(0, 8)}
-                valueKey="value"
-                growthKey="change"
-                periodKey="period"
-                color="var(--ws-purple, #a78bfa)"
-              />
-            )}
-          </div>
-
-          <SectionDivider />
-
-          {/* RS RANK */}
-          {rsRank && bestRs != null && (
+          {/* RS RANK — moved above revenue */}
+          {rsRank && (
             <div>
               <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
-              </div>
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span
-                  className="text-[28px] font-bold font-mono leading-none"
-                  style={{ color: bestRs >= 80 ? "var(--ws-green)" : bestRs >= 50 ? "var(--ws-cyan)" : "var(--ws-red)" }}
-                >
-                  {bestRs.toFixed(0)}
-                </span>
-                <span className="text-[11px]" style={{ color: "var(--ws-text-dim)" }}>
-                  Top {(100 - bestRs).toFixed(0)}%
-                </span>
               </div>
               <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
                 <thead>
@@ -454,8 +253,8 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1 text-center font-mono font-medium tabular-nums"
-                        style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v >= 50 ? "var(--ws-text)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[12px]"
+                        style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
                     ))}
@@ -465,11 +264,144 @@ export default function RightRail({
             </div>
           )}
 
-          {nextEarnings && (
-            <div className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>
-              Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
+          {rsRank && <SectionDivider />}
+
+          {/* REVENUE — clean table */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue</div>
+              <div className="flex gap-0.5">
+                {(["annual", "quarterly"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setRevenueView(v)}
+                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
+                    style={{ background: revenueView === v ? "var(--ws-bg3)" : "transparent", color: revenueView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
+            {nextEarnings && (
+              <div className="text-[10px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+                Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
+              </div>
+            )}
+            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Revenue</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>YoY</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Surprise</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(revenueView === "annual"
+                  ? yearlyRows.slice(0, 8).map((r) => ({ period: r.year, value: r.sales, growth: r.salesGrowth }))
+                  : quarterlyRows.slice(0, 8).map((r) => ({ period: r.period, value: r.sales, growth: r.salesGrowth }))
+                ).map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                      {r.value != null ? fmtCompact(r.value) : "—"}
+                    </td>
+                    <td className="py-1.5 text-right font-mono tabular-nums"
+                      style={{ color: r.growth != null ? (r.growth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      {r.growth != null ? fmtPctSigned(r.growth) : "—"}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>—</td>
+                  </tr>
+                ))}
+                {(revenueView === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
+                  <tr><td colSpan={4} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <SectionDivider />
+
+          {/* EPS — clean table */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ws-text)" }}>EPS</div>
+              <div className="flex gap-0.5">
+                {(["annual", "quarterly"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setEpsView(v)}
+                    className="px-2 py-0.5 text-[10px] rounded transition-colors capitalize"
+                    style={{ background: epsView === v ? "var(--ws-bg3)" : "transparent", color: epsView === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>YoY</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Surprise</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(epsView === "annual"
+                  ? yearlyRows.slice(0, 8).map((r) => ({ period: r.year, value: r.eps, growth: r.epsGrowth }))
+                  : quarterlyRows.slice(0, 8).map((r) => ({ period: r.period, value: r.eps, growth: r.epsGrowth }))
+                ).map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                      {r.value != null ? `$${r.value.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="py-1.5 text-right font-mono tabular-nums"
+                      style={{ color: r.growth != null ? (r.growth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      {r.growth != null ? fmtPctSigned(r.growth) : "—"}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>—</td>
+                  </tr>
+                ))}
+                {(epsView === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
+                  <tr><td colSpan={4} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <SectionDivider />
+
+          {/* INSTITUTIONAL OWNERS — clean table */}
+          <div>
+            <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+              Institutional Owners
+            </div>
+            <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Count</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ownershipQuarters.slice(0, 8).map((q, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{q.report_date}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                      {q.num_funds != null ? q.num_funds.toLocaleString() : "—"}
+                    </td>
+                    <td className="py-1.5 text-right font-mono tabular-nums"
+                      style={{ color: q.num_funds_change != null ? (q.num_funds_change >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      {q.num_funds_change != null ? `${q.num_funds_change >= 0 ? "+" : ""}${q.num_funds_change.toLocaleString()}` : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {ownershipQuarters.length === 0 && (
+                  <tr><td colSpan={3} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
         </div>
       )}
     </div>

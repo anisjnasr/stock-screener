@@ -574,6 +574,36 @@ export function getDailyBars(symbol: string, asOfDate: string, limit = 300): Dai
   }));
 }
 
+/** Compute the average daily volume over the last N trading days for a symbol. */
+export function getAvgVolume(symbol: string, days = 30): number | null {
+  const db = getDb();
+  if (!db) return null;
+  const row = db
+    .prepare(
+      "SELECT AVG(volume) AS avg_vol FROM (SELECT volume FROM daily_bars WHERE symbol = ? ORDER BY date DESC LIMIT ?)"
+    )
+    .get(symbol, days) as { avg_vol: number | null } | undefined;
+  return row?.avg_vol != null ? Number(row.avg_vol) : null;
+}
+
+/** Compute the average daily volume for multiple symbols at once. */
+export function getAvgVolumeBatch(symbols: string[], days = 30): Map<string, number> {
+  const db = getDb();
+  if (!db) return new Map();
+  const result = new Map<string, number>();
+  for (const sym of symbols) {
+    const row = db
+      .prepare(
+        "SELECT AVG(volume) AS avg_vol FROM (SELECT volume FROM daily_bars WHERE symbol = ? ORDER BY date DESC LIMIT ?)"
+      )
+      .get(sym, days) as { avg_vol: number | null } | undefined;
+    if (row?.avg_vol != null && Number.isFinite(Number(row.avg_vol))) {
+      result.set(sym, Number(row.avg_vol));
+    }
+  }
+  return result;
+}
+
 export type MarketMonitorBaseRow = {
   date: string;
   up4pct: number;
