@@ -128,9 +128,9 @@ function Pill({
     <button
       type="button"
       onClick={onClick}
-      className="transition-colors cursor-pointer font-semibold"
+      className={`transition-colors cursor-pointer font-semibold ${!on ? "hover:bg-white/[0.06]" : ""}`}
       style={{
-        background: on ? "var(--ws-cyan)" : "transparent",
+        background: on ? "var(--ws-cyan)" : undefined,
         border: on ? "1px solid var(--ws-cyan)" : "1px solid transparent",
         color: on ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim)",
         padding: small ? "2px 6px" : "4px 12px",
@@ -284,9 +284,9 @@ export default function WorkspaceHeader({
               key={s.id}
               type="button"
               onClick={() => onSectionChange(s.id)}
-              className="px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider transition-all cursor-pointer"
+              className={`px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider transition-all cursor-pointer ${section !== s.id ? "hover:bg-white/5" : ""}`}
               style={{
-                background: section === s.id ? "rgba(255,255,255,0.06)" : "transparent",
+                background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
                 borderBottom: section === s.id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
                 borderTop: "2px solid transparent",
                 borderLeft: "none",
