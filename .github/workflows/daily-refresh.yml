@@ -319,3 +319,25 @@ jobs:
           else
             echo "::warning::DB sync trigger returned status $STATUS (non-fatal)"
           fi
+
+      - name: Send completion email via Formspree
+        if: ${{ always() }}
+        env:
+          FORMSPREE_ENDPOINT: ${{ secrets.FORMSPREE_ENDPOINT }}
+        run: |
+          if [ -z "$FORMSPREE_ENDPOINT" ]; then
+            echo "Skipping notification: FORMSPREE_ENDPOINT not configured"
+            exit 0
+          fi
+          STATUS="${{ job.status }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          curl -s -X POST "$FORMSPREE_ENDPOINT" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"_subject\": \"[StockStalker] Daily Refresh — ${STATUS}\",
+              \"workflow\": \"Stocks Data Refresh\",
+              \"status\": \"${STATUS}\",
+              \"completed\": \"${DATE}\",
+              \"run_url\": \"${RUN_URL}\"
+            }" || echo "Formspree notification failed (non-fatal)"
