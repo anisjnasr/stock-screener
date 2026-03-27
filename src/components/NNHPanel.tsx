@@ -80,11 +80,6 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
         style={{ background: "var(--ws-bg2)" }}
       >
         <div className="flex-1" />
-        {!loading && filteredData.length > 0 && (
-          <span className="text-[10px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
-            {filteredData.length} bars
-          </span>
-        )}
         <div className="flex items-center gap-0.5 rounded p-0.5" style={{ background: "var(--ws-bg)" }}>
           {(Object.keys(HORIZON_LABELS) as Horizon[]).map((h) => (
             <button

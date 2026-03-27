@@ -76,9 +76,9 @@ export async function GET(request: NextRequest) {
     const dbRow = dbSnapshot.rows[0] ?? null;
 
     const [quote, profile, nextEarnings] = await Promise.all([
-      withTimeout(fetchQuote(symbolUpper), 1200, null),
-      withTimeout(fetchProfile(symbolUpper), 1200, null),
-      withTimeout(fetchNextEarningsDate(symbolUpper), 1200, undefined),
+      withTimeout(fetchQuote(symbolUpper), 4000, null),
+      withTimeout(fetchProfile(symbolUpper), 4000, null),
+      withTimeout(fetchNextEarningsDate(symbolUpper), 3000, undefined),
     ]);
     if (!quote && !dbRow && !stockRecord && !profile)
       return NextResponse.json({ error: "Symbol not found" }, { status: 404 });

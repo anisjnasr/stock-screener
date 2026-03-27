@@ -30,6 +30,27 @@ export type WatchlistFolder = {
 
 export type WatchlistPanelMode = "minimized" | "medium" | "full";
 
+const STORAGE_KEY_FLAG_NAMES = "stock-research-flag-names";
+
+export function loadFlagNames(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FLAG_NAMES);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveFlagName(color: string, name: string): Record<string, string> {
+  const names = loadFlagNames();
+  names[color] = name;
+  if (typeof window !== "undefined") {
+    try { localStorage.setItem(STORAGE_KEY_FLAG_NAMES, JSON.stringify(names)); } catch { /* ignore */ }
+  }
+  return names;
+}
+
 export function loadWatchlists(): Watchlist[] {
   if (typeof window === "undefined") return [];
   try {

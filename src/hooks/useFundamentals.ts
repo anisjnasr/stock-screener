@@ -82,12 +82,12 @@ export function useFundamentals(symbol: string) {
   const quarterlyRows = useMemo((): QuarterlyRow[] => {
     const lines = quarterlyFundamentals as IncomeLine[];
     if (!lines.length) return [];
-    const withPeriod = lines.map((l) => ({
-      date: l.date,
-      period: l.period ?? l.date ?? "",
-      eps: l.eps ?? null,
-      sales: l.revenue ?? null,
-    }));
+    const withPeriod = lines.map((l) => {
+      const yr = l.calendarYear ?? l.date?.slice(0, 4) ?? "";
+      const q = l.period ?? "";
+      const period = q && yr ? `${q} ${yr}` : q || l.date || "";
+      return { date: l.date, period, eps: l.eps ?? null, sales: l.revenue ?? null };
+    });
     const sorted = withPeriod
       .filter((r) => r.period)
       .sort((a, b) => (b.date || b.period).localeCompare(a.date || a.period));

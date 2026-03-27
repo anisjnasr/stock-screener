@@ -315,17 +315,9 @@ export default function Home() {
     { key: "m", description: "Monthly chart", category: "chart" as const, action: () => setChartTimeframe("monthly") },
   ], [shortcutsOpen, cycleTheme]));
 
-  if (error && !data) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4" style={{ background: "var(--ws-bg)" }}>
-        <p style={{ color: "var(--ws-red)" }}>{error}</p>
-        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>Add MASSIVE_API_KEY to .env.local or check the symbol.</p>
-        <button onClick={() => setSymbol(DEFAULT_SYMBOL)} className="rounded px-4 py-2 text-sm" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
-          Try {DEFAULT_SYMBOL}
-        </button>
-      </div>
-    );
-  }
+  /* Stock data errors no longer block the full UI — the workspace, chart,
+     and panels can still render. The right rail already handles missing data
+     gracefully. Only show a non-blocking toast-style banner. */
 
   // ---- Panel contents ----
 
@@ -463,9 +455,10 @@ export default function Home() {
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
         railWidthPx={rightRailHidden ? 0 : railWidthPx}
         onNewList={() => {
-          const name = prompt("New watchlist name:");
-          if (!name?.trim()) return;
-          const newList: Watchlist = { id: `wl-${Date.now()}`, name: name.trim(), symbols: [] };
+          const existing = new Set(watchlists.map((w) => w.name));
+          let num = 1;
+          while (existing.has(`List ${num}`)) num++;
+          const newList: Watchlist = { id: `wl-${Date.now()}`, name: `List ${num}`, symbols: [] };
           const updated = [...watchlists, newList];
           setWatchlists(updated);
           saveWatchlists(updated);

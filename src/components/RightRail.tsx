@@ -104,10 +104,10 @@ function fmtPctSigned(n: number | null): string {
 
 function fmtPeriodShort(period: string): string {
   const qMatch = period.match(/^Q(\d)\s*(\d{4})$/);
-  if (qMatch) return `Q${qMatch[1]} ${qMatch[2].slice(2)}`;
+  if (qMatch) return `Q${qMatch[1]} '${qMatch[2].slice(2)}`;
   const qdMatch = period.match(/Quarter\s*(\d)\s*(\d{4})/i);
-  if (qdMatch) return `Q${qdMatch[1]} ${qdMatch[2].slice(2)}`;
-  if (/^\d{4}$/.test(period)) return `'${period.slice(2)}`;
+  if (qdMatch) return `Q${qdMatch[1]} '${qdMatch[2].slice(2)}`;
+  if (/^\d{4}$/.test(period)) return period;
   return period;
 }
 
@@ -116,7 +116,7 @@ function fmtDateToQuarter(dateStr: string): string {
   if (isNaN(d.getTime())) return dateStr;
   const m = d.getUTCMonth();
   const q = m < 3 ? 1 : m < 6 ? 2 : m < 9 ? 3 : 4;
-  return `Q${q} ${String(d.getUTCFullYear()).slice(2)}`;
+  return `Q${q} '${String(d.getUTCFullYear()).slice(2)}`;
 }
 
 type FinMetric = "revenue" | "eps";
@@ -179,7 +179,7 @@ export default function RightRail({
             {symbol}
           </span>
           {profile?.companyName && (
-            <span className="text-[13px] leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+            <span className="text-[15px] font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
               {safe(profile.companyName)}
             </span>
           )}
@@ -205,26 +205,26 @@ export default function RightRail({
         )}
 
         <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-[12px] items-center"
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-[13px] items-center"
           style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
         >
-          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
+          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
           <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
 
-          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
+          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
           <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
             {profile?.sector ? safe(profile.sector) : "—"}
           </span>
 
-          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
+          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
           <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
             {profile?.industry ? safe(profile.industry) : "—"}
           </span>
 
-          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
+          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
           <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
 
-          <span className="font-medium text-[11px]" style={{ color: "rgba(201,209,217,0.7)" }}>Float</span>
+          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Float</span>
           <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{floatLabel}</span>
         </div>
       </div>
@@ -254,7 +254,7 @@ export default function RightRail({
               <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
-              <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
@@ -303,7 +303,7 @@ export default function RightRail({
                 Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
               </div>
             )}
-            <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
@@ -355,7 +355,7 @@ export default function RightRail({
             <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
               Institutional Owners
             </div>
-            <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>

@@ -1197,9 +1197,9 @@ export default function StockChart({
   }, [selectedDrawing, getHandlePoint]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
-      <div className="px-2 py-1 border-b border-zinc-600/30 bg-[#2A2D31] shrink-0 flex items-center justify-between gap-2 flex-wrap" style={{ paddingRight: 88 }}>
-        <div className="flex items-center gap-1 flex-wrap ml-auto">
+    <div className="flex-1 min-h-0 relative overflow-hidden bg-white dark:bg-zinc-900">
+      <div className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap" style={{ paddingRight: 88, pointerEvents: "none" }}>
+        <div className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "rgba(30,33,38,0.65)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
               timeframes.map((tf) => (
@@ -1327,7 +1327,7 @@ export default function StockChart({
                 className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35 flex items-center gap-1"
                 title="Flag stock"
               >
-                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
                 </svg>
               </button>
@@ -1339,7 +1339,7 @@ export default function StockChart({
                       type="button"
                       onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
                       className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
-                      style={{ backgroundColor: { red: "#ef4444", yellow: "#eab308", green: "#22c55e", blue: "#3b82f6" }[c] }}
+                      style={{ backgroundColor: { red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[c] }}
                       title={c}
                     />
                   ))}
@@ -1386,19 +1386,16 @@ export default function StockChart({
         </div>
       </div>
       {loading ? (
-        <div className="flex-1 min-h-[300px] flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center">
           <p className="text-zinc-500 dark:text-zinc-400">Loading chart…</p>
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="flex-1 min-h-[300px] flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center">
           <p className="text-zinc-500 dark:text-zinc-400">No chart data</p>
         </div>
       ) : (
-        <div className="relative w-full flex-1 min-h-0">
+        <div className="absolute inset-0">
           <div ref={containerRef} className="absolute inset-0 w-full h-full" />
-          <div className="absolute top-3 left-0 right-0 z-[5] pointer-events-none select-none text-zinc-300/45 dark:text-zinc-600/45 text-3xl font-semibold font-mono tracking-wide text-center">
-            {symbol.toUpperCase()}
-          </div>
           {crosshairCandle && (() => {
             const idx = chronological.findIndex((c) => c.date === crosshairCandle.date);
             const prevClose = idx > 0 ? chronological[idx - 1].close : null;
@@ -1406,7 +1403,7 @@ export default function StockChart({
               ? ((crosshairCandle.close - prevClose) / prevClose) * 100
               : null;
             return (
-              <div className="absolute top-2 z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ right: 88 }}>
+              <div className="absolute z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ top: 32, right: 88 }}>
                 <span>O {crosshairCandle.open.toFixed(2)}</span>
                 <span>H {crosshairCandle.high.toFixed(2)}</span>
                 <span>L {crosshairCandle.low.toFixed(2)}</span>
@@ -1420,7 +1417,7 @@ export default function StockChart({
               </div>
             );
           })()}
-          <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 30, right: 88 }}>
+          <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 52, right: 88 }}>
             {timeframe === "daily" && (
               <button
                 type="button"

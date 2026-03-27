@@ -163,7 +163,7 @@ function IndicesTable({
     <div className="flex-1 overflow-auto">
       <table
         className="border-collapse whitespace-nowrap"
-        style={{ color: "var(--ws-text)", fontSize: 12, lineHeight: "1.4", minWidth: "max-content" }}
+        style={{ color: "var(--ws-text)", fontSize: 13, lineHeight: "1.4", minWidth: "max-content" }}
       >
         <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3)", borderBottom: "1px solid var(--ws-border)" }}>
           <tr>
@@ -232,12 +232,8 @@ export default function MarketLeftPanel({
   selectedSymbol?: string;
   activeTab?: MarketLeftTab;
 }) {
-  const title = activeTab === "indices" ? "Indices" : "Market Monitor";
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="flex items-center gap-2 px-2 py-1.5 shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
-        <span className="text-[14px] font-semibold" style={{ color: "var(--ws-text)" }}>{title}</span>
-      </div>
       {activeTab === "indices" ? (
         <IndicesTable onSymbolSelect={onSymbolSelect} selectedSymbol={selectedSymbol} />
       ) : (

@@ -5,6 +5,8 @@ import {
   getLatestCompletedTradingDate,
   getTickerPerformance,
   getWeightedCategoryPerformance,
+  getPrecomputedPerformance,
+  ensurePerformanceCacheTable,
   type PerformanceTimeframe,
 } from "@/lib/screener-db-native";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
@@ -15,7 +17,7 @@ const INDEX_ITEMS = [
   { id: "russell2000", name: "Russell 2000", ticker: "IWM" },
 ] as const;
 
-type TimeframeParam = "day" | "week" | "month" | "quarter" | "year";
+type TimeframeParam = "day" | "week" | "month" | "quarter" | "half_year" | "year" | "ytd";
 
 type CachedValue =
   | ReturnType<typeof getWeightedCategoryPerformance>
@@ -44,7 +46,7 @@ type DiskCache = {
 };
 
 function parseTimeframe(value: string | null): TimeframeParam {
-  if (value === "day" || value === "week" || value === "month" || value === "quarter" || value === "year") {
+  if (value === "day" || value === "week" || value === "month" || value === "quarter" || value === "half_year" || value === "year" || value === "ytd") {
     return value;
   }
   return "day";
@@ -102,6 +104,7 @@ export async function GET(request: NextRequest) {
         /* ignore disk cache read errors */
       }
     }
+    ensurePerformanceCacheTable();
     const cache = getSiCache();
 
     const getOrSet = <T extends CachedValue>(key: string, compute: () => T): T => {
@@ -112,42 +115,36 @@ export async function GET(request: NextRequest) {
       return next;
     };
 
-    const sectorResult = getOrSet(
-      `sector:${sectorsTimeframe}:${asOfDate ?? "na"}`,
-      () =>
-        getWeightedCategoryPerformance(
-          "sector",
-          sectorsTimeframe as PerformanceTimeframe,
-          asOfDate ?? undefined
-        )
-    );
-    const industryResult = getOrSet(
-      `industry:${industriesTimeframe}:${asOfDate ?? "na"}`,
-      () =>
-        getWeightedCategoryPerformance(
-          "industry",
-          industriesTimeframe as PerformanceTimeframe,
-          asOfDate ?? undefined
-        )
-    );
-    const indexPerf = getOrSet(
-      `indices:${indicesTimeframe}:${asOfDate ?? "na"}`,
-      () =>
-        getTickerPerformance(
-          INDEX_ITEMS.map((x) => x.ticker),
-          indicesTimeframe as PerformanceTimeframe,
-          asOfDate ?? undefined
-        )
-    );
-    const themePerf = getOrSet(
-      `themes:${themesTimeframe}:${asOfDate ?? "na"}`,
-      () =>
-        getTickerPerformance(
-          THEMATIC_ETFS.map((x) => x.ticker),
-          themesTimeframe as PerformanceTimeframe,
-          asOfDate ?? undefined
-        )
-    );
+    // Try pre-computed cache first (instant), fall back to live computation
+    const cachedSectors = getPrecomputedPerformance("sector", sectorsTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
+    const cachedIndustries = getPrecomputedPerformance("industry", industriesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
+    const cachedIndices = getPrecomputedPerformance("index", indicesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
+    const cachedThemes = getPrecomputedPerformance("thematic", themesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
+
+    const sectorResult = cachedSectors
+      ? { rows: cachedSectors.map((r) => ({ name: r.name, change_pct: r.change_pct, total_market_cap: r.total_market_cap ?? 0, stock_count: r.stock_count ?? 0 })), date: asOfDate }
+      : getOrSet(
+          `sector:${sectorsTimeframe}:${asOfDate ?? "na"}`,
+          () => getWeightedCategoryPerformance("sector", sectorsTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
+        );
+    const industryResult = cachedIndustries
+      ? { rows: cachedIndustries.map((r) => ({ name: r.name, change_pct: r.change_pct, total_market_cap: r.total_market_cap ?? 0, stock_count: r.stock_count ?? 0 })), date: asOfDate }
+      : getOrSet(
+          `industry:${industriesTimeframe}:${asOfDate ?? "na"}`,
+          () => getWeightedCategoryPerformance("industry", industriesTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
+        );
+    const indexPerf = cachedIndices
+      ? { rows: cachedIndices.map((r) => ({ symbol: r.name, change_pct: r.change_pct, market_cap: null as number | null })), date: asOfDate }
+      : getOrSet(
+          `indices:${indicesTimeframe}:${asOfDate ?? "na"}`,
+          () => getTickerPerformance(INDEX_ITEMS.map((x) => x.ticker), indicesTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
+        );
+    const themePerf = cachedThemes
+      ? { rows: cachedThemes.map((r) => ({ symbol: r.name, change_pct: r.change_pct, market_cap: null as number | null })), date: asOfDate }
+      : getOrSet(
+          `themes:${themesTimeframe}:${asOfDate ?? "na"}`,
+          () => getTickerPerformance(THEMATIC_ETFS.map((x) => x.ticker), themesTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
+        );
 
     const indexMap = new Map(indexPerf.rows.map((r) => [r.symbol, r]));
     const themeMap = new Map(themePerf.rows.map((r) => [r.symbol, r]));

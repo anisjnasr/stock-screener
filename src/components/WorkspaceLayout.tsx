@@ -134,11 +134,11 @@ export default function WorkspaceLayout({
         onKeyDown={handleKeyDown}
       >
         <div className="flex flex-col items-center gap-[3px]">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
               className="rounded-full"
-              style={{ width: 6, height: 2, background: "var(--ws-text-vdim)" }}
+              style={{ width: 6, height: 3, background: "rgba(255,255,255,0.35)" }}
             />
           ))}
         </div>

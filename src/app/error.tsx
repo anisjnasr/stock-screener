@@ -18,7 +18,7 @@ export default function Error({
       style={{
         padding: 32,
         fontFamily: "monospace",
-        background: "#0a0e14",
+        background: "#0f0f0f",
         color: "#e0e0e0",
         minHeight: "100vh",
       }}
@@ -26,7 +26,7 @@ export default function Error({
       <h2 style={{ color: "#ff5555", marginBottom: 12 }}>Client Error</h2>
       <pre
         style={{
-          background: "#1a1e24",
+          background: "#1c1c1c",
           padding: 16,
           borderRadius: 8,
           overflow: "auto",
@@ -48,7 +48,7 @@ export default function Error({
           marginTop: 16,
           padding: "8px 20px",
           background: "#00e5cc",
-          color: "#0a0e14",
+          color: "#0f0f0f",
           border: "none",
           borderRadius: 6,
           fontWeight: 600,

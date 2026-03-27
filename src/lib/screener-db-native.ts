@@ -617,7 +617,7 @@ export type MarketMonitorBaseRow = {
   universe: number;
 };
 
-export type PerformanceTimeframe = "day" | "week" | "month" | "quarter" | "year";
+export type PerformanceTimeframe = "day" | "week" | "month" | "quarter" | "half_year" | "year" | "ytd";
 
 export type WeightedCategoryPerformanceRow = {
   name: string;
@@ -666,14 +666,18 @@ function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
       return "i.price_change_1m_pct";
     case "quarter":
       return "i.price_change_3m_pct";
+    case "half_year":
+      return "i.price_change_6m_pct";
     case "year":
       return "i.price_change_12m_pct";
+    case "ytd":
+      return "q.change_pct";
     default:
       return "q.change_pct";
   }
 }
 
-function getPerformanceLookbackDays(timeframe: PerformanceTimeframe): number {
+function getPerformanceLookbackDays(timeframe: PerformanceTimeframe, asOfDate?: string): number {
   switch (timeframe) {
     case "day":
       return 1;
@@ -683,8 +687,16 @@ function getPerformanceLookbackDays(timeframe: PerformanceTimeframe): number {
       return 21;
     case "quarter":
       return 63;
+    case "half_year":
+      return 126;
     case "year":
       return 252;
+    case "ytd": {
+      const d = asOfDate ? new Date(`${asOfDate}T00:00:00Z`) : new Date();
+      const jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const calendarDays = Math.floor((d.getTime() - jan1.getTime()) / 86400000);
+      return Math.max(1, Math.round(calendarDays * (252 / 365)));
+    }
     default:
       return 1;
   }
@@ -866,7 +878,7 @@ export function getWeightedCategoryPerformance(
   if (!db) return { rows: [], date: null };
   const asOfDate = date ?? getLatestCompletedTradingDate();
   if (!asOfDate) return { rows: [], date: null };
-  const lookbackDays = getPerformanceLookbackDays(timeframe);
+  const lookbackDays = getPerformanceLookbackDays(timeframe, asOfDate);
   const startDate = getBufferStartDate(asOfDate, lookbackDays);
 
   const sql = `
@@ -967,7 +979,7 @@ export function getTickerPerformance(
   if (!asOfDate || symbols.length === 0) return { rows: [], date: asOfDate ?? null };
   const unique = Array.from(new Set(symbols.map((s) => String(s).toUpperCase()).filter(Boolean)));
   if (unique.length === 0) return { rows: [], date: asOfDate };
-  const lookbackDays = getPerformanceLookbackDays(timeframe);
+  const lookbackDays = getPerformanceLookbackDays(timeframe, asOfDate);
   const startDate = getBufferStartDate(asOfDate, lookbackDays);
   const placeholders = unique.map(() => "?").join(",");
   const sql = `
@@ -1740,5 +1752,63 @@ export function getPrecomputedBreadth(indexId: string, startDate: string, endDat
     count_50d: Number(r.count_50d ?? 0),
     count_200d: Number(r.count_200d ?? 0),
   }));
+}
+
+/* ── Pre-computed Performance Cache ── */
+
+export type CachedPerformanceRow = {
+  category_type: string;
+  name: string;
+  timeframe: string;
+  change_pct: number;
+  total_market_cap: number | null;
+  stock_count: number | null;
+  date: string;
+};
+
+export function ensurePerformanceCacheTable(): void {
+  const db = getDb();
+  if (!db) return;
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS performance_cache (
+      category_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      timeframe TEXT NOT NULL,
+      change_pct REAL,
+      total_market_cap REAL,
+      stock_count INTEGER,
+      date TEXT NOT NULL,
+      PRIMARY KEY (category_type, name, timeframe, date)
+    )
+  `);
+}
+
+export function getPrecomputedPerformance(
+  categoryType: string,
+  timeframe: PerformanceTimeframe,
+  date?: string
+): CachedPerformanceRow[] | null {
+  const db = getDb();
+  if (!db) return null;
+  const asOfDate = date ?? getLatestCompletedTradingDate();
+  if (!asOfDate) return null;
+  try {
+    // Find the latest cached date that's <= the requested date (handles same-day mismatch)
+    const dateRow = db
+      .prepare(
+        "SELECT MAX(date) AS d FROM performance_cache WHERE category_type = ? AND timeframe = ? AND date <= ?"
+      )
+      .get(categoryType, timeframe, asOfDate) as { d: string | null } | undefined;
+    const cacheDate = dateRow?.d;
+    if (!cacheDate) return null;
+    const rows = db
+      .prepare(
+        "SELECT category_type, name, timeframe, change_pct, total_market_cap, stock_count, date FROM performance_cache WHERE category_type = ? AND timeframe = ? AND date = ? ORDER BY change_pct DESC"
+      )
+      .all(categoryType, timeframe, cacheDate) as CachedPerformanceRow[];
+    return rows.length > 0 ? rows : null;
+  } catch {
+    return null;
+  }
 }
 

@@ -37,7 +37,11 @@ const INDUSTRY_ETF_MAP: Record<string, string> = {
 };
 
 const TF_API: Record<SectorTimeframe, string> = {
-  "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "y": "year", "ytd": "day",
+  "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "6m": "half_year", "y": "year", "ytd": "ytd",
+};
+
+const TF_LABELS: Record<SectorTimeframe, string> = {
+  "1d": "Day", "1w": "1 Week", "1m": "1 Month", "q": "3 Months", "6m": "Half Year", "y": "1 Year", "ytd": "YTD",
 };
 
 function toSentenceCase(s: string): string {
@@ -160,48 +164,48 @@ export default function SectorPerfPanel({
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="flex items-center justify-between px-2 py-1.5" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
-        <div className="flex items-center gap-2">
-          <span className="text-[14px] font-semibold" style={{ color: "var(--ws-text)" }}>{panelTitle}</span>
-          <span className="text-[11px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+      <div className="flex items-center px-2 py-1.5 shrink-0 gap-4" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[15px] font-semibold" style={{ color: "var(--ws-text)" }}>{panelTitle}</span>
+          <span className="text-[14px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
             ({loading ? "…" : sorted.length})
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          {onTimeframeChange && (["1d", "1w", "1m", "q", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
-            <button
-              key={tf}
-              type="button"
-              onClick={() => onTimeframeChange(tf)}
-              className="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer"
-              style={{
-                background: timeframe === tf ? "rgba(0,229,204,0.12)" : "transparent",
-                color: timeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
-                border: timeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
-              }}
-            >
-              {tf.toUpperCase()}
-            </button>
-          ))}
-          {sorted[selectedIdx] && onDrillDown && (
-            <>
-              <div className="shrink-0 mx-0.5" style={{ width: 1, height: 14, background: "var(--ws-border)" }} />
+        {onTimeframeChange && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {(["1d", "1w", "1m", "q", "6m", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
               <button
+                key={tf}
                 type="button"
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
-                style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
-                title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
-                onClick={() => {
-                  const s = sorted[selectedIdx];
-                  const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
-                  onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+                onClick={() => onTimeframeChange(tf)}
+                className="px-2 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer"
+                style={{
+                  background: timeframe === tf ? "rgba(0,229,204,0.12)" : "transparent",
+                  color: timeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
+                  border: timeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
                 }}
               >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+                {TF_LABELS[tf]}
               </button>
-            </>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+        <div className="flex-1" />
+        {sorted[selectedIdx] && onDrillDown && (
+          <button
+            type="button"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0"
+            style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
+            title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
+            onClick={() => {
+              const s = sorted[selectedIdx];
+              const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
+              onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+          </button>
+        )}
       </div>
       <div ref={listRef} className="flex-1 overflow-auto" style={{ maxWidth: "50vw" }}>
         {sorted.map((s, i) => {
@@ -217,7 +221,7 @@ export default function SectorPerfPanel({
               key={s.id}
               className="grid items-center px-2 py-[5px] cursor-pointer"
               style={{
-                gridTemplateColumns: `auto minmax(0, 140px) 1fr ${onDrillDown ? "24px" : ""}`,
+                gridTemplateColumns: `auto minmax(0, 200px) 1fr ${onDrillDown ? "36px" : ""}`,
                 gap: "6px",
                 background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
                 borderBottom: "1px solid var(--ws-border)",
@@ -228,7 +232,7 @@ export default function SectorPerfPanel({
               }}
             >
               <span
-                className="font-mono text-xs leading-snug whitespace-nowrap"
+                className="font-mono text-[13px] leading-snug whitespace-nowrap"
                 style={{
                   fontWeight: isSelected ? 600 : 400,
                   color: "var(--ws-cyan)",
@@ -238,15 +242,15 @@ export default function SectorPerfPanel({
                 {s.ticker ?? ""}
               </span>
               <span
-                className="text-[11px] leading-snug truncate"
+                className="text-[13px] leading-snug truncate"
                 style={{
                   fontWeight: isSelected ? 500 : 400,
-                  color: "var(--ws-text-dim)",
+                  color: "#ffffff",
                 }}
               >
                 {s.name}
               </span>
-              <div className="flex items-center h-[14px]">
+              <div className="flex items-center h-[36px]">
                 <div
                   className="flex justify-end items-center self-stretch"
                   style={{ width: "50%", borderRight: "1px solid var(--ws-border)" }}
@@ -254,14 +258,14 @@ export default function SectorPerfPanel({
                   {!isPos && (
                     <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-start" : "flex-end" }}>
                       {!labelInside && (
-                        <span className="shrink-0 font-mono text-[10px] tabular-nums mr-1" style={{ color: "var(--ws-red)" }}>
+                        <span className="shrink-0 font-mono text-[15px] tabular-nums mr-1.5" style={{ color: "var(--ws-red)" }}>
                           {pctLabel}
                         </span>
                       )}
                       <div
                         style={{
                           width: "100%",
-                          height: 10,
+                          height: 32,
                           borderRadius: "3px 0 0 3px",
                           background: "var(--ws-red)",
                           opacity: 0.7,
@@ -269,7 +273,7 @@ export default function SectorPerfPanel({
                         }}
                       >
                         {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-start pl-1 font-mono text-[9px] tabular-nums text-white/90">
+                          <span className="absolute inset-0 flex items-center justify-start pl-2.5 font-mono text-[14px] tabular-nums font-semibold" style={{ color: "#1a0a0a" }}>
                             {pctLabel}
                           </span>
                         )}
@@ -286,7 +290,7 @@ export default function SectorPerfPanel({
                       <div
                         style={{
                           width: "100%",
-                          height: 10,
+                          height: 32,
                           borderRadius: "0 3px 3px 0",
                           background: "var(--ws-green)",
                           opacity: 0.7,
@@ -294,13 +298,13 @@ export default function SectorPerfPanel({
                         }}
                       >
                         {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-end pr-1 font-mono text-[9px] tabular-nums text-white/90">
+                          <span className="absolute inset-0 flex items-center justify-end pr-2.5 font-mono text-[14px] tabular-nums font-semibold" style={{ color: "#0a1a12" }}>
                             {pctLabel}
                           </span>
                         )}
                       </div>
                       {!labelInside && (
-                        <span className="shrink-0 font-mono text-[10px] tabular-nums ml-1" style={{ color: "var(--ws-green)" }}>
+                        <span className="shrink-0 font-mono text-[15px] tabular-nums ml-1.5" style={{ color: "var(--ws-green)" }}>
                           {pctLabel}
                         </span>
                       )}
@@ -310,15 +314,15 @@ export default function SectorPerfPanel({
               </div>
               {onDrillDown && (
                 <div
-                  className="flex items-center justify-center rounded cursor-pointer transition-opacity opacity-40 hover:opacity-100"
-                  style={{ width: 20, height: 20, color: "var(--ws-cyan)" }}
+                  className="flex items-center justify-center rounded cursor-pointer transition-opacity hover:opacity-70"
+                  style={{ width: 32, height: 32, color: "var(--ws-cyan)" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
                     onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <circle cx="8" cy="8" r="6" />
                     <line x1="8" y1="4" x2="8" y2="12" />
                     <line x1="4" y1="8" x2="12" y2="8" />

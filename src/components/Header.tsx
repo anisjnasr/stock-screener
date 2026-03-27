@@ -184,7 +184,8 @@ export default function Header({
             )}
           </button>
           <img
-            src="/brand/stockstalker-lockup.svg"
+            src="/brand/stockstalker-lockup.png"
+            srcSet="/brand/stockstalker-lockup.png 1x, /brand/stockstalker-lockup@2x.png 2x"
             alt={brandName}
             className="hidden sm:block h-8 w-auto"
           />

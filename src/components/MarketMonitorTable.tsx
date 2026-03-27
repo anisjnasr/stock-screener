@@ -26,7 +26,7 @@ function fmtPctCell(n: number | null | undefined): string {
 
 function getBreadthPctCellClass(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
-  if (n < 30) return "bg-[#5f4147] text-white";
+  if (n < 30) return "bg-[#52201b] text-white";
   if (n < 40) return "bg-[#a54557] text-white";
   return "";
 }
@@ -116,96 +116,76 @@ export default function MarketMonitorTable() {
           Credit: Stockbee
         </p>
       </div>
-      <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border)" }}>
-        <table className="min-w-full text-xs sm:text-sm text-center border-collapse">
+      <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
+        <table className="min-w-full text-sm text-center border-collapse">
           <thead>
             <tr>
-              <th className="sticky top-0 z-10 bg-[var(--ws-bg3)] px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-r border-zinc-300 dark:border-zinc-700" />
+              <th className="sticky top-0 z-10 px-3 py-2 border-b border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
               <th
-                className="sticky top-0 z-10 bg-emerald-100/80 dark:bg-emerald-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold text-emerald-900 dark:text-emerald-100"
+                className="sticky top-0 z-10 px-3 py-2 border-b text-[14px] font-semibold"
                 colSpan={6}
+                style={{ background: "rgba(10,137,99,0.18)", borderColor: "var(--ws-border)", color: "#6ee7b7" }}
               >
                 Primary Breadth Indicators
               </th>
               <th
-                className="sticky top-0 z-10 bg-sky-100/80 dark:bg-sky-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold border-l border-zinc-300 dark:border-zinc-700 text-sky-900 dark:text-sky-100"
+                className="sticky top-0 z-10 px-3 py-2 border-b border-l text-[14px] font-semibold"
                 colSpan={4}
+                style={{ background: "rgba(14,116,187,0.18)", borderColor: "var(--ws-border)", color: "#7dd3fc" }}
               >
                 Secondary Breadth Indicators
               </th>
               <th
-                className="sticky top-0 z-10 bg-violet-100/80 dark:bg-violet-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold border-l border-zinc-300 dark:border-zinc-700 text-violet-900 dark:text-violet-100"
+                className="sticky top-0 z-10 px-3 py-2 border-b border-l text-[14px] font-semibold"
                 colSpan={2}
+                style={{ background: "rgba(109,76,186,0.18)", borderColor: "var(--ws-border)", color: "#c4b5fd" }}
               >
                 S&amp;P 500 Breadth
               </th>
               <th
-                className="sticky top-0 z-10 bg-violet-100/80 dark:bg-violet-900/40 px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 text-[13px] font-semibold text-violet-900 dark:text-violet-100"
+                className="sticky top-0 z-10 px-3 py-2 border-b text-[14px] font-semibold"
                 colSpan={2}
+                style={{ background: "rgba(109,76,186,0.18)", borderColor: "var(--ws-border)", color: "#c4b5fd" }}
               >
                 Nasdaq Breadth
               </th>
-              <th className="sticky top-0 z-10 bg-[var(--ws-bg3)] px-3 py-2 border-b border-zinc-300 dark:border-zinc-700 border-l border-zinc-300 dark:border-zinc-700" />
+              <th className="sticky top-0 z-10 px-3 py-2 border-b border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-r border-zinc-300 dark:border-zinc-700">
-                Date
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Up %
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Down %
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                5D Ratio
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                10D Ratio
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Up 25% (Q)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Down 25% (Q)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
-                Up 25% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Down 25% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Up 50% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium">
-                Down 50% (M)
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium border-l border-zinc-300 dark:border-zinc-700">
-                % &gt; 50 SMA
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
-                % &gt; 200 SMA
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
-                % &gt; 50 SMA
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-2 py-1 border-b border-zinc-200 dark:border-zinc-700 text-[11px] font-medium">
-                % &gt; 200 SMA
-              </th>
-              <th className="sticky top-8 z-10 bg-[var(--ws-bg3)] px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[12px] font-medium border-l border-zinc-300 dark:border-zinc-700">
+              {["Date", "Up %", "Down %", "5D Ratio", "10D Ratio", "Up 25% (Q)", "Down 25% (Q)", "Up 25% (M)", "Down 25% (M)", "Up 50% (M)", "Down 50% (M)"].map((label, idx) => (
+                <th
+                  key={label}
+                  className={`sticky top-8 z-10 px-3 py-1.5 border-b text-[13px] font-medium${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
+                  style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+                >
+                  {label}
+                </th>
+              ))}
+              {["% > 50 SMA", "% > 200 SMA", "% > 50 SMA", "% > 200 SMA"].map((label, idx) => (
+                <th
+                  key={`breadth-${idx}`}
+                  className={`sticky top-8 z-10 px-2 py-1 border-b text-[12px] font-medium${idx === 0 ? " border-l" : ""}`}
+                  style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+                >
+                  {label}
+                </th>
+              ))}
+              <th
+                className="sticky top-8 z-10 px-3 py-1.5 border-b border-l text-[13px] font-medium"
+                style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+              >
                 Stock Universe
               </th>
             </tr>
           </thead>
           <tbody>
             {tableRowsToShow.map((row) => (
-              <tr key={row.date} className="odd:bg-[var(--ws-bg2)] even:bg-[var(--ws-bg)] border-b border-zinc-100 dark:border-zinc-800">
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 whitespace-nowrap text-right tabular-nums border-l border-r border-zinc-300 dark:border-zinc-700">
+              <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
+                <td className="pl-3 pr-7 py-1.5 whitespace-nowrap text-right tabular-nums border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
                   {formatDateDmy(row.date)}
                 </td>
                 <td
-                  className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${
+                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
                     row.up4pct > row.down4pct && row.up4pct >= 267
                       ? "bg-[#2d5749] text-white"
                       : getPairCellClass(row.up4pct, row.down4pct)
@@ -214,69 +194,27 @@ export default function MarketMonitorTable() {
                   {fmtInt(row.up4pct)}
                 </td>
                 <td
-                  className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${
+                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
                     row.down4pct > row.up4pct && row.down4pct >= 233
-                      ? "bg-[#5f4147] text-white"
+                      ? "bg-[#52201b] text-white"
                       : getPairCellClass(row.up4pct, row.down4pct)
                   }`}
                 >
                   {fmtInt(row.down4pct)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
-                  {fmtRatio(row.ratio5d)}
-                </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums">
-                  {fmtRatio(row.ratio10d)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>
-                  {fmtInt(row.up25pct_qtr)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>
-                  {fmtInt(row.down25pct_qtr)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700 ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`}>
-                  {fmtInt(row.up25pct_month)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`}>
-                  {fmtInt(row.down25pct_month)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>
-                  {fmtInt(row.up50pct_month)}
-                </td>
-                <td className={`pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>
-                  {fmtInt(row.down50pct_month)}
-                </td>
-                <td
-                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700 ${getBreadthPctCellClass(
-                    row.sp500PctAbove50d
-                  )}`}
-                >
-                  {fmtPctCell(row.sp500PctAbove50d)}
-                </td>
-                <td
-                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
-                    row.sp500PctAbove200d
-                  )}`}
-                >
-                  {fmtPctCell(row.sp500PctAbove200d)}
-                </td>
-                <td
-                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
-                    row.nasdaqPctAbove50d
-                  )}`}
-                >
-                  {fmtPctCell(row.nasdaqPctAbove50d)}
-                </td>
-                <td
-                  className={`pl-3 pr-5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums ${getBreadthPctCellClass(
-                    row.nasdaqPctAbove200d
-                  )}`}
-                >
-                  {fmtPctCell(row.nasdaqPctAbove200d)}
-                </td>
-                <td className="pl-3 pr-7 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-right tabular-nums border-l border-zinc-300 dark:border-zinc-700">
-                  {fmtInt(row.universe)}
-                </td>
+                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums">{fmtRatio(row.ratio5d)}</td>
+                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums">{fmtRatio(row.ratio10d)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.up25pct_qtr)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.down25pct_qtr)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums border-l ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.up25pct_month)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`}>{fmtInt(row.down25pct_month)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>{fmtInt(row.up50pct_month)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>{fmtInt(row.down50pct_month)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums border-l ${getBreadthPctCellClass(row.sp500PctAbove50d)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtPctCell(row.sp500PctAbove50d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.sp500PctAbove200d)}`}>{fmtPctCell(row.sp500PctAbove200d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.nasdaqPctAbove50d)}`}>{fmtPctCell(row.nasdaqPctAbove50d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.nasdaqPctAbove200d)}`}>{fmtPctCell(row.nasdaqPctAbove200d)}</td>
+                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>
               </tr>
             ))}
           </tbody>

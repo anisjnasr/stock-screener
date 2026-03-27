@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Continue'
 $repo = 'C:\Users\USER\stock-tool'
 $logDir = 'C:\Users\USER\stock-tool\logs'
 $logFile = Join-Path $logDir ("refresh-" + (Get-Date -Format 'yyyy-MM-dd') + ".log")
@@ -18,6 +18,15 @@ try {
     else { Log "refresh-daily completed successfully" }
 } catch {
     Log "ERROR: refresh-daily failed: $_"
+}
+
+try {
+    Log "Running precompute-performance..."
+    & node scripts/precompute-performance.mjs 2>&1 | Tee-Object -Append -FilePath $logFile
+    if ($LASTEXITCODE -ne 0) { Log "ERROR: precompute-performance exited with code $LASTEXITCODE" }
+    else { Log "precompute-performance completed successfully" }
+} catch {
+    Log "ERROR: precompute-performance failed: $_"
 }
 
 try {

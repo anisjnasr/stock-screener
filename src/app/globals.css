@@ -21,9 +21,9 @@
 
 /* Workspace design system (dark-only v1) */
 :root {
-  --ws-bg: #0a0e14;
-  --ws-bg2: #0d1117;
-  --ws-bg3: #131820;
+  --ws-bg: #0f0f0f;
+  --ws-bg2: #141414;
+  --ws-bg3: #1c1c1c;
   --ws-border: rgba(255, 255, 255, 0.06);
   --ws-border-hover: rgba(255, 255, 255, 0.12);
   --ws-text: #c9d1d9;

@@ -32,6 +32,8 @@ import {
   COLUMN_LABELS,
   NUMERIC_COLUMN_IDS,
   DEFAULT_VISIBLE_COLUMNS,
+  loadFlagNames,
+  saveFlagName,
 } from "@/lib/watchlist-storage";
 import {
   loadScreens,
@@ -508,6 +510,7 @@ export default function WatchlistPanel({
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [flags, setFlags] = useState<Record<string, StockFlag>>({});
+  const [flagNames, setFlagNames] = useState<Record<string, string>>(() => loadFlagNames());
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<TableColumnId | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1090,7 +1093,8 @@ export default function WatchlistPanel({
     if (selectedCollectionId?.startsWith(FLAG_LIST_PREFIX)) {
       const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
       const flaggedSymbols = Object.entries(flags).filter(([, f]) => f === color).map(([s]) => s);
-      return { symbols: flaggedSymbols, title: `${color.charAt(0).toUpperCase() + color.slice(1)} Flag`, fromScreener: false, screen: null };
+      const defaultName = `${color.charAt(0).toUpperCase() + color.slice(1)} Flag`;
+      return { symbols: flaggedSymbols, title: flagNames[color] || defaultName, fromScreener: false, screen: null };
     }
     const selectedFolder = selectedCollectionId
       ? listFolders.find((f) => f.id === selectedCollectionId)
@@ -1105,12 +1109,13 @@ export default function WatchlistPanel({
       return { symbols: activeList.symbols ?? [], title: activeList.name, fromScreener: false, screen: null };
     }
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
-  }, [sidebarTab, activeListId, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags]);
+  }, [sidebarTab, activeListId, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags, flagNames]);
 
   const activeListTitle = tableSource.title;
   const isUserWatchlist = Boolean(activeList) && sidebarTab === "watchlists" && !selectedCollectionId;
   const isUserScreen = Boolean(selectedScreen) && sidebarTab === "screener";
-  const canEditTitle = isUserWatchlist || isUserScreen;
+  const isFlagList = Boolean(selectedCollectionId?.startsWith(FLAG_LIST_PREFIX));
+  const canEditTitle = isUserWatchlist || isUserScreen || isFlagList;
 
   const [editingTitleValue, setEditingTitleValue] = useState<string | null>(null);
   const commitTitleEdit = useCallback(() => {
@@ -1129,8 +1134,13 @@ export default function WatchlistPanel({
         return next;
       });
     }
+    if (trimmed && isFlagList && selectedCollectionId) {
+      const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
+      const updated = saveFlagName(color, trimmed);
+      setFlagNames(updated);
+    }
     setEditingTitleValue(null);
-  }, [editingTitleValue, activeList, isUserWatchlist, isUserScreen, selectedScreen]);
+  }, [editingTitleValue, activeList, isUserWatchlist, isUserScreen, selectedScreen, isFlagList, selectedCollectionId]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -2543,17 +2553,18 @@ export default function WatchlistPanel({
                         className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                       >
                         <span
-                          className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1"
+                          className="shrink-0 text-zinc-400 dark:text-zinc-500"
+                          style={{ marginLeft: 2, marginRight: 8 }}
                           title="Drag to reorder"
                           aria-hidden
                         >
-                          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-                            <circle cx="2" cy="2" r="1" />
-                            <circle cx="8" cy="2" r="1" />
-                            <circle cx="2" cy="6" r="1" />
-                            <circle cx="8" cy="6" r="1" />
-                            <circle cx="2" cy="10" r="1" />
-                            <circle cx="8" cy="10" r="1" />
+                          <svg width="12" height="14" viewBox="0 0 10 12" fill="currentColor">
+                            <circle cx="2" cy="2" r="1.2" />
+                            <circle cx="8" cy="2" r="1.2" />
+                            <circle cx="2" cy="6" r="1.2" />
+                            <circle cx="8" cy="6" r="1.2" />
+                            <circle cx="2" cy="10" r="1.2" />
+                            <circle cx="8" cy="10" r="1.2" />
                           </svg>
                         </span>
                         <span className="truncate min-w-0">{s.name}</span>
@@ -2608,17 +2619,18 @@ export default function WatchlistPanel({
                               <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
                                 <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                                   <span
-                                    className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1"
+                                    className="shrink-0 text-zinc-400 dark:text-zinc-500"
+                                    style={{ marginLeft: 2, marginRight: 8 }}
                                     title="Drag to reorder"
                                     aria-hidden
                                   >
-                                    <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-                                      <circle cx="2" cy="2" r="1" />
-                                      <circle cx="8" cy="2" r="1" />
-                                      <circle cx="2" cy="6" r="1" />
-                                      <circle cx="8" cy="6" r="1" />
-                                      <circle cx="2" cy="10" r="1" />
-                                      <circle cx="8" cy="10" r="1" />
+                                    <svg width="12" height="14" viewBox="0 0 10 12" fill="currentColor">
+                                      <circle cx="2" cy="2" r="1.2" />
+                                      <circle cx="8" cy="2" r="1.2" />
+                                      <circle cx="2" cy="6" r="1.2" />
+                                      <circle cx="8" cy="6" r="1.2" />
+                                      <circle cx="2" cy="10" r="1.2" />
+                                      <circle cx="8" cy="10" r="1.2" />
                                     </svg>
                                   </span>
                                   <span className="truncate min-w-0">{s.name}</span>
@@ -3192,7 +3204,8 @@ export default function WatchlistPanel({
           {/* Unified New Scan modal (Traditional + NinoScript tabs) */}
           {(showNewScriptModal || showNewScreenerModal) && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: "rgba(0,0,0,0.95)" }}
               onClick={(e) => { if (e.target === e.currentTarget) { setShowNewScriptModal(false); setShowNewScreenerModal(false); setEditingScriptScreenId(null); } }}
               role="dialog"
               aria-modal="true"
@@ -3200,9 +3213,9 @@ export default function WatchlistPanel({
             >
               <div
                 ref={screenerModalRef}
-                className="rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+                className="rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] min-h-[620px] flex flex-col"
                 style={{
-                  background: "var(--ws-bg2, #0d1117)",
+                  background: "var(--ws-bg2, #141414)",
                   border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))",
                   ...(screenerModalPosition
                     ? { position: "fixed" as const, left: screenerModalPosition.x, top: screenerModalPosition.y }
@@ -3225,7 +3238,7 @@ export default function WatchlistPanel({
                       <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                         style={{
                           background: scanModalMode === "traditional" ? "var(--ws-cyan, #00e5cc)" : "transparent",
-                          color: scanModalMode === "traditional" ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim, #9ca3af)",
+                          color: scanModalMode === "traditional" ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim, #9ca3af)",
                         }}
                         onClick={() => setScanModalMode("traditional")}>
                         Traditional
@@ -3233,7 +3246,7 @@ export default function WatchlistPanel({
                       <button type="button" className="px-3 py-1 text-xs font-medium rounded transition-colors"
                         style={{
                           background: scanModalMode === "script" ? "var(--ws-cyan, #00e5cc)" : "transparent",
-                          color: scanModalMode === "script" ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim, #9ca3af)",
+                          color: scanModalMode === "script" ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim, #9ca3af)",
                         }}
                         onClick={() => setScanModalMode("script")}>
                         NinoScript
@@ -3272,27 +3285,33 @@ export default function WatchlistPanel({
                   </div>
                 </div>
 
+                {/* Shared Name field */}
+                <div className="flex items-center gap-2 px-4 pt-3 pb-2 shrink-0">
+                  <label className="text-xs font-medium w-16 shrink-0" style={{ color: "var(--ws-text-dim)" }}>Name</label>
+                  <input
+                    type="text"
+                    value={scanModalMode === "script" ? newScriptName : newScreenForm.name}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (scanModalMode === "script") { setNewScriptName(v); } else { setNewScreenForm((p) => ({ ...p, name: v })); }
+                    }}
+                    placeholder="e.g. Large Cap Growth"
+                    className="flex-1 min-w-0 rounded px-2 py-1.5 text-sm font-normal"
+                    style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                  />
+                </div>
+
                 {/* NinoScript tab content */}
                 {scanModalMode === "script" && (
                   <>
-                    <div className="p-3 shrink-0" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--ws-text-dim)" }}>Custom Screener Name</label>
-                      <input
-                        type="text"
-                        value={newScriptName}
-                        onChange={(e) => setNewScriptName(e.target.value)}
-                        placeholder="e.g. My custom scan"
-                        className="w-full rounded px-2 py-1.5 text-sm"
-                        style={{ background: "var(--ws-bg, #0a0e17)", border: "1px solid var(--ws-border)", color: "var(--ws-text)" }}
-                      />
-                    </div>
-                    <div className="flex-1 min-h-0 flex flex-col p-3">
+                    <div className="flex-1 min-h-0 flex flex-col px-4 pb-3">
                       <label className="block text-xs font-medium mb-1" style={{ color: "var(--ws-text-dim)" }}>Script</label>
                       <NinoScriptEditor
                         value={newScriptBody}
                         onChange={setNewScriptBody}
                         placeholder="e.g. P > 10 and MA(C, 50) > 500000"
                         minHeight="200px"
+                        className="flex-1"
                       />
                     </div>
                     {showNinoScriptHelp && (
@@ -3337,7 +3356,7 @@ export default function WatchlistPanel({
                           setEditingScriptScreenId(null);
                         }}
                         className="px-3 py-1.5 text-sm rounded text-white"
-                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0a0e17)" }}
+                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0f0f0f)" }}
                       >
                         Save
                       </button>
@@ -3348,18 +3367,7 @@ export default function WatchlistPanel({
                 {/* Traditional tab content */}
                 {scanModalMode === "traditional" && (
                   <>
-                <div className="flex-1 min-h-0 overflow-auto p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium w-36 shrink-0" style={{ color: "var(--ws-text-dim)" }}>Screen Name</label>
-                    <input
-                      type="text"
-                      value={newScreenForm.name}
-                      onChange={(e) => setNewScreenForm((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="e.g. Large Cap Growth"
-                      className="flex-1 min-w-0 rounded px-2 py-1 text-sm font-normal"
-                      style={{ background: "var(--ws-bg, #0a0e14)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                    />
-                  </div>
+                <div className="flex-1 min-h-0 overflow-auto px-4 pb-3 space-y-3">
                   <div className="flex gap-4">
                     {/* Left column: section labels */}
                       <div className="w-48 shrink-0 flex flex-col gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid var(--ws-border)" }}>
@@ -3643,7 +3651,7 @@ export default function WatchlistPanel({
                       className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50 disabled:pointer-events-none transition-colors"
                       style={{
                         background: newScreenForm.name.trim() ? "var(--ws-cyan, #00e5cc)" : "var(--ws-bg3, #333)",
-                        color: newScreenForm.name.trim() ? "var(--ws-bg, #0a0e17)" : "var(--ws-text-dim)",
+                        color: newScreenForm.name.trim() ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim)",
                       }}
                     >
                       Save & Run
@@ -3663,8 +3671,8 @@ export default function WatchlistPanel({
                 {editingTitleValue !== null ? (
                   <input
                     autoFocus
-                    className="text-[14px] font-semibold rounded px-1 py-0"
-                    style={{ color: "var(--ws-text, #e6edf3)", background: "var(--ws-bg, #0d1117)", border: "1px solid var(--ws-accent, #58a6ff)", outline: "none", minWidth: 80 }}
+                    className="text-[15px] font-semibold rounded px-1 py-0"
+                    style={{ color: "var(--ws-text, #e6edf3)", background: "var(--ws-bg, #0f0f0f)", border: "1px solid var(--ws-accent, #58a6ff)", outline: "none", minWidth: 80 }}
                     value={editingTitleValue}
                     onChange={(e) => setEditingTitleValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -3675,7 +3683,7 @@ export default function WatchlistPanel({
                   />
                 ) : (
                   <span
-                    className="text-[14px] font-semibold"
+                    className="text-[15px] font-semibold"
                     style={{ color: "var(--ws-text, #e6edf3)", cursor: canEditTitle ? "pointer" : "default" }}
                     onDoubleClick={() => {
                       if (canEditTitle) {
@@ -3687,7 +3695,7 @@ export default function WatchlistPanel({
                     {activeListTitle ?? "Results"}
                   </span>
                 )}
-                <span className="text-[14px] font-semibold tabular-nums ml-2" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
+                <span className="text-[15px] font-semibold tabular-nums ml-2" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
                   ({loading ? "…" : rows.length})
                 </span>
                 <div ref={tableMenuRef} className="relative">
@@ -3962,9 +3970,9 @@ export default function WatchlistPanel({
               </div>
             )}
 
-            <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ background: "var(--ws-bg2, #161b22)" }}>
-              <table ref={tableRef} className="border-collapse whitespace-nowrap" style={{ fontSize: "12px", lineHeight: "1.4" }}>
-                <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c2128)", borderBottom: "1px solid var(--ws-border)" }}>
+            <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ background: "var(--ws-bg2, #141414)" }}>
+              <table ref={tableRef} className="border-collapse whitespace-nowrap" style={{ fontSize: "13px", lineHeight: "1.4", borderSpacing: 0 }}>
+                <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c1c1c)", borderBottom: "1px solid var(--ws-border)" }}>
                   <tr>
                     <th className="w-9 min-w-[2.25rem] py-1.5 px-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
                       Flag
@@ -4083,7 +4091,7 @@ export default function WatchlistPanel({
                           onDragStart={(e) => { e.dataTransfer.setData("stockSymbol", row.symbol); e.dataTransfer.effectAllowed = "copy"; }}
                           className={`${onSymbolSelect ? "cursor-pointer" : ""}`}
                           style={{
-                            borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))",
+                            boxShadow: "inset 0 -1px 0 var(--ws-border, rgba(255,255,255,0.06))",
                             background: isActiveSymbol
                               ? "rgba(0,229,204,0.15)"
                               : selectedSymbols.has(row.symbol)
@@ -4141,7 +4149,7 @@ export default function WatchlistPanel({
                                     flag === "red"
                                       ? "text-red-500"
                                       : flag === "yellow"
-                                        ? "text-yellow-500"
+                                        ? "text-orange-500"
                                         : flag === "green"
                                           ? "text-green-500"
                                           : "text-blue-500"
@@ -4175,7 +4183,7 @@ export default function WatchlistPanel({
                                         c === "red"
                                           ? "bg-red-500 border-red-600"
                                           : c === "yellow"
-                                            ? "bg-yellow-500 border-yellow-600"
+                                            ? "bg-orange-500 border-orange-600"
                                             : c === "green"
                                               ? "bg-green-500 border-green-600"
                                               : "bg-blue-500 border-blue-600"
@@ -4234,7 +4242,7 @@ export default function WatchlistPanel({
                     })
                   )}
                   {activeList && sidebarTab === "watchlists" && !selectedCollectionId && (
-                    <tr style={{ borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
+                    <tr style={{ boxShadow: "inset 0 -1px 0 var(--ws-border, rgba(255,255,255,0.06))" }}>
                       <td className="py-0 px-1" />
                       <td className="py-0 px-0 relative" style={{ width: getColWidth(tableColumns[0] ?? "ticker"), minWidth: getColWidth(tableColumns[0] ?? "ticker") }}>
                         <div className="relative">

@@ -46,11 +46,17 @@ $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapperPa
 
 # Remove the old refresh task if it exists
 $oldTaskName = "StockTool-DailyRefresh"
-$oldTask = schtasks /Query /TN $oldTaskName 2>&1
-if ($LASTEXITCODE -eq 0) {
-  Write-Host "Removing old task '$oldTaskName'..."
-  schtasks /Delete /TN $oldTaskName /F | Out-Null
-  Write-Host "  Removed."
+try {
+  $null = schtasks /Query /TN $oldTaskName 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "Removing old task '$oldTaskName'..."
+    $null = schtasks /Delete /TN $oldTaskName /F 2>&1
+    Write-Host "  Removed."
+  } else {
+    Write-Host "Old task '$oldTaskName' not found (already removed)."
+  }
+} catch {
+  Write-Host "Old task '$oldTaskName' not found (already removed)."
 }
 
 Write-Host "Creating/updating scheduled task '$TaskName' at $RunAt (daily, weekdays)..."
