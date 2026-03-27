@@ -103,6 +103,8 @@ export default function Home() {
   const {
     chartLeftPx,
     setChartLeftPx,
+    chartLeftSectorsPx,
+    setChartLeftSectorsPx,
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,
@@ -111,9 +113,24 @@ export default function Home() {
   } = useLayoutPreferences();
 
   const chartHidden = section === "market" && marketSubTab === "monitor";
+  const isSectorSection = section === "sectors-industries";
 
-  const prevSectionRef = useRef(section);
-  const savedChartLeftRef = useRef<{ sectors: number | null; other: number | null }>({ sectors: null, other: null });
+  const activeChartLeft = isSectorSection
+    ? (chartLeftSectorsPx < 0
+        ? Math.round(Math.max(500, typeof window !== "undefined" ? window.innerWidth * 0.5 : 600))
+        : chartLeftSectorsPx)
+    : chartLeftPx;
+
+  const handleChartLeftChange = useCallback(
+    (px: number) => {
+      if (isSectorSection) {
+        setChartLeftSectorsPx(px);
+      } else {
+        setChartLeftPx(px);
+      }
+    },
+    [isSectorSection, setChartLeftPx, setChartLeftSectorsPx]
+  );
 
   useEffect(() => {
     if (section === "market") {
@@ -123,24 +140,7 @@ export default function Home() {
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
     }
-
-    const prev = prevSectionRef.current;
-    if (prev !== section) {
-      const isSectorNow = section === "sectors-industries";
-      const wasSector = prev === "sectors-industries";
-      if (isSectorNow && !wasSector) {
-        savedChartLeftRef.current.other = chartLeftPx;
-        const saved = savedChartLeftRef.current.sectors;
-        const minSectorLeft = Math.round(Math.max(500, window.innerWidth * 0.5));
-        setChartLeftPx(saved != null ? saved : Math.max(chartLeftPx, minSectorLeft));
-      } else if (!isSectorNow && wasSector) {
-        savedChartLeftRef.current.sectors = chartLeftPx;
-        const saved = savedChartLeftRef.current.other;
-        setChartLeftPx(saved != null ? saved : 340);
-      }
-      prevSectionRef.current = section;
-    }
-  }, [section, marketSubTab, setRightRailHidden, chartLeftPx, setChartLeftPx]);
+  }, [section, setRightRailHidden]);
 
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
   const { data, loading, error } = useStockData(symbol);
@@ -468,8 +468,8 @@ export default function Home() {
         }}
       />
       <WorkspaceLayout
-        chartLeftPx={chartHidden ? 99999 : chartLeftPx}
-        onChartLeftChange={chartHidden ? undefined : setChartLeftPx}
+        chartLeftPx={chartHidden ? 99999 : activeChartLeft}
+        onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
         railWidthPx={railWidthPx}
         onRailWidthChange={setRailWidthPx}
         rightRailHidden={rightRailHidden}

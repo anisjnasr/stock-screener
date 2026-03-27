@@ -64,7 +64,7 @@ const SYMBOL_TO_BREADTH_INDEX: Record<string, string> = {
 
 function fmtPrice(n: number | null): string {
   if (n == null || !Number.isFinite(n) || n <= 0) return "—";
-  return `$${n.toFixed(2)}`;
+  return n.toFixed(2);
 }
 
 function fmtPct(n: number | null): string {

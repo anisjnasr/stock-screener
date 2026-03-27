@@ -1769,18 +1769,23 @@ export type CachedPerformanceRow = {
 export function ensurePerformanceCacheTable(): void {
   const db = getDb();
   if (!db) return;
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS performance_cache (
-      category_type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      timeframe TEXT NOT NULL,
-      change_pct REAL,
-      total_market_cap REAL,
-      stock_count INTEGER,
-      date TEXT NOT NULL,
-      PRIMARY KEY (category_type, name, timeframe, date)
-    )
-  `);
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS performance_cache (
+        category_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        change_pct REAL,
+        total_market_cap REAL,
+        stock_count INTEGER,
+        date TEXT NOT NULL,
+        PRIMARY KEY (category_type, name, timeframe, date)
+      )
+    `);
+  } catch {
+    // DB may be read-only (e.g. on Render); table creation is best-effort.
+    // The precompute script creates it during daily refresh instead.
+  }
 }
 
 export function getPrecomputedPerformance(

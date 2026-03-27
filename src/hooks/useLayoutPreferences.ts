@@ -5,10 +5,12 @@ import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
 
 const WATCHLIST_PANEL_USER_SET_KEY = "stock-research-watchlist-panel-user-set";
 const CHART_LEFT_KEY = "ws-chart-left-px";
+const CHART_LEFT_SECTORS_KEY = "ws-chart-left-sectors-px";
 const RAIL_WIDTH_KEY = "ws-rail-width-px";
 const RIGHT_RAIL_HIDDEN_KEY = "ws-right-rail-hidden";
 
-const DEFAULT_CHART_LEFT = 340;
+const DEFAULT_CHART_LEFT = 480;
+const DEFAULT_CHART_LEFT_SECTORS = -1; // -1 means "compute dynamically"
 const DEFAULT_RAIL_WIDTH = 260;
 
 function loadNumber(key: string, fallback: number): number {
@@ -38,6 +40,7 @@ export function useLayoutPreferences() {
 
   // New workspace layout dimensions
   const [chartLeftPx, setChartLeftPxState] = useState(DEFAULT_CHART_LEFT);
+  const [chartLeftSectorsPx, setChartLeftSectorsPxState] = useState(DEFAULT_CHART_LEFT_SECTORS);
   const [railWidthPx, setRailWidthPxState] = useState(DEFAULT_RAIL_WIDTH);
   const [rightRailHidden, setRightRailHidden] = useState(false);
 
@@ -50,6 +53,7 @@ export function useLayoutPreferences() {
       const storedQuarterly = localStorage.getItem("stock-research-quarterly-hidden");
       if (storedQuarterly !== null) setQuarterlyHidden(storedQuarterly === "true");
       setChartLeftPxState(loadNumber(CHART_LEFT_KEY, DEFAULT_CHART_LEFT));
+      setChartLeftSectorsPxState(loadNumber(CHART_LEFT_SECTORS_KEY, DEFAULT_CHART_LEFT_SECTORS));
       setRailWidthPxState(loadNumber(RAIL_WIDTH_KEY, DEFAULT_RAIL_WIDTH));
       const storedRailHidden = localStorage.getItem(RIGHT_RAIL_HIDDEN_KEY);
       if (storedRailHidden !== null) setRightRailHidden(storedRailHidden === "true");
@@ -98,6 +102,12 @@ export function useLayoutPreferences() {
     saveNumber(CHART_LEFT_KEY, clamped);
   }, []);
 
+  const setChartLeftSectorsPx = useCallback((px: number) => {
+    const clamped = Math.max(0, px);
+    setChartLeftSectorsPxState(clamped);
+    saveNumber(CHART_LEFT_SECTORS_KEY, clamped);
+  }, []);
+
   const setRailWidthPx = useCallback((px: number) => {
     const clamped = Math.max(200, Math.min(400, px));
     setRailWidthPxState(clamped);
@@ -126,6 +136,8 @@ export function useLayoutPreferences() {
     handleQuarterlyToggle,
     chartLeftPx,
     setChartLeftPx,
+    chartLeftSectorsPx,
+    setChartLeftSectorsPx,
     railWidthPx,
     setRailWidthPx,
     rightRailHidden,

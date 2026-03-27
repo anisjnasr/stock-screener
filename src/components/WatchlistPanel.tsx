@@ -218,7 +218,7 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
   if (isScriptColumn && typeof v === "number") {
     return formatScriptColumnValue(String(col), v);
   }
-  if (col === "lastPrice") return typeof v === "number" ? `$${Number(v).toFixed(2)}` : String(v);
+  if (col === "lastPrice") return typeof v === "number" ? Number(v).toFixed(2) : String(v);
   if (col === "date") return formatDisplayDate(String(v));
   if (col === "industry") return toTitleCase(String(v));
   if (col === "changePct" || col === "atrPct" || (typeof v === "number" && String(col).includes("Pct")))
