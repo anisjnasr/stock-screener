@@ -322,7 +322,7 @@ export default function SectorPerfPanel({
                     onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
                   }}
                 >
-                  <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
                     <circle cx="8" cy="8" r="6" />
                     <line x1="8" y1="4" x2="8" y2="12" />
                     <line x1="4" y1="8" x2="12" y2="8" />

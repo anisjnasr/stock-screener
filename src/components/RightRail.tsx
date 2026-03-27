@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
+import { toTitleCase } from "@/lib/text-format";
 
 type YearlyRow = {
   year: string;
@@ -218,7 +219,7 @@ export default function RightRail({
 
           <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
           <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-            {profile?.industry ? safe(profile.industry) : "—"}
+            {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
           </span>
 
           <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>

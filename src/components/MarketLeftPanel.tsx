@@ -86,6 +86,13 @@ function fmtBreadth(n: number | null): string {
   return `${n.toFixed(1)}%`;
 }
 
+function breadthColor(v: number | null): string {
+  if (v == null) return "var(--ws-text-vdim)";
+  if (v > 45) return "var(--ws-text)";
+  if (v >= 25) return "#f59e0b";
+  return "var(--ws-red)";
+}
+
 type BreadthMap = Record<string, { pct50: number | null; pct200: number | null }>;
 
 function IndicesTable({
@@ -209,8 +216,8 @@ function IndicesTable({
                   <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: changeColor }}>{fmtPct(ch)}</td>
                   <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtVol(q.volume)}</td>
                   <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtVol(q.avg_volume_30d_shares)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtBreadth(b?.pct50 ?? null)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtBreadth(b?.pct200 ?? null)}</td>
+                  <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: breadthColor(b?.pct50 ?? null) }}>{fmtBreadth(b?.pct50 ?? null)}</td>
+                  <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: breadthColor(b?.pct200 ?? null) }}>{fmtBreadth(b?.pct200 ?? null)}</td>
                 </tr>
               );
             })
