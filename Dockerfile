@@ -17,7 +17,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # data/screener.db is not copied; mount at runtime
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+ENV STANDALONE=1
+RUN npx next build --webpack
 
 FROM base AS runner
 WORKDIR /app
