@@ -52,35 +52,22 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
     return series.filter((r) => r.date >= visibleRange.from && r.date <= visibleRange.to);
   }, [allData, horizon, visibleRange]);
 
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onToggleCollapse}
-        className="w-full h-7 flex items-center justify-center gap-1.5 transition-colors"
-        style={{ background: "var(--ws-bg2)", borderTop: "1px solid var(--ws-border)" }}
-      >
-        <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-          <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-          Net New Highs
-        </span>
-      </button>
-    );
-  }
-
   const maxAbs = filteredData.reduce((mx, r) => Math.max(mx, Math.abs(r.net)), 1);
 
   return (
     <div style={{ borderTop: "1px solid var(--ws-border)" }}>
-      {/* Header row */}
+      {/* Header row — always visible, entire bar toggles collapse */}
       <div
-        className="flex items-center gap-2 px-2 h-7"
+        className="flex items-center gap-2 px-2 h-7 cursor-pointer"
         style={{ background: "var(--ws-bg2)" }}
+        onClick={onToggleCollapse}
       >
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5 rounded p-0.5" style={{ background: "var(--ws-bg)" }}>
+        <div
+          className="flex items-center gap-0.5 rounded p-0.5"
+          style={{ background: "var(--ws-bg)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
           {(Object.keys(HORIZON_LABELS) as Horizon[]).map((h) => (
             <button
               key={h}
@@ -96,53 +83,55 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex items-center gap-1"
-        >
+        <div className="flex items-center gap-1">
           <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             NNH
           </span>
           <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            {collapsed ? (
+              <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            )}
           </svg>
-        </button>
+        </div>
       </div>
 
-      {/* Chart area */}
-      <div className="h-28 px-1 pb-1" style={{ background: "var(--ws-bg)" }}>
-        {loading ? (
-          <div className="h-full flex items-center justify-center">
-            <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Loading…</span>
-          </div>
-        ) : filteredData.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>No data in range</span>
-          </div>
-        ) : (
-          <svg viewBox={`0 0 ${filteredData.length} 100`} preserveAspectRatio="none" className="w-full h-full">
-            {filteredData.map((r, i) => {
-              const barHeight = (Math.abs(r.net) / maxAbs) * 45;
-              const isPositive = r.net >= 0;
-              return (
-                <g key={r.date}>
-                  <line x1={i} y1="0" x2={i} y2="100" stroke="var(--ws-border)" strokeWidth="0.3" opacity="0.4" />
-                  <rect
-                    x={i + 0.1}
-                    y={isPositive ? 50 - barHeight : 50}
-                    width={0.8}
-                    height={Math.max(0.5, barHeight)}
-                    fill={isPositive ? "var(--ws-green)" : "var(--ws-red)"}
-                    opacity={0.8}
-                  />
-                </g>
-              );
-            })}
-            <line x1="0" y1="50" x2={filteredData.length} y2="50" stroke="var(--ws-border-hover)" strokeWidth="0.5" />
-          </svg>
-        )}
-      </div>
+      {/* Chart area — hidden when collapsed */}
+      {!collapsed && (
+        <div className="h-28 px-1 pb-1" style={{ background: "var(--ws-bg)" }}>
+          {loading ? (
+            <div className="h-full flex items-center justify-center">
+              <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Loading…</span>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>No data in range</span>
+            </div>
+          ) : (
+            <svg viewBox={`0 0 ${filteredData.length} 100`} preserveAspectRatio="none" className="w-full h-full">
+              {filteredData.map((r, i) => {
+                const barHeight = (Math.abs(r.net) / maxAbs) * 45;
+                const isPositive = r.net >= 0;
+                return (
+                  <g key={r.date}>
+                    <line x1={i} y1="0" x2={i} y2="100" stroke="var(--ws-border)" strokeWidth="0.3" opacity="0.4" />
+                    <rect
+                      x={i + 0.1}
+                      y={isPositive ? 50 - barHeight : 50}
+                      width={0.8}
+                      height={Math.max(0.5, barHeight)}
+                      fill={isPositive ? "var(--ws-green)" : "var(--ws-red)"}
+                      opacity={0.8}
+                    />
+                  </g>
+                );
+              })}
+              <line x1="0" y1="50" x2={filteredData.length} y2="50" stroke="var(--ws-border-hover)" strokeWidth="0.5" />
+            </svg>
+          )}
+        </div>
+      )}
     </div>
   );
 }
