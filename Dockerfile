@@ -18,7 +18,7 @@ COPY . .
 # data/screener.db is not copied; mount at runtime
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV STANDALONE=1
-RUN npx next build --webpack
+RUN npm run build
 
 FROM base AS runner
 WORKDIR /app
