@@ -67,6 +67,7 @@ export default function Home() {
   const [searchValue, setSearchValue] = useState("");
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [chartLoading, setChartLoading] = useState(true);
+  const [chartDebug, setChartDebug] = useState("init");
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("daily");
   const [scanSymbols, setScanSymbols] = useState<string[]>([]);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -248,11 +249,21 @@ export default function Home() {
     let cancelled = false;
     const controller = new AbortController();
     const cached = getCachedCandles(symbol, chartTimeframe);
-    if (cached) { setCandles(cached); setChartLoading(false); }
-    else { setChartLoading(true); }
+    if (cached) { setCandles(cached); setChartLoading(false); setChartDebug(`cached:${cached.length}`); }
+    else { setChartLoading(true); setChartDebug("fetching"); }
     fetchCandlesFor(symbol, chartTimeframe, { signal: controller.signal })
-      .then((rows) => { if (!cancelled && !controller.signal.aborted) setCandles(rows); })
-      .finally(() => { if (!cancelled && !controller.signal.aborted) setChartLoading(false); });
+      .then((rows) => {
+        if (!cancelled && !controller.signal.aborted) {
+          setCandles(rows);
+          setChartDebug(`fetched:${rows ? rows.length : "null"}`);
+        } else {
+          setChartDebug(`aborted:c=${cancelled},a=${controller.signal.aborted}`);
+        }
+      })
+      .catch((err) => { setChartDebug(`error:${err?.message || err}`); })
+      .finally(() => {
+        if (!cancelled && !controller.signal.aborted) setChartLoading(false);
+      });
     return () => { cancelled = true; controller.abort(); };
   }, [symbol, chartTimeframe, fetchCandlesFor, getCachedCandles]);
 
