@@ -86,6 +86,14 @@ body {
   display: none;
 }
 
+.screener-cat-btn:not([data-selected]):hover {
+  background: var(--ws-bg3);
+  color: var(--ws-text);
+}
+.screener-cat-btn:not([data-selected]) {
+  background: var(--ws-bg2);
+}
+
 /* Workspace responsive: on small screens, collapse to chart-only with scrollable panels */
 @media (max-width: 767px) {
   [role="separator"][aria-orientation="vertical"] {

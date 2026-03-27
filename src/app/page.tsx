@@ -49,7 +49,7 @@ import {
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
-import { loadScreens, seedDefaultScreensIfEmpty, type SavedScreen } from "@/lib/screener-storage";
+import { loadScreens, seedDefaultScreensIfEmpty, deleteScreen, type SavedScreen } from "@/lib/screener-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -447,6 +447,24 @@ export default function Home() {
         onNewScan={() => {
           setSection("scans");
           setOpenToScreenerTrigger({ name: "__new__", nonce: Date.now() });
+        }}
+        onEditScan={(name) => {
+          setSection("scans");
+          setOpenToScreenerTrigger({ name: `__edit__:${name}`, nonce: Date.now() });
+        }}
+        onCloneScan={(name) => {
+          setSection("scans");
+          setOpenToScreenerTrigger({ name: `__clone__:${name}`, nonce: Date.now() });
+        }}
+        onDeleteScan={(name) => {
+          const screen = screens.find((s) => s.name === name);
+          if (!screen) return;
+          deleteScreen(screen.id);
+          const updated = loadScreens();
+          setScreens(updated);
+          if (activeScanName === name) {
+            setActiveScanName(updated[0]?.name ?? "");
+          }
         }}
         watchlistNames={chartWatchlists}
         activeWatchlistId={activeWatchlistId}

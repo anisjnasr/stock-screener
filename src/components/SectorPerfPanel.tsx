@@ -65,6 +65,7 @@ export default function SectorPerfPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [sortAsc, setSortAsc] = useState(false);
 
   const apiTf = TF_API[timeframe] ?? "week";
 
@@ -103,8 +104,13 @@ export default function SectorPerfPanel({
   }, [payload, subTab]);
 
   const sorted = useMemo(
-    () => [...items].sort((a, b) => (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity)),
-    [items]
+    () =>
+      [...items].sort((a, b) =>
+        sortAsc
+          ? (a.changePct ?? -Infinity) - (b.changePct ?? -Infinity)
+          : (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity)
+      ),
+    [items, sortAsc]
   );
 
   const maxAbs = useMemo(
@@ -188,6 +194,28 @@ export default function SectorPerfPanel({
                 {TF_LABELS[tf]}
               </button>
             ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors ml-1"
+              style={{ color: sortAsc ? "var(--ws-cyan)" : "var(--ws-text-dim)", background: "rgba(255,255,255,0.04)" }}
+              title={sortAsc ? "Sorted ascending — click to sort descending" : "Sorted descending — click to sort ascending"}
+              onClick={() => { setSortAsc((v) => !v); setSelectedIdx(0); }}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                {sortAsc ? (
+                  <>
+                    <line x1="8" y1="13" x2="8" y2="3" />
+                    <polyline points="4,7 8,3 12,7" />
+                  </>
+                ) : (
+                  <>
+                    <line x1="8" y1="3" x2="8" y2="13" />
+                    <polyline points="4,9 8,13 12,9" />
+                  </>
+                )}
+              </svg>
+              {sortAsc ? "Asc" : "Desc"}
+            </button>
           </div>
         )}
         <div className="flex-1" />

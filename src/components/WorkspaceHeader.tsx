@@ -45,6 +45,9 @@ type WorkspaceHeaderProps = {
   activeScan?: string;
   onScanChange?: (name: string) => void;
   onNewScan?: () => void;
+  onEditScan?: (name: string) => void;
+  onCloneScan?: (name: string) => void;
+  onDeleteScan?: (name: string) => void;
   // Lists contextual
   watchlistNames?: { id: string; name: string }[];
   activeWatchlistId?: string | null;
@@ -163,6 +166,9 @@ export default function WorkspaceHeader({
   activeScan = "",
   onScanChange,
   onNewScan,
+  onEditScan,
+  onCloneScan,
+  onDeleteScan,
   watchlistNames = [],
   activeWatchlistId,
   onWatchlistChange,
@@ -482,7 +488,7 @@ export default function WorkspaceHeader({
                     return (
                       <div
                         key={s}
-                        className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                        className="group/sc px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
                         style={{
                           color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                           background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
@@ -498,7 +504,30 @@ export default function WorkspaceHeader({
                         >
                           {isFav ? "★" : "☆"}
                         </span>
-                        {s}
+                        <span className="flex-1 truncate">{s}</span>
+                        <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/sc:opacity-100 transition-opacity">
+                          <span
+                            className="rounded p-0.5 hover:bg-white/10"
+                            title={`Edit ${s}`}
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onEditScan?.(s); setScanDDOpen(false); }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
+                          </span>
+                          <span
+                            className="rounded p-0.5 hover:bg-white/10"
+                            title={`Clone ${s}`}
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onCloneScan?.(s); setScanDDOpen(false); }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
+                          </span>
+                          <span
+                            className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
+                            title={`Delete ${s}`}
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteScan?.(s); setScanDDOpen(false); }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                          </span>
+                        </span>
                       </div>
                     );
                   })}
@@ -619,7 +648,7 @@ export default function WorkspaceHeader({
                               setListDDOpen(false);
                             }}
                           >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
                           </span>
                         )}
                       </div>

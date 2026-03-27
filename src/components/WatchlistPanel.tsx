@@ -1187,10 +1187,13 @@ export default function WatchlistPanel({
     });
   }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols]);
 
+  const pendingScreenerTriggerRef = useRef<{ name: string; nonce: number } | null>(null);
+
   useEffect(() => {
     if (!openToScreenerTrigger?.name?.trim()) return;
     setSidebarTab("screener");
-    if (openToScreenerTrigger.name === "__new__") {
+    const triggerName = openToScreenerTrigger.name;
+    if (triggerName === "__new__") {
       setEditingScreenId(null);
       setNewScreenForm({
         name: "",
@@ -1202,8 +1205,10 @@ export default function WatchlistPanel({
       });
       setScanModalMode("traditional");
       setShowNewScreenerModal(true);
+    } else if (triggerName.startsWith("__edit__:") || triggerName.startsWith("__clone__:")) {
+      pendingScreenerTriggerRef.current = openToScreenerTrigger;
     } else {
-      const target = screens.find((s) => s.name === openToScreenerTrigger.name);
+      const target = screens.find((s) => s.name === triggerName);
       if (target) {
         setSelectedScreenId(target.id);
       }
@@ -1780,6 +1785,68 @@ export default function WatchlistPanel({
     }
     return rows;
   }, []);
+
+  useEffect(() => {
+    const pending = pendingScreenerTriggerRef.current;
+    if (!pending || !openToScreenerTrigger || pending.name !== openToScreenerTrigger.name || pending.nonce !== openToScreenerTrigger.nonce) return;
+    pendingScreenerTriggerRef.current = null;
+    const triggerName = pending.name;
+    if (triggerName.startsWith("__edit__:")) {
+      const scanName = triggerName.slice("__edit__:".length);
+      const screen = screens.find((s) => s.name === scanName);
+      if (screen) {
+        if (screen.type === "script") {
+          setEditingScriptScreenId(screen.id);
+          setNewScriptName(screen.name);
+          setNewScriptBody(screen.scriptBody ?? "");
+          setScanModalMode("script");
+          setShowNewScriptModal(true);
+        } else {
+          setEditingScreenId(screen.id);
+          setScreenerModalPosition(null);
+          setNewScreenForm({
+            name: screen.name,
+            universe: screen.universe,
+            filters: { ...screen.filters },
+            pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters),
+            includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters),
+            expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
+          });
+          setScanModalMode("traditional");
+          setShowNewScreenerModal(true);
+        }
+      }
+    } else if (triggerName.startsWith("__clone__:")) {
+      const scanName = triggerName.slice("__clone__:".length);
+      const screen = screens.find((s) => s.name === scanName);
+      if (screen) {
+        const existingNames = new Set(screens.map((s) => s.name));
+        let cloneName = `${screen.name} (1)`;
+        let n = 2;
+        while (existingNames.has(cloneName)) { cloneName = `${screen.name} (${n})`; n++; }
+        if (screen.type === "script") {
+          setEditingScriptScreenId(null);
+          setNewScriptName(cloneName);
+          setNewScriptBody(screen.scriptBody ?? "");
+          setScanModalMode("script");
+          setShowNewScriptModal(true);
+        } else {
+          setEditingScreenId(null);
+          setScreenerModalPosition(null);
+          setNewScreenForm({
+            name: cloneName,
+            universe: screen.universe,
+            filters: { ...screen.filters },
+            pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters),
+            includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters),
+            expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
+          });
+          setScanModalMode("traditional");
+          setShowNewScreenerModal(true);
+        }
+      }
+    }
+  }, [openToScreenerTrigger, screens, buildPctOperatorRowsFromFilters, buildIncludeExcludeRowsFromFilters]);
 
   const openDuplicateScreener = useCallback((screen: SavedScreen) => {
     setSidebarTab("screener");
@@ -3213,10 +3280,11 @@ export default function WatchlistPanel({
             >
               <div
                 ref={screenerModalRef}
-                className="rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] min-h-[620px] flex flex-col"
+                className="rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
                 style={{
                   background: "var(--ws-bg2, #141414)",
                   border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))",
+                  height: 620,
                   ...(screenerModalPosition
                     ? { position: "fixed" as const, left: screenerModalPosition.x, top: screenerModalPosition.y }
                     : {}),
@@ -3295,7 +3363,7 @@ export default function WatchlistPanel({
                       const v = e.target.value;
                       if (scanModalMode === "script") { setNewScriptName(v); } else { setNewScreenForm((p) => ({ ...p, name: v })); }
                     }}
-                    placeholder="e.g. Large Cap Growth"
+                    placeholder=""
                     className="flex-1 min-w-0 rounded px-2 py-1.5 text-sm font-normal"
                     style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                   />
@@ -3379,11 +3447,12 @@ export default function WatchlistPanel({
                             key={cat.id}
                             type="button"
                             onClick={() => setSelectedScreenerSectionId(cat.id)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 text-left text-xs font-semibold tracking-wide transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2.5 text-left text-xs font-semibold tracking-wide transition-colors screener-cat-btn"
                             style={{
-                              background: isSelected ? "var(--ws-bg3)" : "var(--ws-bg2)",
+                              background: isSelected ? "var(--ws-bg3)" : undefined,
                               color: isSelected ? "var(--ws-text)" : "var(--ws-text-dim)",
                             }}
+                            data-selected={isSelected ? "true" : undefined}
                           >
                             <span>{cat.title}</span>
                             <span className="shrink-0 text-sm tabular-nums" style={{ color: isSelected ? "var(--ws-text-dim)" : "var(--ws-text-vdim)" }}>
