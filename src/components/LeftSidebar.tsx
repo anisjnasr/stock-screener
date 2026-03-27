@@ -116,11 +116,13 @@ export default function LeftSidebar({
   return (
     <aside className="w-[22rem] max-w-[22rem] min-w-0 shrink-0 self-stretch min-h-0 border-r border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col">
       <div className="px-2 pt-1 pb-1 border-b border-zinc-200 dark:border-zinc-700 shrink-0 min-w-0">
-        <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1">
+        <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-1" role="tablist">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "profile"}
             onClick={() => setActiveTab("profile")}
-            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ws-focus-ring ${
               activeTab === "profile"
                 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                 : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -130,8 +132,10 @@ export default function LeftSidebar({
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "news"}
             onClick={() => setActiveTab("news")}
-            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ws-focus-ring ${
               activeTab === "news"
                 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                 : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -141,8 +145,10 @@ export default function LeftSidebar({
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "filings"}
             onClick={() => setActiveTab("filings")}
-            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ws-focus-ring ${
               activeTab === "filings"
                 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                 : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"

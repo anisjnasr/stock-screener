@@ -184,12 +184,13 @@ export default function SectorPerfPanel({
                 key={tf}
                 type="button"
                 onClick={() => onTimeframeChange(tf)}
-                className="px-2 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer"
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer ws-focus-ring ${timeframe !== tf ? "hover:bg-white/[0.06]" : ""}`}
                 style={{
-                  background: timeframe === tf ? "rgba(0,229,204,0.12)" : "transparent",
+                  background: timeframe === tf ? "rgba(0,229,204,0.12)" : undefined,
                   color: timeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
                   border: timeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
                 }}
+                aria-pressed={timeframe === tf}
               >
                 {TF_LABELS[tf]}
               </button>
@@ -247,17 +248,22 @@ export default function SectorPerfPanel({
           return (
             <div
               key={s.id}
-              className="grid items-center px-2 py-[5px] cursor-pointer"
+              className="grid items-center px-2 py-[5px] cursor-pointer ws-row-hover ws-focus-ring"
+              role="button"
+              tabIndex={0}
+              aria-label={`${s.ticker ?? s.name}: ${pctLabel}`}
+              aria-pressed={isSelected}
               style={{
                 gridTemplateColumns: `auto minmax(0, 200px) 1fr ${onDrillDown ? "36px" : ""}`,
                 gap: "6px",
-                background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
+                background: isSelected ? "rgba(0,229,204,0.08)" : undefined,
                 borderBottom: "1px solid var(--ws-border)",
               }}
               onClick={() => {
                 setSelectedIdx(i);
                 if (s.ticker) onSymbolSelect?.(s.ticker);
               }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedIdx(i); if (s.ticker) onSymbolSelect?.(s.ticker); } }}
             >
               <span
                 className="font-mono text-[13px] leading-snug whitespace-nowrap"
@@ -342,15 +348,19 @@ export default function SectorPerfPanel({
               </div>
               {onDrillDown && (
                 <div
-                  className="flex items-center justify-center rounded cursor-pointer transition-opacity hover:opacity-70"
+                  className="flex items-center justify-center rounded cursor-pointer transition-all hover:bg-white/[0.06] ws-focus-ring"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Drill into ${s.name}`}
                   style={{ width: 32, height: 32, color: "var(--ws-cyan)" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
                     onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
                   }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme"; onDrillDown(kind, subTab === "thematic" ? s.id : s.name); } }}
                 >
-                  <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
                     <circle cx="8" cy="8" r="6" />
                     <line x1="8" y1="4" x2="8" y2="12" />
                     <line x1="4" y1="8" x2="12" y2="8" />

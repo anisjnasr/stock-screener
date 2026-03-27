@@ -89,7 +89,7 @@ function fmtBreadth(n: number | null): string {
 function breadthColor(v: number | null): string {
   if (v == null) return "var(--ws-text-vdim)";
   if (v > 45) return "var(--ws-text)";
-  if (v >= 25) return "#f59e0b";
+  if (v >= 25) return "var(--ws-amber)";
   return "var(--ws-red)";
 }
 
@@ -204,12 +204,17 @@ function IndicesTable({
               return (
                 <tr
                   key={q.symbol}
-                  className="cursor-pointer transition-colors"
+                  className={`cursor-pointer ws-row-hover ws-focus-ring ${isSelected ? "" : ""}`}
                   style={{
-                    background: isSelected ? "rgba(0,229,204,0.08)" : "transparent",
+                    background: isSelected ? "rgba(0,229,204,0.08)" : undefined,
                     borderBottom: "1px solid var(--ws-border)",
                   }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Select ${q.symbol}`}
+                  aria-pressed={isSelected}
                   onClick={() => onSymbolSelect?.(q.symbol)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSymbolSelect?.(q.symbol); } }}
                 >
                   <td className={`${COL_STYLE} font-mono font-medium`} style={{ color: "var(--ws-cyan)" }}>{q.symbol}</td>
                   <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtPrice(q.last_price)}</td>

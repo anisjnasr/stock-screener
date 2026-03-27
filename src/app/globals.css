@@ -36,6 +36,13 @@
   --ws-blue: #4da6ff;
   --ws-green: #22c55e;
   --ws-purple: #a78bfa;
+  --ws-amber: #f59e0b;
+  --ws-heat-green: #0a8963;
+  --ws-heat-green-deep: #2d5749;
+  --ws-heat-red: #a54557;
+  --ws-heat-red-deep: #52201b;
+  --ws-hover: rgba(255, 255, 255, 0.04);
+  --ws-hover-strong: rgba(255, 255, 255, 0.06);
   --ws-font-mono: var(--font-geist-mono), "IBM Plex Mono", "SF Mono", monospace;
   --ws-font-sans: var(--font-inter), "Plus Jakarta Sans", sans-serif;
 }
@@ -92,6 +99,20 @@ body {
 }
 .screener-cat-btn:not([data-selected]) {
   background: var(--ws-bg2);
+}
+
+/* Focus-visible ring for keyboard accessibility */
+.ws-focus-ring:focus-visible {
+  outline: 2px solid rgba(0, 229, 204, 0.5);
+  outline-offset: -1px;
+}
+
+/* Clickable row hover for tables/lists */
+.ws-row-hover {
+  transition: background-color 100ms ease;
+}
+.ws-row-hover:hover {
+  background: var(--ws-hover);
 }
 
 /* Workspace responsive: on small screens, collapse to chart-only with scrollable panels */

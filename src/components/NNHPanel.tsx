@@ -58,9 +58,14 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
     <div style={{ borderTop: "1px solid var(--ws-border)" }}>
       {/* Header row — always visible, entire bar toggles collapse */}
       <div
-        className="flex items-center gap-2 px-2 h-7 cursor-pointer"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        aria-label="Toggle Net New Highs chart"
+        className="flex items-center gap-2 px-2 h-7 cursor-pointer ws-focus-ring"
         style={{ background: "var(--ws-bg2)" }}
         onClick={onToggleCollapse}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleCollapse(); } }}
       >
         <div className="flex-1" />
         <div
@@ -73,9 +78,10 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
               key={h}
               type="button"
               onClick={() => setHorizon(h)}
-              className="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+              className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ws-focus-ring ${horizon !== h ? "hover:bg-white/[0.06]" : ""}`}
+              aria-pressed={horizon === h}
               style={{
-                background: horizon === h ? "var(--ws-cyan)" : "transparent",
+                background: horizon === h ? "var(--ws-cyan)" : undefined,
                 color: horizon === h ? "var(--ws-bg)" : "var(--ws-text-dim)",
               }}
             >

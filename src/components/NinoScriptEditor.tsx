@@ -85,7 +85,8 @@ export default function NinoScriptEditor({
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
-        className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
+        aria-label="NinoScript editor"
+        className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-inset px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
         style={{ minHeight }}
         spellCheck={false}
       />

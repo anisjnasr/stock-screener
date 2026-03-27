@@ -26,8 +26,8 @@ function fmtPctCell(n: number | null | undefined): string {
 
 function getBreadthPctCellClass(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
-  if (n < 30) return "bg-[#52201b] text-white";
-  if (n < 40) return "bg-[#a54557] text-white";
+  if (n < 30) return "bg-[var(--ws-heat-red-deep)] text-white";
+  if (n < 40) return "bg-[var(--ws-heat-red)] text-white";
   return "";
 }
 
@@ -44,8 +44,8 @@ function formatDateDmy(input: string): string {
 function getPairCellClass(up: number | null | undefined, down: number | null | undefined): string {
   const upVal = Number(up ?? 0);
   const downVal = Number(down ?? 0);
-  if (upVal > downVal) return "bg-[#0a8963] text-white";
-  if (downVal > upVal) return "bg-[#a54557] text-white";
+  if (upVal > downVal) return "bg-[var(--ws-heat-green)] text-white";
+  if (downVal > upVal) return "bg-[var(--ws-heat-red)] text-white";
   return "";
 }
 
@@ -187,7 +187,7 @@ export default function MarketMonitorTable() {
                 <td
                   className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
                     row.up4pct > row.down4pct && row.up4pct >= 267
-                      ? "bg-[#2d5749] text-white"
+                      ? "bg-[var(--ws-heat-green-deep)] text-white"
                       : getPairCellClass(row.up4pct, row.down4pct)
                   }`}
                 >
@@ -196,7 +196,7 @@ export default function MarketMonitorTable() {
                 <td
                   className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
                     row.down4pct > row.up4pct && row.down4pct >= 233
-                      ? "bg-[#52201b] text-white"
+                      ? "bg-[var(--ws-heat-red-deep)] text-white"
                       : getPairCellClass(row.up4pct, row.down4pct)
                   }`}
                 >

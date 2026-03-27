@@ -128,7 +128,8 @@ function Pill({
     <button
       type="button"
       onClick={onClick}
-      className={`transition-colors cursor-pointer font-semibold ${!on ? "hover:bg-white/[0.06]" : ""}`}
+      aria-pressed={!!on}
+      className={`transition-colors cursor-pointer font-semibold ws-focus-ring ${!on ? "hover:bg-white/[0.06]" : ""}`}
       style={{
         background: on ? "var(--ws-cyan)" : undefined,
         border: on ? "1px solid var(--ws-cyan)" : "1px solid transparent",
@@ -284,7 +285,8 @@ export default function WorkspaceHeader({
               key={s.id}
               type="button"
               onClick={() => onSectionChange(s.id)}
-              className={`px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider transition-all cursor-pointer ${section !== s.id ? "hover:bg-white/5" : ""}`}
+              className={`px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
+              aria-current={section === s.id ? "page" : undefined}
               style={{
                 background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
                 borderBottom: section === s.id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
@@ -426,7 +428,7 @@ export default function WorkspaceHeader({
                       <button
                         key={f}
                         type="button"
-                        className="transition-colors cursor-pointer font-medium"
+                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
                         style={{
                           background: FLAG_COLORS[f],
                           color: "#fff",
@@ -557,7 +559,7 @@ export default function WorkspaceHeader({
                       <button
                         key={f}
                         type="button"
-                        className="transition-colors cursor-pointer font-medium"
+                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
                         style={{
                           background: FLAG_COLORS[f],
                           color: "#fff",
@@ -684,7 +686,7 @@ export default function WorkspaceHeader({
                       <button
                         key={f}
                         type="button"
-                        className="transition-colors cursor-pointer font-medium"
+                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
                         style={{
                           background: FLAG_COLORS[f],
                           color: "#fff",

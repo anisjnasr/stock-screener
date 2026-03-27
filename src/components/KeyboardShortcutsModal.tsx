@@ -31,6 +31,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
+      aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
       <div
@@ -44,7 +45,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors ws-focus-ring rounded"
             aria-label="Close"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

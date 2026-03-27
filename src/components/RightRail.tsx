@@ -231,10 +231,12 @@ export default function RightRail({
       </div>
 
       {/* Tab row */}
-      <div className="flex items-center gap-1 px-3 py-2" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+      <div className="flex items-center gap-1 px-3 py-2" role="tablist" style={{ borderBottom: "1px solid var(--ws-border)" }}>
         {(["fundamentals", "news"] as RailTab[]).map((tab) => (
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
-            className={`px-3 py-1 text-[13px] font-semibold rounded transition-colors capitalize ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
+            role="tab"
+            aria-selected={railTab === tab}
+            className={`px-3 py-1 text-[13px] font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : undefined,
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
@@ -284,7 +286,8 @@ export default function RightRail({
             <div className="flex items-center gap-1 mb-2">
               {(["revenue", "eps"] as FinMetric[]).map((m) => (
                 <button key={m} type="button" onClick={() => setFinMetric(m)}
-                  className={`px-3 py-0.5 text-[13px] font-semibold rounded transition-colors ${finMetric !== m ? "hover:bg-white/[0.06]" : ""}`}
+                  aria-pressed={finMetric === m}
+                  className={`px-3 py-0.5 text-[13px] font-semibold rounded transition-colors ws-focus-ring ${finMetric !== m ? "hover:bg-white/[0.06]" : ""}`}
                   style={{ background: finMetric === m ? "var(--ws-bg3)" : undefined, color: finMetric === m ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
                   {m === "revenue" ? "Revenue" : "EPS"}
                 </button>
@@ -293,7 +296,8 @@ export default function RightRail({
             <div className="flex items-center gap-0.5 mb-2">
               {(["annual", "quarterly"] as const).map((v) => (
                 <button key={v} type="button" onClick={() => setFinFreq(v)}
-                  className={`px-2 py-0.5 text-[11px] rounded transition-colors capitalize ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
+                  aria-pressed={finFreq === v}
+                  className={`px-2 py-0.5 text-[11px] rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
                   style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
                   {v}
                 </button>

@@ -1422,7 +1422,8 @@ export default function StockChart({
               <button
                 type="button"
                 onClick={() => handleUpdateSettings({ showEma50: !settings.showEma50 })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
+                aria-pressed={settings.showEma50}
                 style={{
                   color: settings.showEma50 ? "#2196F3" : "#2196F380",
                   borderColor: settings.showEma50 ? "#2196F350" : "#2196F320",
@@ -1452,7 +1453,8 @@ export default function StockChart({
               <button
                 type="button"
                 onClick={() => handleUpdateSettings({ showEma200: !settings.showEma200 })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
+                aria-pressed={settings.showEma200}
                 style={{
                   color: settings.showEma200 ? "#FF5252" : "#FF525280",
                   borderColor: settings.showEma200 ? "#FF525250" : "#FF525220",
@@ -1482,7 +1484,8 @@ export default function StockChart({
               <button
                 type="button"
                 onClick={() => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
+                aria-pressed={settings.showEma40Weekly}
                 style={{
                   color: settings.showEma40Weekly ? "#9C27B0" : "#9C27B080",
                   borderColor: settings.showEma40Weekly ? "#9C27B050" : "#9C27B020",
@@ -1511,7 +1514,8 @@ export default function StockChart({
             <button
               type="button"
               onClick={() => handleUpdateSettings({ showVolume: !settings.showVolume })}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
+              aria-pressed={settings.showVolume}
               style={{
                 color: settings.showVolume ? "#7B8794" : "#7B879480",
                 borderColor: settings.showVolume ? "#7B879450" : "#7B879420",

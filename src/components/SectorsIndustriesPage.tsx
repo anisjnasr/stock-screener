@@ -67,7 +67,8 @@ function TimeframePills({
           key={opt.id}
           type="button"
           onClick={() => onChange(opt.id)}
-          className={`rounded px-2 py-1 text-xs ${
+          aria-pressed={value === opt.id}
+          className={`rounded px-2 py-1 text-xs ws-focus-ring ${
             value === opt.id
               ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
               : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
