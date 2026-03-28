@@ -109,7 +109,7 @@ async function runNativeCompute(LIMIT, YEARS) {
   `);
   const upsertInd = db.prepare(`
     INSERT OR REPLACE INTO indicators_daily (symbol, date, price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct, avg_volume_1w, avg_volume_1m, atr_14, atr_pct_14, atr_21, atr_pct_21, ema_20, ema_50, ema_100, ema_200, above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200, ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct, rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m, industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m, sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const getBars = db.prepare("SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date");
   const getQuote = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
