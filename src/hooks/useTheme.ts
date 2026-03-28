@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { cloudSyncSetting } from "@/lib/cloud-sync";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -51,6 +52,7 @@ export function useTheme() {
     } catch {
       /* ignore */
     }
+    cloudSyncSetting("theme", next);
   }, []);
 
   const cycleTheme = useCallback(() => {
@@ -62,6 +64,7 @@ export function useTheme() {
       } catch {
         /* ignore */
       }
+      cloudSyncSetting("theme", next);
       return next;
     });
   }, []);

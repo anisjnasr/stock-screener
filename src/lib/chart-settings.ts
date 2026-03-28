@@ -1,7 +1,10 @@
 /**
  * User chart settings for the main price chart.
  * Stored in localStorage so they persist across sessions.
+ * Also synced to Supabase when a profile is active.
  */
+
+import { cloudSyncSetting } from "./cloud-sync";
 
 const STORAGE_KEY_CHART_SETTINGS = "stock-research-chart-settings";
 
@@ -101,5 +104,6 @@ export function saveChartSettings(settings: ChartSettings): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("chart_settings", settings);
 }
 

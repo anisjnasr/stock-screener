@@ -1,6 +1,9 @@
 /**
  * Saved screener definitions (name, universe, filters) and folders in localStorage.
+ * Each save also fire-and-forgets a sync to Supabase when a profile is active.
  */
+
+import { cloudSyncScreens } from "./cloud-sync";
 
 const STORAGE_KEY_SCREENS = "stock-research-screener-screens";
 const STORAGE_KEY_FOLDERS = "stock-research-screener-folders";
@@ -56,6 +59,7 @@ export function saveScreens(screens: SavedScreen[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncScreens(screens, loadFolders(), loadFavoriteScreenIds());
 }
 
 export function addScreen(screen: Omit<SavedScreen, "id" | "createdAt">): SavedScreen {
@@ -111,6 +115,7 @@ export function saveFolders(folders: ScreenerFolder[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncScreens(loadScreens(), folders, loadFavoriteScreenIds());
 }
 
 export function addFolder(folder: Omit<ScreenerFolder, "id" | "createdAt">): ScreenerFolder {
@@ -265,6 +270,7 @@ export function loadFavoriteScreenIds(): string[] {
 export function saveFavoriteScreenIds(ids: string[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY_FAV_SCREENS, JSON.stringify(ids));
+  cloudSyncScreens(loadScreens(), loadFolders(), ids);
 }
 
 export function toggleFavoriteScreen(screenId: string): string[] {

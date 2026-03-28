@@ -43,6 +43,7 @@
     "setup-github-runner": "powershell -ExecutionPolicy Bypass -File scripts/setup-github-runner.ps1"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
     "framer-motion": "^12.38.0",

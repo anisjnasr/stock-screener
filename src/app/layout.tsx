@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import ProfileProviderWrapper from "@/components/ProfileProviderWrapper";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-inter",
@@ -82,7 +83,9 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.variable} ${ibmPlexMono.variable} antialiased`}
       >
-        {children}
+        <ProfileProviderWrapper>
+          {children}
+        </ProfileProviderWrapper>
         <ServiceWorkerRegistration />
       </body>
     </html>

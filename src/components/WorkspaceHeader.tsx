@@ -6,6 +6,7 @@ import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist } fro
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import { loadFavoriteScreenIds, toggleFavoriteScreen } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
+import ProfileIcon from "@/components/ProfileIcon";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
@@ -393,6 +394,8 @@ export default function WorkspaceHeader({
             {lastUpdated}
           </span>
         )}
+
+        <ProfileIcon />
       </div>
 
       {/* ===== ROW 2 — Sub-bar ===== */}

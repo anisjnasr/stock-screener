@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
+import { cloudSyncSetting } from "@/lib/cloud-sync";
 
 const WATCHLIST_PANEL_USER_SET_KEY = "stock-research-watchlist-panel-user-set";
 const CHART_LEFT_KEY = "ws-chart-left-px";
@@ -31,6 +32,21 @@ function saveNumber(key: string, value: number): void {
   } catch {
     /* ignore */
   }
+}
+
+function syncLayoutToCloud(): void {
+  if (typeof window === "undefined") return;
+  const s = localStorage;
+  const tryNum = (k: string) => { const v = s.getItem(k); return v != null ? Number(v) : undefined; };
+  const tryBool = (k: string) => { const v = s.getItem(k); return v != null ? v === "true" : undefined; };
+  cloudSyncSetting("layout_preferences", {
+    chartLeftPx: tryNum(CHART_LEFT_KEY),
+    chartLeftSectorsPx: tryNum(CHART_LEFT_SECTORS_KEY),
+    railWidthPx: tryNum(RAIL_WIDTH_KEY),
+    rightRailHidden: tryBool(RIGHT_RAIL_HIDDEN_KEY),
+    leftSidebarHidden: tryBool("stock-research-left-sidebar-hidden"),
+    quarterlyHidden: tryBool("stock-research-quarterly-hidden"),
+  });
 }
 
 export function useLayoutPreferences() {
@@ -80,6 +96,7 @@ export function useLayoutPreferences() {
       } catch {
         /* ignore */
       }
+      syncLayoutToCloud();
       return next;
     });
   }, []);
@@ -92,6 +109,7 @@ export function useLayoutPreferences() {
       } catch {
         /* ignore */
       }
+      syncLayoutToCloud();
       return next;
     });
   }, []);
@@ -100,18 +118,21 @@ export function useLayoutPreferences() {
     const clamped = Math.max(0, px);
     setChartLeftPxState(clamped);
     saveNumber(CHART_LEFT_KEY, clamped);
+    syncLayoutToCloud();
   }, []);
 
   const setChartLeftSectorsPx = useCallback((px: number) => {
     const clamped = Math.max(0, px);
     setChartLeftSectorsPxState(clamped);
     saveNumber(CHART_LEFT_SECTORS_KEY, clamped);
+    syncLayoutToCloud();
   }, []);
 
   const setRailWidthPx = useCallback((px: number) => {
     const clamped = Math.max(200, Math.min(400, px));
     setRailWidthPxState(clamped);
     saveNumber(RAIL_WIDTH_KEY, clamped);
+    syncLayoutToCloud();
   }, []);
 
   const handleRightRailToggle = useCallback(() => {
@@ -122,6 +143,7 @@ export function useLayoutPreferences() {
       } catch {
         /* ignore */
       }
+      syncLayoutToCloud();
       return next;
     });
   }, []);

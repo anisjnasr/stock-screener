@@ -2,7 +2,11 @@
  * Watchlist and stock flags persisted in localStorage.
  * Lists: id -> { name, symbolIds }
  * Flags: symbol -> 'red' | 'yellow' | 'green' | 'blue' (global across lists)
+ *
+ * Each save also fire-and-forgets a sync to Supabase when a profile is active.
  */
+
+import { cloudSyncWatchlists, cloudSyncFlags, cloudSyncSetting } from "./cloud-sync";
 
 const STORAGE_KEY_LISTS = "stock-research-watchlists";
 const STORAGE_KEY_LIST_FOLDERS = "stock-research-watchlist-folders";
@@ -48,6 +52,7 @@ export function saveFlagName(color: string, name: string): Record<string, string
   if (typeof window !== "undefined") {
     try { localStorage.setItem(STORAGE_KEY_FLAG_NAMES, JSON.stringify(names)); } catch { /* ignore */ }
   }
+  cloudSyncSetting("flag_names", names);
   return names;
 }
 
@@ -76,6 +81,7 @@ export function saveWatchlists(lists: Watchlist[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncWatchlists(lists, loadWatchlistFolders(), loadFavoriteWatchlistIds());
 }
 
 export function loadWatchlistFolders(): WatchlistFolder[] {
@@ -103,6 +109,7 @@ export function saveWatchlistFolders(folders: WatchlistFolder[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncWatchlists(loadWatchlists(), folders, loadFavoriteWatchlistIds());
 }
 
 export function loadFlags(): Record<string, StockFlag> {
@@ -124,6 +131,7 @@ export function saveFlags(flags: Record<string, StockFlag>): void {
   } catch {
     /* ignore */
   }
+  cloudSyncFlags(flags);
 }
 
 export function loadPanelMode(): WatchlistPanelMode {
@@ -144,6 +152,7 @@ export function savePanelMode(mode: WatchlistPanelMode): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("panel_mode", mode);
 }
 
 const DEFAULT_PANEL_HEIGHT_PX = 32;
@@ -168,6 +177,7 @@ export function savePanelHeightPx(px: number): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("panel_height", Math.round(px));
 }
 
 const DEFAULT_SIDEBAR_WIDTH_PX = 224;
@@ -193,6 +203,7 @@ export function saveSidebarWidthPx(px: number): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("sidebar_width", Math.round(px));
 }
 
 export type ColumnId =
@@ -392,6 +403,7 @@ export function saveVisibleColumns(columns: ColumnId[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("visible_columns", columns);
 }
 
 export function loadColumnWidths(): Partial<Record<ColumnId, number>> {
@@ -413,6 +425,7 @@ export function saveColumnWidths(widths: Partial<Record<ColumnId, number>>): voi
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("column_widths", widths);
 }
 
 export type ColumnSet = {
@@ -449,6 +462,7 @@ export function saveColumnSets(sets: ColumnSet[]): void {
   } catch {
     /* ignore */
   }
+  cloudSyncSetting("column_sets", sets);
 }
 
 const STORAGE_KEY_FAV_LISTS = "stock-research-favorite-watchlist-ids";
@@ -466,6 +480,7 @@ export function loadFavoriteWatchlistIds(): string[] {
 export function saveFavoriteWatchlistIds(ids: string[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY_FAV_LISTS, JSON.stringify(ids));
+  cloudSyncWatchlists(loadWatchlists(), loadWatchlistFolders(), ids);
 }
 
 export function toggleFavoriteWatchlist(listId: string): string[] {
