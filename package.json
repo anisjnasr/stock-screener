@@ -32,6 +32,7 @@
     "sample-tables": "node scripts/sample-tables.mjs",
     "backfill-historical-massive": "node scripts/backfill-historical-massive.mjs",
     "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
+    "backfill-gaps": "node scripts/backfill-gaps.mjs",
     "compute-indicators": "node scripts/compute-indicators-from-bars.mjs",
     "compute-market-aggregates": "node scripts/compute-market-aggregates.mjs",
     "optimize-db": "node scripts/optimize-db.mjs",
