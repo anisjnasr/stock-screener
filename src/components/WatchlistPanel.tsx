@@ -28,13 +28,17 @@ import {
   type StockFlag,
   type ColumnId,
   type ColumnSet,
+  type ColumnFilterDef,
+  type TopBottomFilter,
   ALL_COLUMN_IDS,
   COLUMN_LABELS,
   NUMERIC_COLUMN_IDS,
   DEFAULT_VISIBLE_COLUMNS,
   loadFlagNames,
   saveFlagName,
+  passesColumnFilter,
 } from "@/lib/watchlist-storage";
+import ColumnFilterPopover from "./ColumnFilterPopover";
 import {
   loadScreens,
   saveScreens,
@@ -2077,9 +2081,40 @@ export default function WatchlistPanel({
     };
   }, [showNewScreenerModal, newScreenForm, buildEffectiveFilters]);
 
+  /* ── Filter pipeline: rows -> valueFiltered -> topBottomFiltered -> sorted ── */
+
+  const valueFilteredRows = useMemo(() => {
+    if (columnFilters.size === 0) return rows;
+    return rows.filter((row) => {
+      for (const [col, filter] of columnFilters) {
+        const val = getRowValue(row, col) as string | number | null | undefined;
+        const isNum = NUMERIC_COLUMN_IDS.has(col as ColumnId);
+        if (!passesColumnFilter(val, filter, isNum)) return false;
+      }
+      return true;
+    });
+  }, [rows, columnFilters]);
+
+  const topBottomFilteredRows = useMemo(() => {
+    if (!topBottomFilter) return valueFilteredRows;
+    const sorted = [...valueFilteredRows].sort((a, b) => {
+      const aVal = getRowValue(a, topBottomFilter.column);
+      const bVal = getRowValue(b, topBottomFilter.column);
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return topBottomFilter.mode === "top" ? bVal - aVal : aVal - bVal;
+      }
+      return 0;
+    });
+    return sorted.slice(0, topBottomFilter.count);
+  }, [valueFilteredRows, topBottomFilter]);
+
+  const unfilteredRowCount = rows.length;
+  const isFiltered = columnFilters.size > 0 || topBottomFilter !== null;
+
   const sortedRows = useMemo(() => {
-    if (!sortKey) return rows;
-    const copy = [...rows];
+    const source = topBottomFilteredRows;
+    if (!sortKey) return source;
+    const copy = [...source];
     copy.sort((a, b) => {
       const aVal = getRowValue(a, sortKey);
       const bVal = getRowValue(b, sortKey);
@@ -2092,7 +2127,7 @@ export default function WatchlistPanel({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [rows, sortKey, sortDir]);
+  }, [topBottomFilteredRows, sortKey, sortDir]);
 
   useEffect(() => {
     onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
@@ -2101,7 +2136,31 @@ export default function WatchlistPanel({
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [addedColumns, setAddedColumns] = useState<string[]>([]);
-  useEffect(() => { setHiddenColumns(new Set()); setAddedColumns([]); }, [sidebarTab, selectedScreen?.id]);
+
+  /* ── Column filter state ── */
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilterDef>>(new Map());
+  const [topBottomFilter, setTopBottomFilter] = useState<TopBottomFilter | null>(null);
+  const [filterPopoverCol, setFilterPopoverCol] = useState<string | null>(null);
+  const [filterPopoverRect, setFilterPopoverRect] = useState<DOMRect | null>(null);
+
+  const handleApplyColumnFilter = useCallback((col: string, filter: ColumnFilterDef) => {
+    setColumnFilters((prev) => { const next = new Map(prev); next.set(col, filter); return next; });
+  }, []);
+  const handleClearColumnFilter = useCallback((col: string) => {
+    setColumnFilters((prev) => { const next = new Map(prev); next.delete(col); return next; });
+  }, []);
+  const handleApplyTopBottom = useCallback((tb: TopBottomFilter) => {
+    setTopBottomFilter(tb);
+  }, []);
+  const handleClearTopBottom = useCallback(() => {
+    setTopBottomFilter(null);
+  }, []);
+  const handleClearAllFilters = useCallback(() => {
+    setColumnFilters(new Map());
+    setTopBottomFilter(null);
+  }, []);
+
+  useEffect(() => { setHiddenColumns(new Set()); setAddedColumns([]); setColumnFilters(new Map()); setTopBottomFilter(null); }, [sidebarTab, selectedScreen?.id]);
 
   const tableColumns = useMemo((): TableColumnId[] => {
     const alwaysFirst = ["ticker", "lastPrice"];
@@ -3765,7 +3824,7 @@ export default function WatchlistPanel({
                   </span>
                 )}
                 <span className="text-[15px] font-semibold tabular-nums ml-2" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
-                  ({loading ? "…" : rows.length})
+                  ({loading ? "…" : isFiltered ? `${sortedRows.length}/${unfilteredRowCount}` : rows.length})
                 </span>
                 <div ref={tableMenuRef} className="relative">
                   <button type="button" onClick={() => setShowTableMenu((v) => !v)}
@@ -4039,6 +4098,68 @@ export default function WatchlistPanel({
               </div>
             )}
 
+            {/* Filter status bar */}
+            {isFiltered && (
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 text-[11px] flex-wrap shrink-0"
+                style={{
+                  background: "rgba(0,229,204,0.04)",
+                  borderBottom: "1px solid var(--ws-border, #262626)",
+                  color: "var(--ws-text-dim, #888)",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--ws-cyan, #00e5cc)" className="shrink-0" aria-hidden>
+                  <path d="M1.5 1.5h13L9.75 7.75V13l-3.5 1.5V7.75z" />
+                </svg>
+                <span style={{ color: "var(--ws-text, #e5e5e5)" }}>
+                  {sortedRows.length} of {unfilteredRowCount}
+                </span>
+                {Array.from(columnFilters.entries()).map(([col, f]) => (
+                  <span
+                    key={`vf-${col}`}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(0,229,204,0.1)", color: "var(--ws-cyan, #00e5cc)" }}
+                  >
+                    {getColumnLabel(col)} {f.operator} {f.value}
+                    <button
+                      type="button"
+                      onClick={() => handleClearColumnFilter(col)}
+                      className="hover:opacity-100 opacity-60 cursor-pointer"
+                      aria-label={`Remove ${getColumnLabel(col)} filter`}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
+                    </button>
+                  </span>
+                ))}
+                {topBottomFilter && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(0,229,204,0.1)", color: "var(--ws-cyan, #00e5cc)" }}
+                  >
+                    {topBottomFilter.mode === "top" ? "Top" : "Bottom"} {topBottomFilter.count} by {getColumnLabel(topBottomFilter.column)}
+                    <button
+                      type="button"
+                      onClick={handleClearTopBottom}
+                      className="hover:opacity-100 opacity-60 cursor-pointer"
+                      aria-label="Remove top/bottom filter"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
+                    </button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleClearAllFilters}
+                  className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  style={{ color: "var(--ws-red, #ff4d6a)", background: "rgba(255,77,106,0.06)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.15)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.06)"; }}
+                >
+                  Clear All
+                </button>
+              </div>
+            )}
+
             <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ background: "var(--ws-bg2, #141414)" }}>
               <table ref={tableRef} className="border-collapse whitespace-nowrap" style={{ fontSize: "13px", lineHeight: "1.4", borderSpacing: 0 }}>
                 <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c1c1c)", borderBottom: "1px solid var(--ws-border)" }}>
@@ -4049,6 +4170,9 @@ export default function WatchlistPanel({
                     {tableColumns.map((col, colIndex) => {
                       const isScriptCol = scriptColumnSet.has(col as string);
                       const isNumericCol = NUMERIC_COLUMN_IDS.has(col as ColumnId) || isScriptCol;
+                      const hasValueFilter = columnFilters.has(col);
+                      const hasTopBottomOnCol = topBottomFilter?.column === col;
+                      const hasAnyFilter = hasValueFilter || hasTopBottomOnCol;
                       return (
                         <th
                           key={`col-${colIndex}`}
@@ -4061,15 +4185,15 @@ export default function WatchlistPanel({
                           className={`relative py-1.5 px-2 font-medium whitespace-nowrap ${isNumericCol ? "text-right" : "text-left"} ${colDragIndex === colIndex ? "opacity-50" : ""}`}
                           style={{
                             width: getColWidth(col), minWidth: getColWidth(col), color: "var(--ws-text-dim)",
-                            background: sortKey === col ? "rgba(0,229,204,0.08)" : undefined, cursor: "pointer",
+                            background: hasAnyFilter ? "rgba(0,229,204,0.06)" : sortKey === col ? "rgba(0,229,204,0.08)" : undefined, cursor: "pointer",
                             boxShadow: colDropIndex === colIndex && colDragIndex != null
                               ? colDragIndex < colIndex
                                 ? "inset -2px 0 0 0 var(--ws-cyan, #00e5cc)"
                                 : "inset 2px 0 0 0 var(--ws-cyan, #00e5cc)"
                               : undefined,
                           }}
-                          onMouseEnter={(e) => { if (sortKey !== col) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = sortKey === col ? "rgba(0,229,204,0.08)" : ""; }}
+                          onMouseEnter={(e) => { if (sortKey !== col && !hasAnyFilter) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = hasAnyFilter ? "rgba(0,229,204,0.06)" : sortKey === col ? "rgba(0,229,204,0.08)" : ""; }}
                         >
                           <div className={`flex items-center gap-0.5 ${isNumericCol ? "justify-end" : ""} ${!isScriptCol ? "cursor-grab active:cursor-grabbing" : ""}`}>
                             <button
@@ -4091,6 +4215,34 @@ export default function WatchlistPanel({
                                   </svg>
                                 )
                               ) : null}
+                            </button>
+                            {/* Filter funnel icon */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (filterPopoverCol === col) {
+                                  setFilterPopoverCol(null);
+                                  setFilterPopoverRect(null);
+                                } else {
+                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setFilterPopoverCol(col);
+                                  setFilterPopoverRect(rect);
+                                }
+                              }}
+                              className="shrink-0 p-0.5 rounded transition-colors"
+                              style={{
+                                color: hasAnyFilter ? "var(--ws-cyan, #00e5cc)" : "var(--ws-text-dim, #555)",
+                                opacity: hasAnyFilter ? 1 : 0.4,
+                              }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = hasAnyFilter ? "1" : "0.4"; }}
+                              title={hasAnyFilter ? "Edit filter" : `Filter ${getColumnLabel(col)}`}
+                              aria-label={`Filter ${getColumnLabel(col)}`}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                                <path d="M1.5 1.5h13L9.75 7.75V13l-3.5 1.5V7.75z" />
+                              </svg>
                             </button>
                           </div>
                           {!isScriptCol && (
@@ -4462,6 +4614,22 @@ export default function WatchlistPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Column filter popover */}
+      {filterPopoverCol && (
+        <ColumnFilterPopover
+          column={filterPopoverCol}
+          columnLabel={getColumnLabel(filterPopoverCol)}
+          anchorRect={filterPopoverRect}
+          currentFilter={columnFilters.get(filterPopoverCol)}
+          currentTopBottom={topBottomFilter}
+          onApplyFilter={handleApplyColumnFilter}
+          onClearFilter={handleClearColumnFilter}
+          onApplyTopBottom={handleApplyTopBottom}
+          onClearTopBottom={handleClearTopBottom}
+          onClose={() => { setFilterPopoverCol(null); setFilterPopoverRect(null); }}
+        />
       )}
     </div>
   );

@@ -206,6 +206,52 @@ export function saveSidebarWidthPx(px: number): void {
   cloudSyncSetting("sidebar_width", Math.round(px));
 }
 
+/* ── Column filter types ── */
+
+export type FilterOperator = ">=" | "<=" | ">" | "<" | "=" | "!=";
+
+export type ColumnFilterDef = {
+  operator: FilterOperator;
+  value: number | string;
+};
+
+export type TopBottomFilter = {
+  column: string;
+  mode: "top" | "bottom";
+  count: number;
+};
+
+export const FILTER_OPERATORS_NUMERIC: FilterOperator[] = [">=", "<=", ">", "<", "=", "!="];
+export const FILTER_OPERATORS_TEXT: FilterOperator[] = ["=", "!="];
+
+export function passesColumnFilter(
+  cellValue: string | number | null | undefined,
+  filter: ColumnFilterDef,
+  isNumeric: boolean,
+): boolean {
+  if (cellValue == null) return false;
+  if (isNumeric) {
+    const num = typeof cellValue === "number" ? cellValue : Number(cellValue);
+    const target = typeof filter.value === "number" ? filter.value : Number(filter.value);
+    if (!Number.isFinite(num) || !Number.isFinite(target)) return false;
+    switch (filter.operator) {
+      case ">=": return num >= target;
+      case "<=": return num <= target;
+      case ">":  return num > target;
+      case "<":  return num < target;
+      case "=":  return num === target;
+      case "!=": return num !== target;
+    }
+  }
+  const str = String(cellValue).toLowerCase();
+  const target = String(filter.value).toLowerCase();
+  switch (filter.operator) {
+    case "=":  return str === target;
+    case "!=": return str !== target;
+    default:   return str.includes(target);
+  }
+}
+
 export type ColumnId =
   | "ticker"
   | "name"
