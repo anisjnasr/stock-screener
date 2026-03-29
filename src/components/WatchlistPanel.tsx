@@ -2081,6 +2081,29 @@ export default function WatchlistPanel({
     };
   }, [showNewScreenerModal, newScreenForm, buildEffectiveFilters]);
 
+  /* ── Column filter state ── */
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilterDef>>(new Map());
+  const [topBottomFilter, setTopBottomFilter] = useState<TopBottomFilter | null>(null);
+  const [filterPopoverCol, setFilterPopoverCol] = useState<string | null>(null);
+  const [filterPopoverRect, setFilterPopoverRect] = useState<DOMRect | null>(null);
+
+  const handleApplyColumnFilter = useCallback((col: string, filter: ColumnFilterDef) => {
+    setColumnFilters((prev) => { const next = new Map(prev); next.set(col, filter); return next; });
+  }, []);
+  const handleClearColumnFilter = useCallback((col: string) => {
+    setColumnFilters((prev) => { const next = new Map(prev); next.delete(col); return next; });
+  }, []);
+  const handleApplyTopBottom = useCallback((tb: TopBottomFilter) => {
+    setTopBottomFilter(tb);
+  }, []);
+  const handleClearTopBottom = useCallback(() => {
+    setTopBottomFilter(null);
+  }, []);
+  const handleClearAllFilters = useCallback(() => {
+    setColumnFilters(new Map());
+    setTopBottomFilter(null);
+  }, []);
+
   /* ── Filter pipeline: rows -> valueFiltered -> topBottomFiltered -> sorted ── */
 
   const valueFilteredRows = useMemo(() => {
@@ -2136,29 +2159,6 @@ export default function WatchlistPanel({
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [addedColumns, setAddedColumns] = useState<string[]>([]);
-
-  /* ── Column filter state ── */
-  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilterDef>>(new Map());
-  const [topBottomFilter, setTopBottomFilter] = useState<TopBottomFilter | null>(null);
-  const [filterPopoverCol, setFilterPopoverCol] = useState<string | null>(null);
-  const [filterPopoverRect, setFilterPopoverRect] = useState<DOMRect | null>(null);
-
-  const handleApplyColumnFilter = useCallback((col: string, filter: ColumnFilterDef) => {
-    setColumnFilters((prev) => { const next = new Map(prev); next.set(col, filter); return next; });
-  }, []);
-  const handleClearColumnFilter = useCallback((col: string) => {
-    setColumnFilters((prev) => { const next = new Map(prev); next.delete(col); return next; });
-  }, []);
-  const handleApplyTopBottom = useCallback((tb: TopBottomFilter) => {
-    setTopBottomFilter(tb);
-  }, []);
-  const handleClearTopBottom = useCallback(() => {
-    setTopBottomFilter(null);
-  }, []);
-  const handleClearAllFilters = useCallback(() => {
-    setColumnFilters(new Map());
-    setTopBottomFilter(null);
-  }, []);
 
   useEffect(() => { setHiddenColumns(new Set()); setAddedColumns([]); setColumnFilters(new Map()); setTopBottomFilter(null); }, [sidebarTab, selectedScreen?.id]);
 
