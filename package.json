@@ -53,6 +53,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
+    "sql.js": "^1.14.1",
     "yahoo-finance2": "^3.13.1"
   },
   "devDependencies": {
