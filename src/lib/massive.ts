@@ -157,6 +157,8 @@ export type EarningsCalendarItem = {
   revenue?: number;
 };
 
+const eodCache = new Map<string, { changePct: number; change: number; prevClose: number; price: number }>();
+
 /** Snapshot (single ticker) gives day bar + prevDay + lastTrade */
 export async function fetchQuote(symbol: string): Promise<Quote | null> {
   const sym = symbol.toUpperCase();
@@ -208,8 +210,19 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
     }
   }
 
-  const change = prevClose > 0 && displayPrice > 0 ? displayPrice - prevClose : 0;
-  const changePct = prevClose > 0 && displayPrice > 0 ? (change / prevClose) * 100 : 0;
+  let change = prevClose > 0 && displayPrice > 0 ? displayPrice - prevClose : 0;
+  let changePct = prevClose > 0 && displayPrice > 0 ? (change / prevClose) * 100 : 0;
+
+  if (changePct !== 0 || marketOpen) {
+    eodCache.set(sym, { changePct, change, prevClose, price: displayPrice });
+  } else if (!marketOpen && changePct === 0) {
+    const cached = eodCache.get(sym);
+    if (cached && cached.changePct !== 0) {
+      changePct = cached.changePct;
+      change = cached.change;
+    }
+  }
+
   return {
     symbol: t.ticker ?? sym,
     name: sym,

@@ -97,7 +97,11 @@ export default function Home() {
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(FULL_UNIVERSE_ID);
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
+  const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const secondaryPagesPrefetchedRef = useRef(false);
+  const sectionHistoryRef = useRef<Record<string, string | null>>({});
+  const pendingAutoSelectRef = useRef(false);
   const { cycleTheme } = useTheme();
 
   const {
@@ -141,6 +145,18 @@ export default function Home() {
       setRightRailHidden(false);
     }
   }, [section, setRightRailHidden]);
+
+  useEffect(() => {
+    if (section === "scans" && activeScanName) {
+      sectionHistoryRef.current.scans = activeScanName;
+    }
+  }, [activeScanName, section]);
+
+  useEffect(() => {
+    if (section === "lists" && activeWatchlistId) {
+      sectionHistoryRef.current.lists = activeWatchlistId;
+    }
+  }, [activeWatchlistId, section]);
 
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
   const { data, loading, error } = useStockData(symbol);
@@ -186,7 +202,12 @@ export default function Home() {
   }, []);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
-    setScanSymbols(symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0));
+    const upper = symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0);
+    setScanSymbols(upper);
+    if (pendingAutoSelectRef.current && upper.length > 0) {
+      pendingAutoSelectRef.current = false;
+      setSymbol(upper[0]);
+    }
   }, []);
 
   const handleFlagChange = useCallback((flag: StockFlag | null) => {
@@ -333,9 +354,12 @@ export default function Home() {
           onTimeframeChange={setSectorTimeframe}
           onSymbolSelect={handleSymbolSelect}
           onDrillDown={(kind, value) => {
+            pendingAutoSelectRef.current = true;
             setOpenToCollectionTrigger({ kind, value, nonce: Date.now() } as typeof openToCollectionTrigger);
             setSection("lists");
           }}
+          headerActionsSlot={headerSlotEl}
+          onRowCountChange={setTableRowCountDisplay}
         />
       ) : (
         <WatchlistPanel
@@ -350,6 +374,8 @@ export default function Home() {
           activeWatchlistIdSync={activeWatchlistId}
           onActiveWatchlistIdChange={setActiveWatchlistId}
           sectionMode={section === "scans" ? "scans" : "lists"}
+          headerActionsSlot={headerSlotEl}
+          onRowCountChange={setTableRowCountDisplay}
         />
       )}
     </div>
@@ -414,9 +440,21 @@ export default function Home() {
       <WorkspaceHeader
         section={section}
         onSectionChange={(s) => {
+          setOpenToScreenerTrigger(null);
+          setOpenToCollectionTrigger(null);
           setSection(s);
-          if (s === "scans" && activeScanName && !openToScreenerTrigger) {
-            setOpenToScreenerTrigger({ name: activeScanName, nonce: Date.now() });
+
+          if (s === "scans") {
+            const restored = sectionHistoryRef.current.scans || activeScanName || screens[0]?.name || "";
+            if (restored) {
+              pendingAutoSelectRef.current = true;
+              setActiveScanName(restored);
+              setOpenToScreenerTrigger({ name: restored, nonce: Date.now() });
+            }
+          } else if (s === "lists") {
+            const restored = sectionHistoryRef.current.lists || activeWatchlistId || FULL_UNIVERSE_ID;
+            pendingAutoSelectRef.current = true;
+            setActiveWatchlistId(restored);
           }
         }}
         symbol={symbol}
@@ -428,7 +466,10 @@ export default function Home() {
         activeFlagFilter={activeFlagFilter}
         onFlagFilter={setActiveFlagFilter}
         onFlagListOpen={(flag) => {
+          pendingAutoSelectRef.current = true;
           const flagListId = `__flag_${flag}__`;
+          setActiveWatchlistId(flagListId);
+          setOpenToScreenerTrigger(null);
           setSection("lists");
           setOpenToCollectionTrigger({ kind: "index", value: flagListId, nonce: Date.now() });
         }}
@@ -441,6 +482,7 @@ export default function Home() {
         scanList={screens.map((s) => s.name)}
         activeScan={activeScanName}
         onScanChange={(name) => {
+          pendingAutoSelectRef.current = true;
           setActiveScanName(name);
           setOpenToScreenerTrigger({ name, nonce: Date.now() });
         }}
@@ -468,10 +510,27 @@ export default function Home() {
         }}
         watchlistNames={chartWatchlists}
         activeWatchlistId={activeWatchlistId}
-        onWatchlistChange={setActiveWatchlistId}
+        onWatchlistChange={(id) => {
+          pendingAutoSelectRef.current = true;
+          setActiveWatchlistId(id);
+        }}
         onDeleteWatchlist={handleDeleteWatchlist}
+        onCloneList={(id) => {
+          const source = watchlists.find((w) => w.id === id);
+          if (!source) return;
+          pendingAutoSelectRef.current = true;
+          const newList: Watchlist = { id: `wl-${Date.now()}`, name: `Copy of ${source.name}`, symbols: [...source.symbols] };
+          const updated = [...watchlists, newList];
+          setWatchlists(updated);
+          saveWatchlists(updated);
+          window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: updated }));
+          setActiveWatchlistId(newList.id);
+          setSection("lists");
+        }}
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
         railWidthPx={rightRailHidden ? 0 : railWidthPx}
+        rowCountDisplay={tableRowCountDisplay}
+        headerActionsSlotRef={setHeaderSlotEl}
         onNewList={() => {
           const existing = new Set(watchlists.map((w) => w.name));
           let num = 1;

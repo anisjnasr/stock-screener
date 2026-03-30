@@ -846,6 +846,10 @@ export default function StockChart({
         },
         1
       ).setData(volumeData);
+      try {
+        const volScale = chart.priceScale("");
+        if (volScale) volScale.applyOptions({ visible: true, borderVisible: false, drawTicks: true });
+      } catch { /* ignore */ }
       const panes = chart.panes();
       if (panes[0]) panes[0].setStretchFactor(7);
       if (panes[1]) panes[1].setStretchFactor(1);
@@ -1199,7 +1203,7 @@ export default function StockChart({
   return (
     <div className="flex-1 min-h-0 relative overflow-hidden bg-white dark:bg-zinc-900">
       <div className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap" style={{ paddingRight: 88, pointerEvents: "none" }}>
-        <div className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "rgba(30,33,38,0.65)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+        <div className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "transparent" }}>
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
               timeframes.map((tf) => (
@@ -1327,7 +1331,7 @@ export default function StockChart({
                 className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35 flex items-center gap-1"
                 title="Flag stock"
               >
-                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
                 </svg>
               </button>
@@ -1339,7 +1343,7 @@ export default function StockChart({
                       type="button"
                       onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
                       className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
-                      style={{ backgroundColor: { red: "#ef4444", yellow: "#ff7200", green: "#22c55e", blue: "#3b82f6" }[c] }}
+                      style={{ backgroundColor: { red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[c] }}
                       title={c}
                     />
                   ))}
@@ -1368,7 +1372,7 @@ export default function StockChart({
                 </svg>
               </button>
               {showWatchlistPicker && (
-                <div className="absolute top-full left-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg py-1 min-w-[140px]">
+                <div className="absolute top-full right-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg py-1 min-w-[140px]">
                   {watchlists.map((wl) => (
                     <button
                       key={wl.id}
@@ -1418,128 +1422,36 @@ export default function StockChart({
             );
           })()}
           <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 52, right: 88 }}>
-            {timeframe === "daily" && (
+            {(timeframe === "daily" ? [
+              { key: "ema50", label: "EMA(50)", color: "#2196F3", active: settings.showEma50, toggle: () => handleUpdateSettings({ showEma50: !settings.showEma50 }) },
+              { key: "ema200", label: "EMA(200)", color: "#FF5252", active: settings.showEma200, toggle: () => handleUpdateSettings({ showEma200: !settings.showEma200 }) },
+            ] : timeframe === "weekly" ? [
+              { key: "ema40w", label: "EMA(40W)", color: "#9C27B0", active: settings.showEma40Weekly, toggle: () => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly }) },
+            ] : []).concat([
+              { key: "vol", label: "Vol", color: "#7B8794", active: settings.showVolume, toggle: () => handleUpdateSettings({ showVolume: !settings.showVolume }) },
+            ]).map((ind) => (
               <button
+                key={ind.key}
                 type="button"
-                onClick={() => handleUpdateSettings({ showEma50: !settings.showEma50 })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
-                aria-pressed={settings.showEma50}
+                onClick={ind.toggle}
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer hover:brightness-125 ws-focus-ring"
+                aria-pressed={ind.active}
                 style={{
-                  color: settings.showEma50 ? "#2196F3" : "#2196F380",
-                  borderColor: settings.showEma50 ? "#2196F350" : "#2196F320",
-                  backgroundColor: settings.showEma50 ? "#2196F315" : "transparent",
-                  textDecoration: settings.showEma50 ? "none" : "line-through",
+                  color: ind.active ? ind.color : `${ind.color}80`,
+                  borderColor: ind.active ? `${ind.color}50` : `${ind.color}20`,
+                  border: `1px solid ${ind.active ? `${ind.color}50` : `${ind.color}20`}`,
+                  backgroundColor: ind.active ? `${ind.color}15` : "transparent",
+                  textDecoration: ind.active ? "none" : "line-through",
                 }}
-                title="Toggle EMA 50"
+                title={`Toggle ${ind.label}`}
               >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  {settings.showEma50 ? (
-                    <>
-                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
-                      <circle cx="8" cy="8" r="2.5" />
-                    </>
-                  ) : (
-                    <>
-                      <path d="M2 2l12 12" />
-                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
-                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
-                    </>
-                  )}
-                </svg>
-                EMA(50)
+                <span
+                  className="shrink-0 w-2 h-2 rounded-full"
+                  style={{ background: ind.active ? ind.color : `${ind.color}60` }}
+                />
+                {ind.label}
               </button>
-            )}
-            {timeframe === "daily" && (
-              <button
-                type="button"
-                onClick={() => handleUpdateSettings({ showEma200: !settings.showEma200 })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
-                aria-pressed={settings.showEma200}
-                style={{
-                  color: settings.showEma200 ? "#FF5252" : "#FF525280",
-                  borderColor: settings.showEma200 ? "#FF525250" : "#FF525220",
-                  backgroundColor: settings.showEma200 ? "#FF525215" : "transparent",
-                  textDecoration: settings.showEma200 ? "none" : "line-through",
-                }}
-                title="Toggle EMA 200"
-              >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  {settings.showEma200 ? (
-                    <>
-                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
-                      <circle cx="8" cy="8" r="2.5" />
-                    </>
-                  ) : (
-                    <>
-                      <path d="M2 2l12 12" />
-                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
-                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
-                    </>
-                  )}
-                </svg>
-                EMA(200)
-              </button>
-            )}
-            {timeframe === "weekly" && (
-              <button
-                type="button"
-                onClick={() => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly })}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
-                aria-pressed={settings.showEma40Weekly}
-                style={{
-                  color: settings.showEma40Weekly ? "#9C27B0" : "#9C27B080",
-                  borderColor: settings.showEma40Weekly ? "#9C27B050" : "#9C27B020",
-                  backgroundColor: settings.showEma40Weekly ? "#9C27B015" : "transparent",
-                  textDecoration: settings.showEma40Weekly ? "none" : "line-through",
-                }}
-                title="Toggle EMA 40 Weekly"
-              >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  {settings.showEma40Weekly ? (
-                    <>
-                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
-                      <circle cx="8" cy="8" r="2.5" />
-                    </>
-                  ) : (
-                    <>
-                      <path d="M2 2l12 12" />
-                      <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
-                      <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
-                    </>
-                  )}
-                </svg>
-                EMA(40W)
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => handleUpdateSettings({ showVolume: !settings.showVolume })}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border hover:brightness-125 ws-focus-ring"
-              aria-pressed={settings.showVolume}
-              style={{
-                color: settings.showVolume ? "#7B8794" : "#7B879480",
-                borderColor: settings.showVolume ? "#7B879450" : "#7B879420",
-                backgroundColor: settings.showVolume ? "#7B879415" : "transparent",
-                textDecoration: settings.showVolume ? "none" : "line-through",
-              }}
-              title="Toggle Volume"
-            >
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                {settings.showVolume ? (
-                  <>
-                    <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
-                    <circle cx="8" cy="8" r="2.5" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M2 2l12 12" />
-                    <path d="M6.5 6.5a2.5 2.5 0 0 0 3.5 3.5" />
-                    <path d="M1 8s2.5-5 7-5c1 0 1.9.2 2.7.5M15 8s-1.2 2.4-3.3 3.8" />
-                  </>
-                )}
-              </svg>
-              Vol
-            </button>
+            ))}
           </div>
           {selectedHandles.map((h) => (
             <button

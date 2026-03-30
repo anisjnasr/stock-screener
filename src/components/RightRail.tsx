@@ -66,12 +66,20 @@ type RightRailProps = {
 
 type RailTab = "fundamentals" | "news";
 
-function fmtCompact(n: number): string {
+function fmtCompactCurrency(n: number): string {
   if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
   if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
   if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
   if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
   return `$${n.toFixed(2)}`;
+}
+
+function fmtCompact(n: number): string {
+  if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(1)}T`;
+  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return n.toFixed(2);
 }
 
 function fmtShares(n: number): string {
@@ -120,8 +128,6 @@ function fmtDateToQuarter(dateStr: string): string {
   return `Q${q} '${String(d.getUTCFullYear()).slice(2)}`;
 }
 
-type FinMetric = "revenue" | "eps";
-
 export default function RightRail({
   section,
   symbol,
@@ -136,13 +142,12 @@ export default function RightRail({
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("fundamentals");
   const [showFullDesc, setShowFullDesc] = useState(false);
-  const [finMetric, setFinMetric] = useState<FinMetric>("revenue");
   const [finFreq, setFinFreq] = useState<"annual" | "quarterly">("quarterly");
 
   if (loading) {
     return (
       <div className="h-full p-3 flex items-start" style={{ background: "var(--ws-bg2)" }}>
-        <span className="text-xs" style={{ color: "var(--ws-text-dim)" }}>Loading…</span>
+        <span className="text-sm" style={{ color: "var(--ws-text-dim)" }}>Loading…</span>
       </div>
     );
   }
@@ -161,44 +166,40 @@ export default function RightRail({
 
   const capValue = profile?.mktCap ?? marketCap;
   const marketCapLabel =
-    capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtCompact(capValue) : "—";
-  const floatLabel =
-    profile?.floatShares != null && Number.isFinite(profile.floatShares) && profile.floatShares > 0
-      ? fmtShares(profile.floatShares)
-      : "—";
+    capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtCompactCurrency(capValue) : "—";
 
   const SectionDivider = () => (
-    <div style={{ height: 1, background: "var(--ws-border)", margin: "0 -12px" }} />
+    <div style={{ height: 1, background: "var(--ws-border)", margin: "4px -12px" }} />
   );
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
       {/* Profile header — order: Ticker + Name inline, Website, Description, Exchange, Sector, Industry, Market Cap, Float */}
-      <div className="px-3 py-2.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+      <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+          <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
             {symbol}
           </span>
           {profile?.companyName && (
-            <span className="text-[15px] font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+            <span className="text-[17px] font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
               {safe(profile.companyName)}
             </span>
           )}
         </div>
         {profile?.website && typeof profile.website === "string" && (
           <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-[12px] font-medium" style={{ color: "var(--ws-cyan)" }}>
+            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm font-medium" style={{ color: "var(--ws-cyan)" }}>
             {safe(profile.website).replace(/^https?:\/\//, "")}
           </a>
         )}
 
         {desc && (
           <div className="mt-2">
-            <p className="text-[12px] leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
+            <p className="text-sm leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
               {showFullDesc ? desc : truncatedDesc}
             </p>
             {desc.length > 150 && (
-              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-[11px] mt-0.5" style={{ color: "var(--ws-cyan)" }}>
+              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-[13px] mt-0.5" style={{ color: "var(--ws-cyan)" }}>
                 {showFullDesc ? "Less" : "More"}
               </button>
             )}
@@ -206,7 +207,7 @@ export default function RightRail({
         )}
 
         <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-[13px] items-center"
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-[15px] items-center"
           style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
         >
           <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
@@ -224,19 +225,16 @@ export default function RightRail({
 
           <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
           <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
-
-          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Float</span>
-          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{floatLabel}</span>
         </div>
       </div>
 
       {/* Tab row */}
-      <div className="flex items-center gap-1 px-3 py-2" role="tablist" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+      <div className="flex items-center gap-1 px-3 py-1" role="tablist" style={{ borderBottom: "1px solid var(--ws-border)" }}>
         {(["fundamentals", "news"] as RailTab[]).map((tab) => (
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
             role="tab"
             aria-selected={railTab === tab}
-            className={`px-3 py-1 text-[13px] font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
+            className={`px-3 py-1 text-[15px] font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : undefined,
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
@@ -249,15 +247,15 @@ export default function RightRail({
       {railTab === "news" ? (
         <NewsSidebar symbol={symbol} />
       ) : (
-        <div className="px-3 py-3 space-y-4">
+        <div className="px-3 py-2 space-y-2.5">
 
           {/* RS RANK */}
           {rsRank && (
             <div>
-              <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+              <div className="text-[15px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
-              <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-[15px]" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
@@ -268,7 +266,7 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[13px]"
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[15px]"
                         style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
@@ -281,73 +279,73 @@ export default function RightRail({
 
           {rsRank && <SectionDivider />}
 
-          {/* REVENUE / EPS — unified table */}
+          {/* REVENUE & EPS — combined table */}
           <div>
-            <div className="flex items-center gap-1 mb-2">
-              {(["revenue", "eps"] as FinMetric[]).map((m) => (
-                <button key={m} type="button" onClick={() => setFinMetric(m)}
-                  aria-pressed={finMetric === m}
-                  className={`px-3 py-0.5 text-[13px] font-semibold rounded transition-colors ws-focus-ring ${finMetric !== m ? "hover:bg-white/[0.06]" : ""}`}
-                  style={{ background: finMetric === m ? "var(--ws-bg3)" : undefined, color: finMetric === m ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                  {m === "revenue" ? "Revenue" : "EPS"}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-0.5 mb-2">
-              {(["annual", "quarterly"] as const).map((v) => (
-                <button key={v} type="button" onClick={() => setFinFreq(v)}
-                  aria-pressed={finFreq === v}
-                  className={`px-2 py-0.5 text-[11px] rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
-                  style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                  {v}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[15px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
+              <div className="flex items-center gap-0.5">
+                {(["annual", "quarterly"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setFinFreq(v)}
+                    aria-pressed={finFreq === v}
+                    className={`px-2 py-0.5 text-[13px] rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
+                    style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
             {nextEarnings && (
-              <div className="text-[11px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+              <div className="text-[13px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
                 Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
               </div>
             )}
-            <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>
-                    {finMetric === "revenue" ? "Revenue" : "EPS"}
-                  </th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>YoY</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Surprise</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Revenue</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Rev %</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS ($)</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS %</th>
                 </tr>
               </thead>
               <tbody>
                 {(finFreq === "annual"
                   ? yearlyRows.slice(0, 8).map((r) => ({
                       period: fmtPeriodShort(r.year),
-                      value: finMetric === "revenue" ? r.sales : r.eps,
-                      growth: finMetric === "revenue" ? r.salesGrowth : r.epsGrowth,
+                      revenue: r.sales,
+                      revGrowth: r.salesGrowth,
+                      eps: r.eps,
+                      epsGrowth: r.epsGrowth,
                     }))
                   : quarterlyRows.slice(0, 8).map((r) => ({
                       period: fmtPeriodShort(r.period),
-                      value: finMetric === "revenue" ? r.sales : r.eps,
-                      growth: finMetric === "revenue" ? r.salesGrowth : r.epsGrowth,
+                      revenue: r.sales,
+                      revGrowth: r.salesGrowth,
+                      eps: r.eps,
+                      epsGrowth: r.epsGrowth,
                     }))
                 ).map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
-                    <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-                      {r.value != null
-                        ? (finMetric === "revenue" ? fmtCompact(r.value) : `$${r.value.toFixed(2)}`)
-                        : "—"}
+                    <td className="py-1 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
+                    <td className="py-1 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                      {r.revenue != null ? fmtCompact(r.revenue) : "—"}
                     </td>
-                    <td className="py-1.5 text-right font-mono tabular-nums"
-                      style={{ color: r.growth != null ? (r.growth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
-                      {r.growth != null ? fmtPctSigned(r.growth) : "—"}
+                    <td className="py-1 text-right font-mono tabular-nums"
+                      style={{ color: r.revGrowth != null ? (r.revGrowth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      {r.revGrowth != null ? fmtPctSigned(r.revGrowth) : "—"}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>—</td>
+                    <td className="py-1 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                      {r.eps != null ? r.eps.toFixed(2) : "—"}
+                    </td>
+                    <td className="py-1 text-right font-mono tabular-nums"
+                      style={{ color: r.epsGrowth != null ? (r.epsGrowth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>
+                      {r.epsGrowth != null ? fmtPctSigned(r.epsGrowth) : "—"}
+                    </td>
                   </tr>
                 ))}
                 {(finFreq === "annual" ? yearlyRows : quarterlyRows).length === 0 && (
-                  <tr><td colSpan={4} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
+                  <tr><td colSpan={5} className="py-2 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
                 )}
               </tbody>
             </table>
@@ -357,10 +355,10 @@ export default function RightRail({
 
           {/* INSTITUTIONAL OWNERS */}
           <div>
-            <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+            <div className="text-[15px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
               Institutional Owners
             </div>
-            <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-[15px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>

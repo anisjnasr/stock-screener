@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { SectorSubTab, SectorTimeframe } from "@/components/WorkspaceHeader";
 
 type PerfItem = {
@@ -40,10 +41,6 @@ const TF_API: Record<SectorTimeframe, string> = {
   "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "6m": "half_year", "y": "year", "ytd": "ytd",
 };
 
-const TF_LABELS: Record<SectorTimeframe, string> = {
-  "1d": "Day", "1w": "1 Week", "1m": "1 Month", "q": "3 Months", "6m": "Half Year", "y": "1 Year", "ytd": "YTD",
-};
-
 function toSentenceCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase());
 }
@@ -54,12 +51,16 @@ export default function SectorPerfPanel({
   onTimeframeChange,
   onDrillDown,
   onSymbolSelect,
+  headerActionsSlot,
+  onRowCountChange,
 }: {
   subTab: SectorSubTab;
   timeframe: SectorTimeframe;
   onTimeframeChange?: (tf: SectorTimeframe) => void;
   onDrillDown?: (kind: "sector" | "industry" | "theme" | "index", value: string) => void;
   onSymbolSelect?: (sym: string) => void;
+  headerActionsSlot?: HTMLDivElement | null;
+  onRowCountChange?: (display: string) => void;
 }) {
   const [payload, setPayload] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,9 +119,27 @@ export default function SectorPerfPanel({
     [sorted]
   );
 
+  useEffect(() => {
+    if (!onRowCountChange) return;
+    onRowCountChange(loading ? "…" : String(sorted.length));
+  }, [loading, sorted.length, onRowCountChange]);
+
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setSelectedIdx(0), [subTab, timeframe]);
+  const pendingAutoSelect = useRef(true);
+
+  useEffect(() => {
+    setSelectedIdx(0);
+    pendingAutoSelect.current = true;
+  }, [subTab, timeframe]);
+
+  useEffect(() => {
+    if (pendingAutoSelect.current && sorted.length > 0) {
+      pendingAutoSelect.current = false;
+      const first = sorted[0];
+      if (first?.ticker) onSymbolSelect?.(first.ticker);
+    }
+  }, [sorted, onSymbolSelect]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -166,76 +185,50 @@ export default function SectorPerfPanel({
     );
   }
 
-  const panelTitle = subTab === "sectors" ? "Sectors" : subTab === "industries" ? "Industries" : "Thematic ETFs";
-
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div className="flex items-center px-2 py-1.5 shrink-0 gap-4" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[15px] font-semibold" style={{ color: "var(--ws-text)" }}>{panelTitle}</span>
-          <span className="text-[14px] tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
-            ({loading ? "…" : sorted.length})
-          </span>
-        </div>
-        {onTimeframeChange && (
-          <div className="flex items-center gap-1 flex-wrap">
-            {(["1d", "1w", "1m", "q", "6m", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
-              <button
-                key={tf}
-                type="button"
-                onClick={() => onTimeframeChange(tf)}
-                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer ws-focus-ring ${timeframe !== tf ? "hover:bg-white/[0.06]" : ""}`}
-                style={{
-                  background: timeframe === tf ? "rgba(0,229,204,0.12)" : undefined,
-                  color: timeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
-                  border: timeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
-                }}
-                aria-pressed={timeframe === tf}
-              >
-                {TF_LABELS[tf]}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors ml-1"
-              style={{ color: sortAsc ? "var(--ws-cyan)" : "var(--ws-text-dim)", background: "rgba(255,255,255,0.04)" }}
-              title={sortAsc ? "Sorted ascending — click to sort descending" : "Sorted descending — click to sort ascending"}
-              onClick={() => { setSortAsc((v) => !v); setSelectedIdx(0); }}
-            >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                {sortAsc ? (
-                  <>
-                    <line x1="8" y1="13" x2="8" y2="3" />
-                    <polyline points="4,7 8,3 12,7" />
-                  </>
-                ) : (
-                  <>
-                    <line x1="8" y1="3" x2="8" y2="13" />
-                    <polyline points="4,9 8,13 12,9" />
-                  </>
-                )}
-              </svg>
-              {sortAsc ? "Asc" : "Desc"}
-            </button>
-          </div>
-        )}
-        <div className="flex-1" />
-        {sorted[selectedIdx] && onDrillDown && (
+      {headerActionsSlot && createPortal(
+        <>
           <button
             type="button"
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0"
-            style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
-            title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
-            onClick={() => {
-              const s = sorted[selectedIdx];
-              const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
-              onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
-            }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
+            style={{ color: sortAsc ? "var(--ws-cyan)" : "var(--ws-text-dim)", background: "rgba(255,255,255,0.04)" }}
+            title={sortAsc ? "Sorted ascending — click to sort descending" : "Sorted descending — click to sort ascending"}
+            onClick={() => { setSortAsc((v) => !v); setSelectedIdx(0); }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {sortAsc ? (
+                <>
+                  <line x1="8" y1="13" x2="8" y2="3" />
+                  <polyline points="4,7 8,3 12,7" />
+                </>
+              ) : (
+                <>
+                  <line x1="8" y1="3" x2="8" y2="13" />
+                  <polyline points="4,9 8,13 12,9" />
+                </>
+              )}
+            </svg>
+            {sortAsc ? "Asc" : "Desc"}
           </button>
-        )}
-      </div>
+          {sorted[selectedIdx] && onDrillDown && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0"
+              style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
+              title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
+              onClick={() => {
+                const s = sorted[selectedIdx];
+                const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
+                onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+            </button>
+          )}
+        </>,
+        headerActionsSlot
+      )}
       <div ref={listRef} className="flex-1 overflow-auto" style={{ maxWidth: "50vw" }}>
         {sorted.map((s, i) => {
           const pct = s.changePct ?? 0;

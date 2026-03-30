@@ -12,7 +12,7 @@ const RIGHT_RAIL_HIDDEN_KEY = "ws-right-rail-hidden";
 
 const DEFAULT_CHART_LEFT = 480;
 const DEFAULT_CHART_LEFT_SECTORS = -1; // -1 means "compute dynamically"
-const DEFAULT_RAIL_WIDTH = 260;
+const DEFAULT_RAIL_WIDTH = 310;
 
 function loadNumber(key: string, fallback: number): number {
   if (typeof window === "undefined") return fallback;
@@ -129,7 +129,7 @@ export function useLayoutPreferences() {
   }, []);
 
   const setRailWidthPx = useCallback((px: number) => {
-    const clamped = Math.max(200, Math.min(400, px));
+    const clamped = Math.max(200, Math.min(500, px));
     setRailWidthPxState(clamped);
     saveNumber(RAIL_WIDTH_KEY, clamped);
     syncLayoutToCloud();

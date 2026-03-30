@@ -2,24 +2,31 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
-import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist } from "@/lib/watchlist-storage";
+import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist, saveFavoriteWatchlistIds } from "@/lib/watchlist-storage";
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
-import { loadFavoriteScreenIds, toggleFavoriteScreen } from "@/lib/screener-storage";
+import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import ProfileIcon from "@/components/ProfileIcon";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
 const FLAG_COLORS: Record<StockFlag, string> = {
-  red: "#9b2335",
-  yellow: "#ff7200",
-  green: "#15703a",
-  blue: "#1a5fa0",
+  red: "#EF4468",
+  yellow: "#F5A524",
+  green: "#3DDC84",
+  blue: "#5C9EF5",
 };
 
 export type MarketSubTab = "indices" | "monitor";
 export type SectorSubTab = "sectors" | "industries" | "thematic";
 export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "6m" | "y" | "ytd";
+
+const SECTOR_TF_LABELS: Record<SectorTimeframe, string> = {
+  "1d": "Day", "1w": "1W", "1m": "1M", "q": "3M", "6m": "6M", "y": "1Y", "ytd": "YTD",
+};
+
+const FLAG_ORDER_KEY = "stock-research-flag-order";
+const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "yellow", "red", "green"];
 
 type WorkspaceHeaderProps = {
   section: WorkspaceSection;
@@ -49,14 +56,19 @@ type WorkspaceHeaderProps = {
   onEditScan?: (name: string) => void;
   onCloneScan?: (name: string) => void;
   onDeleteScan?: (name: string) => void;
+  onReorderScans?: (names: string[]) => void;
   // Lists contextual
   watchlistNames?: { id: string; name: string }[];
   activeWatchlistId?: string | null;
   onWatchlistChange?: (id: string) => void;
   onDeleteWatchlist?: (id: string) => void;
+  onCloneList?: (id: string) => void;
+  onReorderLists?: (ids: string[]) => void;
   onNewList?: () => void;
   lastUpdated?: string | null;
   railWidthPx?: number;
+  rowCountDisplay?: string;
+  headerActionsSlotRef?: (el: HTMLDivElement | null) => void;
 };
 
 function MarketStatusIndicator() {
@@ -73,7 +85,7 @@ function MarketStatusIndicator() {
 
   return (
     <div
-      className="flex items-center gap-1.5 shrink-0 mr-2 text-[11px] tracking-wide font-medium select-none"
+      className="flex items-center gap-1.5 shrink-0 mr-2 text-sm tracking-wide font-medium select-none"
       style={{ color }}
     >
       <span
@@ -104,7 +116,7 @@ function ClockDisplay() {
   });
   return (
     <span
-      className="shrink-0 text-xs tabular-nums font-medium select-none"
+      className="shrink-0 text-sm tabular-nums font-medium select-none"
       style={{ color: "#ffffff" }}
     >
       {timeStr}
@@ -128,6 +140,7 @@ function Pill({
   return (
     <button
       type="button"
+      draggable={false}
       onClick={onClick}
       aria-pressed={!!on}
       className={`transition-colors cursor-pointer font-semibold ws-focus-ring ${!on ? "hover:bg-white/[0.06]" : ""}`}
@@ -137,11 +150,54 @@ function Pill({
         color: on ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim)",
         padding: small ? "2px 6px" : "4px 12px",
         borderRadius: 4,
-        fontSize: small ? 10 : 12,
+        fontSize: small ? 10 : 14,
         fontFamily: "inherit",
       }}
     >
       {children}
+    </button>
+  );
+}
+
+function SubBarPill({
+  label,
+  count,
+  dotColor,
+  active,
+  onClick,
+}: {
+  label: string;
+  count?: number;
+  dotColor: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const bg = active ? `${dotColor}14` : "rgba(255,255,255,0.03)";
+  const bgHover = active ? `${dotColor}28` : "rgba(255,255,255,0.09)";
+  return (
+    <button
+      type="button"
+      draggable={false}
+      onClick={onClick}
+      aria-pressed={!!active}
+      className="flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ws-focus-ring select-none whitespace-nowrap"
+      style={{
+        background: bg,
+        border: `1px solid ${active ? `${dotColor}40` : "rgba(255,255,255,0.10)"}`,
+        color: active ? "#fff" : "var(--ws-text-dim)",
+        fontFamily: "inherit",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = bgHover; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = bg; }}
+    >
+      <span
+        className="shrink-0 w-2 h-2 rounded-full"
+        style={{ background: active ? dotColor : `${dotColor}90` }}
+      />
+      {label}
+      {count != null && (
+        <span className="tabular-nums" style={{ opacity: 0.55 }}>{count}</span>
+      )}
     </button>
   );
 }
@@ -171,13 +227,18 @@ export default function WorkspaceHeader({
   onEditScan,
   onCloneScan,
   onDeleteScan,
+  onReorderScans,
   watchlistNames = [],
   activeWatchlistId,
   onWatchlistChange,
   onDeleteWatchlist,
+  onCloneList,
+  onReorderLists,
   onNewList,
   lastUpdated,
   railWidthPx = 0,
+  rowCountDisplay,
+  headerActionsSlotRef,
 }: WorkspaceHeaderProps) {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -187,6 +248,8 @@ export default function WorkspaceHeader({
   const [listDDOpen, setListDDOpen] = useState(false);
   const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
   const [favListIds, setFavListIds] = useState<string[]>(() => loadFavoriteWatchlistIds());
+  const [dragScanIdx, setDragScanIdx] = useState<number | null>(null);
+  const [dragListIdx, setDragListIdx] = useState<number | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
@@ -264,20 +327,32 @@ export default function WorkspaceHeader({
 
   const hasFlaggedStocks = Object.values(flagCounts).some((c) => (c ?? 0) > 0);
 
+  const [flagOrder, setFlagOrder] = useState<StockFlag[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_FLAG_ORDER;
+    try {
+      const raw = localStorage.getItem(FLAG_ORDER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as StockFlag[];
+        if (Array.isArray(parsed) && parsed.length === 4) return parsed;
+      }
+    } catch {}
+    return DEFAULT_FLAG_ORDER;
+  });
+
   const padR = railWidthPx > 0 ? railWidthPx + 14 : 12;
 
   return (
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
       {/* ===== ROW 1 — Main Header ===== */}
       <div
-        className="flex items-center gap-3 h-[42px]"
+        className="flex items-center gap-3 h-[50px]"
         style={{ paddingLeft: 12, paddingRight: padR }}
       >
         <img
           src="/brand/stockstalker-lockup.png"
           srcSet="/brand/stockstalker-lockup.png 1x, /brand/stockstalker-lockup@2x.png 2x"
           alt="Stock Stalker"
-          className="h-8 w-auto shrink-0 opacity-90"
+          className="h-10 w-auto shrink-0 opacity-90"
         />
 
         <nav className="flex items-center gap-1 ml-2">
@@ -286,7 +361,7 @@ export default function WorkspaceHeader({
               key={s.id}
               type="button"
               onClick={() => onSectionChange(s.id)}
-              className={`px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
+              className={`px-4 py-1.5 text-[15px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
               aria-current={section === s.id ? "page" : undefined}
               style={{
                 background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
@@ -303,12 +378,7 @@ export default function WorkspaceHeader({
           ))}
         </nav>
 
-        <div className="flex-1" />
-
-        <MarketStatusIndicator />
-        <ClockDisplay />
-
-        <div ref={searchContainerRef} className="relative shrink-0">
+        <div ref={searchContainerRef} className="relative shrink-0 ml-2">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -320,13 +390,13 @@ export default function WorkspaceHeader({
             }}
             className="flex items-center gap-1"
           >
-            <div className="relative w-44">
+            <div className="relative w-48">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ width: 13, height: 13, color: "var(--ws-text-dim)" }}
+                style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
               >
                 <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
               </svg>
@@ -340,11 +410,11 @@ export default function WorkspaceHeader({
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Search"
-                className="w-full rounded pl-7 pr-2 py-1 text-xs"
+                className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
                 style={{
                   background: "var(--ws-bg3)",
                   color: "var(--ws-text)",
-                  border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))",
+                  border: "1px solid rgba(255,255,255,0.18)",
                 }}
                 aria-label="Stock search"
                 autoComplete="off"
@@ -400,11 +470,12 @@ export default function WorkspaceHeader({
 
       {/* ===== ROW 2 — Sub-bar ===== */}
       <div
-        className="flex items-center gap-2 h-[34px]"
+        className="flex items-center gap-2 h-[40px]"
         style={{ paddingLeft: 12, paddingRight: padR, borderTop: "1px solid var(--ws-border)" }}
       >
+        {/* Section-specific content is below; market status/clock are right-aligned at the end of this row */}
         {section === "market" && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-1">
             {(["indices", "monitor"] as MarketSubTab[]).map((t) => (
               <Pill key={t} on={marketSubTab === t} onClick={() => onMarketSubTabChange?.(t)}>
                 {t === "indices" ? "Indices" : "Market Monitor"}
@@ -414,66 +485,49 @@ export default function WorkspaceHeader({
         )}
 
         {section === "sectors-industries" && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 flex-1">
             {(["sectors", "industries", "thematic"] as SectorSubTab[]).map((t) => (
               <Pill key={t} on={sectorSubTab === t} onClick={() => onSectorSubTabChange?.(t)}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </Pill>
             ))}
-            {hasFlaggedStocks && (
-              <>
-                <div className="shrink-0 mx-1" style={{ width: 1, height: 16, background: "var(--ws-border)" }} />
-                <div className="flex items-center gap-1">
-                  {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
-                    const cnt = flagCounts[f] ?? 0;
-                    if (cnt === 0) return null;
-                    return (
-                      <button
-                        key={f}
-                        type="button"
-                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
-                        style={{
-                          background: FLAG_COLORS[f],
-                          color: "#fff",
-                          padding: "3px 10px",
-                          fontSize: 11,
-                          borderRadius: 4,
-                          border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
-                          fontFamily: "inherit",
-                        }}
-                        onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
-                      >
-                        {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
+            {rowCountDisplay && (
+              <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                ({rowCountDisplay})
+              </span>
             )}
+            <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 2px" }} />
+            {onSectorTimeframeChange && (
+              <div className="flex items-center gap-0.5">
+                {(["1d", "1w", "1m", "q", "6m", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
+                  <button
+                    key={tf}
+                    type="button"
+                    onClick={() => onSectorTimeframeChange(tf)}
+                    className={`px-2 py-0.5 text-sm font-medium rounded transition-colors cursor-pointer ws-focus-ring ${sectorTimeframe !== tf ? "hover:bg-white/[0.06]" : ""}`}
+                    style={{
+                      background: sectorTimeframe === tf ? "rgba(0,229,204,0.12)" : undefined,
+                      color: sectorTimeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
+                      border: sectorTimeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
+                    }}
+                    aria-pressed={sectorTimeframe === tf}
+                  >
+                    {SECTOR_TF_LABELS[tf]}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div ref={section === "sectors-industries" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
           </div>
         )}
 
         {section === "scans" && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onNewScan}
-            className="shrink-0 px-2.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors hover:brightness-150"
-            style={{
-              background: "rgba(0,229,204,0.06)",
-              border: "1px solid rgba(0,229,204,0.25)",
-              color: "var(--ws-cyan)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
-          >
-            New Scan
-            </button>
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <div ref={scanDDRef} className="relative">
               <button
                 type="button"
                 onClick={() => setScanDDOpen((v) => !v)}
-                className="flex items-center gap-2 px-3 py-1 rounded text-xs cursor-pointer"
+                className="flex items-center gap-2 px-3 py-1 rounded text-sm font-semibold cursor-pointer"
                 style={{
                   background: "var(--ws-bg3)",
                   border: "1px solid var(--ws-border)",
@@ -482,20 +536,34 @@ export default function WorkspaceHeader({
                 }}
               >
                 {activeScan || "Select scan"}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="opacity-50 shrink-0"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
               {scanDDOpen && scanList.length > 0 && (
                 <div
                   className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                 >
-                  {scanList.map((s) => {
+                  {scanList.map((s, idx) => {
                     const isFav = favScreenIds.includes(s);
                     return (
                       <div
                         key={s}
-                        className="group/sc px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                        draggable
+                        onDragStart={() => setDragScanIdx(idx)}
+                        onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={() => {
+                          if (dragScanIdx != null && dragScanIdx !== idx) {
+                            const reordered = [...scanList];
+                            const [moved] = reordered.splice(dragScanIdx, 1);
+                            reordered.splice(idx, 0, moved);
+                            onReorderScans?.(reordered);
+                          }
+                          setDragScanIdx(null);
+                        }}
+                        onDragEnd={() => setDragScanIdx(null)}
+                        className="group/sc px-3 py-1.5 text-xs cursor-grab rounded mx-1 transition-colors flex items-center"
                         style={{
-                          color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                          color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text)",
                           background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
@@ -528,7 +596,7 @@ export default function WorkspaceHeader({
                           <span
                             className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
                             title={`Delete ${s}`}
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteScan?.(s); setScanDDOpen(false); }}
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (window.confirm(`Delete scan "${s}"?`)) { onDeleteScan?.(s); setScanDDOpen(false); } }}
                           >
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
                           </span>
@@ -539,72 +607,104 @@ export default function WorkspaceHeader({
                 </div>
               )}
             </div>
-            {favScreenIds.filter((id) => scanList.includes(id)).length > 0 && (
-              <>
-                <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
-                <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-                  {favScreenIds.filter((id) => scanList.includes(id)).map((s) => (
-                    <Pill key={s} on={activeScan === s} onClick={() => onScanChange?.(s)}>
-                      {s}
-                    </Pill>
-                  ))}
-                </div>
-              </>
+            {rowCountDisplay && (
+              <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                ({rowCountDisplay})
+              </span>
             )}
-            {hasFlaggedStocks && (
-              <>
-                <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
-                <div className="flex items-center gap-1">
-                  {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+            <button
+              type="button"
+              onClick={onNewScan}
+              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded text-lg leading-none cursor-pointer transition-colors hover:brightness-150"
+              style={{
+                background: "rgba(0,229,204,0.06)",
+                border: "1px solid rgba(0,229,204,0.25)",
+                color: "var(--ws-cyan)",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
+              title="New Scan"
+            >
+              +
+            </button>
+            <div ref={section === "scans" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
+            <div className="flex-1" />
+            {(() => {
+              const visibleFavs = favScreenIds.filter((id) => scanList.includes(id));
+              if (visibleFavs.length === 0 && !hasFlaggedStocks) return null;
+              return (
+                <div className="flex items-center justify-center gap-1.5 min-w-0 overflow-x-auto">
+                  {visibleFavs.map((s, i) => (
+                    <div
+                      key={s}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.setData("application/scan-fav-idx", String(i)); }}
+                      onDragOver={(e) => { if (e.dataTransfer.types.includes("application/scan-fav-idx")) e.preventDefault(); }}
+                      onDrop={(e) => {
+                        const raw = e.dataTransfer.getData("application/scan-fav-idx");
+                        if (!raw) return;
+                        const fromIdx = Number(raw);
+                        if (fromIdx !== i && !isNaN(fromIdx)) {
+                          const reordered = [...favScreenIds];
+                          const [moved] = reordered.splice(fromIdx, 1);
+                          reordered.splice(i, 0, moved);
+                          setFavScreenIds(reordered);
+                          saveFavoriteScreenIds(reordered);
+                        }
+                      }}
+                      className="cursor-grab active:cursor-grabbing"
+                    >
+                      <SubBarPill label={s} dotColor="#00e5cc" active={activeScan === s} onClick={() => onScanChange?.(s)} />
+                    </div>
+                  ))}
+                  {hasFlaggedStocks && flagOrder.map((f, fi) => {
                     const cnt = flagCounts[f] ?? 0;
                     if (cnt === 0) return null;
+                    const active = activeFlagFilter === f;
                     return (
-                      <button
+                      <div
                         key={f}
-                        type="button"
-                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
-                        style={{
-                          background: FLAG_COLORS[f],
-                          color: "#fff",
-                          padding: "3px 10px",
-                          fontSize: 11,
-                          borderRadius: 4,
-                          border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
-                          fontFamily: "inherit",
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData("application/flag-idx", String(fi)); }}
+                        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault(); }}
+                        onDrop={(e) => {
+                          const raw = e.dataTransfer.getData("application/flag-idx");
+                          if (!raw) return;
+                          const fromIdx = Number(raw);
+                          if (fromIdx !== fi && !isNaN(fromIdx)) {
+                            const reordered = [...flagOrder];
+                            const [moved] = reordered.splice(fromIdx, 1);
+                            reordered.splice(fi, 0, moved);
+                            setFlagOrder(reordered);
+                            localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
+                          }
                         }}
-                        onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
+                        className="cursor-grab active:cursor-grabbing"
                       >
-                        {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
-                      </button>
+                        <SubBarPill
+                          label={f.charAt(0).toUpperCase() + f.slice(1)}
+                          count={cnt}
+                          dotColor={FLAG_COLORS[f]}
+                          active={active}
+                          onClick={() => { onFlagFilter?.(active ? null : f); onFlagListOpen?.(f); }}
+                        />
+                      </div>
                     );
                   })}
                 </div>
-              </>
-            )}
+              );
+            })()}
+            <div className="flex-1" />
           </div>
         )}
 
         {section === "lists" && (
-          <div className="flex items-center gap-1.5 min-w-0">
-            <button
-              type="button"
-              onClick={onNewList}
-            className="shrink-0 px-2.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
-            style={{
-              background: "rgba(0,229,204,0.06)",
-              border: "1px solid rgba(0,229,204,0.25)",
-              color: "var(--ws-cyan)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
-          >
-            New List
-            </button>
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <div ref={listDDRef} className="relative">
               <button
                 type="button"
                 onClick={() => setListDDOpen((v) => !v)}
-                className="flex items-center gap-2 px-3 py-1 rounded text-xs cursor-pointer"
+                className="flex items-center gap-2 px-3 py-1 rounded text-sm font-semibold cursor-pointer"
                 style={{
                   background: "var(--ws-bg3)",
                   border: "1px solid var(--ws-border)",
@@ -612,22 +712,48 @@ export default function WorkspaceHeader({
                   minWidth: 140,
                 }}
               >
-                {watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list"}
+                {(() => {
+                  const flagMatch = activeWatchlistId?.match(/^__flag_(\w+)__$/);
+                  if (flagMatch) {
+                    const f = flagMatch[1] as StockFlag;
+                    return (
+                      <>
+                        <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_COLORS[f] }} />
+                        {f.charAt(0).toUpperCase() + f.slice(1)} Flag
+                      </>
+                    );
+                  }
+                  return watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list";
+                })()}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="opacity-50 shrink-0"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
-              {listDDOpen && watchlistNames.length > 0 && (
+              {listDDOpen && (
                 <div
                   className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                 >
-                  {watchlistNames.map((wl) => {
+                  {watchlistNames.map((wl, idx) => {
                     const isFav = favListIds.includes(wl.id);
                     const isDeletable = wl.id !== FULL_UNIVERSE_ID;
                     return (
                       <div
                         key={wl.id}
+                        draggable={isDeletable}
+                        onDragStart={() => setDragListIdx(idx)}
+                        onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={() => {
+                          if (dragListIdx != null && dragListIdx !== idx) {
+                            const reordered = [...watchlistNames];
+                            const [moved] = reordered.splice(dragListIdx, 1);
+                            reordered.splice(idx, 0, moved);
+                            onReorderLists?.(reordered.map((w) => w.id));
+                          }
+                          setDragListIdx(null);
+                        }}
+                        onDragEnd={() => setDragListIdx(null)}
                         className="group/wl px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
                         style={{
-                          color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                          color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text)",
                           background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
@@ -643,73 +769,162 @@ export default function WorkspaceHeader({
                         </span>
                         <span className="flex-1 truncate">{wl.name}</span>
                         {isDeletable && (
-                          <span
-                            className="ml-2 shrink-0 opacity-0 group-hover/wl:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
-                            title={`Delete ${wl.name}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onDeleteWatchlist?.(wl.id);
-                              setListDDOpen(false);
-                            }}
-                          >
-                            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                          <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/wl:opacity-100 transition-opacity">
+                            <span
+                              className="rounded p-0.5 hover:bg-white/10"
+                              title={`Clone ${wl.name}`}
+                              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onCloneList?.(wl.id); setListDDOpen(false); }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
+                            </span>
+                            <span
+                              className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
+                              title={`Delete ${wl.name}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (window.confirm(`Delete list "${wl.name}"?`)) {
+                                  onDeleteWatchlist?.(wl.id);
+                                  setListDDOpen(false);
+                                }
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                            </span>
                           </span>
                         )}
                       </div>
                     );
                   })}
+                  {hasFlaggedStocks && (
+                    <>
+                      <div className="mx-2 my-1" style={{ height: 1, background: "var(--ws-border)" }} />
+                      {flagOrder.map((f) => {
+                        const cnt = flagCounts[f] ?? 0;
+                        if (cnt === 0) return null;
+                        const flagListId = `__flag_${f}__`;
+                        const isActive = activeWatchlistId === flagListId;
+                        return (
+                          <div
+                            key={flagListId}
+                            className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center gap-2"
+                            style={{
+                              color: isActive ? "var(--ws-cyan)" : "var(--ws-text)",
+                              background: isActive ? "rgba(0,229,204,0.08)" : "transparent",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isActive ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isActive ? "rgba(0,229,204,0.08)" : "transparent"; }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              onFlagFilter?.(isActive ? null : f);
+                              onFlagListOpen?.(f);
+                              setListDDOpen(false);
+                            }}
+                          >
+                            <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_COLORS[f] }} />
+                            <span className="flex-1 truncate">{f.charAt(0).toUpperCase() + f.slice(1)} Flag</span>
+                            <span className="ml-auto tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{cnt}</span>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </div>
+            {rowCountDisplay && (
+              <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                ({rowCountDisplay})
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onNewList}
+              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded text-lg leading-none cursor-pointer transition-colors hover:brightness-150"
+              style={{
+                background: "rgba(0,229,204,0.06)",
+                border: "1px solid rgba(0,229,204,0.25)",
+                color: "var(--ws-cyan)",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
+              title="New List"
+            >
+              +
+            </button>
+            <div ref={section === "lists" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
+            <div className="flex-1" />
             {(() => {
               const favLists = watchlistNames.filter((wl) => favListIds.includes(wl.id));
-              if (favLists.length === 0) return null;
+              if (favLists.length === 0 && !hasFlaggedStocks) return null;
               return (
-                <>
-                  <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
-                  <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-                    {favLists.map((wl) => (
-                      <Pill key={wl.id} on={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)}>
-                        {wl.name}
-                      </Pill>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-            {hasFlaggedStocks && (
-              <>
-                <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 4px" }} />
-                <div className="flex items-center gap-1">
-                  {(["blue", "yellow", "red", "green"] as StockFlag[]).map((f) => {
+                <div className="flex items-center justify-center gap-1.5 min-w-0 overflow-x-auto">
+                  {favLists.map((wl, i) => (
+                    <div
+                      key={wl.id}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.setData("application/list-fav-idx", String(i)); }}
+                      onDragOver={(e) => { if (e.dataTransfer.types.includes("application/list-fav-idx")) e.preventDefault(); }}
+                      onDrop={(e) => {
+                        const raw = e.dataTransfer.getData("application/list-fav-idx");
+                        if (!raw) return;
+                        const fromIdx = Number(raw);
+                        if (fromIdx !== i && !isNaN(fromIdx)) {
+                          const reordered = [...favListIds];
+                          const [moved] = reordered.splice(fromIdx, 1);
+                          reordered.splice(i, 0, moved);
+                          setFavListIds(reordered);
+                          saveFavoriteWatchlistIds(reordered);
+                        }
+                      }}
+                      className="cursor-grab active:cursor-grabbing"
+                    >
+                      <SubBarPill label={wl.name} dotColor="#00e5cc" active={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)} />
+                    </div>
+                  ))}
+                  {hasFlaggedStocks && flagOrder.map((f, fi) => {
                     const cnt = flagCounts[f] ?? 0;
                     if (cnt === 0) return null;
+                    const active = activeFlagFilter === f;
                     return (
-                      <button
+                      <div
                         key={f}
-                        type="button"
-                        className="transition-colors cursor-pointer font-medium ws-focus-ring hover:brightness-110"
-                        style={{
-                          background: FLAG_COLORS[f],
-                          color: "#fff",
-                          padding: "3px 10px",
-                          fontSize: 11,
-                          borderRadius: 4,
-                          border: activeFlagFilter === f ? "2px solid rgba(255,255,255,0.6)" : "2px solid transparent",
-                          fontFamily: "inherit",
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData("application/flag-idx", String(fi)); }}
+                        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault(); }}
+                        onDrop={(e) => {
+                          const raw = e.dataTransfer.getData("application/flag-idx");
+                          if (!raw) return;
+                          const fromIdx = Number(raw);
+                          if (fromIdx !== fi && !isNaN(fromIdx)) {
+                            const reordered = [...flagOrder];
+                            const [moved] = reordered.splice(fromIdx, 1);
+                            reordered.splice(fi, 0, moved);
+                            setFlagOrder(reordered);
+                            localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
+                          }
                         }}
-                        onClick={() => { onFlagFilter?.(activeFlagFilter === f ? null : f); onFlagListOpen?.(f); }}
+                        className="cursor-grab active:cursor-grabbing"
                       >
-                        {f.charAt(0).toUpperCase() + f.slice(1)} ({cnt})
-                      </button>
+                        <SubBarPill
+                          label={f.charAt(0).toUpperCase() + f.slice(1)}
+                          count={cnt}
+                          dotColor={FLAG_COLORS[f]}
+                          active={active}
+                          onClick={() => { onFlagFilter?.(active ? null : f); onFlagListOpen?.(f); }}
+                        />
+                      </div>
                     );
                   })}
                 </div>
-              </>
-            )}
+              );
+            })()}
+            <div className="flex-1" />
           </div>
         )}
+
+        <MarketStatusIndicator />
+        <ClockDisplay />
       </div>
     </header>
   );

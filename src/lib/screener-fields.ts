@@ -188,8 +188,8 @@ export const SCREENER_FILTER_CATEGORIES: FilterCategory[] = [
     ],
   },
   {
-    id: "fundamentals",
-    title: "Fundamentals",
+    id: "technicals",
+    title: "Technicals",
     defaultCollapsed: true,
     fields: [
       { key: "last_price", label: "Last Price", type: "numeric", minKey: "last_price_min", maxKey: "last_price_max", format: "number" },
@@ -204,13 +204,6 @@ export const SCREENER_FILTER_CATEGORIES: FilterCategory[] = [
       { key: "price_change_3m_pct", label: "Price Change % (3M)", type: "pct", minKey: "price_change_3m_pct_min", maxKey: "price_change_3m_pct_max" },
       { key: "price_change_6m_pct", label: "Price Change % (6M)", type: "pct", minKey: "price_change_6m_pct_min", maxKey: "price_change_6m_pct_max" },
       { key: "price_change_12m_pct", label: "Price Change % (12M)", type: "pct", minKey: "price_change_12m_pct_min", maxKey: "price_change_12m_pct_max" },
-    ],
-  },
-  {
-    id: "technicals",
-    title: "Technicals",
-    defaultCollapsed: true,
-    fields: [
       { key: "rs_pct_1w", label: "RS (1W) Percentile", type: "percentile", minKey: "rs_pct_1w_min", maxKey: "rs_pct_1w_max" },
       { key: "rs_pct_1m", label: "RS (1M) Percentile", type: "percentile", minKey: "rs_pct_1m_min", maxKey: "rs_pct_1m_max" },
       { key: "rs_pct_3m", label: "RS (3M) Percentile", type: "percentile", minKey: "rs_pct_3m_min", maxKey: "rs_pct_3m_max" },

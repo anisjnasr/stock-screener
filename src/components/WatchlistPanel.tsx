@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   loadWatchlists,
   saveWatchlists,
@@ -127,11 +128,11 @@ const THEMATIC_INDUSTRIES_FOLDER_ID = "thematic-industries";
 const FLAG_LIST_PREFIX = "__flag_";
 const FLAG_COLORS = ["red", "yellow", "green", "blue"] as const;
 const FLAG_LIST_IDS = FLAG_COLORS.map((c) => `${FLAG_LIST_PREFIX}${c}__`);
-const FLAG_DOT_CLASSES: Record<string, string> = {
-  red: "bg-red-500",
-  yellow: "bg-yellow-500",
-  green: "bg-green-500",
-  blue: "bg-blue-500",
+const FLAG_HEX: Record<string, string> = {
+  red: "#EF4468",
+  yellow: "#F5A524",
+  green: "#3DDC84",
+  blue: "#5C9EF5",
 };
 
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
@@ -166,6 +167,10 @@ type WatchlistPanelProps = {
   onActiveWatchlistIdChange?: (id: string | null) => void;
   /** Explicitly control whether the panel shows lists or screener data. */
   sectionMode?: "scans" | "lists";
+  /** Portal target element in WorkspaceHeader for table action icons. */
+  headerActionsSlot?: HTMLDivElement | null;
+  /** Callback to emit the current row count display string. */
+  onRowCountChange?: (display: string) => void;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -224,6 +229,15 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
   }
   if (col === "lastPrice") return typeof v === "number" ? Number(v).toFixed(2) : String(v);
   if (col === "date") return formatDisplayDate(String(v));
+  if (col === "exchange") {
+    const code = String(v).trim().toUpperCase();
+    const map: Record<string, string> = {
+      XNAS: "Nasdaq", XNYS: "NYSE", XASE: "NYSE American",
+      ARCX: "NYSE Arca", BATS: "Cboe BZX", XNCM: "Nasdaq Capital",
+      XNGS: "Nasdaq Global Select", XNMS: "Nasdaq Global",
+    };
+    return map[code] ?? String(v).trim();
+  }
   if (col === "industry") return toTitleCase(String(v));
   if (col === "changePct" || col === "atrPct" || (typeof v === "number" && String(col).includes("Pct")))
     return typeof v === "number" ? (col === "changePct" ? fmtPct(v) : `${Number(v).toFixed(2)}%`) : String(v);
@@ -501,6 +515,8 @@ export default function WatchlistPanel({
   activeWatchlistIdSync,
   onActiveWatchlistIdChange,
   sectionMode,
+  headerActionsSlot,
+  onRowCountChange,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListIdState] = useState<string | null>(null);
@@ -1142,6 +1158,7 @@ export default function WatchlistPanel({
       const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
       const updated = saveFlagName(color, trimmed);
       setFlagNames(updated);
+      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: flags }));
     }
     setEditingTitleValue(null);
   }, [editingTitleValue, activeList, isUserWatchlist, isUserScreen, selectedScreen, isFlagList, selectedCollectionId]);
@@ -1683,7 +1700,7 @@ export default function WatchlistPanel({
       if (flag) next[symbol.toUpperCase()] = flag;
       else delete next[symbol.toUpperCase()];
       saveFlags(next);
-      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next }));
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next })));
       return next;
     });
   }, []);
@@ -2016,6 +2033,13 @@ export default function WatchlistPanel({
   const saveNewScreener = useCallback(() => {
     const name = newScreenForm.name.trim();
     if (!name) return;
+    const duplicate = screens.find(
+      (s) => s.name.toLowerCase() === name.toLowerCase() && s.id !== editingScreenId
+    );
+    if (duplicate) {
+      alert(`A scan named "${duplicate.name}" already exists. Please choose a different name.`);
+      return;
+    }
     const filters = buildEffectiveFilters(newScreenForm);
     let screen: SavedScreen;
     if (editingScreenId) {
@@ -2155,6 +2179,12 @@ export default function WatchlistPanel({
   useEffect(() => {
     onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
   }, [sortedRows, onOrderedSymbolsChange]);
+
+  useEffect(() => {
+    if (!onRowCountChange) return;
+    if (loading) { onRowCountChange("…"); return; }
+    onRowCountChange(isFiltered ? `${sortedRows.length}/${unfilteredRowCount}` : String(rows.length));
+  }, [loading, isFiltered, sortedRows.length, unfilteredRowCount, rows.length, onRowCountChange]);
 
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
@@ -2799,7 +2829,7 @@ export default function WatchlistPanel({
                               onClick={() => { setSelectedCollectionId(flagListId); setActiveListId(null); }}
                               className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1.5 rounded-r ${selectedCollectionId === flagListId ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                             >
-                              <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${FLAG_DOT_CLASSES[color]}`} />
+                              <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_HEX[color] }} />
                               <span className="truncate min-w-0">{color.charAt(0).toUpperCase() + color.slice(1)}</span>
                               <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-500">{count}</span>
                             </button>
@@ -3105,7 +3135,8 @@ export default function WatchlistPanel({
             const list = lists.find((l) => l.id === addPopupListId);
             return (
               <div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
                 onClick={(e) => e.target === e.currentTarget && closeAddPopup()}
                 role="dialog"
                 aria-modal="true"
@@ -3281,7 +3312,8 @@ export default function WatchlistPanel({
           {/* New Folder modal */}
           {showNewFolderModal && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
               onClick={(e) => e.target === e.currentTarget && setShowNewFolderModal(false)}
               role="dialog"
               aria-modal="true"
@@ -3423,6 +3455,7 @@ export default function WatchlistPanel({
                       if (scanModalMode === "script") { setNewScriptName(v); } else { setNewScreenForm((p) => ({ ...p, name: v })); }
                     }}
                     placeholder=""
+                    autoFocus
                     className="flex-1 min-w-0 rounded px-2 py-1.5 text-sm font-normal"
                     style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                   />
@@ -3444,49 +3477,55 @@ export default function WatchlistPanel({
                     {showNinoScriptHelp && (
                       <NinoScriptHelp onClose={() => setShowNinoScriptHelp(false)} />
                     )}
-                    <div className="flex justify-end gap-2 p-3 shrink-0" style={{ borderTop: "1px solid var(--ws-border)" }}>
-                      <button
-                        type="button"
-                        onClick={() => { setShowNewScriptModal(false); setShowNewScreenerModal(false); setNewScriptName(""); setNewScriptBody(""); setEditingScriptScreenId(null); }}
-                        className="px-3 py-1.5 text-sm rounded transition-colors"
-                        style={{ border: "1px solid var(--ws-border)", color: "var(--ws-text-dim)" }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const name = newScriptName.trim() || "Unnamed script";
-                          let savedScreen: SavedScreen;
-                          if (editingScriptScreenId) {
-                            updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
-                            const updated = loadScreens().find((s) => s.id === editingScriptScreenId);
-                            savedScreen = updated!;
-                          } else {
-                            savedScreen = addScreen({
-                              name,
-                              universe: "all",
-                              filters: {},
-                              type: "script",
-                              scriptBody: newScriptBody,
-                            });
-                          }
-                          setScreens(loadScreens());
-                          setShowNewScriptModal(false);
-                          setShowNewScreenerModal(false);
-                          setNewScriptName("");
-                          setNewScriptBody("");
-                          if (selectedScreenId === (editingScriptScreenId ?? savedScreen?.id)) {
+                    <div className="p-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0 flex justify-between items-center gap-2">
+                      <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                        {screenerResultCount != null ? `Results: ${screenerResultCount.toLocaleString()}` : ""}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setShowNewScriptModal(false); setShowNewScreenerModal(false); setNewScriptName(""); setNewScriptBody(""); setEditingScriptScreenId(null); }}
+                          className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const name = newScriptName.trim() || "Unnamed script";
+                            let savedScreen: SavedScreen;
+                            if (editingScriptScreenId) {
+                              updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
+                              const updated = loadScreens().find((s) => s.id === editingScriptScreenId);
+                              savedScreen = updated!;
+                            } else {
+                              savedScreen = addScreen({
+                                name,
+                                universe: "all",
+                                filters: {},
+                                type: "script",
+                                scriptBody: newScriptBody,
+                              });
+                            }
+                            setScreens(loadScreens());
+                            setShowNewScriptModal(false);
+                            setShowNewScreenerModal(false);
+                            setNewScriptName("");
+                            setNewScriptBody("");
                             setSelectedScreenId(savedScreen.id);
                             fetchScreenerResults(savedScreen);
-                          }
-                          setEditingScriptScreenId(null);
-                        }}
-                        className="px-3 py-1.5 text-sm rounded text-white"
-                        style={{ background: "var(--ws-cyan, #00e5cc)", color: "var(--ws-bg, #0f0f0f)" }}
-                      >
-                        Save
-                      </button>
+                            setEditingScriptScreenId(null);
+                          }}
+                          disabled={!newScriptName.trim()}
+                          className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                          style={{
+                            background: newScriptName.trim() ? "var(--ws-cyan, #00e5cc)" : "var(--ws-bg3, #333)",
+                            color: newScriptName.trim() ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim)",
+                          }}
+                        >
+                          Save & Run
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -3794,38 +3833,14 @@ export default function WatchlistPanel({
 
           {/* Right: table */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between gap-2 px-2 py-1.5 shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.06))" }}>
-              <div className="flex items-center gap-2">
-                {editingTitleValue !== null ? (
-                  <input
-                    autoFocus
-                    className="text-[15px] font-semibold rounded px-1 py-0"
-                    style={{ color: "var(--ws-text, #e6edf3)", background: "var(--ws-bg, #0f0f0f)", border: "1px solid var(--ws-accent, #58a6ff)", outline: "none", minWidth: 80 }}
-                    value={editingTitleValue}
-                    onChange={(e) => setEditingTitleValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { commitTitleEdit(); }
-                      if (e.key === "Escape") { setEditingTitleValue(null); }
-                    }}
-                    onBlur={commitTitleEdit}
-                  />
-                ) : (
-                  <span
-                    className="text-[15px] font-semibold"
-                    style={{ color: "var(--ws-text, #e6edf3)", cursor: canEditTitle ? "pointer" : "default" }}
-                    onDoubleClick={() => {
-                      if (canEditTitle) {
-                        setEditingTitleValue(activeListTitle ?? "");
-                      }
-                    }}
-                    title={canEditTitle ? "Double-click to rename" : undefined}
-                  >
-                    {activeListTitle ?? "Results"}
-                  </span>
-                )}
-                <span className="text-[15px] font-semibold tabular-nums ml-2" style={{ color: "var(--ws-text-dim, #9ca3af)" }}>
-                  ({loading ? "…" : isFiltered ? `${sortedRows.length}/${unfilteredRowCount}` : rows.length})
-                </span>
+            {/* Table action icons portaled into WorkspaceHeader sub-bar */}
+            {headerActionsSlot && createPortal(
+              <>
+                <button type="button" onClick={handleAutoSizeColumns}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded transition-colors hover:brightness-150"
+                  style={{ color: "rgba(201,209,217,0.5)" }} title="Auto resize columns" aria-label="Auto resize columns">
+                  <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M1 8a.5.5 0 0 1 .5-.5h4.793L4.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L6.293 8.5H1.5A.5.5 0 0 1 1 8zm14 0a.5.5 0 0 0-.5-.5H9.707l2.147-2.146a.5.5 0 0 0-.708-.708l-3 3a.5.5 0 0 0 0 .708l3 3a.5.5 0 0 0 .708-.708L9.707 8.5h4.793A.5.5 0 0 0 15 8z"/></svg>
+                </button>
                 <div ref={tableMenuRef} className="relative">
                   <button type="button" onClick={() => setShowTableMenu((v) => !v)}
                     className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
@@ -3950,15 +3965,6 @@ export default function WatchlistPanel({
                           </div>
                         )}
                       </div>
-                      <button type="button"
-                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
-                        style={{ color: "var(--ws-text-dim)" }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                        onClick={() => { handleAutoSizeColumns(); setShowTableMenu(false); }}
-                      >
-                        Auto Resize Columns
-                      </button>
                     </div>
                   )}
                 </div>
@@ -4017,30 +4023,6 @@ export default function WatchlistPanel({
                     </div>
                   )}
                 </div>
-                {selectedSymbols.size > 0 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
-                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                      style={{ color: "var(--ws-red, #ff4d6a)" }}
-                      title="Delete selected"
-                      aria-label="Delete selected"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2h3a1 1 0 011-1h3a1 1 0 011 1h3a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118z"/></svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddToListMenu((v) => !v)}
-                      className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                      style={{ color: "var(--ws-cyan, #00e5cc)" }}
-                      title="Add/remove from watchlist"
-                      aria-label="Add/remove from watchlist"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
-                    </button>
-                  </>
-                )}
                 {isUserWatchlist && (
                   <button
                     type="button"
@@ -4062,8 +4044,9 @@ export default function WatchlistPanel({
                     </svg>
                   </button>
                 )}
-              </div>
-            </div>
+              </>,
+              headerActionsSlot
+            )}
 
             {selectedSymbols.size > 0 && (
               <div className="relative flex items-center gap-2 px-2 py-1 shrink-0" ref={addToListMenuRef} style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg3)" }}>
@@ -4072,6 +4055,26 @@ export default function WatchlistPanel({
                 </span>
                 <button type="button" onClick={clearSelection} className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>
                   Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeSymbolsFromList(Array.from(selectedSymbols))}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded transition-colors hover:brightness-150"
+                  style={{ color: "var(--ws-red, #ff4d6a)" }}
+                  title="Delete selected"
+                  aria-label="Delete selected"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2h3a1 1 0 011-1h3a1 1 0 011 1h3a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118z"/></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddToListMenu((v) => !v)}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded transition-colors hover:brightness-150"
+                  style={{ color: "var(--ws-cyan, #00e5cc)" }}
+                  title="Add/remove from watchlist"
+                  aria-label="Add/remove from watchlist"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z"/></svg>
                 </button>
                 {showAddToListMenu && (
                   <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg" style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}>
@@ -4114,6 +4117,38 @@ export default function WatchlistPanel({
                 <span style={{ color: "var(--ws-text, #e5e5e5)" }}>
                   {sortedRows.length} of {unfilteredRowCount}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const symbols = sortedRows.map((r) => r.symbol);
+                    if (symbols.length === 0) return;
+                    const newId = `wl-${Date.now()}`;
+                    const newList = { id: newId, name: `Filtered (${symbols.length})`, symbols };
+                    setLists((prev) => {
+                      const next = [...prev, newList];
+                      saveWatchlists(next);
+                      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
+                      return next;
+                    });
+                    setActiveListId(newId);
+                  }}
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  style={{ color: "var(--ws-cyan, #00e5cc)", background: "rgba(0,229,204,0.06)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(0,229,204,0.15)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(0,229,204,0.06)"; }}
+                >
+                  Save as List
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllFilters}
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  style={{ color: "var(--ws-red, #ff4d6a)", background: "rgba(255,77,106,0.06)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.15)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.06)"; }}
+                >
+                  Clear All
+                </button>
                 {Array.from(columnFilters.entries()).map(([col, f]) => (
                   <span
                     key={`vf-${col}`}
@@ -4147,16 +4182,6 @@ export default function WatchlistPanel({
                     </button>
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={handleClearAllFilters}
-                  className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
-                  style={{ color: "var(--ws-red, #ff4d6a)", background: "rgba(255,77,106,0.06)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.15)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.06)"; }}
-                >
-                  Clear All
-                </button>
               </div>
             )}
 
@@ -4164,7 +4189,7 @@ export default function WatchlistPanel({
               <table ref={tableRef} className="border-collapse whitespace-nowrap" style={{ fontSize: "13px", lineHeight: "1.4", borderSpacing: 0 }}>
                 <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c1c1c)", borderBottom: "1px solid var(--ws-border)" }}>
                   <tr>
-                    <th className="w-9 min-w-[2.25rem] py-1.5 px-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
+                    <th className="w-9 min-w-[2.25rem] py-1.5 pl-3 pr-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
                       Flag
                     </th>
                     {tableColumns.map((col, colIndex) => {
@@ -4351,7 +4376,7 @@ export default function WatchlistPanel({
                             onSymbolSelect?.(row.symbol);
                           }}
                         >
-                          <td className="py-1.5 px-1 align-middle w-9" data-flag-picker>
+                          <td className="py-1.5 pl-3 pr-1 align-middle w-9" data-flag-picker>
                             <div className="relative inline-block">
                               <button
                                 type="button"
@@ -4366,15 +4391,7 @@ export default function WatchlistPanel({
                                     <line x1="4" y1="22" x2="4" y2="15" />
                                   </svg>
                                 ) : (
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={
-                                    flag === "red"
-                                      ? "text-red-500"
-                                      : flag === "yellow"
-                                        ? "text-orange-500"
-                                        : flag === "green"
-                                          ? "text-green-500"
-                                          : "text-blue-500"
-                                  }>
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill={FLAG_HEX[flag] ?? "currentColor"} style={{ color: FLAG_HEX[flag] }}>
                                     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                                     <line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" strokeWidth="1.5" />
                                   </svg>
@@ -4400,15 +4417,8 @@ export default function WatchlistPanel({
                                         setFlag(row.symbol, flag === c ? null : c);
                                         setFlagPickerSymbol(null);
                                       }}
-                                      className={`w-5 h-5 rounded border-2 ${
-                                        c === "red"
-                                          ? "bg-red-500 border-red-600"
-                                          : c === "yellow"
-                                            ? "bg-orange-500 border-orange-600"
-                                            : c === "green"
-                                              ? "bg-green-500 border-green-600"
-                                              : "bg-blue-500 border-blue-600"
-                                      } hover:opacity-90`}
+                                      className="w-5 h-5 rounded border-2 hover:opacity-90"
+                                      style={{ backgroundColor: FLAG_HEX[c], borderColor: FLAG_HEX[c] }}
                                       title={`Flag ${c}`}
                                       aria-label={`Flag ${row.symbol} ${c}`}
                                     />
@@ -4502,7 +4512,7 @@ export default function WatchlistPanel({
                                 commitInlineTicker(pick.symbol);
                               }
                             }}
-                            placeholder="Type ticker..."
+                            placeholder="Type..."
                             autoFocus
                             className="w-full py-1.5 px-2 text-xs font-mono"
                             style={{ background: "transparent", color: "var(--ws-cyan)", border: "none", outline: "none", borderBottom: "1px solid var(--ws-cyan)" }}

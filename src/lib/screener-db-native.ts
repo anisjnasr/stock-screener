@@ -316,7 +316,7 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
     if (atr_pct_21d != null && last_price_raw != null && last_price_raw > 0 && prev_close > 0) {
       atr_pct_21d = (atr_pct_21d * last_price_raw) / prev_close;
     }
-  } else if (!marketClosed && (last_price == null || last_price <= 0 || prev_close == null || prev_close <= 0)) {
+  } else if (!marketClosed && change_pct == null && (last_price == null || last_price <= 0 || prev_close == null || prev_close <= 0)) {
     change_pct = 0;
   }
 

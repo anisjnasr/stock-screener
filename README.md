@@ -46,6 +46,22 @@ Edit `.env.local` and set `MASSIVE_API_KEY=your_actual_key`. Never commit `.env.
 
 **Fund ownership (institutional holders):** Massive does not provide institutional holder data. The app will use SEC EDGAR 13F data when that is implemented (see PROJECT_PLAN.md). Until then, the sidebar shows "— funds" with an explanatory note.
 
+### Supabase (optional — cloud sync)
+
+To sync watchlists, scans, flags, and settings across devices, set up a free [Supabase](https://supabase.com) project:
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor** and run the schema in `data/supabase-schema.sql`
+3. Go to **Settings > API** and copy the **Project URL** and **anon public** key
+4. Add them to `.env.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Without these variables, the app works fully offline using localStorage.
+
 ### 2. Run the development server
 
 ```bash

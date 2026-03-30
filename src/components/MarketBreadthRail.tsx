@@ -159,6 +159,11 @@ export default function MarketBreadthRail({
         <div className="flex items-center justify-center py-10">
           <span className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>Loading breadth…</span>
         </div>
+      ) : pct50Data.length === 0 && pct200Data.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 gap-1">
+          <span className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>No breadth data available</span>
+          <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Run data refresh to populate</span>
+        </div>
       ) : (
         <>
           <BreadthMetric
