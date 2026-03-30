@@ -47,14 +47,17 @@ export async function POST(request: NextRequest) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
 
-    const insertBatch = db.transaction((batch: BarPayload[]) => {
-      for (const b of batch) {
+    db.exec("BEGIN");
+    try {
+      for (const b of bars) {
         stmt.run(b.symbol, b.date, b.open, b.high, b.low, b.close, b.volume);
         inserted++;
       }
-    });
-
-    insertBatch(bars);
+      db.exec("COMMIT");
+    } catch (txErr) {
+      db.exec("ROLLBACK");
+      throw txErr;
+    }
     db.close();
     resetDbConnection();
   } catch (e) {
