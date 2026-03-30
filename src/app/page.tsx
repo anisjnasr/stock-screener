@@ -535,6 +535,12 @@ export default function Home() {
           setActiveWatchlistId(id);
         }}
         onDeleteWatchlist={handleDeleteWatchlist}
+        onRenameList={(id, newName) => {
+          const updated = watchlists.map((w) => w.id === id ? { ...w, name: newName } : w);
+          setWatchlists(updated);
+          saveWatchlists(updated);
+          window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: updated }));
+        }}
         onCloneList={(id) => {
           const source = watchlists.find((w) => w.id === id);
           if (!source) return;

@@ -62,6 +62,7 @@ type WorkspaceHeaderProps = {
   activeWatchlistId?: string | null;
   onWatchlistChange?: (id: string) => void;
   onDeleteWatchlist?: (id: string) => void;
+  onRenameList?: (id: string, newName: string) => void;
   onCloneList?: (id: string) => void;
   onReorderLists?: (ids: string[]) => void;
   onNewList?: () => void;
@@ -232,6 +233,7 @@ export default function WorkspaceHeader({
   activeWatchlistId,
   onWatchlistChange,
   onDeleteWatchlist,
+  onRenameList,
   onCloneList,
   onReorderLists,
   onNewList,
@@ -250,6 +252,8 @@ export default function WorkspaceHeader({
   const [favListIds, setFavListIds] = useState<string[]>(() => loadFavoriteWatchlistIds());
   const [dragScanIdx, setDragScanIdx] = useState<number | null>(null);
   const [dragListIdx, setDragListIdx] = useState<number | null>(null);
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [editingListName, setEditingListName] = useState("");
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
@@ -297,6 +301,7 @@ export default function WorkspaceHeader({
       }
       if (listDDRef.current && !listDDRef.current.contains(e.target as Node)) {
         setListDDOpen(false);
+        setEditingListId(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -345,9 +350,10 @@ export default function WorkspaceHeader({
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
       {/* ===== ROW 1 — Main Header ===== */}
       <div
-        className="flex items-center gap-3 h-[50px]"
-        style={{ paddingLeft: 12, paddingRight: padR }}
+        className="relative flex items-center h-[50px]"
+        style={{ paddingLeft: 12, paddingRight: 12 }}
       >
+        {/* Left: logo */}
         <img
           src="/brand/stockstalker-lockup.png"
           srcSet="/brand/stockstalker-lockup.png 1x, /brand/stockstalker-lockup@2x.png 2x"
@@ -355,117 +361,120 @@ export default function WorkspaceHeader({
           className="h-10 w-auto shrink-0 opacity-90"
         />
 
-        <nav className="flex items-center gap-1 ml-2">
-          {WORKSPACE_SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => onSectionChange(s.id)}
-              className={`px-4 py-1.5 text-[15px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
-              aria-current={section === s.id ? "page" : undefined}
-              style={{
-                background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
-                borderBottom: section === s.id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
-                borderTop: "2px solid transparent",
-                borderLeft: "none",
-                borderRight: "none",
-                borderRadius: 0,
-                color: section === s.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </nav>
-
-        <div ref={searchContainerRef} className="relative shrink-0 ml-2">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-                selectSymbol(suggestions[highlightedIndex].symbol);
-              } else {
-                onSearchSubmit();
-              }
-            }}
-            className="flex items-center gap-1"
-          >
-            <div className="relative w-48">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
-              >
-                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
-              </svg>
-              <input
-                type="text"
-                value={searchValue}
-                onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-                onFocus={(e) => {
-                  (e.target as HTMLInputElement).select();
-                  if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Search"
-                className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
+        {/* Center: nav + search */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <nav className="flex items-center gap-1 pointer-events-auto">
+            {WORKSPACE_SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onSectionChange(s.id)}
+                className={`px-4 py-1.5 text-[15px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
+                aria-current={section === s.id ? "page" : undefined}
                 style={{
-                  background: "var(--ws-bg3)",
-                  color: "var(--ws-text)",
-                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
+                  borderBottom: section === s.id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
+                  borderTop: "2px solid transparent",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  borderRadius: 0,
+                  color: section === s.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
                 }}
-                aria-label="Stock search"
-                autoComplete="off"
-                aria-autocomplete="list"
-                aria-expanded={suggestionsOpen}
-                aria-controls="ws-search-suggestions"
-                aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
-              />
-            </div>
-          </form>
-          {suggestionsOpen && (
-            <ul
-              id="ws-search-suggestions"
-              role="listbox"
-              className="absolute right-0 top-full z-50 mt-1 max-h-60 w-[28rem] max-w-[90vw] overflow-auto rounded py-1 shadow-lg"
-              style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
-            >
-              {suggestionsLoading ? (
-                <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
-              ) : (
-                suggestions.map((s, i) => (
-                  <li
-                    key={`${s.symbol}-${i}`}
-                    id={`ws-suggestion-${i}`}
-                    role="option"
-                    aria-selected={i === highlightedIndex}
-                    className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
-                    style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
-                    onMouseEnter={() => setHighlightedIndex(i)}
-                    onMouseDown={(e) => { e.preventDefault(); selectSymbol(s.symbol); }}
+              >
+                {s.label}
+              </button>
+            ))}
+
+            <div ref={searchContainerRef} className="relative shrink-0 ml-2">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+                    selectSymbol(suggestions[highlightedIndex].symbol);
+                  } else {
+                    onSearchSubmit();
+                  }
+                }}
+                className="flex items-center gap-1"
+              >
+                <div className="relative w-48">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
                   >
-                    <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
-                      {s.symbol}
-                    </span>
-                    {s.name && typeof s.name === "string" && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
-                  </li>
-                ))
+                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={searchValue}
+                    onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
+                    onFocus={(e) => {
+                      (e.target as HTMLInputElement).select();
+                      if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Search"
+                    className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
+                    style={{
+                      background: "var(--ws-bg3)",
+                      color: "var(--ws-text)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                    }}
+                    aria-label="Stock search"
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-expanded={suggestionsOpen}
+                    aria-controls="ws-search-suggestions"
+                    aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
+                  />
+                </div>
+              </form>
+              {suggestionsOpen && (
+                <ul
+                  id="ws-search-suggestions"
+                  role="listbox"
+                  className="absolute right-0 top-full z-50 mt-1 max-h-60 w-[28rem] max-w-[90vw] overflow-auto rounded py-1 shadow-lg"
+                  style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
+                >
+                  {suggestionsLoading ? (
+                    <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
+                  ) : (
+                    suggestions.map((s, i) => (
+                      <li
+                        key={`${s.symbol}-${i}`}
+                        id={`ws-suggestion-${i}`}
+                        role="option"
+                        aria-selected={i === highlightedIndex}
+                        className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
+                        style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        onMouseDown={(e) => { e.preventDefault(); selectSymbol(s.symbol); }}
+                      >
+                        <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
+                          {s.symbol}
+                        </span>
+                        {s.name && typeof s.name === "string" && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
+                      </li>
+                    ))
+                  )}
+                </ul>
               )}
-            </ul>
-          )}
+            </div>
+          </nav>
         </div>
 
-        <div className="flex-1" />
-
-        {lastUpdated && (
-          <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
-            {lastUpdated}
-          </span>
-        )}
-
-        <ProfileIcon />
+        {/* Right: updated + profile — always far-right */}
+        <div className="ml-auto flex items-center gap-3 shrink-0 z-10">
+          {lastUpdated && (
+            <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
+              {lastUpdated}
+            </span>
+          )}
+          <ProfileIcon />
+        </div>
       </div>
 
       {/* ===== ROW 2 — Sub-bar ===== */}
@@ -752,7 +761,7 @@ export default function WorkspaceHeader({
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                        onMouseDown={(e) => { e.preventDefault(); onWatchlistChange?.(wl.id); setListDDOpen(false); }}
+                        onMouseDown={(e) => { e.preventDefault(); if (editingListId) return; onWatchlistChange?.(wl.id); setListDDOpen(false); setEditingListId(null); }}
                       >
                         <span
                           className="text-[14px]"
@@ -761,9 +770,42 @@ export default function WorkspaceHeader({
                         >
                           {isFav ? "★" : "☆"}
                         </span>
-                        <span className="flex-1 truncate">{wl.name}</span>
-                        {isDeletable && (
+                        {editingListId === wl.id ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingListName}
+                            onChange={(e) => setEditingListName(e.target.value)}
+                            onBlur={() => {
+                              const trimmed = editingListName.trim();
+                              if (trimmed && trimmed !== wl.name) onRenameList?.(wl.id, trimmed);
+                              setEditingListId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const trimmed = editingListName.trim();
+                                if (trimmed && trimmed !== wl.name) onRenameList?.(wl.id, trimmed);
+                                setEditingListId(null);
+                              }
+                              if (e.key === "Escape") setEditingListId(null);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-1 min-w-0 bg-transparent border-b outline-none text-xs px-0 py-0"
+                            style={{ borderColor: "var(--ws-cyan)", color: "var(--ws-text)" }}
+                          />
+                        ) : (
+                          <span className="flex-1 truncate">{wl.name}</span>
+                        )}
+                        {isDeletable && editingListId !== wl.id && (
                           <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/wl:opacity-100 transition-opacity">
+                            <span
+                              className="rounded p-0.5 hover:bg-white/10"
+                              title={`Rename ${wl.name}`}
+                              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setEditingListId(wl.id); setEditingListName(wl.name); }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
+                            </span>
                             <span
                               className="rounded p-0.5 hover:bg-white/10"
                               title={`Clone ${wl.name}`}
