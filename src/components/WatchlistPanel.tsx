@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   useRef,
@@ -598,6 +599,7 @@ export default function WatchlistPanel({
   const [stockDragOverListId, setStockDragOverListId] = useState<string | null>(null);
   const [screenerModalPosition, setScreenerModalPosition] = useState<{ x: number; y: number } | null>(null);
   const screenerModalRef = useRef<HTMLDivElement>(null);
+  const scanNameInputRef = useRef<HTMLInputElement>(null);
   const screenerModalDragStart = useRef<{ clientX: number; clientY: number; left: number; top: number } | null>(null);
   const [newScreenForm, setNewScreenForm] = useState<{
     name: string;
@@ -1915,6 +1917,13 @@ export default function WatchlistPanel({
       setScreenerResultCount(null);
     }
   }, [showNewScreenerModal]);
+
+  useLayoutEffect(() => {
+    if (!showNewScriptModal && !showNewScreenerModal) return;
+    const el = scanNameInputRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+  }, [showNewScriptModal, showNewScreenerModal, scanModalMode]);
 
   const setNewScreenFilter = useCallback((key: string, value: string | number | undefined) => {
     setNewScreenForm((prev) => {
@@ -3448,6 +3457,7 @@ export default function WatchlistPanel({
                 <div className="flex items-center gap-2 px-4 pt-3 pb-2 shrink-0">
                   <label className="text-xs font-medium w-16 shrink-0" style={{ color: "var(--ws-text-dim)" }}>Name</label>
                   <input
+                    ref={scanNameInputRef}
                     type="text"
                     value={scanModalMode === "script" ? newScriptName : newScreenForm.name}
                     onChange={(e) => {
@@ -3455,7 +3465,6 @@ export default function WatchlistPanel({
                       if (scanModalMode === "script") { setNewScriptName(v); } else { setNewScreenForm((p) => ({ ...p, name: v })); }
                     }}
                     placeholder=""
-                    autoFocus
                     className="flex-1 min-w-0 rounded px-2 py-1.5 text-sm font-normal"
                     style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                   />
