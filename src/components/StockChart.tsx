@@ -848,7 +848,7 @@ export default function StockChart({
       ).setData(volumeData);
       try {
         const volScale = chart.priceScale("");
-        if (volScale) volScale.applyOptions({ visible: true, borderVisible: false, drawTicks: true });
+        if (volScale) volScale.applyOptions({ visible: true, borderVisible: false } as Record<string, unknown>);
       } catch { /* ignore */ }
       const panes = chart.panes();
       if (panes[0]) panes[0].setStretchFactor(7);
