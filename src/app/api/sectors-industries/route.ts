@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getDataDir } from "@/lib/data-path";
 import {
   getLatestCompletedTradingDate,
   getTickerPerformance,
@@ -38,7 +39,7 @@ function getSiResponseCache(): Map<string, unknown> {
   return globalForSiCache._siResponseCache;
 }
 
-const CACHE_PATH = join(process.cwd(), "data", "sectors-industries-cache.json");
+const CACHE_PATH = join(getDataDir(), "sectors-industries-cache.json");
 const CACHE_VERSION = 1;
 type DiskCache = {
   version: number;

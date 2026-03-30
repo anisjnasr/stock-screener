@@ -12,15 +12,21 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start
 
-    # Next.js uses PORT from env; Render sets PORT=10000
     envVars:
       - key: NODE_ENV
         value: production
       - key: MASSIVE_API_KEY
         sync: false
+      # Point the app at the persistent disk so the DB survives deploys.
+      # The app auto-detects /app/data as a fallback, but this is explicit.
+      - key: SCREENER_DB_PATH
+        value: /app/data/screener.db
+      - key: SCREENER_DATA_DIR
+        value: /app/data
 
-    # Persistent disk for data/screener.db (init and refresh scripts write here)
-    # mountPath must match the Docker container's data directory (/app/data)
+    # Persistent disk for screener.db — survives deploys.
+    # For Docker (WORKDIR /app): process.cwd()/data = /app/data — matches.
+    # For native Node: process.cwd() != /app, so SCREENER_DB_PATH above is needed.
     disk:
       name: screener-data
       mountPath: /app/data

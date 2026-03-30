@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { existsSync, statSync } from "fs";
-import { join } from "path";
+import { getScreenerDbPath } from "@/lib/data-path";
 import {
   getLatestScreenerDate,
   getOwnershipNative,
@@ -23,7 +23,7 @@ function readDate(db: InstanceType<typeof Database>, sql: string): string | null
 }
 
 export async function GET() {
-  const dbPath = join(process.cwd(), "data", "screener.db");
+  const dbPath = getScreenerDbPath();
   const hasDb = existsSync(dbPath);
   let latestScreenerDate: string | null = null;
   let dbUpdatedAt: string | null = null;
@@ -132,6 +132,8 @@ export async function GET() {
       },
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
       dbSizeMB,
+      dbPath,
+      cwd: process.cwd(),
       timestamp: new Date().toISOString(),
     },
     {

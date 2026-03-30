@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Database from "better-sqlite3";
 import { join } from "path";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { getScreenerDbPath, getDataDir } from "@/lib/data-path";
 import {
   getLatestCompletedTradingDate,
   getIndexBreadthSeries,
@@ -29,7 +30,7 @@ type BreadthPayload = {
   }>;
 };
 
-const CACHE_PATH = join(process.cwd(), "data", "breadth-cache.json");
+const CACHE_PATH = join(getDataDir(), "breadth-cache.json");
 const CACHE_VERSION = 2;
 type DiskCache = {
   version: number;
@@ -47,7 +48,7 @@ function persistBreadthSeries(
     breadth: Array<{ date: string; pctAbove50d: number | null; pctAbove200d: number | null }>;
   }
 ) {
-  const dbPath = join(process.cwd(), "data", "screener.db");
+  const dbPath = getScreenerDbPath();
   const db = new Database(dbPath);
   try {
     db.exec(`

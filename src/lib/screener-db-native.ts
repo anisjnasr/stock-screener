@@ -9,6 +9,7 @@ import Database from "better-sqlite3";
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { isUSMarketOpen } from "@/lib/market-hours";
+import { getScreenerDbPath, getDataDir } from "@/lib/data-path";
 
 /* ── Shared types & filter builder (previously in screener-db.ts) ── */
 
@@ -153,7 +154,7 @@ function symbolPlaceholders(symbols: string[]): { placeholders: string; values: 
   return { placeholders: values.map(() => "?").join(","), values };
 }
 
-const DB_PATH = join(process.cwd(), "data", "screener.db");
+const DB_PATH = getScreenerDbPath();
 
 type BetterSqlite3Database = InstanceType<typeof Database>;
 
@@ -710,7 +711,7 @@ function getBufferStartDate(asOfDate: string, lookbackDays: number): string {
 
 function loadIndexSymbols(indexId: "sp500" | "nasdaq100" | "nasdaq"): string[] {
   if (indexId === "nasdaq") return [];
-  const directPath = join(process.cwd(), "data", `${indexId}.json`);
+  const directPath = join(getDataDir(), `${indexId}.json`);
   const staticPath = join(process.cwd(), "static-data", `${indexId}.json`);
   const bootstrapPath = join(process.cwd(), "bootstrap-data", `${indexId}.json`);
   const p = existsSync(directPath) ? directPath : existsSync(staticPath) ? staticPath : existsSync(bootstrapPath) ? bootstrapPath : null;

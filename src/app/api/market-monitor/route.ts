@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getDataDir } from "@/lib/data-path";
 import {
   getLatestCompletedTradingDate,
   getMarketMonitorBaseRowsFromDailyBars,
@@ -48,7 +49,7 @@ type CachePayload = {
   };
 };
 
-const CACHE_PATH = join(process.cwd(), "data", "market-monitor-cache.json");
+const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
 const CACHE_VERSION = 12;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;

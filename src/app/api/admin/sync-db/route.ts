@@ -8,9 +8,10 @@ import {
 import { join } from "path";
 import { exec } from "child_process";
 import { resetDbConnection } from "@/lib/screener-db-native";
+import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
 
-const DATA_DIR = join(process.cwd(), "data");
-const DB_PATH = join(DATA_DIR, "screener.db");
+const DATA_DIR = getDataDir();
+const DB_PATH = getScreenerDbPath();
 const GITHUB_REPO = "anisjnasr/stock-screener";
 const SYNC_LOG = join(DATA_DIR, "sync.log");
 
