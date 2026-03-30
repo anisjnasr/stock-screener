@@ -37,9 +37,12 @@ type StockApiCacheEntry = {
     nextEarnings?: string;
   };
   expiresAt: number;
+  staleAt: number;
 };
 
-const STOCK_API_TTL_MS = 60 * 1000;
+const STOCK_API_TTL_OPEN_MS = 60 * 1000;
+const STOCK_API_TTL_CLOSED_MS = 5 * 60 * 1000;
+const STOCK_API_STALE_BUFFER_MS = 30 * 1000;
 
 function getStockApiCache(): Map<string, StockApiCacheEntry> {
   const g = globalThis as typeof globalThis & { __stockToolStockApiCache?: Map<string, StockApiCacheEntry> };
@@ -65,10 +68,16 @@ export async function GET(request: NextRequest) {
     const cacheKey = `${symbolUpper}:${latestScreenerDate}`;
     const cache = getStockApiCache();
     const cached = cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    const now = Date.now();
+    if (cached && cached.staleAt > now) {
       return NextResponse.json(cached.payload);
     }
-    if (cached && cached.expiresAt <= Date.now()) cache.delete(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      const staleResponse = NextResponse.json(cached.payload);
+      refreshStockCache(symbolUpper, latestScreenerDate, cache, cacheKey).catch(() => {});
+      return staleResponse;
+    }
+    if (cached && cached.expiresAt <= now) cache.delete(cacheKey);
 
     const stockRecord = getStockRecord(symbolUpper);
     const companyClass = getCompanyClassification(symbolUpper);
@@ -187,12 +196,45 @@ export async function GET(request: NextRequest) {
       nextEarnings,
       rsRank,
     };
-    cache.set(cacheKey, { payload, expiresAt: Date.now() + STOCK_API_TTL_MS });
+    const ttl = marketOpen ? STOCK_API_TTL_OPEN_MS : STOCK_API_TTL_CLOSED_MS;
+    const staleAt = Date.now() + ttl;
+    cache.set(cacheKey, { payload, staleAt, expiresAt: staleAt + STOCK_API_STALE_BUFFER_MS });
+    const httpMaxAge = marketOpen ? 30 : 120;
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" },
+      headers: { "Cache-Control": `public, max-age=${httpMaxAge}, stale-while-revalidate=120` },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function refreshStockCache(
+  symbolUpper: string,
+  latestScreenerDate: string,
+  cache: Map<string, StockApiCacheEntry>,
+  cacheKey: string
+): Promise<void> {
+  try {
+    const [quote, profile, nextEarnings] = await Promise.all([
+      withTimeout(fetchQuote(symbolUpper), 3000, null),
+      withTimeout(fetchProfile(symbolUpper), 3000, null),
+      withTimeout(fetchNextEarningsDate(symbolUpper), 2000, undefined),
+    ]);
+    if (!quote) return;
+    const existing = cache.get(cacheKey);
+    if (!existing) return;
+    const updated = {
+      ...existing.payload,
+      quote: { ...existing.payload.quote, ...quote },
+      profile: profile ? { ...(existing.payload.profile ?? {}), ...profile } : existing.payload.profile,
+      nextEarnings: nextEarnings ?? existing.payload.nextEarnings,
+    };
+    const marketOpen = isUSMarketOpen();
+    const ttl = marketOpen ? STOCK_API_TTL_OPEN_MS : STOCK_API_TTL_CLOSED_MS;
+    const staleAt = Date.now() + ttl;
+    cache.set(cacheKey, { payload: updated, staleAt, expiresAt: staleAt + STOCK_API_STALE_BUFFER_MS });
+  } catch {
+    // Background refresh failure is non-critical
   }
 }

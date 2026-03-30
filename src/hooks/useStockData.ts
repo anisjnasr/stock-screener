@@ -43,12 +43,30 @@ export type StockData = {
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1500, 3000, 5000];
 
+declare global {
+  interface Window {
+    __initStockData?: StockData;
+  }
+}
+
+function consumeInitData(sym: string): StockData | null {
+  const w = typeof window !== "undefined" ? window : undefined;
+  if (!w?.__initStockData) return null;
+  const d = w.__initStockData;
+  if (d.quote?.symbol?.toUpperCase() === sym.toUpperCase()) {
+    delete w.__initStockData;
+    return d;
+  }
+  return null;
+}
+
 export function useStockData(symbol: string) {
   const [data, setData] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initConsumedRef = useRef(false);
 
   const fetchStock = useCallback(async (sym: string, attempt = 0) => {
     setLoading(true);
@@ -77,6 +95,42 @@ export function useStockData(symbol: string) {
 
   useEffect(() => {
     if (retryRef.current) clearTimeout(retryRef.current);
+
+    const initData = consumeInitData(symbol);
+    if (initData) {
+      setData(initData);
+      setLoading(false);
+      setLastUpdate(new Date());
+      initConsumedRef.current = true;
+      return;
+    }
+
+    if (!initConsumedRef.current) {
+      const onInit = (e: Event) => {
+        const detail = (e as CustomEvent).detail as StockData | undefined;
+        if (detail?.quote?.symbol?.toUpperCase() === symbol.toUpperCase()) {
+          setData(detail);
+          setLoading(false);
+          setLastUpdate(new Date());
+          initConsumedRef.current = true;
+          delete window.__initStockData;
+        }
+      };
+      window.addEventListener("init-stock-data", onInit, { once: true });
+      const timeout = setTimeout(() => {
+        window.removeEventListener("init-stock-data", onInit);
+        if (!initConsumedRef.current) {
+          setData(null);
+          fetchStock(symbol);
+        }
+      }, 4000);
+      return () => {
+        window.removeEventListener("init-stock-data", onInit);
+        clearTimeout(timeout);
+        if (retryRef.current) clearTimeout(retryRef.current);
+      };
+    }
+
     setData(null);
     fetchStock(symbol);
     return () => { if (retryRef.current) clearTimeout(retryRef.current); };

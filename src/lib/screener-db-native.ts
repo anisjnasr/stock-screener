@@ -204,6 +204,18 @@ function openDb(): BetterSqlite3Database {
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA read_uncommitted = ON");
 
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_daily_bars_covering ON daily_bars (symbol, date, close, high, low, volume, open)");
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_indicators_daily_covering ON indicators_daily (
+      date, symbol,
+      price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct,
+      rs_pct_1w, rs_pct_1m, rs_pct_3m, rs_pct_6m, rs_pct_12m,
+      rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m,
+      industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m,
+      sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m
+    )`);
+  } catch { /* readonly DB — indexes must be created by the refresh scripts */ }
+
   const st = statSync(DB_PATH);
   globalForDb._screenerDb = db;
   globalForDb._screenerDbPath = DB_PATH;
@@ -590,16 +602,29 @@ export function getAvgVolume(symbol: string, days = 30): number | null {
 /** Compute the average daily volume for multiple symbols at once. */
 export function getAvgVolumeBatch(symbols: string[], days = 30): Map<string, number> {
   const db = getDb();
-  if (!db) return new Map();
+  if (!db || symbols.length === 0) return new Map();
   const result = new Map<string, number>();
-  for (const sym of symbols) {
-    const row = db
+  const BATCH_SIZE = 500;
+  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+    const batch = symbols.slice(i, i + BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const rows = db
       .prepare(
-        "SELECT AVG(volume) AS avg_vol FROM (SELECT volume FROM daily_bars WHERE symbol = ? ORDER BY date DESC LIMIT ?)"
+        `SELECT symbol, AVG(volume) AS avg_vol
+         FROM (
+           SELECT symbol, volume,
+             ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+           FROM daily_bars
+           WHERE symbol IN (${placeholders})
+         )
+         WHERE rn <= ?
+         GROUP BY symbol`
       )
-      .get(sym, days) as { avg_vol: number | null } | undefined;
-    if (row?.avg_vol != null && Number.isFinite(Number(row.avg_vol))) {
-      result.set(sym, Number(row.avg_vol));
+      .all(...batch, days) as Array<{ symbol: string; avg_vol: number | null }>;
+    for (const row of rows) {
+      if (row.avg_vol != null && Number.isFinite(Number(row.avg_vol))) {
+        result.set(String(row.symbol), Number(row.avg_vol));
+      }
     }
   }
   return result;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import { type WorkspaceSection } from "@/types/workspace";
 
 class PanelErrorBoundary extends React.Component<
@@ -34,13 +35,7 @@ class PanelErrorBoundary extends React.Component<
 import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import StockChart, { type ChartTimeframe } from "@/components/StockChart";
-import NNHPanel from "@/components/NNHPanel";
-import WatchlistPanel, { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
-import MarketLeftPanel from "@/components/MarketLeftPanel";
-import SectorPerfPanel from "@/components/SectorPerfPanel";
-import RightRail from "@/components/RightRail";
-import MarketBreadthRail from "@/components/MarketBreadthRail";
-import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
+import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
   loadFlags,
   saveFlags,
@@ -57,6 +52,14 @@ import { useFundamentals } from "@/hooks/useFundamentals";
 import { useOwnership } from "@/hooks/useOwnership";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
+
+const NNHPanel = dynamic(() => import("@/components/NNHPanel"), { ssr: false });
+const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel"), { ssr: false });
+const MarketLeftPanel = dynamic(() => import("@/components/MarketLeftPanel"), { ssr: false });
+const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { ssr: false });
+const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
+const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
+const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
 
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
@@ -165,33 +168,50 @@ export default function Home() {
 
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
+  const initFetchedRef = useRef(false);
   useEffect(() => {
     seedDefaultScreensIfEmpty();
     const loaded = loadScreens();
     setScreens(loaded);
     if (loaded.length > 0) setActiveScanName(loaded[0].name);
-    fetch("/api/health").then((r) => r.json()).then((d) => {
-      const raw = d.latestScreenerDate ?? d.dbUpdatedAt;
-      if (raw) {
-        const dt = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw);
-        if (!isNaN(dt.getTime())) {
-          const day = dt.getDate();
-          const suffix = [11,12,13].includes(day) ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
-          const month = dt.toLocaleDateString("en-US", { month: "long" });
-          setLastUpdated(`${day}${suffix} ${month} ${dt.getFullYear()}`);
+
+    if (initFetchedRef.current) return;
+    initFetchedRef.current = true;
+    fetch(`/api/init?symbol=${encodeURIComponent(DEFAULT_SYMBOL)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const raw = d.latestScreenerDate;
+        if (raw) {
+          const dt = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw);
+          if (!isNaN(dt.getTime())) {
+            const day = dt.getDate();
+            const suffix = [11, 12, 13].includes(day) ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
+            const month = dt.toLocaleDateString("en-US", { month: "long" });
+            setLastUpdated(`${day}${suffix} ${month} ${dt.getFullYear()}`);
+          }
         }
-      }
-    }).catch(() => {});
+        if (d.candles && Array.isArray(d.candles) && d.candles.length > 0) {
+          setCandles(d.candles);
+          setChartLoading(false);
+        }
+        if (d.stock) {
+          window.__initStockData = d.stock;
+          window.dispatchEvent(new CustomEvent("init-stock-data", { detail: d.stock }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
     secondaryPagesPrefetchedRef.current = true;
-    const timer = window.setTimeout(() => {
-      for (const url of ["/api/market-monitor", "/api/sectors-industries", "/api/breadth?index=sp500"]) {
-        fetch(url).catch(() => {});
-      }
-    }, 600);
+    const urls = ["/api/market-monitor", "/api/sectors-industries", "/api/breadth?index=sp500"];
+    const prefetch = () => { for (const url of urls) fetch(url).catch(() => {}); };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetch, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(prefetch, 1500);
     return () => window.clearTimeout(timer);
   }, []);
 

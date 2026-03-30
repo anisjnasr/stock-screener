@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS daily_bars (
 );
 CREATE INDEX IF NOT EXISTS idx_daily_bars_symbol_date ON daily_bars (symbol, date);
 CREATE INDEX IF NOT EXISTS idx_daily_bars_date ON daily_bars (date);
+CREATE INDEX IF NOT EXISTS idx_daily_bars_covering ON daily_bars (symbol, date, close, high, low, volume, open);
 
 -- 4. financials (quarterly + annual) — refresh quarterly
 CREATE TABLE IF NOT EXISTS financials (
@@ -149,6 +150,14 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
   FOREIGN KEY (symbol) REFERENCES companies(symbol)
 );
 CREATE INDEX IF NOT EXISTS idx_indicators_daily_date_symbol ON indicators_daily (date, symbol);
+CREATE INDEX IF NOT EXISTS idx_indicators_daily_covering ON indicators_daily (
+  date, symbol,
+  price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct,
+  rs_pct_1w, rs_pct_1m, rs_pct_3m, rs_pct_6m, rs_pct_12m,
+  rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m,
+  industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m,
+  sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m
+);
 
 -- 7. market_monitor_daily — precomputed during daily refresh
 CREATE TABLE IF NOT EXISTS market_monitor_daily (
