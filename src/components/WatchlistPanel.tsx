@@ -3837,15 +3837,15 @@ export default function WatchlistPanel({
             {headerActionsSlot && createPortal(
               <>
                 <button type="button" onClick={handleAutoSizeColumns}
-                  className="inline-flex items-center justify-center w-8 h-8 rounded transition-colors hover:brightness-150"
+                  className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
                   style={{ color: "rgba(201,209,217,0.5)" }} title="Auto resize columns" aria-label="Auto resize columns">
-                  <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M1 8a.5.5 0 0 1 .5-.5h4.793L4.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L6.293 8.5H1.5A.5.5 0 0 1 1 8zm14 0a.5.5 0 0 0-.5-.5H9.707l2.147-2.146a.5.5 0 0 0-.708-.708l-3 3a.5.5 0 0 0 0 .708l3 3a.5.5 0 0 0 .708-.708L9.707 8.5h4.793A.5.5 0 0 0 15 8z"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="3" y1="3" x2="3" y2="13"/><line x1="13" y1="3" x2="13" y2="13"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="8" x2="7.5" y2="6.5"/><line x1="6" y1="8" x2="7.5" y2="9.5"/><line x1="10" y1="8" x2="8.5" y2="6.5"/><line x1="10" y1="8" x2="8.5" y2="9.5"/></svg>
                 </button>
                 <div ref={tableMenuRef} className="relative">
                   <button type="button" onClick={() => setShowTableMenu((v) => !v)}
-                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
                     style={{ color: "rgba(201,209,217,0.5)" }} title="Table options" aria-label="Table options">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                   </button>
                   {showTableMenu && (
                     <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
@@ -3972,12 +3972,12 @@ export default function WatchlistPanel({
                   <button
                     type="button"
                     onClick={() => { setShowSaveSetPrompt((v) => !v); setSaveSetName(""); }}
-                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                    style={{ color: "var(--ws-text-dim)" }}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
+                    style={{ color: "rgba(201,209,217,0.5)" }}
                     title="Save column set"
                     aria-label="Save column set"
                   >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4.414a1 1 0 00-.293-.707l-2.414-2.414A1 1 0 0011.586 1H2zm0 1h1v3a1 1 0 001 1h6a1 1 0 001-1V2h.586L14 4.414V14H2V2zm3 0v3h4V2H5z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4.414a1 1 0 00-.293-.707l-2.414-2.414A1 1 0 0011.586 1H2zm0 1h1v3a1 1 0 001 1h6a1 1 0 001-1V2h.586L14 4.414V14H2V2zm3 0v3h4V2H5z"/></svg>
                   </button>
                   {showSaveSetPrompt && (
                     <div
@@ -4031,12 +4031,12 @@ export default function WatchlistPanel({
                       setInlineTickerValue("");
                       setTimeout(() => inlineTickerRef.current?.focus(), 50);
                     }}
-                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors hover:brightness-150"
-                    style={{ color: "var(--ws-text-dim)" }}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
+                    style={{ color: "rgba(201,209,217,0.5)" }}
                     title="Add new row"
                     aria-label="Add new row"
                   >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                       <line x1="2" y1="3" x2="14" y2="3" />
                       <line x1="2" y1="13" x2="14" y2="13" />
                       <line x1="5" y1="8" x2="11" y2="8" />

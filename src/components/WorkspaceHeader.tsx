@@ -615,19 +615,13 @@ export default function WorkspaceHeader({
             <button
               type="button"
               onClick={onNewScan}
-              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded text-lg leading-none cursor-pointer transition-colors hover:brightness-150"
-              style={{
-                background: "rgba(0,229,204,0.06)",
-                border: "1px solid rgba(0,229,204,0.25)",
-                color: "var(--ws-cyan)",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
+              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded cursor-pointer transition-colors hover:brightness-150"
+              style={{ color: "rgba(201,209,217,0.5)" }}
               title="New Scan"
             >
-              +
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
             </button>
-            <div ref={section === "scans" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
+            <div ref={section === "scans" ? headerActionsSlotRef : undefined} className="flex items-center gap-0.5" />
             <div className="flex-1" />
             {(() => {
               const visibleFavs = favScreenIds.filter((id) => scanList.includes(id));
@@ -840,19 +834,13 @@ export default function WorkspaceHeader({
             <button
               type="button"
               onClick={onNewList}
-              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded text-lg leading-none cursor-pointer transition-colors hover:brightness-150"
-              style={{
-                background: "rgba(0,229,204,0.06)",
-                border: "1px solid rgba(0,229,204,0.25)",
-                color: "var(--ws-cyan)",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.18)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,229,204,0.06)"; }}
+              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded cursor-pointer transition-colors hover:brightness-150"
+              style={{ color: "rgba(201,209,217,0.5)" }}
               title="New List"
             >
-              +
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
             </button>
-            <div ref={section === "lists" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
+            <div ref={section === "lists" ? headerActionsSlotRef : undefined} className="flex items-center gap-0.5" />
             <div className="flex-1" />
             {(() => {
               const favLists = watchlistNames.filter((wl) => favListIds.includes(wl.id));
