@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { existsSync, statSync } from "fs";
-import { getScreenerDbPath } from "@/lib/data-path";
+import { existsSync, statSync, readSync, openSync, closeSync, readdirSync } from "fs";
+import { getScreenerDbPath, getDataDir } from "@/lib/data-path";
 import {
   getLatestScreenerDate,
   getOwnershipNative,
@@ -22,8 +22,31 @@ function readDate(db: InstanceType<typeof Database>, sql: string): string | null
   return value != null && String(value) !== "" ? String(value) : null;
 }
 
+function readFileHeader(path: string, bytes = 16): string {
+  try {
+    const fd = openSync(path, "r");
+    const buf = Buffer.alloc(bytes);
+    readSync(fd, buf, 0, bytes, 0);
+    closeSync(fd);
+    const printable = buf.toString("utf8").replace(/[^\x20-\x7E]/g, ".");
+    const hex = buf.toString("hex").match(/../g)?.join(" ") ?? "";
+    return `ascii="${printable}" hex="${hex}"`;
+  } catch (e) {
+    return `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+function listDataDir(dir: string): string[] {
+  try {
+    return readdirSync(dir).slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET() {
   const dbPath = getScreenerDbPath();
+  const dataDir = getDataDir();
   const hasDb = existsSync(dbPath);
   let latestScreenerDate: string | null = null;
   let dbUpdatedAt: string | null = null;
@@ -44,8 +67,13 @@ export async function GET() {
     latestQuoteDate: string | null;
     latestBarsDate: string | null;
   } | null = null;
+  let dbError: string | null = null;
+  let dbHeader: string | null = null;
+  let dataFiles: string[] = [];
+  let tables: string[] = [];
 
   if (hasDb) {
+    dbHeader = readFileHeader(dbPath);
     try {
       dbUpdatedAt = statSync(dbPath).mtime.toISOString();
     } catch {
@@ -53,11 +81,14 @@ export async function GET() {
     }
   }
 
+  dataFiles = listDataDir(dataDir);
+
   if (hasDb) {
     try {
       latestScreenerDate = getLatestScreenerDate();
-    } catch {
+    } catch (e) {
       latestScreenerDate = null;
+      dbError = `getLatestScreenerDate: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 
@@ -65,6 +96,7 @@ export async function GET() {
     try {
       const db = new Database(dbPath, { readonly: true });
       try {
+        tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{ name: string }>).map(r => r.name);
         ownership = {
           rows: readCount(db, "SELECT COUNT(*) AS c FROM ownership"),
           symbols: readCount(db, "SELECT COUNT(DISTINCT symbol) AS c FROM ownership"),
@@ -84,8 +116,10 @@ export async function GET() {
       } finally {
         db.close();
       }
-    } catch {
-      // Keep health endpoint resilient even if extended diagnostics fail.
+    } catch (e) {
+      dbError = dbError
+        ? `${dbError} | openDb: ${e instanceof Error ? e.message : String(e)}`
+        : `openDb: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 
@@ -124,6 +158,7 @@ export async function GET() {
       ownership,
       financials,
       quoteDaily,
+      tables,
       checks: {
         ownershipHealthy,
         financialsHealthy,
@@ -133,6 +168,10 @@ export async function GET() {
       hasApiKey: Boolean(process.env.MASSIVE_API_KEY),
       dbSizeMB,
       dbPath,
+      dataDir,
+      dataFiles,
+      dbHeader,
+      dbError,
       cwd: process.cwd(),
       timestamp: new Date().toISOString(),
     },
