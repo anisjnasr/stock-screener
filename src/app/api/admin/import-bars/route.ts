@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
   try {
     resetDbConnection();
     const db = new Database(dbPath);
-    db.pragma("journal_mode = WAL");
-    db.pragma("synchronous = NORMAL");
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA synchronous = NORMAL");
 
     const stmt = db.prepare(
       `INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume)
