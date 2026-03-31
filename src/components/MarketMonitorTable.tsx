@@ -20,12 +20,14 @@ function fmtRatio(n: number | null | undefined): string {
 }
 
 function fmtPctCell(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "";
+  if (n == null || !Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
 }
 
 function getBreadthPctCellClass(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
+  if (n > 70) return "ws-mm-heat-green-very";
+  if (n > 60) return "ws-mm-heat-green-strong";
   if (n < 30) return "ws-mm-heat-red-very";
   if (n < 40) return "ws-mm-heat-red-strong";
   return "";
@@ -44,8 +46,18 @@ function formatDateDmy(input: string): string {
 function getPairCellClass(up: number | null | undefined, down: number | null | undefined): string {
   const upVal = Number(up ?? 0);
   const downVal = Number(down ?? 0);
-  if (upVal > downVal) return "ws-mm-heat-green";
-  if (downVal > upVal) return "ws-mm-heat-red";
+  if (!Number.isFinite(upVal) || !Number.isFinite(downVal)) return "";
+  if (upVal === downVal) return "";
+  const bullish = upVal > downVal;
+  const winner = bullish ? upVal : downVal;
+  const loser = bullish ? downVal : upVal;
+  const total = winner + loser;
+  if (total <= 0) return "";
+
+  const dominance = winner / total;
+  if (dominance >= 0.78) return bullish ? "ws-mm-heat-green-very" : "ws-mm-heat-red-very";
+  if (dominance >= 0.65) return bullish ? "ws-mm-heat-green-strong" : "ws-mm-heat-red-strong";
+  if (dominance >= 0.52) return bullish ? "ws-mm-heat-green" : "ws-mm-heat-red";
   return "";
 }
 
@@ -185,20 +197,12 @@ export default function MarketMonitorTable() {
                   {formatDateDmy(row.date)}
                 </td>
                 <td
-                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
-                    row.up4pct > row.down4pct && row.up4pct >= 267
-                      ? "ws-mm-heat-green-very"
-                      : getPairCellClass(row.up4pct, row.down4pct)
-                  }`}
+                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up4pct, row.down4pct)}`}
                 >
                   {fmtInt(row.up4pct)}
                 </td>
                 <td
-                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${
-                    row.down4pct > row.up4pct && row.down4pct >= 233
-                      ? "ws-mm-heat-red-very"
-                      : getPairCellClass(row.up4pct, row.down4pct)
-                  }`}
+                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up4pct, row.down4pct)}`}
                 >
                   {fmtInt(row.down4pct)}
                 </td>

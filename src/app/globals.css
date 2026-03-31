@@ -39,13 +39,14 @@
   --ws-green: #3DDC84;
   --ws-purple: #a78bfa;
   --ws-amber: #f59e0b;
-  /* Market monitor / heat: tinted fills aligned to --ws-green / --ws-red */
-  --ws-heat-green-bg: rgba(61, 220, 132, 0.14);
-  --ws-heat-green-bg-strong: rgba(61, 220, 132, 0.24);
-  --ws-heat-green-bg-very: rgba(61, 220, 132, 0.36);
-  --ws-heat-red-bg: rgba(239, 68, 104, 0.14);
-  --ws-heat-red-bg-strong: rgba(239, 68, 104, 0.24);
-  --ws-heat-red-bg-very: rgba(239, 68, 104, 0.36);
+  /* Market monitor / heat: subtle primary tints + high-salience extremes */
+  --ws-heat-green-bg: rgba(61, 220, 132, 0.1);
+  --ws-heat-green-bg-strong: rgba(61, 220, 132, 0.22);
+  --ws-heat-green-bg-very: rgba(61, 220, 132, 0.34);
+  --ws-heat-red-bg: rgba(239, 68, 104, 0.1);
+  --ws-heat-red-bg-strong: rgba(239, 68, 104, 0.22);
+  --ws-heat-red-bg-very: rgba(239, 68, 104, 0.34);
+  --ws-heat-text-strong: #e6edf3;
   /* Typography scale (workspace UI); px keeps sizes stable vs html font-scale */
   --ws-fs-caption: 11px;
   --ws-fs-label: 12px;
@@ -189,13 +190,13 @@ body {
 }
 .ws-mm-heat-green-strong {
   background: var(--ws-heat-green-bg-strong);
-  color: var(--ws-text);
+  color: var(--ws-heat-text-strong);
   font-weight: 600;
 }
 .ws-mm-heat-green-very {
   background: var(--ws-heat-green-bg-very);
-  color: var(--ws-text);
-  font-weight: 600;
+  color: var(--ws-heat-text-strong);
+  font-weight: 700;
 }
 .ws-mm-heat-red {
   background: var(--ws-heat-red-bg);
@@ -203,11 +204,11 @@ body {
 }
 .ws-mm-heat-red-strong {
   background: var(--ws-heat-red-bg-strong);
-  color: var(--ws-text);
+  color: var(--ws-heat-text-strong);
   font-weight: 600;
 }
 .ws-mm-heat-red-very {
   background: var(--ws-heat-red-bg-very);
-  color: var(--ws-text);
-  font-weight: 600;
+  color: var(--ws-heat-text-strong);
+  font-weight: 700;
 }

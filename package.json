@@ -33,6 +33,8 @@
     "backfill-historical-massive": "node scripts/backfill-historical-massive.mjs",
     "backfill-extend-to-10y": "node scripts/backfill-extend-to-10y.mjs",
     "backfill-gaps": "node scripts/backfill-gaps.mjs",
+    "audit-trading-gaps": "node scripts/audit-trading-calendar-gaps.mjs",
+    "backfill-strict": "node scripts/backfill-gaps.mjs --strict-calendar --recompute",
     "compute-indicators": "node scripts/compute-indicators-from-bars.mjs",
     "compute-market-aggregates": "node scripts/compute-market-aggregates.mjs",
     "optimize-db": "node scripts/optimize-db.mjs",

@@ -14,6 +14,7 @@
  *   node scripts/backfill-gaps.mjs                # backfill ETFs + fill gaps
  *   node scripts/backfill-gaps.mjs --dry-run      # report only, no writes
  *   node scripts/backfill-gaps.mjs --symbols SPY,QQQ   # specific symbols only
+ *   node scripts/backfill-gaps.mjs --strict-calendar    # include strict trading-day gaps from audit report
  *   node scripts/backfill-gaps.mjs --recompute    # recompute indicators after
  */
 
@@ -49,10 +50,15 @@ if (!API_KEY) {
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const RECOMPUTE = args.includes("--recompute");
+const STRICT_CALENDAR = args.includes("--strict-calendar");
 const symIdx = args.indexOf("--symbols");
 const ONLY_SYMBOLS = symIdx >= 0 && args[symIdx + 1]
   ? new Set(args[symIdx + 1].split(",").map((s) => s.trim().toUpperCase()))
   : null;
+const auditIdx = args.indexOf("--audit-file");
+const AUDIT_FILE = auditIdx >= 0 && args[auditIdx + 1]
+  ? args[auditIdx + 1]
+  : join("data", "trading-gap-audit.json");
 
 /* ── constants ───────────────────────────────────────────────────────── */
 
@@ -158,6 +164,50 @@ function detectGaps(db, symbol) {
   };
 }
 
+function normalizeRanges(ranges) {
+  const keyset = new Set();
+  const out = [];
+  for (const r of ranges) {
+    const from = String(r.from);
+    const to = String(r.to);
+    if (!from || !to || from > to) continue;
+    const key = `${from}|${to}`;
+    if (keyset.has(key)) continue;
+    keyset.add(key);
+    out.push({ from, to });
+  }
+  return out.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+}
+
+function loadStrictAuditRanges() {
+  const p = join(root, AUDIT_FILE);
+  if (!existsSync(p)) {
+    console.log(`Strict audit report missing at ${p}; generating now...`);
+    const gen = spawnSync(
+      process.execPath,
+      [join(root, "scripts", "audit-trading-calendar-gaps.mjs"), "--out", AUDIT_FILE],
+      { stdio: "inherit", cwd: root, env: { ...process.env, NODE_OPTIONS: "" } }
+    );
+    if (gen.status !== 0) {
+      throw new Error(`Failed to generate strict audit report (${gen.status ?? "unknown"})`);
+    }
+  }
+
+  const raw = JSON.parse(readFileSync(p, "utf8"));
+  const symbols = Array.isArray(raw?.symbols) ? raw.symbols : [];
+  const map = new Map();
+  for (const s of symbols) {
+    const symbol = String(s?.symbol ?? "").toUpperCase();
+    if (!symbol) continue;
+    const missingRanges = Array.isArray(s?.missingRanges) ? s.missingRanges : [];
+    const ranges = missingRanges
+      .map((r) => ({ from: String(r?.from ?? ""), to: String(r?.to ?? "") }))
+      .filter((r) => r.from && r.to && r.from <= r.to);
+    if (ranges.length > 0) map.set(symbol, normalizeRanges(ranges));
+  }
+  return map;
+}
+
 /* ── main ────────────────────────────────────────────────────────────── */
 
 async function main() {
@@ -189,6 +239,7 @@ async function main() {
   /* ── Phase 1: Determine work items ─────────────────────────────────── */
 
   const workItems = []; // { symbol, ranges: [{ from, to }], reason }
+  const strictRangesBySymbol = STRICT_CALENDAR ? loadStrictAuditRanges() : new Map();
 
   const etfSet = new Set(REQUIRED_ETF_SYMBOLS);
   const symbolsToCheck = ONLY_SYMBOLS
@@ -237,8 +288,17 @@ async function main() {
       }
     }
 
-    if (ranges.length > 0) {
-      workItems.push({ symbol, ranges, reasons });
+    if (STRICT_CALENDAR) {
+      const strictRanges = strictRangesBySymbol.get(symbol) ?? [];
+      if (strictRanges.length > 0) {
+        ranges.push(...strictRanges);
+        reasons.push(`strict missing trading days (${strictRanges.length} ranges)`);
+      }
+    }
+
+    const normalizedRanges = normalizeRanges(ranges);
+    if (normalizedRanges.length > 0) {
+      workItems.push({ symbol, ranges: normalizedRanges, reasons });
     }
   }
 
@@ -264,6 +324,9 @@ async function main() {
 
   const totalRanges = workItems.reduce((n, w) => n + w.ranges.length, 0);
   console.log(`\nTotal: ${workItems.length} symbols, ${totalRanges} API calls needed.\n`);
+  if (STRICT_CALENDAR) {
+    console.log(`Strict calendar mode enabled (audit file: ${AUDIT_FILE}).\n`);
+  }
 
   if (DRY_RUN) {
     console.log("Dry run — no data written.");
@@ -330,6 +393,17 @@ async function main() {
     if (result.status !== 0) {
       console.error("compute-indicators exited with", result.status);
       process.exit(result.status ?? 1);
+    }
+
+    console.log("Recomputing market aggregates...");
+    const aggs = spawnSync(
+      process.execPath,
+      [join(root, "scripts", "compute-market-aggregates.mjs")],
+      { stdio: "inherit", cwd: root, env: { ...process.env, NODE_OPTIONS: "" } }
+    );
+    if (aggs.status !== 0) {
+      console.error("compute-market-aggregates exited with", aggs.status);
+      process.exit(aggs.status ?? 1);
     }
   }
 
