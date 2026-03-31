@@ -101,7 +101,7 @@ export default function LeftSidebar({
     });
   }, [relatedStocks]);
 
-  const yearlyVisibleLimit = 5;
+  const yearlyVisibleLimit = 8;
   const yearlyRowsToShow = yearlyExpanded ? yearly : yearly.slice(0, yearlyVisibleLimit);
   const hasMoreYears = yearly.length > yearlyVisibleLimit;
 

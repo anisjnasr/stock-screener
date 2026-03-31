@@ -3,10 +3,11 @@
  * Backfill 10 years of historical data from Polygon (Massive): companies, daily_bars,
  * financials, and market cap (quote_daily) for all symbols in companies table.
  *
- * Run: node scripts/backfill-historical-massive.mjs [--years 10] [--limit N] [--resume]
+ * Run: node scripts/backfill-historical-massive.mjs [--years 10] [--limit N] [--resume] [--etf-only]
  *   --years N   Backfill N years (default 10)
  *   --limit N   Only process first N symbols (for testing)
  *   --resume    Skip symbols already completed in each phase (persists after each phase)
+ *   --etf-only  Only symbols with companies.is_etf = 1 (longer ETF history after seeding ETFs)
  *
  * Requires: MASSIVE_API_KEY, data/screener.db with companies seeded.
  */
@@ -63,6 +64,7 @@ const YEARS = yearsIdx >= 0 && process.argv[yearsIdx + 1] ? parseInt(process.arg
 const limitIdx = process.argv.indexOf("--limit");
 const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
 const RESUME = process.argv.includes("--resume");
+const ETF_ONLY = process.argv.includes("--etf-only");
 
 const BASE = "https://api.polygon.io";
 function url(path, params = {}) {
@@ -156,7 +158,10 @@ async function main() {
 
   ensureSharesOutstandingColumn(db);
 
-  const symbolRows = db.exec("SELECT symbol FROM companies ORDER BY symbol");
+  const symbolSql = ETF_ONLY
+    ? "SELECT symbol FROM companies WHERE is_etf = 1 ORDER BY symbol"
+    : "SELECT symbol FROM companies ORDER BY symbol";
+  const symbolRows = db.exec(symbolSql);
   let symbols = symbolRows.length && symbolRows[0].values ? symbolRows[0].values.map((r) => r[0]) : [];
   if (!symbols.length) {
     console.error("No symbols in companies. Run seed-companies first.");

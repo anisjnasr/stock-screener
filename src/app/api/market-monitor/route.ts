@@ -50,9 +50,43 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 12;
+const CACHE_VERSION = 13;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
+
+/** Align breadth on the latest row with live index series (matches /api/breadth / Indices table). */
+function overlayLatestTradingDayBreadth(rows: MarketMonitorRow[], latestDate: string): MarketMonitorRow[] {
+  if (rows.length === 0) return rows;
+  const sp = getIndexBreadthSeries("sp500", latestDate, latestDate);
+  const nq = getIndexBreadthSeries("nasdaq", latestDate, latestDate);
+  const spRow = sp.rows.find((r) => r.date === latestDate) ?? sp.rows[sp.rows.length - 1];
+  const nqRow = nq.rows.find((r) => r.date === latestDate) ?? nq.rows[nq.rows.length - 1];
+  return rows.map((r) => {
+    if (r.date !== latestDate) return r;
+    return {
+      ...r,
+      sp500PctAbove50d: spRow?.pctAbove50d ?? r.sp500PctAbove50d,
+      sp500PctAbove200d: spRow?.pctAbove200d ?? r.sp500PctAbove200d,
+      nasdaqPctAbove50d: nqRow?.pctAbove50d ?? r.nasdaqPctAbove50d,
+      nasdaqPctAbove200d: nqRow?.pctAbove200d ?? r.nasdaqPctAbove200d,
+    };
+  });
+}
+
+function withSyncedBreadthSummary(payload: CachePayload, latestDate: string): CachePayload {
+  const rows = overlayLatestTradingDayBreadth(payload.rows, latestDate);
+  const latestRow = rows.find((r) => r.date === latestDate) ?? rows[0] ?? null;
+  return {
+    ...payload,
+    rows,
+    breadth: {
+      sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
+      nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
+      sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
+      nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
+    },
+  };
+}
 
 export async function GET() {
   const _perfStart = performance.now();
@@ -79,7 +113,7 @@ export async function GET() {
           cached.latestDate === latestDate &&
           Array.isArray(cached.rows)
         ) {
-          return NextResponse.json(cached, {
+          return NextResponse.json(withSyncedBreadthSummary(cached, latestDate), {
             headers: { "Cache-Control": "private, no-store" },
           });
         }
@@ -131,17 +165,16 @@ export async function GET() {
         }));
       }
 
-      const latestRow = rows[0] ?? null;
-      const payload: CachePayload = {
+      const payloadBase: CachePayload = {
         version: CACHE_VERSION,
         rows,
         latestDate,
         startDate: rows[rows.length - 1]?.date ?? null,
         breadth: {
-          sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
-          nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
-          sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
-          nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
+          sp500PctAbove50d: null,
+          nasdaqPctAbove50d: null,
+          sp500PctAbove200d: null,
+          nasdaqPctAbove200d: null,
         },
         netNewHighs: {
           oneMonth: precomputed.map((r) => ({ date: r.date, highs: r.nnh_1m_highs ?? 0, lows: r.nnh_1m_lows ?? 0, net: r.nnh_1m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
@@ -150,6 +183,7 @@ export async function GET() {
           fiftyTwoWeek: precomputed.map((r) => ({ date: r.date, highs: r.nnh_52w_highs ?? 0, lows: r.nnh_52w_lows ?? 0, net: r.nnh_52w_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
         },
       };
+      const payload = withSyncedBreadthSummary(payloadBase, latestDate);
       recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "precomputed" } });
       return NextResponse.json(payload, {
         headers: { "Cache-Control": "private, no-store" },
@@ -259,9 +293,8 @@ export async function GET() {
       universe: r.universe,
     }));
 
-    const rows = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
-    const latestRow = rows[0] ?? null;
-    const responseStartDate = rows[rows.length - 1]?.date ?? null;
+    const rowsSorted = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
+    const responseStartDate = rowsSorted[rowsSorted.length - 1]?.date ?? null;
 
     const nnh1m = getNetNewHighSeries(21, 126, latestDate);
     const nnh3m = getNetNewHighSeries(63, 126, latestDate);
@@ -270,16 +303,16 @@ export async function GET() {
     // the MM mini-chart remains fully populated.
     const nnh52w = getNetNewHighSeries(252, TWO_YEARS_TRADING_DAYS, latestDate);
 
-    const payload: CachePayload = {
+    const payloadBase: CachePayload = {
       version: CACHE_VERSION,
-      rows,
+      rows: rowsSorted,
       latestDate,
       startDate: responseStartDate,
       breadth: {
-        sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
-        nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
-        sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
-        nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
+        sp500PctAbove50d: null,
+        nasdaqPctAbove50d: null,
+        sp500PctAbove200d: null,
+        nasdaqPctAbove200d: null,
       },
       netNewHighs: {
         oneMonth: nnh1m.rows,
@@ -288,6 +321,7 @@ export async function GET() {
         fiftyTwoWeek: nnh52w.rows,
       },
     };
+    const payload = withSyncedBreadthSummary(payloadBase, latestDate);
     try {
       writeFileSync(CACHE_PATH, JSON.stringify(payload), "utf8");
     } catch {

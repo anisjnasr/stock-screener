@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
-import { type StockFlag, loadFavoriteWatchlistIds, toggleFavoriteWatchlist, saveFavoriteWatchlistIds } from "@/lib/watchlist-storage";
+import {
+  type StockFlag,
+  loadFavoriteWatchlistIds,
+  toggleFavoriteWatchlist,
+  saveFavoriteWatchlistIds,
+  loadFlagNames,
+  saveFlagName,
+  defaultFlagListLabel,
+} from "@/lib/watchlist-storage";
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
@@ -27,6 +35,23 @@ const SECTOR_TF_LABELS: Record<SectorTimeframe, string> = {
 
 const FLAG_ORDER_KEY = "stock-research-flag-order";
 const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "yellow", "red", "green"];
+
+function reorderByInsertBefore<T>(list: T[], from: number, insertBefore: number): T[] {
+  const n = list.length;
+  const clamped = Math.max(0, Math.min(insertBefore, n));
+  const next = [...list];
+  const [moved] = next.splice(from, 1);
+  let to = clamped;
+  if (from < clamped) to -= 1;
+  to = Math.max(0, Math.min(to, next.length));
+  next.splice(to, 0, moved);
+  return next;
+}
+
+function flagListTitle(names: Record<string, string>, f: StockFlag): string {
+  const custom = names[f]?.trim();
+  return custom || defaultFlagListLabel(f);
+}
 
 type WorkspaceHeaderProps = {
   section: WorkspaceSection;
@@ -72,56 +97,47 @@ type WorkspaceHeaderProps = {
   headerActionsSlotRef?: (el: HTMLDivElement | null) => void;
 };
 
-function MarketStatusIndicator() {
+function MarketStatusClock() {
   const [open, setOpen] = useState(() => isUSMarketOpen());
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const check = () => setOpen(isUSMarketOpen());
-    const id = setInterval(check, 30_000);
-    return () => clearInterval(id);
+    const idOpen = setInterval(check, 30_000);
+    const idClock = setInterval(() => setNow(new Date()), 1000);
+    return () => {
+      clearInterval(idOpen);
+      clearInterval(idClock);
+    };
   }, []);
 
-  const color = open ? "#22c55e" : "#ef4444";
-  const label = open ? "MARKET OPEN" : "MARKET CLOSED";
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/New_York",
+  });
+  const dotColor = open ? "#22c55e" : "#ef4444";
 
   return (
     <div
-      className="flex items-center gap-1.5 shrink-0 mr-2 text-sm tracking-wide font-medium select-none"
-      style={{ color }}
+      className="flex items-center gap-2 shrink-0 mr-2 text-sm font-medium select-none tabular-nums"
+      style={{ color: "var(--ws-text)" }}
     >
       <span
-        className="rounded-full"
+        className={`rounded-full shrink-0 ${open ? "animate-pulse" : ""}`}
         style={{
-          width: 7,
-          height: 7,
-          background: color,
-          boxShadow: `0 0 5px ${color}`,
+          width: 8,
+          height: 8,
+          background: dotColor,
+          boxShadow: open ? `0 0 8px ${dotColor}` : "none",
         }}
+        aria-hidden
       />
-      {label}
+      <span>
+        {timeStr} ET
+      </span>
     </div>
-  );
-}
-
-function ClockDisplay() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const timeStr = now.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "America/New_York",
-  });
-  return (
-    <span
-      className="shrink-0 text-sm tabular-nums font-medium select-none"
-      style={{ color: "#ffffff" }}
-    >
-      {timeStr}
-    </span>
   );
 }
 
@@ -252,8 +268,28 @@ export default function WorkspaceHeader({
   const [favListIds, setFavListIds] = useState<string[]>(() => loadFavoriteWatchlistIds());
   const [dragScanIdx, setDragScanIdx] = useState<number | null>(null);
   const [dragListIdx, setDragListIdx] = useState<number | null>(null);
+  const [scanDropInsertBefore, setScanDropInsertBefore] = useState<number | null>(null);
+  const [listDropInsertBefore, setListDropInsertBefore] = useState<number | null>(null);
+  const scanDropInsertRef = useRef<number | null>(null);
+  const listDropInsertRef = useRef<number | null>(null);
+  const scanDragFromRef = useRef<number | null>(null);
+  const listDragFromRef = useRef<number | null>(null);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
+  const [flagNames, setFlagNames] = useState<Record<string, string>>(() => loadFlagNames());
+  const [editingFlag, setEditingFlag] = useState<StockFlag | null>(null);
+  const [editingFlagName, setEditingFlagName] = useState("");
+  const [flagOrder, setFlagOrder] = useState<StockFlag[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_FLAG_ORDER;
+    try {
+      const raw = localStorage.getItem(FLAG_ORDER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as StockFlag[];
+        if (Array.isArray(parsed) && parsed.length === 4) return parsed;
+      }
+    } catch {}
+    return DEFAULT_FLAG_ORDER;
+  });
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
@@ -302,6 +338,7 @@ export default function WorkspaceHeader({
       if (listDDRef.current && !listDDRef.current.contains(e.target as Node)) {
         setListDDOpen(false);
         setEditingListId(null);
+        setEditingFlag(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -325,24 +362,30 @@ export default function WorkspaceHeader({
     }
   };
 
-  const flagCounts = Object.values(flags).reduce<Partial<Record<StockFlag, number>>>(
-    (acc, f) => { acc[f] = (acc[f] ?? 0) + 1; return acc; },
-    {}
+  const flagCounts = useMemo(
+    () =>
+      Object.values(flags).reduce<Partial<Record<StockFlag, number>>>((acc, f) => {
+        acc[f] = (acc[f] ?? 0) + 1;
+        return acc;
+      }, {}),
+    [flags]
   );
 
-  const hasFlaggedStocks = Object.values(flagCounts).some((c) => (c ?? 0) > 0);
+  const flagsWithStocks = useMemo(
+    () => flagOrder.filter((f) => (flagCounts[f] ?? 0) > 0),
+    [flagOrder, flagCounts]
+  );
 
-  const [flagOrder, setFlagOrder] = useState<StockFlag[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_FLAG_ORDER;
-    try {
-      const raw = localStorage.getItem(FLAG_ORDER_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StockFlag[];
-        if (Array.isArray(parsed) && parsed.length === 4) return parsed;
-      }
-    } catch {}
-    return DEFAULT_FLAG_ORDER;
-  });
+  const hasFlaggedStocks = flagsWithStocks.length > 0;
+
+  useEffect(() => {
+    const fn = (e: Event) => {
+      const d = (e as CustomEvent<Record<string, string>>).detail;
+      if (d && typeof d === "object") setFlagNames(d);
+    };
+    window.addEventListener("stock-flag-names-changed", fn);
+    return () => window.removeEventListener("stock-flag-names-changed", fn);
+  }, []);
 
   const padR = railWidthPx > 0 ? railWidthPx + 14 : 12;
 
@@ -545,74 +588,172 @@ export default function WorkspaceHeader({
                 }}
               >
                 {activeScan || "Select scan"}
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="opacity-50 shrink-0"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
               {scanDDOpen && scanList.length > 0 && (
                 <div
                   className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+                  onDragOver={(e) => {
+                    if (scanDragFromRef.current == null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
                 >
                   {scanList.map((s, idx) => {
                     const isFav = favScreenIds.includes(s);
                     return (
-                      <div
-                        key={s}
+                      <Fragment key={s}>
+                        {dragScanIdx != null && scanDropInsertBefore === idx && (
+                          <div
+                            className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
+                            style={{ background: "var(--ws-cyan)" }}
+                            aria-hidden
+                          />
+                        )}
+                        <div
                         draggable
-                        onDragStart={() => setDragScanIdx(idx)}
-                        onDragOver={(e) => { e.preventDefault(); }}
-                        onDrop={() => {
-                          if (dragScanIdx != null && dragScanIdx !== idx) {
-                            const reordered = [...scanList];
-                            const [moved] = reordered.splice(dragScanIdx, 1);
-                            reordered.splice(idx, 0, moved);
+                        onDragStart={() => {
+                          setDragScanIdx(idx);
+                          scanDragFromRef.current = idx;
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (scanDragFromRef.current == null) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+                          scanDropInsertRef.current = insertBefore;
+                          setScanDropInsertBefore(insertBefore);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = scanDragFromRef.current;
+                          if (from == null) return;
+                          let insertBefore = scanDropInsertRef.current;
+                          if (insertBefore == null) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+                          }
+                          insertBefore = Math.max(0, Math.min(insertBefore, scanList.length));
+                          const reordered = reorderByInsertBefore(scanList, from, insertBefore);
+                          if (!reordered.every((item, i) => item === scanList[i])) {
                             onReorderScans?.(reordered);
                           }
                           setDragScanIdx(null);
+                          setScanDropInsertBefore(null);
+                          scanDropInsertRef.current = null;
+                          scanDragFromRef.current = null;
                         }}
-                        onDragEnd={() => setDragScanIdx(null)}
-                        className="group/sc px-3 py-1.5 text-xs cursor-grab rounded mx-1 transition-colors flex items-center"
+                        onDragEnd={() => {
+                          setDragScanIdx(null);
+                          setScanDropInsertBefore(null);
+                          scanDropInsertRef.current = null;
+                          scanDragFromRef.current = null;
+                        }}
+                        className="group/sc px-3 py-1.5 text-xs rounded mx-1 transition-colors flex items-center"
                         style={{
                           color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text)",
                           background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                        onMouseDown={(e) => { e.preventDefault(); onScanChange?.(s); setScanDDOpen(false); }}
                       >
                         <span
                           className="text-[14px]"
                           style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
-                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
+                          onClick={(e) => { e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setFavScreenIds(toggleFavoriteScreen(s));
+                            }
+                          }}
                         >
                           {isFav ? "★" : "☆"}
                         </span>
-                        <span className="flex-1 truncate">{s}</span>
+                        <span
+                          className="flex-1 truncate cursor-pointer min-w-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onScanChange?.(s);
+                            setScanDDOpen(false);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onScanChange?.(s);
+                              setScanDDOpen(false);
+                            }
+                          }}
+                        >
+                          {s}
+                        </span>
                         <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/sc:opacity-100 transition-opacity">
                           <span
-                            className="rounded p-0.5 hover:bg-white/10"
+                            className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
                             title={`Edit ${s}`}
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onEditScan?.(s); setScanDDOpen(false); }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onEditScan?.(s);
+                              setScanDDOpen(false);
+                            }}
+                            role="button"
+                            tabIndex={0}
                           >
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
                           </span>
                           <span
-                            className="rounded p-0.5 hover:bg-white/10"
+                            className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
                             title={`Clone ${s}`}
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onCloneScan?.(s); setScanDDOpen(false); }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onCloneScan?.(s);
+                              setScanDDOpen(false);
+                            }}
+                            role="button"
+                            tabIndex={0}
                           >
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
                           </span>
-                          <span
-                            className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
+                          <button
+                            type="button"
+                            className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center shrink-0"
+                            style={{ color: "inherit" }}
                             title={`Delete ${s}`}
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (window.confirm(`Delete scan "${s}"?`)) { onDeleteScan?.(s); setScanDDOpen(false); } }}
+                            aria-label={`Delete scan ${s}`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const scanName = s;
+                              queueMicrotask(() => {
+                                if (!window.confirm(`Delete scan "${scanName}"? This cannot be undone.`)) return;
+                                onDeleteScan?.(scanName);
+                                setScanDDOpen(false);
+                              });
+                            }}
                           >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
-                          </span>
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                          </button>
                         </span>
                       </div>
+                      </Fragment>
                     );
                   })}
+                  {dragScanIdx != null && scanDropInsertBefore === scanList.length && (
+                    <div
+                      className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
+                      style={{ background: "var(--ws-cyan)" }}
+                      aria-hidden
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -660,40 +801,49 @@ export default function WorkspaceHeader({
                       <SubBarPill label={s} dotColor="#00e5cc" active={activeScan === s} onClick={() => onScanChange?.(s)} />
                     </div>
                   ))}
-                  {hasFlaggedStocks && flagOrder.map((f, fi) => {
-                    const cnt = flagCounts[f] ?? 0;
-                    if (cnt === 0) return null;
-                    const active = activeFlagFilter === f;
-                    return (
-                      <div
-                        key={f}
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.setData("application/flag-idx", String(fi)); }}
-                        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault(); }}
-                        onDrop={(e) => {
-                          const raw = e.dataTransfer.getData("application/flag-idx");
-                          if (!raw) return;
-                          const fromIdx = Number(raw);
-                          if (fromIdx !== fi && !isNaN(fromIdx)) {
-                            const reordered = [...flagOrder];
-                            const [moved] = reordered.splice(fromIdx, 1);
-                            reordered.splice(fi, 0, moved);
-                            setFlagOrder(reordered);
-                            localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
-                          }
-                        }}
-                        className="cursor-grab active:cursor-grabbing"
-                      >
-                        <SubBarPill
-                          label={f.charAt(0).toUpperCase() + f.slice(1)}
-                          count={cnt}
-                          dotColor={FLAG_COLORS[f]}
-                          active={active}
-                          onClick={() => { onFlagFilter?.(active ? null : f); onFlagListOpen?.(f); }}
-                        />
-                      </div>
-                    );
-                  })}
+                  {hasFlaggedStocks &&
+                    flagsWithStocks.map((f) => {
+                      const fi = flagOrder.indexOf(f);
+                      const cnt = flagCounts[f] ?? 0;
+                      const active = activeFlagFilter === f;
+                      return (
+                        <div
+                          key={f}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/flag-idx", String(fi));
+                          }}
+                          onDragOver={(e) => {
+                            if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault();
+                          }}
+                          onDrop={(e) => {
+                            const raw = e.dataTransfer.getData("application/flag-idx");
+                            if (!raw) return;
+                            const fromIdx = Number(raw);
+                            if (fromIdx !== fi && !isNaN(fromIdx)) {
+                              const reordered = [...flagOrder];
+                              const [moved] = reordered.splice(fromIdx, 1);
+                              reordered.splice(fi, 0, moved);
+                              setFlagOrder(reordered);
+                              localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
+                            }
+                          }}
+                          className="cursor-grab active:cursor-grabbing"
+                        >
+                          <SubBarPill
+                            label={flagListTitle(flagNames, f)}
+                            count={cnt}
+                            dotColor={FLAG_COLORS[f]}
+                            active={active}
+                            onClick={() => {
+                              onWatchlistChange?.(`__flag_${f}__`);
+                              onFlagFilter?.(active ? null : f);
+                              onFlagListOpen?.(f);
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
                 </div>
               );
             })()}
@@ -722,51 +872,104 @@ export default function WorkspaceHeader({
                     return (
                       <>
                         <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_COLORS[f] }} />
-                        {f.charAt(0).toUpperCase() + f.slice(1)} Flag
+                        {flagListTitle(flagNames, f)}
                       </>
                     );
                   }
                   return watchlistNames.find((w) => w.id === activeWatchlistId)?.name || "Select list";
                 })()}
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="opacity-50 shrink-0"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
               {listDDOpen && (
                 <div
                   className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+                  onDragOver={(e) => {
+                    if (listDragFromRef.current == null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
                 >
                   {watchlistNames.map((wl, idx) => {
                     const isFav = favListIds.includes(wl.id);
                     const isDeletable = wl.id !== FULL_UNIVERSE_ID;
+                    const selectList = () => {
+                      if (editingListId) return;
+                      onWatchlistChange?.(wl.id);
+                      setListDDOpen(false);
+                      setEditingListId(null);
+                    };
                     return (
+                      <Fragment key={wl.id}>
+                        {dragListIdx != null && listDropInsertBefore === idx && (
+                          <div
+                            className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
+                            style={{ background: "var(--ws-cyan)" }}
+                            aria-hidden
+                          />
+                        )}
                       <div
-                        key={wl.id}
                         draggable={isDeletable}
-                        onDragStart={() => setDragListIdx(idx)}
-                        onDragOver={(e) => { e.preventDefault(); }}
-                        onDrop={() => {
-                          if (dragListIdx != null && dragListIdx !== idx) {
-                            const reordered = [...watchlistNames];
-                            const [moved] = reordered.splice(dragListIdx, 1);
-                            reordered.splice(idx, 0, moved);
-                            onReorderLists?.(reordered.map((w) => w.id));
+                        onDragStart={() => {
+                          if (!isDeletable) return;
+                          setDragListIdx(idx);
+                          listDragFromRef.current = idx;
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (listDragFromRef.current == null) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+                          listDropInsertRef.current = insertBefore;
+                          setListDropInsertBefore(insertBefore);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = listDragFromRef.current;
+                          if (from == null) return;
+                          let insertBefore = listDropInsertRef.current;
+                          if (insertBefore == null) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+                          }
+                          insertBefore = Math.max(0, Math.min(insertBefore, watchlistNames.length));
+                          const reordered = reorderByInsertBefore(watchlistNames, from, insertBefore);
+                          const prevIds = watchlistNames.map((w) => w.id);
+                          const nextIds = reordered.map((w) => w.id);
+                          if (nextIds.some((id, i) => id !== prevIds[i])) {
+                            onReorderLists?.(nextIds);
                           }
                           setDragListIdx(null);
+                          setListDropInsertBefore(null);
+                          listDropInsertRef.current = null;
+                          listDragFromRef.current = null;
                         }}
-                        onDragEnd={() => setDragListIdx(null)}
-                        className="group/wl px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center"
+                        onDragEnd={() => {
+                          setDragListIdx(null);
+                          setListDropInsertBefore(null);
+                          listDropInsertRef.current = null;
+                          listDragFromRef.current = null;
+                        }}
+                        className="group/wl px-3 py-1.5 text-xs rounded mx-1 transition-colors flex items-center"
                         style={{
                           color: activeWatchlistId === wl.id ? "var(--ws-cyan)" : "var(--ws-text)",
                           background: activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent",
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                        onMouseDown={(e) => { e.preventDefault(); if (editingListId) return; onWatchlistChange?.(wl.id); setListDDOpen(false); setEditingListId(null); }}
                       >
                         <span
                           className="text-[14px]"
                           style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
-                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFavListIds(toggleFavoriteWatchlist(wl.id)); }}
+                          onClick={(e) => { e.stopPropagation(); setFavListIds(toggleFavoriteWatchlist(wl.id)); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setFavListIds(toggleFavoriteWatchlist(wl.id));
+                            }
+                          }}
                         >
                           {isFav ? "★" : "☆"}
                         </span>
@@ -776,6 +979,7 @@ export default function WorkspaceHeader({
                             type="text"
                             value={editingListName}
                             onChange={(e) => setEditingListName(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
                             onBlur={() => {
                               const trimmed = editingListName.trim();
                               if (trimmed && trimmed !== wl.name) onRenameList?.(wl.id, trimmed);
@@ -789,77 +993,201 @@ export default function WorkspaceHeader({
                               }
                               if (e.key === "Escape") setEditingListId(null);
                             }}
-                            onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                             className="flex-1 min-w-0 bg-transparent border-b outline-none text-xs px-0 py-0"
                             style={{ borderColor: "var(--ws-cyan)", color: "var(--ws-text)" }}
                           />
                         ) : (
-                          <span className="flex-1 truncate">{wl.name}</span>
+                          <span
+                            className="flex-1 truncate cursor-pointer min-w-0"
+                            onClick={(e) => { e.stopPropagation(); selectList(); }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                selectList();
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {wl.name}
+                          </span>
                         )}
-                        {isDeletable && editingListId !== wl.id && (
+                        {editingListId !== wl.id && (
                           <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/wl:opacity-100 transition-opacity">
                             <span
-                              className="rounded p-0.5 hover:bg-white/10"
+                              className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
                               title={`Rename ${wl.name}`}
-                              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setEditingListId(wl.id); setEditingListName(wl.name); }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
-                            </span>
-                            <span
-                              className="rounded p-0.5 hover:bg-white/10"
-                              title={`Clone ${wl.name}`}
-                              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onCloneList?.(wl.id); setListDDOpen(false); }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
-                            </span>
-                            <span
-                              className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400"
-                              title={`Delete ${wl.name}`}
-                              onMouseDown={(e) => {
+                              onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (window.confirm(`Delete list "${wl.name}"?`)) {
-                                  onDeleteWatchlist?.(wl.id);
-                                  setListDDOpen(false);
-                                }
+                                setEditingListId(wl.id);
+                                setEditingListName(wl.name);
                               }}
+                              role="button"
+                              tabIndex={0}
                             >
-                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
                             </span>
+                            {isDeletable && (
+                              <>
+                                <span
+                                  className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
+                                  title={`Clone ${wl.name}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onCloneList?.(wl.id);
+                                    setListDDOpen(false);
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center shrink-0"
+                                  style={{ color: "inherit" }}
+                                  title={`Delete ${wl.name}`}
+                                  aria-label={`Delete list ${wl.name}`}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const id = wl.id;
+                                    const name = wl.name;
+                                    queueMicrotask(() => {
+                                      if (!window.confirm(`Delete list "${name}"? This cannot be undone.`)) return;
+                                      onDeleteWatchlist?.(id);
+                                      setListDDOpen(false);
+                                    });
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                                </button>
+                              </>
+                            )}
                           </span>
                         )}
                       </div>
+                      </Fragment>
                     );
                   })}
+                  {dragListIdx != null && listDropInsertBefore === watchlistNames.length && (
+                    <div
+                      className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
+                      style={{ background: "var(--ws-cyan)" }}
+                      aria-hidden
+                    />
+                  )}
                   {hasFlaggedStocks && (
                     <>
                       <div className="mx-2 my-1" style={{ height: 1, background: "var(--ws-border)" }} />
-                      {flagOrder.map((f) => {
+                      {flagsWithStocks.map((f) => {
                         const cnt = flagCounts[f] ?? 0;
-                        if (cnt === 0) return null;
                         const flagListId = `__flag_${f}__`;
                         const isActive = activeWatchlistId === flagListId;
+                        const displayName = flagListTitle(flagNames, f);
+                        const selectFlagList = () => {
+                          if (editingFlag) return;
+                          onWatchlistChange?.(flagListId);
+                          onFlagFilter?.(isActive ? null : f);
+                          onFlagListOpen?.(f);
+                          setListDDOpen(false);
+                          setEditingFlag(null);
+                        };
+                        const commitFlagRename = () => {
+                          const trimmed = editingFlagName.trim();
+                          if (!trimmed) {
+                            setEditingFlag(null);
+                            return;
+                          }
+                          if (trimmed !== displayName) setFlagNames(saveFlagName(f, trimmed));
+                          setEditingFlag(null);
+                        };
                         return (
                           <div
                             key={flagListId}
-                            className="px-3 py-1.5 text-xs cursor-pointer rounded mx-1 transition-colors flex items-center gap-2"
+                            className="group/fg px-3 py-1.5 text-xs rounded mx-1 transition-colors flex items-center gap-2"
                             style={{
                               color: isActive ? "var(--ws-cyan)" : "var(--ws-text)",
                               background: isActive ? "rgba(0,229,204,0.08)" : "transparent",
                             }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isActive ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isActive ? "rgba(0,229,204,0.08)" : "transparent"; }}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              onFlagFilter?.(isActive ? null : f);
-                              onFlagListOpen?.(f);
-                              setListDDOpen(false);
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLElement).style.background = isActive
+                                ? "rgba(0,229,204,0.08)"
+                                : "rgba(255,255,255,0.06)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLElement).style.background = isActive
+                                ? "rgba(0,229,204,0.08)"
+                                : "transparent";
                             }}
                           >
                             <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_COLORS[f] }} />
-                            <span className="flex-1 truncate">{f.charAt(0).toUpperCase() + f.slice(1)} Flag</span>
-                            <span className="ml-auto tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{cnt}</span>
+                            {editingFlag === f ? (
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editingFlagName}
+                                onChange={(e) => setEditingFlagName(e.target.value)}
+                                onFocus={(e) => e.currentTarget.select()}
+                                onBlur={commitFlagRename}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    commitFlagRename();
+                                  }
+                                  if (e.key === "Escape") setEditingFlag(null);
+                                }}
+                                onClick={(ev) => ev.stopPropagation()}
+                                className="flex-1 min-w-0 bg-transparent border-b outline-none text-xs px-0 py-0"
+                                style={{ borderColor: "var(--ws-cyan)", color: "var(--ws-text)" }}
+                              />
+                            ) : (
+                              <span
+                                className="flex-1 truncate cursor-pointer min-w-0"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  selectFlagList();
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(ev) => {
+                                  if (ev.key === "Enter" || ev.key === " ") {
+                                    ev.preventDefault();
+                                    selectFlagList();
+                                  }
+                                }}
+                              >
+                                {displayName}
+                              </span>
+                            )}
+                            {editingFlag !== f && (
+                              <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover/fg:opacity-100 transition-opacity">
+                                <span
+                                  className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
+                                  title={`Rename ${displayName}`}
+                                  onClick={(ev) => {
+                                    ev.preventDefault();
+                                    ev.stopPropagation();
+                                    setEditingFlag(f);
+                                    setEditingFlagName(displayName);
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                                    <path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" />
+                                  </svg>
+                                </span>
+                              </span>
+                            )}
+                            <span className="ml-auto tabular-nums shrink-0" style={{ color: "var(--ws-text-dim)" }}>
+                              {cnt}
+                            </span>
                           </div>
                         );
                       })}
@@ -912,40 +1240,49 @@ export default function WorkspaceHeader({
                       <SubBarPill label={wl.name} dotColor="#00e5cc" active={activeWatchlistId === wl.id} onClick={() => onWatchlistChange?.(wl.id)} />
                     </div>
                   ))}
-                  {hasFlaggedStocks && flagOrder.map((f, fi) => {
-                    const cnt = flagCounts[f] ?? 0;
-                    if (cnt === 0) return null;
-                    const active = activeFlagFilter === f;
-                    return (
-                      <div
-                        key={f}
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.setData("application/flag-idx", String(fi)); }}
-                        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault(); }}
-                        onDrop={(e) => {
-                          const raw = e.dataTransfer.getData("application/flag-idx");
-                          if (!raw) return;
-                          const fromIdx = Number(raw);
-                          if (fromIdx !== fi && !isNaN(fromIdx)) {
-                            const reordered = [...flagOrder];
-                            const [moved] = reordered.splice(fromIdx, 1);
-                            reordered.splice(fi, 0, moved);
-                            setFlagOrder(reordered);
-                            localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
-                          }
-                        }}
-                        className="cursor-grab active:cursor-grabbing"
-                      >
-                        <SubBarPill
-                          label={f.charAt(0).toUpperCase() + f.slice(1)}
-                          count={cnt}
-                          dotColor={FLAG_COLORS[f]}
-                          active={active}
-                          onClick={() => { onFlagFilter?.(active ? null : f); onFlagListOpen?.(f); }}
-                        />
-                      </div>
-                    );
-                  })}
+                  {hasFlaggedStocks &&
+                    flagsWithStocks.map((f) => {
+                      const fi = flagOrder.indexOf(f);
+                      const cnt = flagCounts[f] ?? 0;
+                      const active = activeFlagFilter === f;
+                      return (
+                        <div
+                          key={f}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/flag-idx", String(fi));
+                          }}
+                          onDragOver={(e) => {
+                            if (e.dataTransfer.types.includes("application/flag-idx")) e.preventDefault();
+                          }}
+                          onDrop={(e) => {
+                            const raw = e.dataTransfer.getData("application/flag-idx");
+                            if (!raw) return;
+                            const fromIdx = Number(raw);
+                            if (fromIdx !== fi && !isNaN(fromIdx)) {
+                              const reordered = [...flagOrder];
+                              const [moved] = reordered.splice(fromIdx, 1);
+                              reordered.splice(fi, 0, moved);
+                              setFlagOrder(reordered);
+                              localStorage.setItem(FLAG_ORDER_KEY, JSON.stringify(reordered));
+                            }
+                          }}
+                          className="cursor-grab active:cursor-grabbing"
+                        >
+                          <SubBarPill
+                            label={flagListTitle(flagNames, f)}
+                            count={cnt}
+                            dotColor={FLAG_COLORS[f]}
+                            active={active}
+                            onClick={() => {
+                              onWatchlistChange?.(`__flag_${f}__`);
+                              onFlagFilter?.(active ? null : f);
+                              onFlagListOpen?.(f);
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
                 </div>
               );
             })()}
@@ -953,8 +1290,7 @@ export default function WorkspaceHeader({
           </div>
         )}
 
-        <MarketStatusIndicator />
-        <ClockDisplay />
+        <MarketStatusClock />
       </div>
     </header>
   );

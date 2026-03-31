@@ -544,9 +544,10 @@ export default function StockChart({
     // Overlays: EMAs
     if (timeframe === "daily") {
       if (settings.showEma50 && ema50Data.length > 0) {
+        const ema50Color = "#ef4444";
         chart
           .addSeries(LineSeries, {
-            color: "#ef4444",
+            color: ema50Color,
             lineWidth: 1,
             priceScaleId: "right",
             lastValueVisible: false,
@@ -557,9 +558,10 @@ export default function StockChart({
           .setData(ema50Data);
       }
       if (settings.showEma200 && ema200Data.length > 0) {
+        const ema200Color = "#22c55e";
         chart
           .addSeries(LineSeries, {
-            color: "#22c55e",
+            color: ema200Color,
             lineWidth: 1,
             priceScaleId: "right",
             lastValueVisible: false,
@@ -570,9 +572,10 @@ export default function StockChart({
           .setData(ema200Data);
       }
     } else if (timeframe === "weekly" && settings.showEma40Weekly && ema40Data.length > 0) {
+      const ema40Color = "#22c55e";
       chart
         .addSeries(LineSeries, {
-          color: "#22c55e",
+          color: ema40Color,
           lineWidth: 1,
           priceScaleId: "right",
           lastValueVisible: false,
@@ -654,13 +657,16 @@ export default function StockChart({
           { time: farRightTime, value: d.price },
         ]);
         if (d.style.showLabel && d.style.label.trim()) {
+          const c = d.style.color;
           lineSeries.createPriceLine({
             price: d.price,
-            color: d.style.color,
+            color: c,
             lineWidth: 1,
             lineStyle: 2,
             axisLabelVisible: true,
             title: d.style.label.trim(),
+            axisLabelColor: "transparent",
+            axisLabelTextColor: c,
           });
         }
       } else {
@@ -1423,10 +1429,10 @@ export default function StockChart({
           })()}
           <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 52, right: 88 }}>
             {(timeframe === "daily" ? [
-              { key: "ema50", label: "EMA(50)", color: "#2196F3", active: settings.showEma50, toggle: () => handleUpdateSettings({ showEma50: !settings.showEma50 }) },
-              { key: "ema200", label: "EMA(200)", color: "#FF5252", active: settings.showEma200, toggle: () => handleUpdateSettings({ showEma200: !settings.showEma200 }) },
+              { key: "ema50", label: "EMA(50)", color: "#ef4444", active: settings.showEma50, toggle: () => handleUpdateSettings({ showEma50: !settings.showEma50 }) },
+              { key: "ema200", label: "EMA(200)", color: "#22c55e", active: settings.showEma200, toggle: () => handleUpdateSettings({ showEma200: !settings.showEma200 }) },
             ] : timeframe === "weekly" ? [
-              { key: "ema40w", label: "EMA(40W)", color: "#9C27B0", active: settings.showEma40Weekly, toggle: () => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly }) },
+              { key: "ema40w", label: "EMA(40W)", color: "#22c55e", active: settings.showEma40Weekly, toggle: () => handleUpdateSettings({ showEma40Weekly: !settings.showEma40Weekly }) },
             ] : []).concat([
               { key: "vol", label: "Vol", color: "#7B8794", active: settings.showVolume, toggle: () => handleUpdateSettings({ showVolume: !settings.showVolume }) },
             ]).map((ind) => (
@@ -1434,20 +1440,17 @@ export default function StockChart({
                 key={ind.key}
                 type="button"
                 onClick={ind.toggle}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer hover:brightness-125 ws-focus-ring"
+                className="flex items-center gap-1.5 py-0.5 text-xs font-medium transition-opacity cursor-pointer border-0 bg-transparent shadow-none outline-offset-2 hover:opacity-90 ws-focus-ring"
                 aria-pressed={ind.active}
                 style={{
-                  color: ind.active ? ind.color : `${ind.color}80`,
-                  borderColor: ind.active ? `${ind.color}50` : `${ind.color}20`,
-                  border: `1px solid ${ind.active ? `${ind.color}50` : `${ind.color}20`}`,
-                  backgroundColor: ind.active ? `${ind.color}15` : "transparent",
+                  color: ind.active ? ind.color : `${ind.color}66`,
                   textDecoration: ind.active ? "none" : "line-through",
                 }}
                 title={`Toggle ${ind.label}`}
               >
                 <span
                   className="shrink-0 w-2 h-2 rounded-full"
-                  style={{ background: ind.active ? ind.color : `${ind.color}60` }}
+                  style={{ background: ind.active ? ind.color : `${ind.color}55` }}
                 />
                 {ind.label}
               </button>

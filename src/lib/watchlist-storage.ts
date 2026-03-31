@@ -51,9 +51,15 @@ export function saveFlagName(color: string, name: string): Record<string, string
   names[color] = name;
   if (typeof window !== "undefined") {
     try { localStorage.setItem(STORAGE_KEY_FLAG_NAMES, JSON.stringify(names)); } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent("stock-flag-names-changed", { detail: names }));
   }
   cloudSyncSetting("flag_names", names);
   return names;
+}
+
+/** Default list/pill label when no custom name is saved (e.g. "Red", "Yellow"). */
+export function defaultFlagListLabel(color: string): string {
+  return color.charAt(0).toUpperCase() + color.slice(1);
 }
 
 export function loadWatchlists(): Watchlist[] {
@@ -81,6 +87,13 @@ export function saveWatchlists(lists: Watchlist[]): void {
   } catch {
     /* ignore */
   }
+  queueMicrotask(() => {
+    try {
+      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: lists }));
+    } catch {
+      /* ignore */
+    }
+  });
   cloudSyncWatchlists(lists, loadWatchlistFolders(), loadFavoriteWatchlistIds());
 }
 
@@ -258,7 +271,7 @@ export type ColumnId =
   | "exchange"
   | "industry"
   | "sector"
-  | "date"
+  | "ipoDate"
   | "marketCap"
   | "lastPrice"
   | "changePct"
@@ -298,7 +311,7 @@ export const ALL_COLUMN_IDS: ColumnId[] = [
   "exchange",
   "industry",
   "sector",
-  "date",
+  "ipoDate",
   "marketCap",
   "lastPrice",
   "changePct",
@@ -338,7 +351,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   exchange: "Exchange",
   industry: "Industry",
   sector: "Sector",
-  date: "Date",
+  ipoDate: "IPO Date",
   marketCap: "Mkt Cap (bn)",
   lastPrice: "Price",
   changePct: "Change %",
@@ -428,6 +441,11 @@ export const SECTION_DEFAULT_COLUMNS: Record<string, ColumnId[]> = {
   lists: ["ticker", "lastPrice", "changePct", "marketCap", "volume", "avgVolume", "atrPct"],
 };
 
+/** Legacy "date" column stored the screener snapshot date; replaced by IPO Date. */
+function migrateColumnIdToken(id: unknown): string {
+  return id === "date" ? "ipoDate" : String(id);
+}
+
 export function loadVisibleColumns(): ColumnId[] {
   if (typeof window === "undefined") return [...DEFAULT_VISIBLE_COLUMNS];
   try {
@@ -435,7 +453,11 @@ export function loadVisibleColumns(): ColumnId[] {
     if (!raw) return [...DEFAULT_VISIBLE_COLUMNS];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [...DEFAULT_VISIBLE_COLUMNS];
-    const valid = parsed.filter((id: unknown) => typeof id === "string" && ALL_COLUMN_IDS.includes(id as ColumnId));
+    const migrated = parsed.map(migrateColumnIdToken);
+    const valid = migrated.filter((id: string) => ALL_COLUMN_IDS.includes(id as ColumnId));
+    if (valid.length > 0 && migrated.some((id, i) => id !== String(parsed[i]))) {
+      saveVisibleColumns(valid as ColumnId[]);
+    }
     return valid.length > 0 ? (valid as ColumnId[]) : [...DEFAULT_VISIBLE_COLUMNS];
   } catch {
     return [...DEFAULT_VISIBLE_COLUMNS];
@@ -458,7 +480,18 @@ export function loadColumnWidths(): Partial<Record<ColumnId, number>> {
     const raw = localStorage.getItem(STORAGE_KEY_COLUMNS);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const next: Partial<Record<ColumnId, number>> = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(parsed as Record<string, number>)) {
+      const nk = migrateColumnIdToken(k) as ColumnId;
+      if (typeof v === "number" && ALL_COLUMN_IDS.includes(nk)) {
+        next[nk] = v;
+        if (nk !== k) changed = true;
+      }
+    }
+    if (changed) saveColumnWidths(next);
+    return next;
   } catch {
     return {};
   }
@@ -488,7 +521,7 @@ export function loadColumnSets(): ColumnSet[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
+    const sets = parsed.filter(
       (s: unknown): s is ColumnSet =>
         typeof s === "object" &&
         s !== null &&
@@ -496,6 +529,23 @@ export function loadColumnSets(): ColumnSet[] {
         typeof (s as ColumnSet).name === "string" &&
         Array.isArray((s as ColumnSet).columns)
     );
+    const migrated = sets.map((s) => {
+      const cols = s.columns.map((c) => migrateColumnIdToken(c) as ColumnId).filter((c) => ALL_COLUMN_IDS.includes(c));
+      let nextWidths: Partial<Record<ColumnId, number>> | undefined;
+      if (s.widths && typeof s.widths === "object") {
+        nextWidths = {};
+        for (const [k, v] of Object.entries(s.widths)) {
+          const nk = migrateColumnIdToken(k) as ColumnId;
+          if (typeof v === "number" && ALL_COLUMN_IDS.includes(nk)) nextWidths[nk] = v;
+        }
+      }
+      return { ...s, columns: cols, widths: nextWidths };
+    });
+    const colsChanged = JSON.stringify(sets.map((s) => s.columns)) !== JSON.stringify(migrated.map((s) => s.columns));
+    const widthsChanged =
+      JSON.stringify(sets.map((s) => s.widths ?? {})) !== JSON.stringify(migrated.map((s) => s.widths ?? {}));
+    if (colsChanged || widthsChanged) saveColumnSets(migrated);
+    return migrated;
   } catch {
     return [];
   }

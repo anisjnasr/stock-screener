@@ -82,6 +82,15 @@ function fmtCompact(n: number): string {
   return n.toFixed(2);
 }
 
+/** Revenue column in fundamentals table: compact scale with two decimal places. */
+function fmtRevenueTwoDecimals(n: number): string {
+  if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+  return n.toFixed(2);
+}
+
 function fmtShares(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -303,9 +312,9 @@ export default function RightRail({
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Revenue</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Rev</th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Rev %</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS ($)</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS</th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS %</th>
                 </tr>
               </thead>
@@ -329,7 +338,7 @@ export default function RightRail({
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     <td className="py-1 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
                     <td className="py-1 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
-                      {r.revenue != null ? fmtCompact(r.revenue) : "—"}
+                      {r.revenue != null ? fmtRevenueTwoDecimals(r.revenue) : "—"}
                     </td>
                     <td className="py-1 text-right font-mono tabular-nums"
                       style={{ color: r.revGrowth != null ? (r.revGrowth >= 0 ? "var(--ws-green)" : "var(--ws-red)") : "var(--ws-text-vdim)" }}>

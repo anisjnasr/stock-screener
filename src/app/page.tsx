@@ -44,7 +44,7 @@ import {
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
-import { loadScreens, seedDefaultScreensIfEmpty, deleteScreen, type SavedScreen } from "@/lib/screener-storage";
+import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deleteScreen, type SavedScreen } from "@/lib/screener-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -105,6 +105,7 @@ export default function Home() {
   const secondaryPagesPrefetchedRef = useRef(false);
   const sectionHistoryRef = useRef<Record<string, string | null>>({});
   const pendingAutoSelectRef = useRef(false);
+  const prevSectionRef = useRef<WorkspaceSection | null>(null);
   const { cycleTheme } = useTheme();
 
   const {
@@ -140,6 +141,14 @@ export default function Home() {
   );
 
   useEffect(() => {
+    const prev = prevSectionRef.current;
+    prevSectionRef.current = section;
+    if (section === "market" && prev != null && prev !== "market") {
+      setSymbol(DEFAULT_SYMBOL);
+    }
+  }, [section]);
+
+  useEffect(() => {
     if (section === "market") {
       setRightRailHidden(true);
     } else if (section === "sectors-industries") {
@@ -171,6 +180,7 @@ export default function Home() {
   const initFetchedRef = useRef(false);
   useEffect(() => {
     seedDefaultScreensIfEmpty();
+    ensurePrebuiltScreensPresent();
     const loaded = loadScreens();
     setScreens(loaded);
     if (loaded.length > 0) setActiveScanName(loaded[0].name);
@@ -246,12 +256,48 @@ export default function Home() {
     if (id === FULL_UNIVERSE_ID) return;
     setWatchlists((prev) => {
       const next = prev.filter((l) => l.id !== id);
-      saveWatchlists(next);
-      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
+      queueMicrotask(() => saveWatchlists(next));
       return next;
     });
     if (activeWatchlistId === id) setActiveWatchlistId(FULL_UNIVERSE_ID);
   }, [activeWatchlistId]);
+
+  const handleReorderScans = useCallback((names: string[]) => {
+    const current = loadScreens();
+    const byName = new Map(current.map((sc) => [sc.name, sc]));
+    const reordered: SavedScreen[] = [];
+    const used = new Set<string>();
+    for (const n of names) {
+      const sc = byName.get(n);
+      if (sc) {
+        reordered.push(sc);
+        used.add(sc.id);
+      }
+    }
+    for (const sc of current) {
+      if (!used.has(sc.id)) reordered.push(sc);
+    }
+    saveScreens(reordered);
+  }, []);
+
+  const handleReorderLists = useCallback((ids: string[]) => {
+    const current = loadWatchlists();
+    const byId = new Map(current.map((w) => [w.id, w]));
+    const reordered: Watchlist[] = [];
+    const used = new Set<string>();
+    for (const id of ids) {
+      if (id === FULL_UNIVERSE_ID) continue;
+      const w = byId.get(id);
+      if (w) {
+        reordered.push(w);
+        used.add(w.id);
+      }
+    }
+    for (const w of current) {
+      if (!used.has(w.id)) reordered.push(w);
+    }
+    saveWatchlists(reordered);
+  }, []);
 
   const handleAddToWatchlist = useCallback((watchlistId: string) => {
     setWatchlists((prev) => {
@@ -276,11 +322,23 @@ export default function Home() {
       const detail = (e as CustomEvent).detail;
       if (Array.isArray(detail)) setWatchlists(detail);
     };
+    const onScreensChanged = (e: Event) => {
+      const detail = (e as CustomEvent<SavedScreen[]>).detail;
+      if (Array.isArray(detail)) setScreens(detail);
+    };
+    const onActiveScan = (e: Event) => {
+      const detail = (e as CustomEvent<{ name?: string }>).detail;
+      if (detail && typeof detail.name === "string") setActiveScanName(detail.name);
+    };
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    window.addEventListener("stock-screens-changed", onScreensChanged);
+    window.addEventListener("stock-active-scan", onActiveScan);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
+      window.removeEventListener("stock-screens-changed", onScreensChanged);
+      window.removeEventListener("stock-active-scan", onActiveScan);
     };
   }, []);
 
@@ -396,6 +454,8 @@ export default function Home() {
           sectionMode={section === "scans" ? "scans" : "lists"}
           headerActionsSlot={headerSlotEl}
           onRowCountChange={setTableRowCountDisplay}
+          rightRailHidden={rightRailHidden}
+          setRightRailHidden={setRightRailHidden}
         />
       )}
     </div>
@@ -535,6 +595,8 @@ export default function Home() {
           setActiveWatchlistId(id);
         }}
         onDeleteWatchlist={handleDeleteWatchlist}
+        onReorderScans={handleReorderScans}
+        onReorderLists={handleReorderLists}
         onRenameList={(id, newName) => {
           const updated = watchlists.map((w) => w.id === id ? { ...w, name: newName } : w);
           setWatchlists(updated);

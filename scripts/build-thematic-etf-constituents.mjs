@@ -69,34 +69,45 @@ function normalizeSymbol(raw) {
 }
 
 function extractSymbolsFromTopHoldingsTable(html) {
-  const tbodyIdx = html.indexOf("<tbody");
-  if (tbodyIdx < 0) return [];
-  const tbodyEnd = html.indexOf("</tbody>", tbodyIdx);
-  if (tbodyEnd < 0) return [];
-  const tbody = html.slice(tbodyIdx, tbodyEnd);
-
   const symbols = [];
-  for (const match of tbody.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)) {
-    const href = String(match[1] ?? "");
-    const label = String(match[2] ?? "").trim();
-    if (!href.startsWith("/stocks/")) continue;
-    const normalized = normalizeSymbol(label);
-    if (normalized) symbols.push(normalized);
+  for (const match of html.matchAll(/<tbody[\s\S]*?<\/tbody>/gi)) {
+    const tbody = match[0];
+    for (const m of tbody.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)) {
+      const href = String(m[1] ?? "");
+      const label = String(m[2] ?? "").trim();
+      if (!href.startsWith("/stocks/")) continue;
+      const normalized = normalizeSymbol(label);
+      if (normalized) symbols.push(normalized);
+    }
   }
   return [...new Set(symbols)];
 }
 
+/**
+ * When the site layout breaks table parsing, use a minimal known list so drill-down is not empty.
+ * Refresh periodically from issuer fact sheets.
+ */
+const STATIC_HOLDINGS_FALLBACK = {
+  MSOS: ["TCNNF", "GTBIF", "CURLF", "CRLBF", "VRNOF", "JUSHF", "TRSSF", "TSNDF"],
+  INDA: ["IBN", "HDB", "INFY", "WIT"],
+};
+
 async function fetchConstituentsForEtf(ticker) {
+  const upper = ticker.toUpperCase();
   const url = `https://stockanalysis.com/etf/${ticker.toLowerCase()}/holdings/`;
   const response = await fetch(url, {
     headers: {
-      "user-agent": "Mozilla/5.0 (compatible; stock-tool/1.0)",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       accept: "text/html,application/xhtml+xml",
     },
   });
   if (!response.ok) throw new Error(`${ticker}: fetch failed (${response.status})`);
   const html = await response.text();
-  return extractSymbolsFromTopHoldingsTable(html);
+  let symbols = extractSymbolsFromTopHoldingsTable(html).filter((s) => s !== upper);
+  if (symbols.length === 0 && STATIC_HOLDINGS_FALLBACK[upper]) {
+    symbols = [...STATIC_HOLDINGS_FALLBACK[upper]];
+  }
+  return symbols;
 }
 
 async function main() {
@@ -105,7 +116,7 @@ async function main() {
   for (const ticker of ETF_TICKERS) {
     try {
       const symbols = await fetchConstituentsForEtf(ticker);
-      out[ticker] = symbols.length > 0 ? symbols : [ticker];
+      out[ticker] = symbols.length > 0 ? symbols : [ticker.toUpperCase()];
       console.log(`${ticker}: ${symbols.length} symbols${symbols.length === 0 ? " (fallback to ETF ticker)" : ""}`);
     } catch (error) {
       out[ticker] = [ticker];

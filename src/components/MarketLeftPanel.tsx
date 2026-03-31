@@ -127,9 +127,11 @@ function IndicesTable({
       indices.map(([sym, indexId]) =>
         fetch(`/api/breadth?index=${indexId}`)
           .then((r) => r.json())
-          .then((d: { breadth?: BreadthPoint[] }) => {
+          .then((d: { breadth?: BreadthPoint[]; latestDate?: string | null }) => {
             const pts = d.breadth ?? [];
-            const last = pts[pts.length - 1];
+            const ld = d.latestDate;
+            const match = ld ? pts.find((p) => p.date === ld) : undefined;
+            const last = match ?? (pts.length > 0 ? pts[pts.length - 1] : undefined);
             return [sym, { pct50: last?.pctAbove50d ?? null, pct200: last?.pctAbove200d ?? null }] as const;
           })
           .catch(() => [sym, { pct50: null, pct200: null }] as const)

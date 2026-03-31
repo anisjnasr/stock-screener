@@ -38,6 +38,7 @@ import {
   DEFAULT_VISIBLE_COLUMNS,
   loadFlagNames,
   saveFlagName,
+  defaultFlagListLabel,
   passesColumnFilter,
 } from "@/lib/watchlist-storage";
 import ColumnFilterPopover from "./ColumnFilterPopover";
@@ -52,6 +53,7 @@ import {
   updateFolder,
   deleteFolder,
   seedDefaultScreensIfEmpty,
+  ensurePrebuiltScreensPresent,
   type SavedScreen,
   type ScreenerFolder,
   type ScreenerFilters,
@@ -79,7 +81,7 @@ type WatchlistRow = {
   avgVolume?: number;
   atrPct?: number;
   exchange?: string | null;
-  date?: string;
+  ipoDate?: string;
   high52w?: number | null;
   off52wHighPct?: number | null;
   priceChange1wPct?: number | null;
@@ -172,6 +174,9 @@ type WatchlistPanelProps = {
   headerActionsSlot?: HTMLDivElement | null;
   /** Callback to emit the current row count display string. */
   onRowCountChange?: (display: string) => void;
+  /** Workspace right rail visibility; used to hide rail while scan modals are open and restore after. */
+  rightRailHidden?: boolean;
+  setRightRailHidden?: (hidden: boolean) => void;
 };
 
 function fmtBillions(n: number | undefined): string {
@@ -229,7 +234,7 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
     return formatScriptColumnValue(String(col), v);
   }
   if (col === "lastPrice") return typeof v === "number" ? Number(v).toFixed(2) : String(v);
-  if (col === "date") return formatDisplayDate(String(v));
+  if (col === "ipoDate") return formatDisplayDate(String(v));
   if (col === "exchange") {
     const code = String(v).trim().toUpperCase();
     const map: Record<string, string> = {
@@ -518,6 +523,8 @@ export default function WatchlistPanel({
   sectionMode,
   headerActionsSlot,
   onRowCountChange,
+  rightRailHidden,
+  setRightRailHidden,
 }: WatchlistPanelProps) {
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeListId, setActiveListIdState] = useState<string | null>(null);
@@ -599,6 +606,8 @@ export default function WatchlistPanel({
   const [stockDragOverListId, setStockDragOverListId] = useState<string | null>(null);
   const [screenerModalPosition, setScreenerModalPosition] = useState<{ x: number; y: number } | null>(null);
   const screenerModalRef = useRef<HTMLDivElement>(null);
+  /** True while we hid the right rail for a scan modal; restore visibility only when this was set. */
+  const railHiddenForScanModalRef = useRef(false);
   const scanNameInputRef = useRef<HTMLInputElement>(null);
   const screenerModalDragStart = useRef<{ clientX: number; clientY: number; left: number; top: number } | null>(null);
   const [newScreenForm, setNewScreenForm] = useState<{
@@ -754,6 +763,7 @@ export default function WatchlistPanel({
     setFlags(loadFlags());
     setColumnWidths(loadColumnWidths());
     seedDefaultScreensIfEmpty();
+    ensurePrebuiltScreensPresent();
     setScreens(loadScreens());
     setFolders(loadFolders());
     setColumnSets(loadColumnSets());
@@ -769,11 +779,24 @@ export default function WatchlistPanel({
       const detail = (e as CustomEvent).detail;
       if (Array.isArray(detail)) setLists(detail);
     };
+    const onFlagNamesChanged = (e: Event) => {
+      const detail = (e as CustomEvent<Record<string, string>>).detail;
+      if (detail && typeof detail === "object") setFlagNames(detail);
+      else setFlagNames(loadFlagNames());
+    };
+    const onScreensChanged = (e: Event) => {
+      const detail = (e as CustomEvent<SavedScreen[]>).detail;
+      if (Array.isArray(detail)) setScreens(detail);
+    };
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
+    window.addEventListener("stock-flag-names-changed", onFlagNamesChanged);
+    window.addEventListener("stock-screens-changed", onScreensChanged);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
+      window.removeEventListener("stock-flag-names-changed", onFlagNamesChanged);
+      window.removeEventListener("stock-screens-changed", onScreensChanged);
     };
   }, []);
 
@@ -875,10 +898,16 @@ export default function WatchlistPanel({
   useEffect(() => {
     if (activeWatchlistIdSync != null && activeWatchlistIdSync !== "") {
       const isFullUniverse = activeWatchlistIdSync === FULL_UNIVERSE_ID;
-      if (!isFullUniverse && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
-      if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
+      const isFlagWatchlist = activeWatchlistIdSync.startsWith(FLAG_LIST_PREFIX);
+      if (!isFullUniverse && !isFlagWatchlist && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
       setSidebarTab("watchlists");
-      setSelectedCollectionId(null);
+      if (isFlagWatchlist) {
+        setActiveListId(null);
+        setSelectedCollectionId(activeWatchlistIdSync);
+      } else {
+        if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
+        setSelectedCollectionId(null);
+      }
       return;
     }
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
@@ -1115,7 +1144,7 @@ export default function WatchlistPanel({
     if (selectedCollectionId?.startsWith(FLAG_LIST_PREFIX)) {
       const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
       const flaggedSymbols = Object.entries(flags).filter(([, f]) => f === color).map(([s]) => s);
-      const defaultName = `${color.charAt(0).toUpperCase() + color.slice(1)} Flag`;
+      const defaultName = defaultFlagListLabel(color);
       return { symbols: flaggedSymbols, title: flagNames[color] || defaultName, fromScreener: false, screen: null };
     }
     const selectedFolder = selectedCollectionId
@@ -1211,12 +1240,21 @@ export default function WatchlistPanel({
   }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols]);
 
   const pendingScreenerTriggerRef = useRef<{ name: string; nonce: number } | null>(null);
+  /** Prevents re-running __new__ / __edit__ / __clone__ when `screens` updates (e.g. after save) while the same trigger is still set from the parent. */
+  const lastOpenToScreenerHandledNonceRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!openToScreenerTrigger?.name?.trim()) return;
+    if (!openToScreenerTrigger?.name?.trim()) {
+      lastOpenToScreenerHandledNonceRef.current = null;
+      return;
+    }
     setSidebarTab("screener");
     const triggerName = openToScreenerTrigger.name;
+    const nonce = openToScreenerTrigger.nonce;
+
     if (triggerName === "__new__") {
+      if (lastOpenToScreenerHandledNonceRef.current === nonce) return;
+      lastOpenToScreenerHandledNonceRef.current = nonce;
       setEditingScreenId(null);
       setNewScreenForm({
         name: "",
@@ -1228,13 +1266,19 @@ export default function WatchlistPanel({
       });
       setScanModalMode("traditional");
       setShowNewScreenerModal(true);
-    } else if (triggerName.startsWith("__edit__:") || triggerName.startsWith("__clone__:")) {
+      return;
+    }
+
+    if (triggerName.startsWith("__edit__:") || triggerName.startsWith("__clone__:")) {
+      if (lastOpenToScreenerHandledNonceRef.current === nonce) return;
+      lastOpenToScreenerHandledNonceRef.current = nonce;
       pendingScreenerTriggerRef.current = openToScreenerTrigger;
-    } else {
-      const target = screens.find((s) => s.name === triggerName);
-      if (target) {
-        setSelectedScreenId(target.id);
-      }
+      return;
+    }
+
+    const target = screens.find((s) => s.name === triggerName);
+    if (target) {
+      setSelectedScreenId(target.id);
     }
   }, [openToScreenerTrigger, screens]);
 
@@ -1289,7 +1333,12 @@ export default function WatchlistPanel({
     avgVolume: typeof r.avg_volume_30d_shares === "number" ? r.avg_volume_30d_shares : undefined,
     atrPct: typeof r.atr_pct_21d === "number" ? r.atr_pct_21d : undefined,
     exchange: r.exchange != null ? String(r.exchange) : null,
-    date: r.date != null ? String(r.date) : undefined,
+    ipoDate:
+      r.ipo_date != null
+        ? String(r.ipo_date).slice(0, 10)
+        : r.ipoDate != null
+          ? String(r.ipoDate).slice(0, 10)
+          : undefined,
     high52w: typeof r.high_52w === "number" ? r.high_52w : null,
     off52wHighPct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
     priceChange1wPct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
@@ -1407,7 +1456,17 @@ export default function WatchlistPanel({
     try {
       const params = await buildScreenerParams(screen, 2000);
       const res = await fetch(`/api/screener?${params.toString()}`);
-      if (!res.ok) throw new Error("Screener fetch failed");
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        let detail = errText?.slice(0, 200);
+        try {
+          const j = JSON.parse(errText) as { error?: string };
+          if (typeof j.error === "string") detail = j.error;
+        } catch {
+          /* use raw */
+        }
+        throw new Error(detail ? `${detail} (${res.status})` : `Screener request failed (${res.status})`);
+      }
       const data = (await res.json()) as {
         date?: string;
         rows?: Array<Record<string, unknown>>;
@@ -1415,6 +1474,7 @@ export default function WatchlistPanel({
         error?: string;
       };
       if (data.error) setScreenerError(data.error);
+      else setScreenerError(null);
       const list = data.rows ?? [];
       const cols = screen.type === "script" ? (data.scriptColumns ?? []) : [];
       if (screen.type !== "script") setScriptColumns([]);
@@ -1425,7 +1485,9 @@ export default function WatchlistPanel({
       setScreenerDbDate(data.date ?? null);
       setScreenerResultCount(newRows.length);
       setScreenerCounts((prev) => ({ ...prev, [screen.id]: newRows.length }));
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Scan failed to load";
+      setScreenerError(msg);
       setRows([]);
       setScriptColumns([]);
       setScreenerDbDate(null);
@@ -1890,6 +1952,20 @@ export default function WatchlistPanel({
   }, [buildPctOperatorRowsFromFilters, buildIncludeExcludeRowsFromFilters]);
 
   useEffect(() => {
+    if (setRightRailHidden == null || rightRailHidden === undefined) return;
+    const scanModalOpen = showNewScreenerModal || showNewScriptModal;
+    if (scanModalOpen) {
+      if (!rightRailHidden && !railHiddenForScanModalRef.current) {
+        railHiddenForScanModalRef.current = true;
+        setRightRailHidden(true);
+      }
+    } else if (railHiddenForScanModalRef.current) {
+      railHiddenForScanModalRef.current = false;
+      setRightRailHidden(false);
+    }
+  }, [showNewScreenerModal, showNewScriptModal, rightRailHidden, setRightRailHidden]);
+
+  useEffect(() => {
     if (!showNewScreenerModal) return;
     const onMove = (e: MouseEvent) => {
       const start = screenerModalDragStart.current;
@@ -2080,6 +2156,7 @@ export default function WatchlistPanel({
       expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])),
     });
     fetchScreenerResults(screen);
+    window.dispatchEvent(new CustomEvent("stock-active-scan", { detail: { name: screen.name } }));
   }, [newScreenForm, editingScreenId, buildEffectiveFilters, fetchScreenerResults]);
 
   useEffect(() => {
@@ -2737,7 +2814,7 @@ export default function WatchlistPanel({
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                     </div>
                   </li>
                 ))}
@@ -2803,7 +2880,7 @@ export default function WatchlistPanel({
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                               </div>
                             </li>
                           ))}
@@ -2839,7 +2916,9 @@ export default function WatchlistPanel({
                               className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1.5 rounded-r ${selectedCollectionId === flagListId ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                             >
                               <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_HEX[color] }} />
-                              <span className="truncate min-w-0">{color.charAt(0).toUpperCase() + color.slice(1)}</span>
+                              <span className="truncate min-w-0">
+                                {flagNames[color] || defaultFlagListLabel(color)}
+                              </span>
                               <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-500">{count}</span>
                             </button>
                           </li>
@@ -2890,6 +2969,7 @@ export default function WatchlistPanel({
                                   type="text"
                                   value={editingWatchlistNameValue}
                                   onChange={(e) => setEditingWatchlistNameValue(e.target.value)}
+                                  onFocus={(e) => e.currentTarget.select()}
                                   onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
                                   onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
                                   onClick={(e) => e.stopPropagation()}
@@ -2903,7 +2983,7 @@ export default function WatchlistPanel({
                           <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete list "${l.name}"? This cannot be undone.`)) return; const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                           </div>
                         </li>
                       ))}
@@ -3013,6 +3093,7 @@ export default function WatchlistPanel({
                                       type="text"
                                       value={editingWatchlistNameValue}
                                       onChange={(e) => setEditingWatchlistNameValue(e.target.value)}
+                                      onFocus={(e) => e.currentTarget.select()}
                                       onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
                                       onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
                                       onClick={(e) => e.stopPropagation()}
@@ -3026,7 +3107,7 @@ export default function WatchlistPanel({
                               <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); openAddPopup(l.id); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Edit ${l.name}`} aria-label={`Edit ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); exportWatchlistSymbols(l); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100" title={`Export ${l.name}`} aria-label={`Export ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete list "${l.name}"? This cannot be undone.`)) return; const nextLists = lists.filter((list) => list.id !== l.id); setLists(nextLists); saveWatchlists(nextLists); if (activeListId === l.id) { setActiveListId(nextLists[0]?.id ?? null); setRows([]); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${l.name}`} aria-label={`Delete ${l.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                               </div>
                             </li>
                           ))}
@@ -3464,6 +3545,7 @@ export default function WatchlistPanel({
                       const v = e.target.value;
                       if (scanModalMode === "script") { setNewScriptName(v); } else { setNewScreenForm((p) => ({ ...p, name: v })); }
                     }}
+                    onFocus={(e) => e.currentTarget.select()}
                     placeholder=""
                     className="flex-1 min-w-0 rounded px-2 py-1.5 text-sm font-normal"
                     style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
@@ -3502,6 +3584,13 @@ export default function WatchlistPanel({
                           type="button"
                           onClick={() => {
                             const name = newScriptName.trim() || "Unnamed script";
+                            const duplicate = screens.find(
+                              (s) => s.name.toLowerCase() === name.toLowerCase() && s.id !== editingScriptScreenId
+                            );
+                            if (duplicate) {
+                              alert(`A scan named "${duplicate.name}" already exists. Please choose a different name.`);
+                              return;
+                            }
                             let savedScreen: SavedScreen;
                             if (editingScriptScreenId) {
                               updateScreen(editingScriptScreenId, { name, scriptBody: newScriptBody });
@@ -3524,6 +3613,7 @@ export default function WatchlistPanel({
                             setSelectedScreenId(savedScreen.id);
                             fetchScreenerResults(savedScreen);
                             setEditingScriptScreenId(null);
+                            window.dispatchEvent(new CustomEvent("stock-active-scan", { detail: { name: savedScreen.name } }));
                           }}
                           disabled={!newScriptName.trim()}
                           className="px-3 py-1.5 text-sm font-medium rounded disabled:opacity-50 disabled:pointer-events-none transition-colors"
@@ -3845,19 +3935,112 @@ export default function WatchlistPanel({
             {/* Table action icons portaled into WorkspaceHeader sub-bar */}
             {headerActionsSlot && createPortal(
               <>
-                <button type="button" onClick={handleAutoSizeColumns}
-                  className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
-                  style={{ color: "rgba(201,209,217,0.5)" }} title="Auto resize columns" aria-label="Auto resize columns">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="3" y1="3" x2="3" y2="13"/><line x1="13" y1="3" x2="13" y2="13"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="8" x2="7.5" y2="6.5"/><line x1="6" y1="8" x2="7.5" y2="9.5"/><line x1="10" y1="8" x2="8.5" y2="6.5"/><line x1="10" y1="8" x2="8.5" y2="9.5"/></svg>
-                </button>
                 <div ref={tableMenuRef} className="relative">
-                  <button type="button" onClick={() => setShowTableMenu((v) => !v)}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowTableMenu((v) => {
+                        const next = !v;
+                        if (!next) {
+                          setShowSaveSetPrompt(false);
+                          setShowColCustomizeSubmenu(false);
+                          setShowColSetSubmenu(false);
+                        }
+                        return next;
+                      })
+                    }
                     className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
-                    style={{ color: "rgba(201,209,217,0.5)" }} title="Table options" aria-label="Table options">
+                    style={{ color: "rgba(201,209,217,0.5)" }}
+                    title="Table options"
+                    aria-label="Table options"
+                  >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                   </button>
                   {showTableMenu && (
-                    <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
+                    <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[200px] shadow-lg" style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                        style={{ color: "var(--ws-text-dim)" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        onClick={() => {
+                          handleAutoSizeColumns();
+                          setShowTableMenu(false);
+                          setShowSaveSetPrompt(false);
+                        }}
+                      >
+                        Auto resize columns
+                      </button>
+                      {!showSaveSetPrompt ? (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                          style={{ color: "var(--ws-text-dim)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                          onClick={() => setShowSaveSetPrompt(true)}
+                        >
+                          Save column set…
+                        </button>
+                      ) : (
+                        <div
+                          className="px-2 py-2 mx-1 mb-1 rounded flex items-center gap-1"
+                          style={{ borderTop: "1px solid var(--ws-border, rgba(255,255,255,0.08))" }}
+                        >
+                          <input
+                            autoFocus
+                            type="text"
+                            value={saveSetName}
+                            onChange={(e) => setSaveSetName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && saveSetName.trim()) {
+                                const newSet: ColumnSet = {
+                                  id: crypto.randomUUID(),
+                                  name: saveSetName.trim(),
+                                  columns: [...visibleColumns],
+                                  widths: { ...columnWidths },
+                                };
+                                const next = [...columnSets, newSet];
+                                setColumnSets(next);
+                                saveColumnSets(next);
+                                setShowSaveSetPrompt(false);
+                                setSaveSetName("");
+                                setShowTableMenu(false);
+                              }
+                              if (e.key === "Escape") {
+                                setShowSaveSetPrompt(false);
+                                setSaveSetName("");
+                              }
+                            }}
+                            placeholder="Set name…"
+                            className="text-xs rounded px-2 py-1 flex-1 min-w-0"
+                            style={{ background: "var(--ws-bg)", color: "var(--ws-text)", border: "1px solid var(--ws-border)", outline: "none" }}
+                          />
+                          <button
+                            type="button"
+                            className="text-[10px] font-medium px-2 py-1 rounded shrink-0"
+                            style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)", opacity: saveSetName.trim() ? 1 : 0.4 }}
+                            onClick={() => {
+                              if (!saveSetName.trim()) return;
+                              const newSet: ColumnSet = {
+                                id: crypto.randomUUID(),
+                                name: saveSetName.trim(),
+                                columns: [...visibleColumns],
+                                widths: { ...columnWidths },
+                              };
+                              const next = [...columnSets, newSet];
+                              setColumnSets(next);
+                              saveColumnSets(next);
+                              setShowSaveSetPrompt(false);
+                              setSaveSetName("");
+                              setShowTableMenu(false);
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      )}
                       <div
                         className="relative"
                         onMouseEnter={() => setShowColCustomizeSubmenu(true)}
@@ -3974,61 +4157,6 @@ export default function WatchlistPanel({
                           </div>
                         )}
                       </div>
-                    </div>
-                  )}
-                </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => { setShowSaveSetPrompt((v) => !v); setSaveSetName(""); }}
-                    className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
-                    style={{ color: "rgba(201,209,217,0.5)" }}
-                    title="Save column set"
-                    aria-label="Save column set"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4.414a1 1 0 00-.293-.707l-2.414-2.414A1 1 0 0011.586 1H2zm0 1h1v3a1 1 0 001 1h6a1 1 0 001-1V2h.586L14 4.414V14H2V2zm3 0v3h4V2H5z"/></svg>
-                  </button>
-                  {showSaveSetPrompt && (
-                    <div
-                      className="absolute left-0 top-full z-50 mt-1 rounded p-2 shadow-lg flex items-center gap-1"
-                      style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
-                    >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={saveSetName}
-                        onChange={(e) => setSaveSetName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && saveSetName.trim()) {
-                            const newSet: ColumnSet = { id: crypto.randomUUID(), name: saveSetName.trim(), columns: [...visibleColumns], widths: { ...columnWidths } };
-                            const next = [...columnSets, newSet];
-                            setColumnSets(next);
-                            saveColumnSets(next);
-                            setShowSaveSetPrompt(false);
-                            setSaveSetName("");
-                          }
-                          if (e.key === "Escape") { setShowSaveSetPrompt(false); setSaveSetName(""); }
-                        }}
-                        placeholder="Set name..."
-                        className="text-xs rounded px-2 py-1"
-                        style={{ background: "var(--ws-bg)", color: "var(--ws-text)", border: "1px solid var(--ws-border)", outline: "none", width: 120 }}
-                      />
-                      <button
-                        type="button"
-                        className="text-[10px] font-medium px-2 py-1 rounded"
-                        style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)", opacity: saveSetName.trim() ? 1 : 0.4 }}
-                        onClick={() => {
-                          if (!saveSetName.trim()) return;
-                          const newSet: ColumnSet = { id: crypto.randomUUID(), name: saveSetName.trim(), columns: [...visibleColumns], widths: { ...columnWidths } };
-                          const next = [...columnSets, newSet];
-                          setColumnSets(next);
-                          saveColumnSets(next);
-                          setShowSaveSetPrompt(false);
-                          setSaveSetName("");
-                        }}
-                      >
-                        Save
-                      </button>
                     </div>
                   )}
                 </div>
@@ -4322,8 +4450,10 @@ export default function WatchlistPanel({
                             ? "Loading lists…"
                           : sidebarTab === "screener" && !selectedScreenId
                             ? "Select a screen or create a new screener."
-                            : sidebarTab === "screener" && selectedScreen?.type === "script" && screenerError
-                              ? `Script error: ${screenerError}`
+                            : sidebarTab === "screener" && selectedScreenId && screenerError
+                              ? selectedScreen?.type === "script"
+                                ? `Script error: ${screenerError}`
+                                : `Scan error: ${screenerError}`
                               : sidebarTab === "screener" && selectedScreen?.type === "script" && sortedRows.length === 0 && !loading
                                 ? "No results match your script."
                                 : sidebarTab === "screener" && sortedRows.length === 0 && !loading

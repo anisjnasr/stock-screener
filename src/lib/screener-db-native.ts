@@ -22,6 +22,8 @@ export type ScreenerRow = {
   industry: string | null;
   sector: string | null;
   date: string;
+  /** IPO listing date from companies, or first daily bar date as fallback. */
+  ipo_date: string | null;
   market_cap: number | null;
   last_price: number | null;
   change_pct: number | null;
@@ -339,6 +341,7 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
     industry: r.industry != null ? String(r.industry) : null,
     sector: r.sector != null ? String(r.sector) : null,
     date: String(r.date ?? ""),
+    ipo_date: r.ipo_date != null && String(r.ipo_date).length >= 8 ? String(r.ipo_date).slice(0, 10) : null,
     market_cap: typeof r.market_cap === "number" ? r.market_cap : null,
     last_price,
     change_pct,
@@ -543,6 +546,7 @@ export function getScreenerSnapshot(options: {
     SELECT
       c.symbol, c.name, c.exchange, c.industry, c.sector,
       q.date,
+      COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol)) AS ipo_date,
       COALESCE(q.market_cap, c.shares_outstanding * COALESCE(q.last_price, q.prev_close)) AS market_cap,
       q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
       q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,

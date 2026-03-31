@@ -59,6 +59,13 @@ export function saveScreens(screens: SavedScreen[]): void {
   } catch {
     /* ignore */
   }
+  queueMicrotask(() => {
+    try {
+      window.dispatchEvent(new CustomEvent("stock-screens-changed", { detail: screens }));
+    } catch {
+      /* ignore */
+    }
+  });
   cloudSyncScreens(screens, loadFolders(), loadFavoriteScreenIds());
 }
 
@@ -253,6 +260,21 @@ export function seedDefaultScreensIfEmpty(): void {
   const current = loadScreens();
   if (current.length > 0) return;
   getDefaultPrebuiltScreens().forEach((s) => addScreen(s));
+}
+
+/**
+ * Ensures every prebuilt scan exists (by name, case-insensitive). Adds missing ones without removing user scans.
+ * Refreshes IPO date window for the "IPOs" screen when adding it new; existing IPOs screen is left unchanged.
+ */
+export function ensurePrebuiltScreensPresent(): void {
+  const current = loadScreens();
+  const existingLower = new Set(current.map((s) => s.name.trim().toLowerCase()));
+  for (const def of getDefaultPrebuiltScreens()) {
+    const key = def.name.trim().toLowerCase();
+    if (existingLower.has(key)) continue;
+    addScreen(def);
+    existingLower.add(key);
+  }
 }
 
 const STORAGE_KEY_FAV_SCREENS = "stock-research-favorite-screen-ids";
