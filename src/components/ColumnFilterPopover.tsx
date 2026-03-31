@@ -124,7 +124,7 @@ export default function ColumnFilterPopover({
     >
       {/* Header */}
       <div
-        className="px-3 pt-2.5 pb-1.5 text-[11px] font-semibold truncate"
+        className="px-3 pt-2.5 pb-1.5 text-ws-label font-semibold truncate"
         style={{ color: "var(--ws-text, #e5e5e5)" }}
       >
         Filter: {columnLabel}
@@ -136,7 +136,7 @@ export default function ColumnFilterPopover({
           <button
             type="button"
             onClick={() => setTab("value")}
-            className="flex-1 py-1 text-[10px] font-medium transition-colors"
+            className="flex-1 py-1 text-ws-caption font-medium transition-colors"
             style={{
               background: tab === "value" ? "rgba(0,229,204,0.12)" : "transparent",
               color: tab === "value" ? "var(--ws-cyan, #00e5cc)" : "var(--ws-text-dim, #888)",
@@ -147,7 +147,7 @@ export default function ColumnFilterPopover({
           <button
             type="button"
             onClick={() => setTab("topbottom")}
-            className="flex-1 py-1 text-[10px] font-medium transition-colors"
+            className="flex-1 py-1 text-ws-caption font-medium transition-colors"
             style={{
               background: tab === "topbottom" ? "rgba(0,229,204,0.12)" : "transparent",
               color: tab === "topbottom" ? "var(--ws-cyan, #00e5cc)" : "var(--ws-text-dim, #888)",
@@ -166,7 +166,7 @@ export default function ColumnFilterPopover({
             <select
               value={operator}
               onChange={(e) => setOperator(e.target.value as FilterOperator)}
-              className="rounded px-1.5 py-1 text-[11px] outline-none"
+              className="rounded px-1.5 py-1 text-ws-label outline-none"
               style={{
                 background: "var(--ws-bg3, #222)",
                 color: "var(--ws-text, #e5e5e5)",
@@ -185,7 +185,7 @@ export default function ColumnFilterPopover({
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isNumeric ? "e.g. 5" : "e.g. AAPL"}
-              className="flex-1 rounded px-2 py-1 text-[11px] outline-none min-w-0"
+              className="flex-1 rounded px-2 py-1 text-ws-label outline-none min-w-0"
               style={{
                 background: "var(--ws-bg3, #222)",
                 color: "var(--ws-text, #e5e5e5)",
@@ -199,7 +199,7 @@ export default function ColumnFilterPopover({
               type="button"
               onClick={handleApplyValue}
               disabled={!value.trim()}
-              className="flex-1 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors"
+              className="flex-1 py-1 rounded text-ws-caption font-semibold uppercase tracking-wider transition-colors"
               style={{
                 background: value.trim() ? "rgba(0,229,204,0.15)" : "rgba(0,229,204,0.05)",
                 color: value.trim() ? "var(--ws-cyan, #00e5cc)" : "var(--ws-text-dim, #555)",
@@ -213,7 +213,7 @@ export default function ColumnFilterPopover({
               <button
                 type="button"
                 onClick={() => { onClearFilter(column); onClose(); }}
-                className="py-1 px-3 rounded text-[10px] font-medium transition-colors"
+                className="py-1 px-3 rounded text-ws-caption font-medium transition-colors"
                 style={{
                   background: "rgba(255,77,106,0.08)",
                   color: "var(--ws-red, #ff4d6a)",
@@ -235,7 +235,7 @@ export default function ColumnFilterPopover({
             <select
               value={tbMode}
               onChange={(e) => setTbMode(e.target.value as "top" | "bottom")}
-              className="rounded px-1.5 py-1 text-[11px] outline-none"
+              className="rounded px-1.5 py-1 text-ws-label outline-none"
               style={{
                 background: "var(--ws-bg3, #222)",
                 color: "var(--ws-text, #e5e5e5)",
@@ -255,14 +255,14 @@ export default function ColumnFilterPopover({
               onChange={(e) => setTbCount(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="10"
-              className="flex-1 rounded px-2 py-1 text-[11px] outline-none min-w-0"
+              className="flex-1 rounded px-2 py-1 text-ws-label outline-none min-w-0"
               style={{
                 background: "var(--ws-bg3, #222)",
                 color: "var(--ws-text, #e5e5e5)",
                 border: "1px solid var(--ws-border, #262626)",
               }}
             />
-            <span className="text-[11px] self-center whitespace-nowrap" style={{ color: "var(--ws-text-dim, #888)" }}>
+            <span className="text-ws-label self-center whitespace-nowrap" style={{ color: "var(--ws-text-dim, #888)" }}>
               rows
             </span>
           </div>
@@ -270,7 +270,7 @@ export default function ColumnFilterPopover({
             <button
               type="button"
               onClick={handleApplyTopBottom}
-              className="flex-1 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+              className="flex-1 py-1 rounded text-ws-caption font-semibold uppercase tracking-wider transition-colors cursor-pointer"
               style={{
                 background: "rgba(0,229,204,0.15)",
                 color: "var(--ws-cyan, #00e5cc)",
@@ -283,7 +283,7 @@ export default function ColumnFilterPopover({
               <button
                 type="button"
                 onClick={() => { onClearTopBottom(); onClose(); }}
-                className="py-1 px-3 rounded text-[10px] font-medium transition-colors cursor-pointer"
+                className="py-1 px-3 rounded text-ws-caption font-medium transition-colors cursor-pointer"
                 style={{
                   background: "rgba(255,77,106,0.08)",
                   color: "var(--ws-red, #ff4d6a)",

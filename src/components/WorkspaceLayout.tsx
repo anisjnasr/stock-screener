@@ -17,6 +17,7 @@ type WorkspaceLayoutProps = {
 const HANDLE_PX = 8;
 const RIGHT_DIVIDER_PX = 2;
 const SLIDE_TRANSITION = "150ms cubic-bezier(0.16, 1, 0.3, 1)";
+type ActivePane = "left" | "center" | "right";
 
 export default function WorkspaceLayout({
   chartLeftPx,
@@ -31,6 +32,8 @@ export default function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [draggingChart, setDraggingChart] = useState(false);
+  const [hoveringChartHandle, setHoveringChartHandle] = useState(false);
+  const [activePane, setActivePane] = useState<ActivePane>("center");
 
   const containerWidth = () => containerRef.current?.clientWidth ?? 1200;
   const railTotal = rightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
@@ -95,7 +98,7 @@ export default function WorkspaceLayout({
     >
       {/* Chart layer — always full width from left edge to right panel, never resizes */}
       <div
-        className="absolute top-0 bottom-0"
+        className="ws-pane ws-chart-column absolute top-0 bottom-0 min-h-0"
         style={{
           left: 0,
           right: railTotal,
@@ -103,18 +106,25 @@ export default function WorkspaceLayout({
           transition: `right ${SLIDE_TRANSITION}`,
           willChange: "right",
         }}
+        onPointerDownCapture={() => setActivePane("center")}
       >
-        {centerPanel}
+        <div className="ws-chart-pane-inner relative h-full min-h-0 overflow-hidden">{centerPanel}</div>
+        <div
+          className={`ws-pane-frame ${activePane === "center" ? "is-active" : ""}`}
+          aria-hidden
+        />
       </div>
 
       {/* Left panel overlay — sits on top of chart, clipped to drag handle position */}
       <div
-        className="absolute top-0 bottom-0 left-0 overflow-hidden"
+        className="ws-pane absolute top-0 bottom-0 left-0 overflow-hidden"
         style={{
           width: effectiveChartLeft,
           zIndex: 10,
           transition: draggingChart ? "none" : `width ${SLIDE_TRANSITION}`,
+          borderRight: "1px solid var(--ws-border)",
         }}
+        onPointerDownCapture={() => setActivePane("left")}
       >
         <div
           className="h-full min-h-0 overflow-hidden"
@@ -127,6 +137,10 @@ export default function WorkspaceLayout({
         >
           {leftPanel}
         </div>
+        <div
+          className={`ws-pane-frame ${activePane === "left" ? "is-active" : ""}`}
+          aria-hidden
+        />
       </div>
 
       {/* Chart left drag handle — controls the boundary between table and chart */}
@@ -140,13 +154,15 @@ export default function WorkspaceLayout({
           left: effectiveChartLeft,
           width: HANDLE_PX,
           zIndex: 20,
-          background: draggingChart ? "var(--ws-cyan)" : "var(--ws-border)",
-          opacity: chartIsMaximized ? 0 : draggingChart ? 0.8 : 0.7,
+          background: draggingChart || hoveringChartHandle ? "var(--ws-cyan)" : "var(--ws-border)",
+          opacity: chartIsMaximized ? 0 : draggingChart ? 0.8 : hoveringChartHandle ? 0.65 : 0.7,
           pointerEvents: chartIsMaximized ? "none" : undefined,
           transition: draggingChart
             ? "none"
             : `left ${SLIDE_TRANSITION}, opacity ${SLIDE_TRANSITION}`,
         }}
+        onMouseEnter={() => setHoveringChartHandle(true)}
+        onMouseLeave={() => setHoveringChartHandle(false)}
         onMouseDown={onChartLeftChange ? startDragChartLeft : undefined}
         onKeyDown={handleKeyDown}
       >
@@ -213,8 +229,15 @@ export default function WorkspaceLayout({
         />
 
         {/* Right rail content */}
-        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <div
+          className="ws-pane relative flex-1 min-h-0 min-w-0 overflow-hidden"
+          onPointerDownCapture={() => setActivePane("right")}
+        >
           {rightPanel}
+          <div
+            className={`ws-pane-frame ${activePane === "right" ? "is-active" : ""}`}
+            aria-hidden
+          />
         </div>
       </div>
     </div>

@@ -412,7 +412,7 @@ export default function WorkspaceHeader({
                 key={s.id}
                 type="button"
                 onClick={() => onSectionChange(s.id)}
-                className={`px-4 py-1.5 text-[15px] font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
+                className={`px-4 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
                 aria-current={section === s.id ? "page" : undefined}
                 style={{
                   background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
@@ -512,7 +512,7 @@ export default function WorkspaceHeader({
         {/* Right: updated + profile — always far-right */}
         <div className="ml-auto flex items-center gap-3 shrink-0 z-10">
           {lastUpdated && (
-            <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
+            <span className="shrink-0 text-ws-label tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
               {lastUpdated}
             </span>
           )}
@@ -659,7 +659,7 @@ export default function WorkspaceHeader({
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
                       >
                         <span
-                          className="text-[14px]"
+                          className="text-ws-body"
                           style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
                           onClick={(e) => { e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
                           role="button"
@@ -959,7 +959,7 @@ export default function WorkspaceHeader({
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = activeWatchlistId === wl.id ? "rgba(0,229,204,0.08)" : "transparent"; }}
                       >
                         <span
-                          className="text-[14px]"
+                          className="text-ws-body"
                           style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
                           onClick={(e) => { e.stopPropagation(); setFavListIds(toggleFavoriteWatchlist(wl.id)); }}
                           role="button"

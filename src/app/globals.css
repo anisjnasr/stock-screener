@@ -26,6 +26,8 @@
   --ws-bg3: #1c1c1c;
   --ws-border: rgba(255, 255, 255, 0.06);
   --ws-border-hover: rgba(255, 255, 255, 0.12);
+  --ws-pane-border: rgba(255, 255, 255, 0.12);
+  --ws-pane-border-active: rgba(0, 229, 204, 0.45);
   --ws-text: #c9d1d9;
   --ws-text-dim: rgba(201, 209, 217, 0.65);
   --ws-text-vdim: rgba(201, 209, 217, 0.35);
@@ -37,10 +39,20 @@
   --ws-green: #3DDC84;
   --ws-purple: #a78bfa;
   --ws-amber: #f59e0b;
-  --ws-heat-green: #0a8963;
-  --ws-heat-green-deep: #2d5749;
-  --ws-heat-red: #a54557;
-  --ws-heat-red-deep: #52201b;
+  /* Market monitor / heat: tinted fills aligned to --ws-green / --ws-red */
+  --ws-heat-green-bg: rgba(61, 220, 132, 0.14);
+  --ws-heat-green-bg-strong: rgba(61, 220, 132, 0.24);
+  --ws-heat-green-bg-very: rgba(61, 220, 132, 0.36);
+  --ws-heat-red-bg: rgba(239, 68, 104, 0.14);
+  --ws-heat-red-bg-strong: rgba(239, 68, 104, 0.24);
+  --ws-heat-red-bg-very: rgba(239, 68, 104, 0.36);
+  /* Typography scale (workspace UI); px keeps sizes stable vs html font-scale */
+  --ws-fs-caption: 11px;
+  --ws-fs-label: 12px;
+  --ws-fs-body: 14px;
+  --ws-fs-title: 16px;
+  /* Slightly larger than title (e.g. symbol / hero line) */
+  --ws-fs-lead: 17px;
   --ws-hover: rgba(255, 255, 255, 0.08);
   --ws-hover-strong: rgba(255, 255, 255, 0.12);
   --ws-font-mono: var(--font-geist-mono), "IBM Plex Mono", "SF Mono", monospace;
@@ -120,4 +132,82 @@ body {
   [role="separator"][aria-orientation="vertical"] {
     display: none;
   }
+}
+
+/* Workspace type scale */
+.text-ws-caption {
+  font-size: var(--ws-fs-caption);
+  line-height: 1.35;
+}
+.text-ws-label {
+  font-size: var(--ws-fs-label);
+  line-height: 1.4;
+}
+.text-ws-body {
+  font-size: var(--ws-fs-body);
+  line-height: 1.45;
+}
+.text-ws-title {
+  font-size: var(--ws-fs-title);
+  line-height: 1.25;
+}
+.text-ws-lead {
+  font-size: var(--ws-fs-lead);
+  line-height: 1.25;
+}
+
+/* Chart column (WorkspaceLayout chart layer): focus target + inner fill */
+.ws-chart-column {
+  box-sizing: border-box;
+}
+.ws-chart-pane-inner {
+  box-sizing: border-box;
+  min-height: 0;
+  background: var(--ws-bg);
+}
+
+.ws-pane-frame {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  border: 1px solid var(--ws-pane-border);
+  transition: border-color 120ms ease, border-width 120ms ease, box-shadow 120ms ease;
+}
+.ws-pane-frame.is-active {
+  border-width: 2px;
+  border-color: var(--ws-pane-border-active);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 229, 204, 0.24),
+    0 0 0 1px rgba(0, 229, 204, 0.18);
+}
+
+/* Market Monitor heat cells */
+.ws-mm-heat-green {
+  background: var(--ws-heat-green-bg);
+  color: var(--ws-text);
+}
+.ws-mm-heat-green-strong {
+  background: var(--ws-heat-green-bg-strong);
+  color: var(--ws-text);
+  font-weight: 600;
+}
+.ws-mm-heat-green-very {
+  background: var(--ws-heat-green-bg-very);
+  color: var(--ws-text);
+  font-weight: 600;
+}
+.ws-mm-heat-red {
+  background: var(--ws-heat-red-bg);
+  color: var(--ws-text);
+}
+.ws-mm-heat-red-strong {
+  background: var(--ws-heat-red-bg-strong);
+  color: var(--ws-text);
+  font-weight: 600;
+}
+.ws-mm-heat-red-very {
+  background: var(--ws-heat-red-bg-very);
+  color: var(--ws-text);
+  font-weight: 600;
 }

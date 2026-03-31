@@ -191,7 +191,7 @@ export default function SectorPerfPanel({
         <>
           <button
             type="button"
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-ws-label font-medium cursor-pointer transition-colors"
             style={{ color: sortAsc ? "var(--ws-cyan)" : "var(--ws-text-dim)", background: "rgba(255,255,255,0.04)" }}
             title={sortAsc ? "Sorted ascending — click to sort descending" : "Sorted descending — click to sort ascending"}
             onClick={() => { setSortAsc((v) => !v); setSelectedIdx(0); }}
@@ -214,7 +214,7 @@ export default function SectorPerfPanel({
           {sorted[selectedIdx] && onDrillDown && (
             <button
               type="button"
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-ws-label cursor-pointer transition-colors shrink-0"
               style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
               title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
               onClick={() => {
@@ -259,7 +259,7 @@ export default function SectorPerfPanel({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedIdx(i); if (s.ticker) onSymbolSelect?.(s.ticker); } }}
             >
               <span
-                className="font-mono text-[13px] leading-snug whitespace-nowrap"
+                className="font-mono text-ws-body leading-snug whitespace-nowrap"
                 style={{
                   fontWeight: isSelected ? 600 : 400,
                   color: "var(--ws-cyan)",
@@ -269,7 +269,7 @@ export default function SectorPerfPanel({
                 {s.ticker ?? ""}
               </span>
               <span
-                className="text-[13px] leading-snug truncate"
+                className="text-ws-body leading-snug truncate"
                 style={{
                   fontWeight: isSelected ? 500 : 400,
                   color: "#ffffff",
@@ -285,7 +285,7 @@ export default function SectorPerfPanel({
                   {!isPos && (
                     <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-start" : "flex-end" }}>
                       {!labelInside && (
-                        <span className="shrink-0 font-mono text-[15px] tabular-nums mr-1.5" style={{ color: "var(--ws-red)" }}>
+                        <span className="shrink-0 font-mono text-ws-title tabular-nums mr-1.5" style={{ color: "var(--ws-red)" }}>
                           {pctLabel}
                         </span>
                       )}
@@ -300,7 +300,7 @@ export default function SectorPerfPanel({
                         }}
                       >
                         {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-start pl-2.5 font-mono text-[14px] tabular-nums font-semibold" style={{ color: "#1a0a0a" }}>
+                          <span className="absolute inset-0 flex items-center justify-start pl-2.5 font-mono text-ws-body tabular-nums font-semibold" style={{ color: "#1a0a0a" }}>
                             {pctLabel}
                           </span>
                         )}
@@ -325,13 +325,13 @@ export default function SectorPerfPanel({
                         }}
                       >
                         {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-end pr-2.5 font-mono text-[14px] tabular-nums font-semibold" style={{ color: "#0a1a12" }}>
+                          <span className="absolute inset-0 flex items-center justify-end pr-2.5 font-mono text-ws-body tabular-nums font-semibold" style={{ color: "#0a1a12" }}>
                             {pctLabel}
                           </span>
                         )}
                       </div>
                       {!labelInside && (
-                        <span className="shrink-0 font-mono text-[15px] tabular-nums ml-1.5" style={{ color: "var(--ws-green)" }}>
+                        <span className="shrink-0 font-mono text-ws-title tabular-nums ml-1.5" style={{ color: "var(--ws-green)" }}>
                           {pctLabel}
                         </span>
                       )}

@@ -202,7 +202,7 @@ export default function Header({
                 key={item.id}
                 type="button"
                 onClick={() => onPageChange?.(item.id)}
-                className={`px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-medium rounded transition-colors ${
+                className={`px-2 sm:px-3 py-1 text-ws-caption sm:text-ws-label font-medium rounded transition-colors ${
                   currentPage === item.id
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -374,7 +374,7 @@ export default function Header({
                 </span>
               </span>
             </div>
-            <span className="hidden sm:inline-flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-1 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
+            <span className="hidden sm:inline-flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-1 shrink-0 text-ws-label text-zinc-500 dark:text-zinc-300 whitespace-nowrap pointer-events-none">
               Last Update:{" "}
               <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
                 {latestDataDate ? formatDisplayDate(latestDataDate) : "NA"}

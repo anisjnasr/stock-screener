@@ -78,7 +78,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
               key={h}
               type="button"
               onClick={() => setHorizon(h)}
-              className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ws-focus-ring ${horizon !== h ? "hover:bg-white/[0.06]" : ""}`}
+              className={`px-1.5 py-0.5 text-ws-caption font-medium rounded transition-colors ws-focus-ring ${horizon !== h ? "hover:bg-white/[0.06]" : ""}`}
               aria-pressed={horizon === h}
               style={{
                 background: horizon === h ? "var(--ws-cyan)" : undefined,
@@ -90,7 +90,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-[10px] font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+          <span className="text-ws-caption font-medium tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             NNH
           </span>
           <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
@@ -108,11 +108,11 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
         <div className="h-28 px-1 pb-1" style={{ background: "var(--ws-bg)" }}>
           {loading ? (
             <div className="h-full flex items-center justify-center">
-              <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Loading…</span>
+              <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>Loading…</span>
             </div>
           ) : filteredData.length === 0 ? (
             <div className="h-full flex items-center justify-center">
-              <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>No data in range</span>
+              <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>No data in range</span>
             </div>
           ) : (
             <svg viewBox={`0 0 ${filteredData.length} 100`} preserveAspectRatio="none" className="w-full h-full">

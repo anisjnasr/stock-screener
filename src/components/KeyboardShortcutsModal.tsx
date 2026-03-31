@@ -71,7 +71,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
             </div>
           </div>
         ))}
-        <p className="mt-4 text-[11px] text-zinc-400 dark:text-zinc-500">
+        <p className="mt-4 text-ws-label text-zinc-400 dark:text-zinc-500">
           Shortcuts are disabled when a text input is focused. Press <kbd className="font-mono">Esc</kbd> to unfocus.
         </p>
       </div>

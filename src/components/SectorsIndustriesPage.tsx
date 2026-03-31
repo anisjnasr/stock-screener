@@ -235,7 +235,7 @@ function HorizontalBars({
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                               />
                               <span
-                                className={`absolute tabular-nums text-[13px] leading-none whitespace-nowrap pointer-events-none ${
+                                className={`absolute tabular-nums text-ws-body leading-none whitespace-nowrap pointer-events-none ${
                                   isUpVal ? "text-emerald-400" : "text-rose-300"
                                 }`}
                                 style={{

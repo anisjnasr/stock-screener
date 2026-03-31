@@ -2755,7 +2755,7 @@ export default function WatchlistPanel({
                 {/* Root drop zone: move screen out of folder */}
                 {draggedScreenId && (
                   <li
-                    className={`px-3 py-1.5 text-xs rounded border border-dashed transition-colors ${dragOverRoot ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
+                    className={`px-3 py-1.5 text-xs rounded border border-dashed transition-colors ${dragOverRoot ? "border-[var(--ws-cyan)] bg-[var(--ws-cyan-dim)] text-[var(--ws-cyan)]" : "border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverRoot(true); setDragOverFolderId(null); }}
                     onDragLeave={() => setDragOverRoot(false)}
                     onDrop={(e) => {
@@ -2792,7 +2792,7 @@ export default function WatchlistPanel({
                       <button
                         type="button"
                         onClick={() => setSelectedScreenId(s.id)}
-                        className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                        className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                       >
                         <span
                           className="shrink-0 text-zinc-400 dark:text-zinc-500"
@@ -2859,7 +2859,7 @@ export default function WatchlistPanel({
                               }}
                             >
                               <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
-                                <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                                <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                                   <span
                                     className="shrink-0 text-zinc-400 dark:text-zinc-500"
                                     style={{ marginLeft: 2, marginRight: 8 }}
@@ -2913,7 +2913,7 @@ export default function WatchlistPanel({
                             <button
                               type="button"
                               onClick={() => { setSelectedCollectionId(flagListId); setActiveListId(null); }}
-                              className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1.5 rounded-r ${selectedCollectionId === flagListId ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                              className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1.5 rounded-r ${selectedCollectionId === flagListId ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                             >
                               <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: FLAG_HEX[color] }} />
                               <span className="truncate min-w-0">
@@ -2958,7 +2958,7 @@ export default function WatchlistPanel({
                               type="button"
                               onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }}
                               onDoubleClick={(e) => { e.preventDefault(); setEditingWatchlistNameId(l.id); setEditingWatchlistNameValue(l.name); }}
-                              className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                              className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                             >
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1" title="Drag to reorder" aria-hidden>
                                 <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><circle cx="2" cy="2" r="1" /><circle cx="8" cy="2" r="1" /><circle cx="2" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="2" cy="10" r="1" /><circle cx="8" cy="10" r="1" /></svg>
@@ -2973,7 +2973,7 @@ export default function WatchlistPanel({
                                   onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
                                   onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 min-w-0 bg-transparent border-b border-blue-400 outline-none text-sm px-0 py-0"
+                                  className="flex-1 min-w-0 bg-transparent border-b border-[var(--ws-cyan)] outline-none text-sm px-0 py-0"
                                 />
                               ) : (
                                 <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
@@ -2995,7 +2995,7 @@ export default function WatchlistPanel({
                               setSelectedCollectionId(RELATED_LIST_ID);
                               setActiveListId(null);
                             }}
-                            className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === RELATED_LIST_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                            className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === RELATED_LIST_ID ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                           >
                             <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                             <span className="truncate min-w-0">{formatRelatedTitleWithUpperTicker(relatedStocksList.title)}</span>
@@ -3007,7 +3007,7 @@ export default function WatchlistPanel({
                 </li>
                 {draggedWatchlistId && (
                   <li
-                    className={`px-3 py-1.5 text-xs rounded border border-dashed transition-colors ${dragOverWatchlistFolderId === MY_LISTS_ROOT_ID ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
+                    className={`px-3 py-1.5 text-xs rounded border border-dashed transition-colors ${dragOverWatchlistFolderId === MY_LISTS_ROOT_ID ? "border-[var(--ws-cyan)] bg-[var(--ws-cyan-dim)] text-[var(--ws-cyan)]" : "border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverWatchlistFolderId(MY_LISTS_ROOT_ID); }}
                     onDragLeave={() => setDragOverWatchlistFolderId(null)}
                     onDrop={(e) => {
@@ -3082,7 +3082,7 @@ export default function WatchlistPanel({
                                   type="button"
                                   onClick={() => { setActiveListId(l.id); setSelectedCollectionId(null); }}
                                   onDoubleClick={(e) => { e.preventDefault(); setEditingWatchlistNameId(l.id); setEditingWatchlistNameValue(l.name); }}
-                                  className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                                  className={`flex-1 min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${activeListId === l.id && selectedCollectionId == null ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                                 >
                                   <span className="shrink-0 text-zinc-400 dark:text-zinc-500 mr-1" title="Drag to reorder" aria-hidden>
                                     <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><circle cx="2" cy="2" r="1" /><circle cx="8" cy="2" r="1" /><circle cx="2" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="2" cy="10" r="1" /><circle cx="8" cy="10" r="1" /></svg>
@@ -3097,7 +3097,7 @@ export default function WatchlistPanel({
                                       onBlur={() => commitWatchlistNameEdit(l.id, editingWatchlistNameValue)}
                                       onKeyDown={(e) => { if (e.key === "Enter") commitWatchlistNameEdit(l.id, editingWatchlistNameValue); if (e.key === "Escape") setEditingWatchlistNameId(null); }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="flex-1 min-w-0 bg-transparent border-b border-blue-400 outline-none text-sm px-0 py-0"
+                                      className="flex-1 min-w-0 bg-transparent border-b border-[var(--ws-cyan)] outline-none text-sm px-0 py-0"
                                     />
                                   ) : (
                                     <span className="truncate min-w-0">{formatListDisplayName(l.name)}</span>
@@ -3127,7 +3127,7 @@ export default function WatchlistPanel({
                         const id = `${INDEX_LIST_PREFIX}${pl.id}`;
                         return (
                           <li key={pl.id}>
-                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{formatListDisplayName(pl.name)}</span>
                             </button>
@@ -3148,7 +3148,7 @@ export default function WatchlistPanel({
                         const id = `${SECTOR_LIST_PREFIX}${name}`;
                         return (
                           <li key={name}>
-                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{toTitleCase(name)}</span>
                             </button>
@@ -3169,7 +3169,7 @@ export default function WatchlistPanel({
                         const id = `${INDUSTRY_LIST_PREFIX}${name}`;
                         return (
                           <li key={name}>
-                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{toTitleCase(name)}</span>
                             </button>
@@ -3187,7 +3187,7 @@ export default function WatchlistPanel({
                   {expandedListFolderIds.has(THEMATIC_INDUSTRIES_FOLDER_ID) && (
                     <ul className="pl-4">
                       <li>
-                        <button type="button" onClick={() => { setSelectedCollectionId(THEMATIC_ETFS_ALL_ID); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === THEMATIC_ETFS_ALL_ID ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                        <button type="button" onClick={() => { setSelectedCollectionId(THEMATIC_ETFS_ALL_ID); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === THEMATIC_ETFS_ALL_ID ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                           <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                           <span className="truncate min-w-0">Thematic ETFs</span>
                         </button>
@@ -3196,7 +3196,7 @@ export default function WatchlistPanel({
                         const id = `${THEME_ETF_PREFIX}${item.id}`;
                         return (
                           <li key={item.id}>
-                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-blue-500 bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                            <button type="button" onClick={() => { setSelectedCollectionId(id); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                               <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
                               <span className="truncate min-w-0">{formatListDisplayName(item.theme)}</span>
                               <span className="shrink-0 text-zinc-500 dark:text-zinc-400">({item.ticker})</span>
@@ -4019,7 +4019,7 @@ export default function WatchlistPanel({
                           />
                           <button
                             type="button"
-                            className="text-[10px] font-medium px-2 py-1 rounded shrink-0"
+                            className="text-ws-caption font-medium px-2 py-1 rounded shrink-0"
                             style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)", opacity: saveSetName.trim() ? 1 : 0.4 }}
                             onClick={() => {
                               if (!saveSetName.trim()) return;
@@ -4187,10 +4187,10 @@ export default function WatchlistPanel({
 
             {selectedSymbols.size > 0 && (
               <div className="relative flex items-center gap-2 px-2 py-1 shrink-0" ref={addToListMenuRef} style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg3)" }}>
-                <span className="text-[11px] font-medium" style={{ color: "var(--ws-cyan)" }}>
+                <span className="text-ws-label font-medium" style={{ color: "var(--ws-cyan)" }}>
                   {selectedSymbols.size} selected
                 </span>
-                <button type="button" onClick={clearSelection} className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>
+                <button type="button" onClick={clearSelection} className="text-ws-label" style={{ color: "var(--ws-text-vdim)" }}>
                   Clear
                 </button>
                 <button
@@ -4241,7 +4241,7 @@ export default function WatchlistPanel({
             {/* Filter status bar */}
             {isFiltered && (
               <div
-                className="flex items-center gap-1.5 px-2 py-1 text-[11px] flex-wrap shrink-0"
+                className="flex items-center gap-1.5 px-2 py-1 text-ws-label flex-wrap shrink-0"
                 style={{
                   background: "rgba(0,229,204,0.04)",
                   borderBottom: "1px solid var(--ws-border, #262626)",
@@ -4269,7 +4269,7 @@ export default function WatchlistPanel({
                     });
                     setActiveListId(newId);
                   }}
-                  className="text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  className="text-ws-caption font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
                   style={{ color: "var(--ws-cyan, #00e5cc)", background: "rgba(0,229,204,0.06)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(0,229,204,0.15)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(0,229,204,0.06)"; }}
@@ -4279,7 +4279,7 @@ export default function WatchlistPanel({
                 <button
                   type="button"
                   onClick={handleClearAllFilters}
-                  className="text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  className="text-ws-caption font-medium px-1.5 py-0.5 rounded transition-colors cursor-pointer"
                   style={{ color: "var(--ws-red, #ff4d6a)", background: "rgba(255,77,106,0.06)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.15)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,77,106,0.06)"; }}

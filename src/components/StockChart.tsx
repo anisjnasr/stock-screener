@@ -16,6 +16,14 @@ import {
 } from "lightweight-charts";
 import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
 
+/** Inset from chart right for price scale (see rightPriceScale minimumWidth). */
+const CHART_PRICE_SCALE_GUTTER_PX = 88;
+/** Legend column width (dot + longest label e.g. EMA(200)) so OHLC readout does not overlap toggles. */
+const CHART_INDICATOR_STRIP_PX = 120;
+const CHART_OHLC_READOUT_RIGHT_PX = CHART_PRICE_SCALE_GUTTER_PX + CHART_INDICATOR_STRIP_PX;
+/** Vertical gap below toolbar / OHLC strip before first EMA row. */
+const CHART_INDICATOR_COLUMN_TOP_PX = 70;
+
 type Candle = {
   date: string;
   open: number;
@@ -276,6 +284,7 @@ export default function StockChart({
   onAddToWatchlist,
 }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const chartAreaRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const mainSeriesRef = useRef<
     ReturnType<ReturnType<typeof createChart>["addSeries"]> | null
@@ -303,6 +312,7 @@ export default function StockChart({
   const [showFlagPicker, setShowFlagPicker] = useState(false);
   const [showWatchlistPicker, setShowWatchlistPicker] = useState(false);
   const [pendingTrendDrawingId, setPendingTrendDrawingId] = useState<string | null>(null);
+  const [chartNarrow, setChartNarrow] = useState(false);
   const suppressCrosshairBroadcastRef = useRef(false);
   const suppressDrawingBroadcastRef = useRef(false);
   const suppressViewportMemoryRef = useRef(false);
@@ -388,6 +398,18 @@ export default function StockChart({
     const b = parseInt(hex.slice(4, 6), 16);
     return (r * 299 + g * 587 + b * 114) / 1000 > 150;
   }, [settings.backgroundColor]);
+
+  useEffect(() => {
+    const el = chartAreaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setChartNarrow(w > 0 && w < 360);
+    });
+    ro.observe(el);
+    setChartNarrow(el.clientWidth > 0 && el.clientWidth < 360);
+    return () => ro.disconnect();
+  }, [loading, data?.length]);
 
   const activeDrawingStyle = useMemo<DrawingStyle>(() => {
     if (drawTemplate === "custom") return customStyle;
@@ -1207,8 +1229,11 @@ export default function StockChart({
   }, [selectedDrawing, getHandlePoint]);
 
   return (
-    <div className="flex-1 min-h-0 relative overflow-hidden bg-white dark:bg-zinc-900">
-      <div className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap" style={{ paddingRight: 88, pointerEvents: "none" }}>
+    <div className="flex-1 min-h-0 relative overflow-hidden bg-white dark:bg-[var(--ws-bg)]">
+      <div
+        className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap"
+        style={{ paddingRight: CHART_PRICE_SCALE_GUTTER_PX, pointerEvents: "none" }}
+      >
         <div className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "transparent" }}>
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
@@ -1217,17 +1242,17 @@ export default function StockChart({
                   key={tf}
                   type="button"
                   onClick={() => onTimeframeChange(tf)}
-                  className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                  className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
                     timeframe === tf
-                      ? "bg-zinc-200 text-zinc-900"
-                      : "text-zinc-500 hover:bg-zinc-600/35"
+                      ? "bg-zinc-200 text-zinc-900 dark:bg-[var(--ws-bg3)] dark:text-[var(--ws-text)]"
+                      : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
                   }`}
                 >
                   {tf.charAt(0).toUpperCase() + tf.slice(1)}
                 </button>
               ))}
           </div>
-          <span className="mx-1 h-4 w-px bg-zinc-500/70" />
+          <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
           <div className="flex items-center gap-1">
           <button
             type="button"
@@ -1236,10 +1261,10 @@ export default function StockChart({
               setPendingTrendStart(null);
               setPendingTrendDrawingId(null);
             }}
-            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               drawMode === "ray"
-                ? "bg-amber-300 text-zinc-900"
-                : "text-zinc-500 hover:bg-zinc-600/35"
+                ? "bg-amber-300 text-zinc-900 dark:bg-amber-500/25 dark:text-amber-100"
+                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
             }`}
             title="Draw horizontal ray"
           >
@@ -1252,10 +1277,10 @@ export default function StockChart({
               setPendingTrendStart(null);
               setPendingTrendDrawingId(null);
             }}
-            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               drawMode === "trend"
-                ? "bg-violet-300 text-zinc-900"
-                : "text-zinc-500 hover:bg-zinc-600/35"
+                ? "bg-violet-300 text-zinc-900 dark:bg-violet-500/25 dark:text-violet-100"
+                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
             }`}
             title="Draw trend line"
           >
@@ -1264,10 +1289,10 @@ export default function StockChart({
           <button
             type="button"
             onClick={() => setSnapToOhlc((v) => !v)}
-            className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               snapToOhlc
-                ? "bg-cyan-300 text-zinc-900"
-                : "text-zinc-500 hover:bg-zinc-600/35"
+                ? "bg-cyan-300 text-zinc-900 dark:bg-[var(--ws-cyan-dim)] dark:text-[var(--ws-cyan)]"
+                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
             }`}
             title="Snap to OHLC"
           >
@@ -1275,16 +1300,16 @@ export default function StockChart({
           </button>
           </div>
           {showGlobalControls && (
-            <span className="mx-1 h-4 w-px bg-zinc-500/70" />
+            <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
           )}
           {showGlobalControls && onToggleDualMode && (
             <button
               type="button"
               onClick={onToggleDualMode}
-              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
                 dualModeEnabled
-                  ? "bg-zinc-200 text-zinc-900"
-                  : "text-zinc-500 hover:bg-zinc-600/35"
+                  ? "bg-zinc-200 text-zinc-900 dark:bg-[var(--ws-bg3)] dark:text-[var(--ws-text)]"
+                  : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
               }`}
               title="Toggle dual chart mode"
               aria-label="Toggle dual chart mode"
@@ -1299,10 +1324,10 @@ export default function StockChart({
             <button
               type="button"
               onClick={onToggleCrosshairSync}
-              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
                 crosshairSyncEnabled
-                  ? "bg-sky-300 text-zinc-900"
-                  : "text-zinc-500 hover:bg-zinc-600/35"
+                  ? "bg-sky-300 text-zinc-900 dark:bg-[rgba(92,158,245,0.2)] dark:text-[var(--ws-blue)]"
+                  : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
               }`}
               title="Toggle crosshair sync"
               aria-label="Toggle crosshair sync"
@@ -1319,11 +1344,11 @@ export default function StockChart({
               </svg>
             </button>
           )}
-          <span className="mx-1 h-4 w-px bg-zinc-500/70" />
+          <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
           <button
             type="button"
             onClick={handleResetView}
-            className="px-2 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35"
+            className="px-2 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
             title="Reset chart view"
             aria-label="Reset chart view"
           >
@@ -1334,7 +1359,7 @@ export default function StockChart({
               <button
                 type="button"
                 onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistPicker(false); }}
-                className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35 flex items-center gap-1"
+                className="px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)] flex items-center gap-1"
                 title="Flag stock"
               >
                 <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
@@ -1342,7 +1367,7 @@ export default function StockChart({
                 </svg>
               </button>
               {showFlagPicker && (
-                <div className="absolute top-full left-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg p-2 flex items-center gap-2">
+                <div className="absolute top-full left-0 mt-1 z-30 rounded border shadow-lg p-2 flex items-center gap-2 bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)]">
                   {(["red", "yellow", "green", "blue"] as const).map((c) => (
                     <button
                       key={c}
@@ -1356,7 +1381,7 @@ export default function StockChart({
                   <button
                     type="button"
                     onClick={() => { onFlagChange(null); setShowFlagPicker(false); }}
-                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-[9px] text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-ws-caption text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
                     title="No flag"
                   >
                     ✕
@@ -1370,7 +1395,7 @@ export default function StockChart({
               <button
                 type="button"
                 onClick={() => { setShowWatchlistPicker((v) => !v); setShowFlagPicker(false); }}
-                className="px-1.5 py-0.5 text-xs font-medium rounded transition-colors text-zinc-500 hover:bg-zinc-600/35"
+                className="px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
                 title="Add to watchlist"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
@@ -1378,13 +1403,13 @@ export default function StockChart({
                 </svg>
               </button>
               {showWatchlistPicker && (
-                <div className="absolute top-full right-0 mt-1 z-30 rounded border border-zinc-700 bg-zinc-800 shadow-lg py-1 min-w-[140px]">
+                <div className="absolute top-full right-0 mt-1 z-30 rounded border shadow-lg py-1 min-w-[140px] bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)]">
                   {watchlists.map((wl) => (
                     <button
                       key={wl.id}
                       type="button"
                       onClick={() => { onAddToWatchlist(wl.id); setShowWatchlistPicker(false); }}
-                      className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+                      className="w-full text-left px-3 py-1 text-ws-label text-zinc-800 dark:text-[var(--ws-text)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)] transition-colors"
                     >
                       {wl.name}
                     </button>
@@ -1397,15 +1422,34 @@ export default function StockChart({
       </div>
       {loading ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-zinc-500 dark:text-zinc-400">Loading chart…</p>
+          <p className="text-zinc-500 dark:text-[var(--ws-text-dim)]">Loading chart…</p>
         </div>
       ) : !data || data.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-zinc-500 dark:text-zinc-400">No chart data</p>
+          <p className="text-zinc-500 dark:text-[var(--ws-text-dim)]">No chart data</p>
         </div>
       ) : (
-        <div className="absolute inset-0">
-          <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+        <div ref={chartAreaRef} className="absolute inset-0">
+          {/* Canvas first (opaque); watermark must sit above it or it is never visible */}
+          <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
+          {!chartNarrow && (
+            <div
+              className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="select-none font-mono font-bold tracking-tight text-center leading-none"
+                style={{
+                  marginLeft: "min(20%, 160px)",
+                  fontSize: "clamp(1.75rem, min(11vw, 10vh), 5rem)",
+                  color: isLightBackground ? "rgba(0,0,0,0.09)" : "rgba(201, 209, 217, 0.14)",
+                  maxWidth: "56%",
+                }}
+              >
+                {symbol.toUpperCase()}
+              </span>
+            </div>
+          )}
           {crosshairCandle && (() => {
             const idx = chronological.findIndex((c) => c.date === crosshairCandle.date);
             const prevClose = idx > 0 ? chronological[idx - 1].close : null;
@@ -1413,7 +1457,10 @@ export default function StockChart({
               ? ((crosshairCandle.close - prevClose) / prevClose) * 100
               : null;
             return (
-              <div className="absolute z-10 px-2 py-1 rounded bg-[#2A2D31]/95 text-[#D9D9D9] text-xs font-mono flex items-center gap-3" style={{ top: 32, right: 88 }}>
+              <div
+                className="absolute z-10 px-2 py-1 rounded text-ws-label font-mono flex items-center gap-3 bg-zinc-100/95 text-zinc-800 dark:bg-[var(--ws-bg3)]/95 dark:text-[var(--ws-text)]"
+                style={{ top: 32, right: CHART_OHLC_READOUT_RIGHT_PX }}
+              >
                 <span>O {crosshairCandle.open.toFixed(2)}</span>
                 <span>H {crosshairCandle.high.toFixed(2)}</span>
                 <span>L {crosshairCandle.low.toFixed(2)}</span>
@@ -1427,7 +1474,10 @@ export default function StockChart({
               </div>
             );
           })()}
-          <div className="absolute z-10 flex flex-col items-end gap-1" style={{ top: 52, right: 88 }}>
+          <div
+            className="absolute z-10 flex flex-col items-end gap-1"
+            style={{ top: CHART_INDICATOR_COLUMN_TOP_PX, right: CHART_PRICE_SCALE_GUTTER_PX }}
+          >
             {(timeframe === "daily" ? [
               { key: "ema50", label: "EMA(50)", color: "#ef4444", active: settings.showEma50, toggle: () => handleUpdateSettings({ showEma50: !settings.showEma50 }) },
               { key: "ema200", label: "EMA(200)", color: "#22c55e", active: settings.showEma200, toggle: () => handleUpdateSettings({ showEma200: !settings.showEma200 }) },
@@ -1440,7 +1490,7 @@ export default function StockChart({
                 key={ind.key}
                 type="button"
                 onClick={ind.toggle}
-                className="flex items-center gap-1.5 py-0.5 text-xs font-medium transition-opacity cursor-pointer border-0 bg-transparent shadow-none outline-offset-2 hover:opacity-90 ws-focus-ring"
+                className="flex items-center gap-1.5 py-0.5 text-ws-label font-medium transition-opacity cursor-pointer border-0 bg-transparent shadow-none outline-offset-2 hover:opacity-90 ws-focus-ring"
                 aria-pressed={ind.active}
                 style={{
                   color: ind.active ? ind.color : `${ind.color}66`,
@@ -1464,11 +1514,12 @@ export default function StockChart({
                 e.preventDefault();
                 setDragState({ drawingId: selectedDrawingId as string, handle: h.handle });
               }}
-              className="absolute z-20 h-3 w-3 rounded-full border border-white bg-cyan-400 shadow"
+              className="absolute z-20 h-3 w-3 rounded-full border border-white shadow"
               style={{
                 left: `${h.point.x}px`,
                 top: `${h.point.y}px`,
                 transform: "translate(-50%, -50%)",
+                background: "var(--ws-cyan)",
               }}
               title="Drag to edit"
               aria-label="Drag drawing handle"
@@ -1575,7 +1626,7 @@ export default function StockChart({
                         key={t}
                         type="button"
                         onClick={() => handleUpdateSettings({ type: t })}
-                        className={`px-2 py-0.5 rounded border text-[11px] ${
+                        className={`px-2 py-0.5 rounded border text-ws-label ${
                           settings.type === t
                             ? "border-zinc-700 dark:border-zinc-300 text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-700"
                             : "border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1621,7 +1672,7 @@ export default function StockChart({
                         key={t}
                         type="button"
                         onClick={() => setDrawTemplate(t)}
-                        className={`px-2 py-0.5 rounded border text-[11px] ${
+                        className={`px-2 py-0.5 rounded border text-ws-label ${
                           drawTemplate === t
                             ? "border-zinc-700 dark:border-zinc-300 text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-700"
                             : "border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1631,7 +1682,7 @@ export default function StockChart({
                       </button>
                     ))}
                   </div>
-                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
+                  <div className="text-ws-label text-zinc-500 dark:text-zinc-400 mb-2">
                     Weekly template uses yellow/orange. Daily uses purple/magenta.
                   </div>
                   <div className="flex flex-wrap gap-1 mb-2">
@@ -1642,7 +1693,7 @@ export default function StockChart({
                         setPendingTrendStart(null);
                         setPendingTrendDrawingId(null);
                       }}
-                      className={`px-2 py-0.5 rounded border text-[11px] ${
+                      className={`px-2 py-0.5 rounded border text-ws-label ${
                         drawMode === "ray"
                           ? "border-zinc-700 dark:border-zinc-300 text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-700"
                           : "border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1657,7 +1708,7 @@ export default function StockChart({
                         setPendingTrendStart(null);
                         setPendingTrendDrawingId(null);
                       }}
-                      className={`px-2 py-0.5 rounded border text-[11px] ${
+                      className={`px-2 py-0.5 rounded border text-ws-label ${
                         drawMode === "trend"
                           ? "border-zinc-700 dark:border-zinc-300 text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-700"
                           : "border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1673,14 +1724,14 @@ export default function StockChart({
                         setPendingTrendDrawingId(null);
                         setDrawMode("none");
                       }}
-                      className="px-2 py-0.5 rounded border text-[11px] border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                      className="px-2 py-0.5 rounded border text-ws-label border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
                     >
                       Clear All
                     </button>
                     <button
                       type="button"
                       onClick={() => setDrawings((prev) => prev.slice(0, -1))}
-                      className="px-2 py-0.5 rounded border text-[11px] border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                      className="px-2 py-0.5 rounded border text-ws-label border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
                     >
                       Undo
                     </button>
@@ -1691,7 +1742,7 @@ export default function StockChart({
                         setDrawings((prev) => prev.filter((d) => d.id !== selectedDrawingId));
                         setSelectedDrawingId(null);
                       }}
-                      className="px-2 py-0.5 rounded border text-[11px] border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                      className="px-2 py-0.5 rounded border text-ws-label border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50"
                     >
                       Delete Selected
                     </button>
@@ -1704,7 +1755,7 @@ export default function StockChart({
                       onChange={(e) => setSnapToOhlc(e.target.checked)}
                     />
                   </label>
-                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
+                  <div className="text-ws-label text-zinc-500 dark:text-zinc-400 mb-2">
                     {drawMode === "none"
                       ? "Select a draw tool, then click on chart."
                       : drawMode === "ray"
@@ -1885,7 +1936,7 @@ export default function StockChart({
                       setSettings(LIGHT_CHART_THEME);
                       saveChartSettings(LIGHT_CHART_THEME);
                     }}
-                    className="text-[11px] text-zinc-500 dark:text-zinc-400 hover:underline"
+                    className="text-ws-label text-zinc-500 dark:text-zinc-400 hover:underline"
                   >
                     Light theme
                   </button>
@@ -1895,7 +1946,7 @@ export default function StockChart({
                       setSettings(DEFAULT_CHART_SETTINGS);
                       saveChartSettings(DEFAULT_CHART_SETTINGS);
                     }}
-                    className="text-[11px] text-zinc-500 dark:text-zinc-400 hover:underline"
+                    className="text-ws-label text-zinc-500 dark:text-zinc-400 hover:underline"
                   >
                     Reset to default
                   </button>

@@ -136,12 +136,12 @@ export default function ProfileModal() {
                 <div className="text-sm font-semibold capitalize" style={{ color: "var(--ws-text)" }}>
                   {profile.username}
                 </div>
-                <div className="text-[11px]" style={{ color: "var(--ws-text-dim)" }}>
+                <div className="text-ws-label" style={{ color: "var(--ws-text-dim)" }}>
                   Synced across devices
                 </div>
               </div>
             </div>
-            <div className="text-[11px] mb-4 px-3 py-2 rounded-lg" style={{ background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}>
+            <div className="text-ws-label mb-4 px-3 py-2 rounded-lg" style={{ background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}>
               Your watchlists, scans, flags, and settings are saved to the cloud and will be available on any device you log into.
             </div>
             <div className="flex gap-2">
@@ -168,11 +168,11 @@ export default function ProfileModal() {
             <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--ws-text)" }}>
               Sign In
             </h2>
-            <p className="text-[11px] mb-5" style={{ color: "var(--ws-text-dim)" }}>
+            <p className="text-ws-label mb-5" style={{ color: "var(--ws-text-dim)" }}>
               Enter your name and a 4-digit PIN to sync your data across devices. New profiles are created automatically.
             </p>
 
-            <label className="block text-[11px] font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
+            <label className="block text-ws-label font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
               Name
             </label>
             <input
@@ -191,7 +191,7 @@ export default function ProfileModal() {
               autoComplete="off"
             />
 
-            <label className="block text-[11px] font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
+            <label className="block text-ws-label font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--ws-text-dim)" }}>
               4-Digit PIN
             </label>
             <div className="flex gap-2 mb-5" onPaste={handlePinPaste}>
@@ -218,7 +218,7 @@ export default function ProfileModal() {
             </div>
 
             {error && (
-              <div className="text-[11px] mb-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,77,106,0.08)", color: "var(--ws-red)" }}>
+              <div className="text-ws-label mb-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,77,106,0.08)", color: "var(--ws-red)" }}>
                 {error}
               </div>
             )}

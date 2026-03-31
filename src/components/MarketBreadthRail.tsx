@@ -73,7 +73,7 @@ function BreadthMetric({
 
   return (
     <div className="rounded-lg p-3" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
-      <div className="text-[10px] font-medium tracking-wide mb-2" style={{ color: "var(--ws-text-vdim)" }}>
+      <div className="text-ws-caption font-medium tracking-wide mb-2" style={{ color: "var(--ws-text-vdim)" }}>
         {label}
       </div>
       <div className="flex items-end justify-between gap-2">
@@ -85,7 +85,7 @@ function BreadthMetric({
             {displayVal}
           </div>
           {status != null && (
-            <div className="text-[10px] mt-1" style={{ color: status.color }}>
+            <div className="text-ws-caption mt-1" style={{ color: status.color }}>
               {status.label}
             </div>
           )}
@@ -147,22 +147,22 @@ export default function MarketBreadthRail({
     <div className="h-full overflow-y-auto overflow-x-hidden p-3 space-y-3" style={{ background: "var(--ws-bg2)" }}>
       {/* Title */}
       <div className="text-center">
-        <div className="text-[11px] font-semibold tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <div className="text-ws-label font-semibold tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
           {indexLabel} Breadth
         </div>
-        <div className="text-[10px] mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>
+        <div className="text-ws-caption mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>
           Based on {selectedSymbol?.toUpperCase() || "SPY"}
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
-          <span className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>Loading breadth…</span>
+          <span className="text-ws-label" style={{ color: "var(--ws-text-vdim)" }}>Loading breadth…</span>
         </div>
       ) : pct50Data.length === 0 && pct200Data.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 gap-1">
-          <span className="text-[11px]" style={{ color: "var(--ws-text-vdim)" }}>No breadth data available</span>
-          <span className="text-[10px]" style={{ color: "var(--ws-text-vdim)" }}>Run data refresh to populate</span>
+          <span className="text-ws-label" style={{ color: "var(--ws-text-vdim)" }}>No breadth data available</span>
+          <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>Run data refresh to populate</span>
         </div>
       ) : (
         <>

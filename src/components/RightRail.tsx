@@ -190,7 +190,7 @@ export default function RightRail({
             {symbol}
           </span>
           {profile?.companyName && (
-            <span className="text-[17px] font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+            <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
               {safe(profile.companyName)}
             </span>
           )}
@@ -208,7 +208,7 @@ export default function RightRail({
               {showFullDesc ? desc : truncatedDesc}
             </p>
             {desc.length > 150 && (
-              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-[13px] mt-0.5" style={{ color: "var(--ws-cyan)" }}>
+              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-ws-body mt-0.5" style={{ color: "var(--ws-cyan)" }}>
                 {showFullDesc ? "Less" : "More"}
               </button>
             )}
@@ -216,7 +216,7 @@ export default function RightRail({
         )}
 
         <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-[15px] items-center"
+          className="mt-2 grid gap-x-2 gap-y-1.5 text-ws-title items-center"
           style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
         >
           <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
@@ -243,7 +243,7 @@ export default function RightRail({
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
             role="tab"
             aria-selected={railTab === tab}
-            className={`px-3 py-1 text-[15px] font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
+            className={`px-3 py-1 text-ws-title font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : undefined,
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
@@ -261,10 +261,10 @@ export default function RightRail({
           {/* RS RANK */}
           {rsRank && (
             <div>
-              <div className="text-[15px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+              <div className="text-ws-title font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
-              <table className="w-full text-[15px]" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-ws-title" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
@@ -275,7 +275,7 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-[15px]"
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-ws-title"
                         style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
@@ -291,12 +291,12 @@ export default function RightRail({
           {/* REVENUE & EPS — combined table */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-[15px] font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
+              <span className="text-ws-title font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
               <div className="flex items-center gap-0.5">
                 {(["annual", "quarterly"] as const).map((v) => (
                   <button key={v} type="button" onClick={() => setFinFreq(v)}
                     aria-pressed={finFreq === v}
-                    className={`px-2 py-0.5 text-[13px] rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
+                    className={`px-2 py-0.5 text-ws-body rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
                     style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
                     {v}
                   </button>
@@ -304,7 +304,7 @@ export default function RightRail({
               </div>
             </div>
             {nextEarnings && (
-              <div className="text-[13px] mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
+              <div className="text-ws-body mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
                 Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
               </div>
             )}
@@ -364,10 +364,10 @@ export default function RightRail({
 
           {/* INSTITUTIONAL OWNERS */}
           <div>
-            <div className="text-[15px] font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+            <div className="text-ws-title font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
               Institutional Owners
             </div>
-            <table className="w-full text-[15px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-ws-title" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>

@@ -26,7 +26,7 @@ export default function ProfileIcon() {
       }}
     >
       {profile ? (
-        <span className="text-[11px] font-bold uppercase leading-none">
+        <span className="text-ws-label font-bold uppercase leading-none">
           {profile.username.charAt(0)}
         </span>
       ) : (
