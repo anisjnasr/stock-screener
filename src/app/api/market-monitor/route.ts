@@ -53,49 +53,165 @@ const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
 const CACHE_VERSION = 13;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
+const LATEST_BREADTH_CACHE_TTL_MS = 60 * 1000;
+const RESPONSE_CACHE_TTL_MS = 30 * 1000;
 
-/** Align breadth on the latest row with live index series (matches /api/breadth / Indices table). */
-function overlayLatestTradingDayBreadth(rows: MarketMonitorRow[], latestDate: string): MarketMonitorRow[] {
-  if (rows.length === 0) return rows;
+type CachedResponse = {
+  latestDate: string;
+  payload: CachePayload;
+  expiresAt: number;
+  source: "disk-cache" | "precomputed" | "computed";
+};
+
+type BreadthSnapshot = {
+  date: string;
+  sp500: { pctAbove50d: number | null; pctAbove200d: number | null };
+  nasdaq: { pctAbove50d: number | null; pctAbove200d: number | null };
+  expiresAt: number;
+};
+
+function getLatestBreadthCacheState() {
+  const g = globalThis as typeof globalThis & {
+    __stockToolMmLatestBreadth?: BreadthSnapshot;
+  };
+  return {
+    get: () => g.__stockToolMmLatestBreadth,
+    set: (next: BreadthSnapshot) => {
+      g.__stockToolMmLatestBreadth = next;
+    },
+  };
+}
+
+function getResponseCacheState() {
+  const g = globalThis as typeof globalThis & {
+    __stockToolMmResponseCache?: CachedResponse;
+  };
+  return {
+    get: () => g.__stockToolMmResponseCache,
+    set: (next: CachedResponse) => {
+      g.__stockToolMmResponseCache = next;
+    },
+  };
+}
+
+function marketMonitorHeaders(): Record<string, string> {
+  return { "Cache-Control": "private, max-age=15, stale-while-revalidate=60" };
+}
+
+function getLatestBreadthSnapshot(
+  latestDate: string
+): { sp500: { pctAbove50d: number | null; pctAbove200d: number | null }; nasdaq: { pctAbove50d: number | null; pctAbove200d: number | null } } {
+  const now = Date.now();
+  const state = getLatestBreadthCacheState();
+  const cached = state.get();
+  if (cached && cached.date === latestDate && cached.expiresAt > now) {
+    return { sp500: cached.sp500, nasdaq: cached.nasdaq };
+  }
+
   const sp = getIndexBreadthSeries("sp500", latestDate, latestDate);
   const nq = getIndexBreadthSeries("nasdaq", latestDate, latestDate);
   const spRow = sp.rows.find((r) => r.date === latestDate) ?? sp.rows[sp.rows.length - 1];
   const nqRow = nq.rows.find((r) => r.date === latestDate) ?? nq.rows[nq.rows.length - 1];
+  const snapshot = {
+    sp500: {
+      pctAbove50d: spRow?.pctAbove50d ?? null,
+      pctAbove200d: spRow?.pctAbove200d ?? null,
+    },
+    nasdaq: {
+      pctAbove50d: nqRow?.pctAbove50d ?? null,
+      pctAbove200d: nqRow?.pctAbove200d ?? null,
+    },
+  };
+  state.set({
+    date: latestDate,
+    sp500: snapshot.sp500,
+    nasdaq: snapshot.nasdaq,
+    expiresAt: now + LATEST_BREADTH_CACHE_TTL_MS,
+  });
+  return snapshot;
+}
+
+/** Align breadth on the latest row with live index series (matches /api/breadth / Indices table). */
+function overlayLatestTradingDayBreadth(rows: MarketMonitorRow[], latestDate: string): MarketMonitorRow[] {
+  if (rows.length === 0) return rows;
+  const latest = getLatestBreadthSnapshot(latestDate);
   return rows.map((r) => {
     if (r.date !== latestDate) return r;
     return {
       ...r,
-      sp500PctAbove50d: spRow?.pctAbove50d ?? r.sp500PctAbove50d,
-      sp500PctAbove200d: spRow?.pctAbove200d ?? r.sp500PctAbove200d,
-      nasdaqPctAbove50d: nqRow?.pctAbove50d ?? r.nasdaqPctAbove50d,
-      nasdaqPctAbove200d: nqRow?.pctAbove200d ?? r.nasdaqPctAbove200d,
+      sp500PctAbove50d: latest.sp500.pctAbove50d ?? r.sp500PctAbove50d,
+      sp500PctAbove200d: latest.sp500.pctAbove200d ?? r.sp500PctAbove200d,
+      nasdaqPctAbove50d: latest.nasdaq.pctAbove50d ?? r.nasdaqPctAbove50d,
+      nasdaqPctAbove200d: latest.nasdaq.pctAbove200d ?? r.nasdaqPctAbove200d,
     };
   });
 }
 
-function withSyncedBreadthSummary(payload: CachePayload, latestDate: string): CachePayload {
-  const rows = overlayLatestTradingDayBreadth(payload.rows, latestDate);
+function hasCompleteBreadth(row: MarketMonitorRow | null): boolean {
+  return Boolean(
+    row &&
+      row.sp500PctAbove50d != null &&
+      row.sp500PctAbove200d != null &&
+      row.nasdaqPctAbove50d != null &&
+      row.nasdaqPctAbove200d != null
+  );
+}
+
+function summarizeBreadth(rows: MarketMonitorRow[], latestDate: string): CachePayload["breadth"] {
   const latestRow = rows.find((r) => r.date === latestDate) ?? rows[0] ?? null;
+  return {
+    sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
+    nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
+    sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
+    nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
+  };
+}
+
+function withSyncedBreadthSummary(payload: CachePayload, latestDate: string): CachePayload {
+  const latestRow = payload.rows.find((r) => r.date === latestDate) ?? payload.rows[0] ?? null;
+  const rows = hasCompleteBreadth(latestRow)
+    ? payload.rows
+    : overlayLatestTradingDayBreadth(payload.rows, latestDate);
   return {
     ...payload,
     rows,
-    breadth: {
-      sp500PctAbove50d: latestRow?.sp500PctAbove50d ?? null,
-      nasdaqPctAbove50d: latestRow?.nasdaqPctAbove50d ?? null,
-      sp500PctAbove200d: latestRow?.sp500PctAbove200d ?? null,
-      nasdaqPctAbove200d: latestRow?.nasdaqPctAbove200d ?? null,
-    },
+    breadth: summarizeBreadth(rows, latestDate),
   };
 }
 
 export async function GET() {
   const _perfStart = performance.now();
+  const stageMs: Record<string, number> = {};
+  const markStart = (label: string) => {
+    stageMs[label] = performance.now();
+  };
+  const markEnd = (label: string) => {
+    const started = stageMs[label];
+    if (typeof started === "number") {
+      stageMs[label] = Math.round(performance.now() - started);
+    }
+  };
   try {
     const latest = getLatestCompletedTradingDate();
     if (!latest) {
       return NextResponse.json({ rows: [], latestDate: null, startDate: null });
     }
     const latestDate = latest;
+    const responseCache = getResponseCacheState();
+    const responseCached = responseCache.get();
+    if (
+      responseCached &&
+      responseCached.latestDate === latestDate &&
+      responseCached.expiresAt > Date.now()
+    ) {
+      recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), {
+        meta: { source: responseCached.source, stageMs: { responseCacheHit: 1 } },
+      });
+      return NextResponse.json(responseCached.payload, {
+        headers: marketMonitorHeaders(),
+      });
+    }
+
     const end = new Date(latestDate);
     const start = new Date(end);
     start.setFullYear(start.getFullYear() - 2);
@@ -103,6 +219,7 @@ export async function GET() {
 
     let cachedPayload: CachePayload | null = null;
     // Try cache first; if it matches the current [startDate, latestDate] window, return it.
+    markStart("diskCacheRead");
     if (existsSync(CACHE_PATH)) {
       try {
         const raw = readFileSync(CACHE_PATH, "utf8");
@@ -113,8 +230,21 @@ export async function GET() {
           cached.latestDate === latestDate &&
           Array.isArray(cached.rows)
         ) {
-          return NextResponse.json(withSyncedBreadthSummary(cached, latestDate), {
-            headers: { "Cache-Control": "private, no-store" },
+          markEnd("diskCacheRead");
+          markStart("breadthSync");
+          const synced = withSyncedBreadthSummary(cached, latestDate);
+          markEnd("breadthSync");
+          responseCache.set({
+            latestDate,
+            payload: synced,
+            expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+            source: "disk-cache",
+          });
+          recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), {
+            meta: { source: "disk-cache", stageMs },
+          });
+          return NextResponse.json(synced, {
+            headers: marketMonitorHeaders(),
           });
         }
       } catch {
@@ -122,9 +252,12 @@ export async function GET() {
         cachedPayload = null;
       }
     }
+    markEnd("diskCacheRead");
 
     // Fast path: try precomputed table first (only if it covers the latest date)
+    markStart("precomputedQuery");
     const precomputed = getPrecomputedMarketMonitor(queryStartDate, latestDate);
+    markEnd("precomputedQuery");
     const precomputedLatest = precomputed.length > 0 ? precomputed[0]?.date : null;
     if (precomputed.length > 0 && precomputedLatest === latestDate) {
       let rows = precomputed.map((r) => ({
@@ -177,12 +310,7 @@ export async function GET() {
         rows,
         latestDate,
         startDate: rows[rows.length - 1]?.date ?? null,
-        breadth: {
-          sp500PctAbove50d: null,
-          nasdaqPctAbove50d: null,
-          sp500PctAbove200d: null,
-          nasdaqPctAbove200d: null,
-        },
+        breadth: summarizeBreadth(rows, latestDate),
         netNewHighs: {
           oneMonth: precomputed.map((r) => ({ date: r.date, highs: r.nnh_1m_highs ?? 0, lows: r.nnh_1m_lows ?? 0, net: r.nnh_1m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
           threeMonths: precomputed.map((r) => ({ date: r.date, highs: r.nnh_3m_highs ?? 0, lows: r.nnh_3m_lows ?? 0, net: r.nnh_3m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
@@ -190,10 +318,23 @@ export async function GET() {
           fiftyTwoWeek: precomputed.map((r) => ({ date: r.date, highs: r.nnh_52w_highs ?? 0, lows: r.nnh_52w_lows ?? 0, net: r.nnh_52w_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
         },
       };
-      const payload = withSyncedBreadthSummary(payloadBase, latestDate);
-      recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "precomputed" } });
+      markStart("breadthSync");
+      const latestRow = rows.find((r) => r.date === latestDate) ?? rows[0] ?? null;
+      const payload = hasCompleteBreadth(latestRow)
+        ? payloadBase
+        : withSyncedBreadthSummary(payloadBase, latestDate);
+      markEnd("breadthSync");
+      responseCache.set({
+        latestDate,
+        payload,
+        expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+        source: "precomputed",
+      });
+      recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), {
+        meta: { source: "precomputed", stageMs },
+      });
       return NextResponse.json(payload, {
-        headers: { "Cache-Control": "private, no-store" },
+        headers: marketMonitorHeaders(),
       });
     }
 
@@ -315,12 +456,7 @@ export async function GET() {
       rows: rowsSorted,
       latestDate,
       startDate: responseStartDate,
-      breadth: {
-        sp500PctAbove50d: null,
-        nasdaqPctAbove50d: null,
-        sp500PctAbove200d: null,
-        nasdaqPctAbove200d: null,
-      },
+      breadth: summarizeBreadth(rowsSorted, latestDate),
       netNewHighs: {
         oneMonth: nnh1m.rows,
         threeMonths: nnh3m.rows,
@@ -328,16 +464,24 @@ export async function GET() {
         fiftyTwoWeek: nnh52w.rows,
       },
     };
-    const payload = withSyncedBreadthSummary(payloadBase, latestDate);
+    const payload = payloadBase;
+    responseCache.set({
+      latestDate,
+      payload,
+      expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+      source: "computed",
+    });
     try {
       writeFileSync(CACHE_PATH, JSON.stringify(payload), "utf8");
     } catch {
       // ignore cache write errors
     }
 
-    recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { meta: { source: "computed" } });
+    recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), {
+      meta: { source: "computed", stageMs },
+    });
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "private, no-store" },
+      headers: marketMonitorHeaders(),
     });
   } catch (e) {
     recordPerf("api", "/api/market-monitor", Math.round(performance.now() - _perfStart), { status: 500 });

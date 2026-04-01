@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import { memo, useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
 import {
   type StockFlag,
@@ -219,7 +219,7 @@ function SubBarPill({
   );
 }
 
-export default function WorkspaceHeader({
+function WorkspaceHeader({
   section,
   onSectionChange,
   symbol,
@@ -1295,3 +1295,5 @@ export default function WorkspaceHeader({
     </header>
   );
 }
+
+export default memo(WorkspaceHeader);

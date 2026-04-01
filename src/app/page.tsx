@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { type WorkspaceSection } from "@/types/workspace";
+import type { ChartTimeframe } from "@/components/StockChart";
 
 class PanelErrorBoundary extends React.Component<
   { name: string; children: React.ReactNode },
@@ -34,7 +35,6 @@ class PanelErrorBoundary extends React.Component<
 }
 import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
-import StockChart, { type ChartTimeframe } from "@/components/StockChart";
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
   loadFlags,
@@ -60,6 +60,10 @@ const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { 
 const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
 const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
 const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
+const StockChart = dynamic(() => import("@/components/StockChart"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
+});
 
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;

@@ -36,22 +36,38 @@ export function useFundamentals(symbol: string) {
 
   useEffect(() => {
     if (!symbol) return;
+    let cancelled = false;
     setSidebarLoading(true);
-    fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=annual`)
-      .then((r) => r.json().then((d) => (Array.isArray(d) ? d : [])))
-      .then((fund) => setAnnualFundamentals(fund))
-      .catch(() => setAnnualFundamentals([]))
-      .finally(() => setSidebarLoading(false));
-  }, [symbol]);
-
-  useEffect(() => {
-    if (!symbol) return;
     setQuarterlyLoading(true);
-    fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=quarter`)
+
+    const annualPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=annual`)
+      .then((r) => r.json().then((d) => (Array.isArray(d) ? d : [])))
+      .then((fund) => {
+        if (!cancelled) setAnnualFundamentals(fund);
+      })
+      .catch(() => {
+        if (!cancelled) setAnnualFundamentals([]);
+      });
+
+    const quarterPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=quarter`)
       .then((r) => r.json())
-      .then((d) => setQuarterlyFundamentals(Array.isArray(d) ? d : []))
-      .catch(() => setQuarterlyFundamentals([]))
-      .finally(() => setQuarterlyLoading(false));
+      .then((d) => {
+        if (!cancelled) setQuarterlyFundamentals(Array.isArray(d) ? d : []);
+      })
+      .catch(() => {
+        if (!cancelled) setQuarterlyFundamentals([]);
+      });
+
+    Promise.allSettled([annualPromise, quarterPromise]).finally(() => {
+      if (!cancelled) {
+        setSidebarLoading(false);
+        setQuarterlyLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [symbol]);
 
   const yearlyRows = useMemo((): YearlyRow[] => {
@@ -91,17 +107,17 @@ export function useFundamentals(symbol: string) {
     const sorted = withPeriod
       .filter((r) => r.period)
       .sort((a, b) => (b.date || b.period).localeCompare(a.date || a.period));
+    const byYearMonth = new Map<string, (typeof sorted)[number]>();
+    for (const r of sorted) {
+      if (!r.date) continue;
+      const key = `${r.date.slice(0, 4)}-${r.date.slice(5, 7)}`;
+      if (!byYearMonth.has(key)) byYearMonth.set(key, r);
+    }
     return sorted.map((row, i) => {
       const prev = sorted[i + 1];
-      const priorYearSameQuarter =
-        row.date &&
-        sorted.find(
-          (s) =>
-            s.date &&
-            s.date !== row.date &&
-            s.date.startsWith(String(Number(row.date!.slice(0, 4)) - 1)) &&
-            s.date.slice(5, 7) === row.date!.slice(5, 7)
-        );
+      const priorYearSameQuarter = row.date
+        ? byYearMonth.get(`${String(Number(row.date.slice(0, 4)) - 1)}-${row.date.slice(5, 7)}`)
+        : undefined;
       const useYoY = i === 0 && priorYearSameQuarter;
       const compareRow = useYoY ? priorYearSameQuarter : prev;
       const epsGrowth =

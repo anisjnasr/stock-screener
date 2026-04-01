@@ -43,11 +43,40 @@ type StockApiCacheEntry = {
 const STOCK_API_TTL_OPEN_MS = 60 * 1000;
 const STOCK_API_TTL_CLOSED_MS = 5 * 60 * 1000;
 const STOCK_API_STALE_BUFFER_MS = 30 * 1000;
+const LATEST_SCREENER_DATE_TTL_MS = 30 * 1000;
 
 function getStockApiCache(): Map<string, StockApiCacheEntry> {
   const g = globalThis as typeof globalThis & { __stockToolStockApiCache?: Map<string, StockApiCacheEntry> };
   if (!g.__stockToolStockApiCache) g.__stockToolStockApiCache = new Map();
   return g.__stockToolStockApiCache;
+}
+
+function getLatestDateCacheState() {
+  const g = globalThis as typeof globalThis & {
+    __stockToolLatestScreenerDateCache?: { value: string; expiresAt: number };
+  };
+  return {
+    get: () => g.__stockToolLatestScreenerDateCache,
+    set: (value: string, expiresAt: number) => {
+      g.__stockToolLatestScreenerDateCache = { value, expiresAt };
+    },
+  };
+}
+
+function getLatestScreenerDateCached(): string {
+  const now = Date.now();
+  const state = getLatestDateCacheState();
+  const cached = state.get();
+  if (cached && cached.expiresAt > now) return cached.value;
+  const latest = getLatestScreenerDate() ?? "none";
+  state.set(latest, now + LATEST_SCREENER_DATE_TTL_MS);
+  return latest;
+}
+
+function cacheControlHeader(): string {
+  const marketOpen = isUSMarketOpen();
+  const httpMaxAge = marketOpen ? 30 : 120;
+  return `public, max-age=${httpMaxAge}, stale-while-revalidate=120`;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -64,16 +93,21 @@ export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol") || "AAPL";
   const symbolUpper = String(symbol).toUpperCase();
   try {
-    const latestScreenerDate = getLatestScreenerDate() ?? "none";
+    const latestScreenerDate = getLatestScreenerDateCached();
     const cacheKey = `${symbolUpper}:${latestScreenerDate}`;
     const cache = getStockApiCache();
     const cached = cache.get(cacheKey);
     const now = Date.now();
+    const cacheHeader = cacheControlHeader();
     if (cached && cached.staleAt > now) {
-      return NextResponse.json(cached.payload);
+      return NextResponse.json(cached.payload, {
+        headers: { "Cache-Control": cacheHeader },
+      });
     }
     if (cached && cached.expiresAt > now) {
-      const staleResponse = NextResponse.json(cached.payload);
+      const staleResponse = NextResponse.json(cached.payload, {
+        headers: { "Cache-Control": cacheHeader },
+      });
       refreshStockCache(symbolUpper, latestScreenerDate, cache, cacheKey).catch(() => {});
       return staleResponse;
     }
@@ -199,9 +233,8 @@ export async function GET(request: NextRequest) {
     const ttl = marketOpen ? STOCK_API_TTL_OPEN_MS : STOCK_API_TTL_CLOSED_MS;
     const staleAt = Date.now() + ttl;
     cache.set(cacheKey, { payload, staleAt, expiresAt: staleAt + STOCK_API_STALE_BUFFER_MS });
-    const httpMaxAge = marketOpen ? 30 : 120;
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": `public, max-age=${httpMaxAge}, stale-while-revalidate=120` },
+      headers: { "Cache-Control": cacheHeader },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";

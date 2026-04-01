@@ -24,9 +24,13 @@ type CachedValue =
   | ReturnType<typeof getWeightedCategoryPerformance>
   | ReturnType<typeof getTickerPerformance>;
 
+type ResponseCacheEntry = { payload: unknown; createdAt: number };
+const RESPONSE_CACHE_MAX_ITEMS = 120;
+const RESPONSE_CACHE_TTL_MS = 10 * 60 * 1000;
+
 const globalForSiCache = globalThis as unknown as {
   _siCache?: Map<string, CachedValue>;
-  _siResponseCache?: Map<string, unknown>;
+  _siResponseCache?: Map<string, ResponseCacheEntry>;
 };
 
 function getSiCache(): Map<string, CachedValue> {
@@ -34,9 +38,20 @@ function getSiCache(): Map<string, CachedValue> {
   return globalForSiCache._siCache;
 }
 
-function getSiResponseCache(): Map<string, unknown> {
+function getSiResponseCache(): Map<string, ResponseCacheEntry> {
   if (!globalForSiCache._siResponseCache) globalForSiCache._siResponseCache = new Map();
   return globalForSiCache._siResponseCache;
+}
+
+function setResponseCache(
+  cache: Map<string, ResponseCacheEntry>,
+  key: string,
+  payload: unknown
+): void {
+  cache.set(key, { payload, createdAt: Date.now() });
+  if (cache.size <= RESPONSE_CACHE_MAX_ITEMS) return;
+  const oldest = cache.keys().next().value;
+  if (oldest) cache.delete(oldest);
 }
 
 const CACHE_PATH = join(getDataDir(), "sectors-industries-cache.json");
@@ -87,7 +102,10 @@ export async function GET(request: NextRequest) {
 
     const responseCache = getSiResponseCache();
     const memCached = responseCache.get(responseKey);
-    if (memCached) return NextResponse.json(memCached);
+    if (memCached && Date.now() - memCached.createdAt <= RESPONSE_CACHE_TTL_MS) {
+      return NextResponse.json(memCached.payload);
+    }
+    if (memCached) responseCache.delete(responseKey);
 
     if (existsSync(CACHE_PATH)) {
       try {
@@ -98,7 +116,7 @@ export async function GET(request: NextRequest) {
           parsed.items &&
           parsed.items[responseKey]
         ) {
-          responseCache.set(responseKey, parsed.items[responseKey]);
+          setResponseCache(responseCache, responseKey, parsed.items[responseKey]);
           return NextResponse.json(parsed.items[responseKey]);
         }
       } catch {
@@ -188,7 +206,7 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    responseCache.set(responseKey, payload);
+    setResponseCache(responseCache, responseKey, payload);
     try {
       let disk: DiskCache = { version: CACHE_VERSION, items: {} };
       if (existsSync(CACHE_PATH)) {

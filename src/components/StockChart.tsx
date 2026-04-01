@@ -4,7 +4,7 @@
  * Stock chart using TradingView Lightweight Charts
  * (https://www.tradingview.com/lightweight-charts/)
  */
-import { useEffect, useRef, useMemo, useState, useCallback } from "react";
+import { memo, useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   createChart,
   ColorType,
@@ -265,7 +265,7 @@ function computeEMA(closes: number[], period: number): (number | null)[] {
   return out;
 }
 
-export default function StockChart({
+function StockChart({
   symbol,
   data,
   loading,
@@ -1959,3 +1959,5 @@ export default function StockChart({
     </div>
   );
 }
+
+export default memo(StockChart);
