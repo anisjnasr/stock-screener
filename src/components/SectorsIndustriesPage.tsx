@@ -11,6 +11,8 @@ type BarItem = {
   name: string;
   changePct: number | null;
   meta?: string;
+  drillKind?: "industry" | "theme";
+  drillValue?: string;
 };
 
 type ApiResponse = {
@@ -20,12 +22,18 @@ type ApiResponse = {
     indices: Timeframe;
     sectors: Timeframe;
     industries: Timeframe;
-    themes: Timeframe;
   };
   indices: Array<{ id: string; name: string; ticker: string; changePct: number | null }>;
   sectors: Array<{ id: string; name: string; changePct: number | null; totalMarketCap: number; stockCount: number }>;
   industries: Array<{ id: string; name: string; changePct: number | null; totalMarketCap: number; stockCount: number }>;
-  themes: Array<{ id: string; category: string; name: string; ticker: string; changePct: number | null }>;
+  industryEtfs: Array<{
+    id: string;
+    name: string;
+    ticker: string;
+    drillKind: "industry" | "theme";
+    drillValue: string;
+    changePct: number | null;
+  }>;
   error?: string;
 };
 
@@ -270,8 +278,6 @@ export default function SectorsIndustriesPage({
   const [indicesTimeframe, setIndicesTimeframe] = useState<Timeframe>("day");
   const [sectorsTimeframe, setSectorsTimeframe] = useState<Timeframe>("day");
   const [industriesTimeframe, setIndustriesTimeframe] = useState<Timeframe>("day");
-  const [themesTimeframe, setThemesTimeframe] = useState<Timeframe>("day");
-  const [rightTab, setRightTab] = useState<"industries" | "themes">("industries");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -283,7 +289,7 @@ export default function SectorsIndustriesPage({
     else setLoading(true);
     setError(null);
     fetch(
-      `/api/sectors-industries?indicesTimeframe=${encodeURIComponent(indicesTimeframe)}&sectorsTimeframe=${encodeURIComponent(sectorsTimeframe)}&industriesTimeframe=${encodeURIComponent(industriesTimeframe)}&themesTimeframe=${encodeURIComponent(themesTimeframe)}`
+      `/api/sectors-industries?indicesTimeframe=${encodeURIComponent(indicesTimeframe)}&sectorsTimeframe=${encodeURIComponent(sectorsTimeframe)}&industriesTimeframe=${encodeURIComponent(industriesTimeframe)}`
     )
       .then((r) => r.json() as Promise<ApiResponse>)
       .then((json) => {
@@ -310,7 +316,7 @@ export default function SectorsIndustriesPage({
     return () => {
       cancelled = true;
     };
-  }, [indicesTimeframe, sectorsTimeframe, industriesTimeframe, themesTimeframe]);
+  }, [indicesTimeframe, sectorsTimeframe, industriesTimeframe]);
 
   const indexItems: BarItem[] = useMemo(
     () =>
@@ -331,22 +337,15 @@ export default function SectorsIndustriesPage({
       })),
     [payload]
   );
-  const industryItems: BarItem[] = useMemo(
+  const industryEtfItems: BarItem[] = useMemo(
     () =>
-      (payload?.industries ?? []).map((x) => ({
-        id: x.id,
-        name: toSentenceCase(x.name),
-        changePct: x.changePct,
-      })),
-    [payload]
-  );
-  const themeItems: BarItem[] = useMemo(
-    () =>
-      (payload?.themes ?? []).map((x) => ({
+      (payload?.industryEtfs ?? []).map((x) => ({
         id: x.id,
         name: toSentenceCase(x.name),
         changePct: x.changePct,
         meta: x.ticker,
+        drillKind: x.drillKind,
+        drillValue: x.drillValue,
       })),
     [payload]
   );
@@ -394,63 +393,23 @@ export default function SectorsIndustriesPage({
             />
           </div>
           <div>
-            {rightTab === "industries" ? (
-              <HorizontalBars
-                title="Industries"
-                items={industryItems}
-                timeframe={industriesTimeframe}
-                onTimeframeChange={(tf) => {
-                  setIndustriesTimeframe(tf);
-                }}
-                centerControl={
-                  <div className="inline-flex items-center gap-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setRightTab("industries")}
-                      className="rounded px-2 py-1 text-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    >
-                      Industries
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRightTab("themes")}
-                      className="rounded px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                    >
-                      Thematic ETFs
-                    </button>
-                  </div>
+            <HorizontalBars
+              title="Industries"
+              items={industryEtfItems}
+              timeframe={industriesTimeframe}
+              onTimeframeChange={(tf) => {
+                setIndustriesTimeframe(tf);
+              }}
+              onClick={(item) => {
+                if (item.drillKind === "theme" && item.drillValue) {
+                  onOpenCollection({ kind: "theme", value: item.drillValue });
+                  return;
                 }
-                onClick={(item) => onOpenCollection({ kind: "industry", value: item.name })}
-              />
-            ) : (
-              <HorizontalBars
-                title="Thematic ETFs"
-                items={themeItems}
-                timeframe={themesTimeframe}
-                onTimeframeChange={(tf) => {
-                  setThemesTimeframe(tf);
-                }}
-                centerControl={
-                  <div className="inline-flex items-center gap-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setRightTab("industries")}
-                      className="rounded px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                    >
-                      Industries
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRightTab("themes")}
-                      className="rounded px-2 py-1 text-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    >
-                      Thematic ETFs
-                    </button>
-                  </div>
+                if (item.drillKind === "industry" && item.drillValue) {
+                  onOpenCollection({ kind: "industry", value: item.drillValue });
                 }
-                onClick={(item) => onOpenCollection({ kind: "theme", value: item.id })}
-              />
-            )}
+              }}
+            />
           </div>
         </div>
       )}

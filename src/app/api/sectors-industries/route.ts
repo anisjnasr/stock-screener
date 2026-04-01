@@ -10,7 +10,10 @@ import {
   ensurePerformanceCacheTable,
   type PerformanceTimeframe,
 } from "@/lib/screener-db-native";
-import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
+import {
+  INDUSTRY_ETF_UNIVERSE,
+  INDUSTRY_ETF_UNIVERSE_TICKERS,
+} from "@/lib/industry-etf-universe";
 
 const INDEX_ITEMS = [
   { id: "sp500", name: "S&P 500", ticker: "SPY" },
@@ -55,7 +58,7 @@ function setResponseCache(
 }
 
 const CACHE_PATH = join(getDataDir(), "sectors-industries-cache.json");
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 type DiskCache = {
   version: number;
   items: Record<string, unknown>;
@@ -88,16 +91,12 @@ export async function GET(request: NextRequest) {
     const industriesTimeframe = parseTimeframe(
       request.nextUrl.searchParams.get("industriesTimeframe") ?? defaultTimeframe
     );
-    const themesTimeframe = parseTimeframe(
-      request.nextUrl.searchParams.get("themesTimeframe") ?? defaultTimeframe
-    );
     const asOfDate = getLatestCompletedTradingDate();
     const responseKey = [
       asOfDate ?? "na",
       indicesTimeframe,
       sectorsTimeframe,
       industriesTimeframe,
-      themesTimeframe,
     ].join("|");
 
     const responseCache = getSiResponseCache();
@@ -138,7 +137,6 @@ export async function GET(request: NextRequest) {
     const cachedSectors = getPrecomputedPerformance("sector", sectorsTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
     const cachedIndustries = getPrecomputedPerformance("industry", industriesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
     const cachedIndices = getPrecomputedPerformance("index", indicesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
-    const cachedThemes = getPrecomputedPerformance("thematic", themesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
 
     const sectorResult = cachedSectors
       ? { rows: cachedSectors.map((r) => ({ name: r.name, change_pct: r.change_pct, total_market_cap: r.total_market_cap ?? 0, stock_count: r.stock_count ?? 0 })), date: asOfDate }
@@ -158,15 +156,19 @@ export async function GET(request: NextRequest) {
           `indices:${indicesTimeframe}:${asOfDate ?? "na"}`,
           () => getTickerPerformance(INDEX_ITEMS.map((x) => x.ticker), indicesTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
         );
-    const themePerf = cachedThemes
-      ? { rows: cachedThemes.map((r) => ({ symbol: r.name, change_pct: r.change_pct, market_cap: null as number | null })), date: asOfDate }
-      : getOrSet(
-          `themes:${themesTimeframe}:${asOfDate ?? "na"}`,
-          () => getTickerPerformance(THEMATIC_ETFS.map((x) => x.ticker), themesTimeframe as PerformanceTimeframe, asOfDate ?? undefined)
-        );
+    const mergedEtfPerf = getOrSet(
+      `industry-etfs:${industriesTimeframe}:${asOfDate ?? "na"}`,
+      () =>
+        getTickerPerformance(
+          INDUSTRY_ETF_UNIVERSE_TICKERS,
+          industriesTimeframe as PerformanceTimeframe,
+          asOfDate ?? undefined
+        )
+    );
 
     const indexMap = new Map(indexPerf.rows.map((r) => [r.symbol, r]));
-    const themeMap = new Map(themePerf.rows.map((r) => [r.symbol, r]));
+    const etfPerfByTicker = new Map(mergedEtfPerf.rows.map((r) => [String(r.symbol).toUpperCase(), r]));
+    const industryPerfByName = new Map(industryResult.rows.map((r) => [r.name, r]));
 
     const payload = {
       timeframe: defaultTimeframe,
@@ -174,7 +176,6 @@ export async function GET(request: NextRequest) {
         indices: indicesTimeframe,
         sectors: sectorsTimeframe,
         industries: industriesTimeframe,
-        themes: themesTimeframe,
       },
       date: asOfDate ?? sectorResult.date,
       indices: INDEX_ITEMS.map((item) => ({
@@ -197,13 +198,20 @@ export async function GET(request: NextRequest) {
         totalMarketCap: r.total_market_cap,
         stockCount: r.stock_count,
       })),
-      themes: THEMATIC_ETFS.map((item) => ({
-        id: item.id,
-        category: item.category,
-        name: item.theme,
-        ticker: item.ticker,
-        changePct: themeMap.get(item.ticker)?.change_pct ?? null,
-      })),
+      industryEtfs: INDUSTRY_ETF_UNIVERSE.map((row) => {
+        const etfPct = etfPerfByTicker.get(row.ticker.toUpperCase())?.change_pct ?? null;
+        const stockIndustryPct =
+          row.drillKind === "industry" ? (industryPerfByName.get(row.name)?.change_pct ?? null) : null;
+        const changePct = row.drillKind === "industry" ? (stockIndustryPct ?? etfPct) : etfPct;
+        return {
+          id: row.id,
+          name: row.name,
+          ticker: row.ticker,
+          drillKind: row.drillKind,
+          drillValue: row.drillValue,
+          changePct,
+        };
+      }),
     };
 
     setResponseCache(responseCache, responseKey, payload);

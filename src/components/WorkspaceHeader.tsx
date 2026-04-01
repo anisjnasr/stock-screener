@@ -26,7 +26,7 @@ const FLAG_COLORS: Record<StockFlag, string> = {
 };
 
 export type MarketSubTab = "indices" | "monitor";
-export type SectorSubTab = "sectors" | "industries" | "thematic";
+export type SectorSubTab = "sectors" | "industries";
 export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "6m" | "y" | "ytd";
 
 const SECTOR_TF_LABELS: Record<SectorTimeframe, string> = {
@@ -538,9 +538,9 @@ function WorkspaceHeader({
 
         {section === "sectors-industries" && (
           <div className="flex items-center gap-1.5 flex-1">
-            {(["sectors", "industries", "thematic"] as SectorSubTab[]).map((t) => (
+            {(["sectors", "industries"] as SectorSubTab[]).map((t) => (
               <Pill key={t} on={sectorSubTab === t} onClick={() => onSectorSubTabChange?.(t)}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {t === "industries" ? "Industries" : "Sectors"}
               </Pill>
             ))}
             {rowCountDisplay && (

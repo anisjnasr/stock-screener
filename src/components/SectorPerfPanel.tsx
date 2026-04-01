@@ -9,13 +9,22 @@ type PerfItem = {
   name: string;
   ticker?: string;
   changePct: number | null;
+  drillKind: "sector" | "industry" | "theme";
+  drillValue: string;
 };
 
 type ApiResponse = {
   indices: Array<{ id: string; name: string; ticker: string; changePct: number | null }>;
   sectors: Array<{ id: string; name: string; changePct: number | null }>;
   industries: Array<{ id: string; name: string; changePct: number | null }>;
-  themes: Array<{ id: string; category: string; name: string; ticker: string; changePct: number | null }>;
+  industryEtfs: Array<{
+    id: string;
+    name: string;
+    ticker: string;
+    drillKind: "industry" | "theme";
+    drillValue: string;
+    changePct: number | null;
+  }>;
   error?: string;
 };
 
@@ -26,22 +35,12 @@ const SECTOR_ETF_MAP: Record<string, string> = {
   "Real Estate": "XLRE", "Utilities": "XLU",
 };
 
-const INDUSTRY_ETF_MAP: Record<string, string> = {
-  "Aerospace & Defense": "ITA", "Airlines": "JETS", "Auto Manufacturers": "CARZ",
-  "Banks - Diversified": "KBE", "Banks - Regional": "KRE", "Packaged Foods": "PBJ",
-  "Biotechnology": "XBI", "Capital Markets": "KCE", "Pharmaceutical Retailers": "XPH",
-  "Gambling": "BETZ", "Gold": "GDX", "Health Care Providers": "IHF",
-  "Residential Construction": "ITB", "Insurance - Diversified": "KIE",
-  "Medical Devices": "IHI", "Steel": "XME", "Oil & Gas E&P": "XOP",
-  "REIT - Diversified": "VNQ", "Semiconductors": "SMH", "Software - Infrastructure": "IGV",
-  "Specialty Retail": "XRT", "Telecom Services": "IYZ", "Integrated Freight & Logistics": "IYT",
-};
-
 const TF_API: Record<SectorTimeframe, string> = {
   "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "6m": "half_year", "y": "year", "ytd": "ytd",
 };
 
-function toSentenceCase(s: string): string {
+/** Display labels: capitalize each word (matches prior sector panel behavior). */
+function toDisplayCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
@@ -74,7 +73,7 @@ export default function SectorPerfPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/sectors-industries?indicesTimeframe=${apiTf}&sectorsTimeframe=${apiTf}&industriesTimeframe=${apiTf}&themesTimeframe=${apiTf}`)
+    fetch(`/api/sectors-industries?indicesTimeframe=${apiTf}&sectorsTimeframe=${apiTf}&industriesTimeframe=${apiTf}`)
       .then((r) => r.json() as Promise<ApiResponse>)
       .then((json) => {
         if (cancelled) return;
@@ -90,16 +89,21 @@ export default function SectorPerfPanel({
     if (!payload) return [];
     if (subTab === "sectors")
       return (payload.sectors ?? []).map((x) => ({
-        id: x.id, name: x.name, ticker: SECTOR_ETF_MAP[x.name], changePct: x.changePct,
+        id: x.id,
+        name: x.name,
+        ticker: SECTOR_ETF_MAP[x.name],
+        changePct: x.changePct,
+        drillKind: "sector",
+        drillValue: x.name,
       }));
     if (subTab === "industries")
-      return (payload.industries ?? [])
-        .map((x) => ({ id: x.id, name: toSentenceCase(x.name), changePct: x.changePct }))
-        .filter((x) => INDUSTRY_ETF_MAP[x.name])
-        .map((x) => ({ ...x, ticker: INDUSTRY_ETF_MAP[x.name] }));
-    if (subTab === "thematic")
-      return (payload.themes ?? []).map((x) => ({
-        id: x.id, name: toSentenceCase(x.name), ticker: x.ticker, changePct: x.changePct,
+      return (payload.industryEtfs ?? []).map((x) => ({
+        id: x.id,
+        name: toDisplayCase(x.name),
+        ticker: x.ticker,
+        changePct: x.changePct,
+        drillKind: x.drillKind,
+        drillValue: x.drillValue,
       }));
     return [];
   }, [payload, subTab]);
@@ -219,8 +223,8 @@ export default function SectorPerfPanel({
               title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
               onClick={() => {
                 const s = sorted[selectedIdx];
-                const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
-                onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+                const kind = subTab === "sectors" ? "sector" : s.drillKind;
+                onDrillDown(kind, s.drillValue);
               }}
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
@@ -348,10 +352,17 @@ export default function SectorPerfPanel({
                   style={{ width: 32, height: 32, color: "var(--ws-cyan)" }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme";
-                    onDrillDown(kind, subTab === "thematic" ? s.id : s.name);
+                    const kind = subTab === "sectors" ? "sector" : s.drillKind;
+                    onDrillDown(kind, s.drillValue);
                   }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); const kind = subTab === "sectors" ? "sector" : subTab === "industries" ? "industry" : "theme"; onDrillDown(kind, subTab === "thematic" ? s.id : s.name); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const kind = subTab === "sectors" ? "sector" : s.drillKind;
+                      onDrillDown(kind, s.drillValue);
+                    }
+                  }}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
                     <circle cx="8" cy="8" r="6" />
