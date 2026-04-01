@@ -44,6 +44,7 @@ data/*.sqlite3
 data/market-monitor-cache.json
 data/breadth-cache.json
 data/sectors-industries-cache.json
+data/backfill-gaps-progress.json
 data/13f/
 scripts/stock-type-counts.json
 

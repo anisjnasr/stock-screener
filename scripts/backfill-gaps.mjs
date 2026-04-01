@@ -16,11 +16,13 @@
  *   node scripts/backfill-gaps.mjs --symbols SPY,QQQ   # specific symbols only
  *   node scripts/backfill-gaps.mjs --strict-calendar    # include strict trading-day gaps from audit report
  *   node scripts/backfill-gaps.mjs --recompute    # recompute indicators after
+ *   node scripts/backfill-gaps.mjs --fresh         # ignore resume checkpoint (start Phase 3 from scratch)
  */
 
 import { createRequire } from "module";
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { createHash } from "crypto";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "fs";
+import { join, dirname } from "path";
 import { spawnSync } from "child_process";
 import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
 
@@ -50,6 +52,7 @@ if (!API_KEY) {
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const RECOMPUTE = args.includes("--recompute");
+const FRESH = args.includes("--fresh");
 const STRICT_CALENDAR = args.includes("--strict-calendar");
 const symIdx = args.indexOf("--symbols");
 const ONLY_SYMBOLS = symIdx >= 0 && args[symIdx + 1]
@@ -65,7 +68,13 @@ const AUDIT_FILE = auditIdx >= 0 && args[auditIdx + 1]
 const GAP_THRESHOLD_DAYS = 10;
 const MIN_HISTORY_YEARS = 10;
 const API_DELAY_MS = 120;
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
+/** Abort hung TCP connections so a single Polygon call cannot stall the whole run. */
+const REQUEST_TIMEOUT_MS = 120_000;
+/** Flush WAL periodically so data is visible on disk between symbols. */
+const WAL_CHECKPOINT_EVERY_SYMBOLS = 5;
+const PROGRESS_VERSION = 1;
+const PROGRESS_BASENAME = "backfill-gaps-progress.json";
 
 const REQUIRED_ETF_SYMBOLS = [
   "SPY", "QQQ", "IWM", "DIA",
@@ -91,21 +100,97 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function rangeKey(symbol, from, to) {
+  return `${symbol}|${from}|${to}`;
+}
+
+function workFingerprint(allWork, strictCalendar) {
+  const payload = {
+    strict: strictCalendar,
+    items: allWork.map((w) => ({ symbol: w.symbol, ranges: w.ranges })),
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function progressPath() {
+  return join(root, "data", PROGRESS_BASENAME);
+}
+
+function loadProgress(expectedFingerprint) {
+  const p = progressPath();
+  if (!existsSync(p)) return { completed: new Set(), fingerprint: null };
+  try {
+    const raw = JSON.parse(readFileSync(p, "utf8"));
+    if (raw.v !== PROGRESS_VERSION || raw.fingerprint !== expectedFingerprint) {
+      return { completed: new Set(), fingerprint: null };
+    }
+    const arr = Array.isArray(raw.completed) ? raw.completed : [];
+    return { completed: new Set(arr), fingerprint: raw.fingerprint };
+  } catch {
+    return { completed: new Set(), fingerprint: null };
+  }
+}
+
+function saveProgress(fingerprint, completedSet) {
+  const dir = dirname(progressPath());
+  mkdirSync(dir, { recursive: true });
+  const tmp = `${progressPath()}.${process.pid}.tmp`;
+  const body = JSON.stringify(
+    {
+      v: PROGRESS_VERSION,
+      fingerprint,
+      completed: [...completedSet],
+      updatedAt: new Date().toISOString(),
+    },
+    null,
+    0
+  );
+  writeFileSync(tmp, body, "utf8");
+  renameSync(tmp, progressPath());
+}
+
+function removeProgressFile() {
+  const p = progressPath();
+  try {
+    if (existsSync(p)) unlinkSync(p);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function fetchWithRetry(fetchUrl, retries = MAX_RETRIES) {
   for (let attempt = 1; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(fetchUrl);
+      const res = await fetch(fetchUrl, { signal: ctrl.signal });
+      clearTimeout(timer);
       if (res.status === 429) {
-        const wait = Math.min(2000 * attempt, 10000);
+        if (attempt >= retries) return res;
+        const wait = Math.min(2000 * attempt, 30_000);
         console.warn(`  Rate limited, waiting ${wait}ms (attempt ${attempt}/${retries})`);
         await sleep(wait);
         continue;
       }
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        if (attempt < retries) {
+          const wait = Math.min(1500 * attempt, 20_000);
+          console.warn(`  HTTP ${res.status}, retry in ${wait}ms (${attempt}/${retries})`);
+          await sleep(wait);
+          continue;
+        }
+      }
       return res;
     } catch (err) {
+      clearTimeout(timer);
+      const aborted = err?.name === "AbortError";
       if (attempt === retries) throw err;
-      const wait = 1000 * attempt;
-      console.warn(`  Network error, retry in ${wait}ms: ${err.message}`);
+      const wait = Math.min(2000 * attempt, 30_000);
+      if (aborted) {
+        console.warn(`  Request timed out after ${REQUEST_TIMEOUT_MS}ms (attempt ${attempt}/${retries}), retry in ${wait}ms`);
+      } else {
+        console.warn(`  Network error, retry in ${wait}ms: ${err.message}`);
+      }
       await sleep(wait);
     }
   }
@@ -121,11 +206,10 @@ async function fetchDailyBars(symbol, from, to) {
     })
   );
   if (!res || !res.ok) {
-    if (res) console.warn(`  ${symbol}: HTTP ${res.status}`);
-    return [];
+    return { bars: [], status: res?.status ?? 0 };
   }
   const data = await res.json();
-  return (data.results ?? []).map((b) => ({
+  const bars = (data.results ?? []).map((b) => ({
     date: new Date(b.t).toISOString().slice(0, 10),
     open: b.o ?? 0,
     high: b.h ?? 0,
@@ -133,6 +217,7 @@ async function fetchDailyBars(symbol, from, to) {
     close: b.c ?? 0,
     volume: b.v ?? 0,
   }));
+  return { bars, status: res.status };
 }
 
 /* ── gap detection ───────────────────────────────────────────────────── */
@@ -348,37 +433,89 @@ async function main() {
 
   let totalInserted = 0;
   let apiCalls = 0;
+  let rangesSkippedResume = 0;
 
   const allWork = [...etfWork, ...stockWork];
+  const fingerprint = workFingerprint(allWork, STRICT_CALENDAR);
+
+  if (FRESH) {
+    removeProgressFile();
+    console.log("Phase 3: --fresh — cleared resume checkpoint.\n");
+  }
+
+  let { completed } = FRESH ? { completed: new Set() } : loadProgress(fingerprint);
+  if (!FRESH && completed.size > 0) {
+    console.log(
+      `Resume: ${completed.size} range(s) already done (checkpoint matches this work queue). Use --fresh to restart Phase 3 from scratch.\n`
+    );
+  }
 
   for (let i = 0; i < allWork.length; i++) {
     const { symbol, ranges } = allWork[i];
     let symbolBars = 0;
+    let http403Ranges = 0;
+    let otherErrors = 0;
 
     for (const range of ranges) {
+      const key = rangeKey(symbol, range.from, range.to);
+      if (completed.has(key)) {
+        rangesSkippedResume++;
+        continue;
+      }
+
       try {
-        const bars = await fetchDailyBars(symbol, range.from, range.to);
+        const { bars, status } = await fetchDailyBars(symbol, range.from, range.to);
+        if (status === 403) http403Ranges++;
         if (bars.length > 0) {
           insertMany(bars, symbol);
           symbolBars += bars.length;
         }
         apiCalls++;
+        completed.add(key);
       } catch (e) {
+        otherErrors++;
         console.warn(`  ${symbol} [${range.from} -> ${range.to}]: ${e.message}`);
       }
       await sleep(API_DELAY_MS);
     }
 
+    /* One checkpoint file per symbol: durable progress without 29k tiny writes. */
+    saveProgress(fingerprint, completed);
+
+    if ((i + 1) % WAL_CHECKPOINT_EVERY_SYMBOLS === 0) {
+      try {
+        db.pragma("wal_checkpoint(PASSIVE)");
+      } catch {
+        /* ignore */
+      }
+    }
+
     totalInserted += symbolBars;
     const pct = (((i + 1) / allWork.length) * 100).toFixed(1);
-    if (symbolBars > 0) {
-      console.log(`  [${pct}%] ${symbol}: +${symbolBars} bars`);
+    const parts = [];
+    if (symbolBars > 0) parts.push(`+${symbolBars} bars`);
+    if (http403Ranges > 0) parts.push(`${http403Ranges}×403`);
+    if (otherErrors > 0) parts.push(`${otherErrors} err`);
+    const suffix = parts.length ? ` (${parts.join(", ")})` : "";
+    if (symbolBars > 0 || http403Ranges > 0 || otherErrors > 0) {
+      console.log(`  [${pct}%] ${symbol}${suffix}`);
     } else {
       process.stdout.write(`  [${pct}%] ${symbol}: no new bars\r`);
     }
   }
 
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+    /* ignore */
+  }
+
+  removeProgressFile();
+
   console.log(`\nBackfill complete: ${totalInserted} bars inserted across ${allWork.length} symbols (${apiCalls} API calls).`);
+  if (rangesSkippedResume > 0) {
+    console.log(`Skipped ${rangesSkippedResume} range(s) from resume checkpoint (no refetch).`);
+  }
 
   db.exec("ANALYZE");
   db.close();
