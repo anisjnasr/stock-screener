@@ -2084,6 +2084,22 @@ export default function WatchlistPanel({
   const buildEffectiveFilters = useCallback(
     (form: typeof newScreenForm): ScreenerFilters => {
       const filters: ScreenerFilters = { ...form.filters };
+      // Drop keys driven by side-state (include/exclude rows, pct rows) so clearing the UI
+      // does not leave stale industry_include / sector_include / eps_*_min etc. in form.filters.
+      for (const cat of SCREENER_FILTER_CATEGORIES) {
+        for (const field of cat.fields) {
+          if (field.type === "includeExcludeMulti") {
+            delete filters[field.includeKey];
+            delete filters[field.excludeKey];
+            if (field.key === "industry_filter") delete filters.industry;
+            if (field.key === "sector_filter") delete filters.sector;
+          }
+          if (field.type === "pctOperatorRow") {
+            delete filters[field.minKey];
+            delete filters[field.maxKey];
+          }
+        }
+      }
       const includeExcludeRows = form.includeExcludeRows ?? {};
       for (const [rowKey, row] of Object.entries(includeExcludeRows)) {
         if (row.selected.length === 0) continue;
