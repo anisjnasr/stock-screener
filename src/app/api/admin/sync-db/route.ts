@@ -198,7 +198,9 @@ export async function POST(request: NextRequest) {
           try {
             const testDb = new Database(DB_PATH);
             // Detailed integrity check (first 20 issues)
-            const ic = testDb.pragma("integrity_check(20)") as Array<Record<string, string>>;
+            const ic = testDb
+              .prepare("PRAGMA integrity_check(20)")
+              .all() as Array<Record<string, string>>;
             const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
             if (firstResult === "ok") {
               log("DB integrity_check: ok");
