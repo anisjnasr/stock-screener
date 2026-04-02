@@ -22,7 +22,11 @@ export function useOwnership(symbol: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!symbol) return;
+    if (!symbol) {
+      setOwnership([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     fetch(`/api/ownership?symbol=${encodeURIComponent(symbol)}`)
       .then((r) => r.json().then((d) => (d && typeof d === "object" && "quarters" in d ? d : Array.isArray(d) ? d : {})))

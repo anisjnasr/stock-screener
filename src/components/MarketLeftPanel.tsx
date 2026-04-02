@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
+import { fetchBreadthClient } from "@/lib/breadth-client";
 
 type Quote = {
   symbol: string;
@@ -24,12 +25,6 @@ type WatchlistQuotesApiItem = {
     avgVolume?: number;
   } | null;
   profile?: { mktCap?: number } | null;
-};
-
-type BreadthPoint = {
-  date: string;
-  pctAbove50d: number | null;
-  pctAbove200d: number | null;
 };
 
 function numOrNull(v: unknown): number | null {
@@ -126,11 +121,11 @@ function IndicesTable({
     const indices = Object.entries(SYMBOL_TO_BREADTH_INDEX);
     Promise.all(
       indices.map(([sym, indexId]) =>
-        fetch(`/api/breadth?index=${indexId}`)
-          .then((r) => r.json())
-          .then((d: { breadth?: BreadthPoint[]; latestDate?: string | null }) => {
+        fetchBreadthClient(indexId as "sp500" | "nasdaq", { includeNetNewHighs: false })
+          .then((d) => {
+            if (!d) return [sym, { pct50: null, pct200: null }] as const;
             const pts = d.breadth ?? [];
-            const ld = d.latestDate;
+            const ld = d.latestDate ?? null;
             const match = ld ? pts.find((p) => p.date === ld) : undefined;
             const last = match ?? (pts.length > 0 ? pts[pts.length - 1] : undefined);
             return [sym, { pct50: last?.pctAbove50d ?? null, pct200: last?.pctAbove200d ?? null }] as const;

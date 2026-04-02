@@ -30,6 +30,23 @@ function getSymbolsForUniverse(universe: string): string[] {
 
 export async function GET(request: NextRequest) {
   const _perfStart = performance.now();
+  const jsonWithMetrics = (
+    body: unknown,
+    init?: { status?: number; headers?: Record<string, string> }
+  ) => {
+    const payload = JSON.stringify(body);
+    const durationMs = Math.round(performance.now() - _perfStart);
+    const payloadBytes = new TextEncoder().encode(payload).length;
+    return new NextResponse(payload, {
+      status: init?.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Server-Timing": `total;dur=${durationMs}`,
+        "X-Payload-Bytes": String(payloadBytes),
+        ...(init?.headers ?? {}),
+      },
+    });
+  };
   try {
     const params = request.nextUrl.searchParams;
     const date = params.get("date") ?? undefined;
@@ -55,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     if (params.has("latestDateOnly")) {
       const latest = getLatestScreenerDate();
-      return NextResponse.json({ date: latest }, {
+      return jsonWithMetrics({ date: latest }, {
         headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
       });
     }
@@ -66,7 +83,7 @@ export async function GET(request: NextRequest) {
         symbols,
         filters,
       });
-      return NextResponse.json({ count, date: snapshotDate }, {
+      return jsonWithMetrics({ count, date: snapshotDate }, {
         headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
       });
     }
@@ -75,7 +92,7 @@ export async function GET(request: NextRequest) {
     if (scriptBody.trim()) {
       const asOfDate = date ?? getLatestScreenerDate();
       if (!asOfDate) {
-        return NextResponse.json({ date: null, rows: [], error: "No screener date available" }, { status: 200 });
+        return jsonWithMetrics({ date: null, rows: [], error: "No screener date available" }, { status: 200 });
       }
       let scriptSymbols = symbols;
       if (!scriptSymbols || scriptSymbols.length === 0) {
@@ -83,7 +100,7 @@ export async function GET(request: NextRequest) {
         scriptSymbols = getSymbolsForUniverse(universe);
       }
       if (scriptSymbols.length === 0) {
-        return NextResponse.json({ date: asOfDate, rows: [] }, { status: 200 });
+        return jsonWithMetrics({ date: asOfDate, rows: [] }, { status: 200 });
       }
       const { passingSymbols, scriptColumns, scriptValues, error: scriptError } = await runNinoScript(
         scriptBody.trim(),
@@ -91,10 +108,10 @@ export async function GET(request: NextRequest) {
         asOfDate
       );
       if (scriptError) {
-        return NextResponse.json({ date: asOfDate, rows: [], scriptColumns: [], error: scriptError }, { status: 200 });
+        return jsonWithMetrics({ date: asOfDate, rows: [], scriptColumns: [], error: scriptError }, { status: 200 });
       }
       if (passingSymbols.length === 0) {
-        return NextResponse.json({ date: asOfDate, rows: [], scriptColumns: scriptColumns }, { status: 200 });
+        return jsonWithMetrics({ date: asOfDate, rows: [], scriptColumns: scriptColumns }, { status: 200 });
       }
       const { rows, date: snapshotDate } = getScreenerSnapshot({
         date: asOfDate,
@@ -108,7 +125,7 @@ export async function GET(request: NextRequest) {
         const extra = sym && scriptValues[sym] ? scriptValues[sym] : {};
         return { ...r, ...extra };
       });
-      return NextResponse.json({ date: snapshotDate, rows: merged, scriptColumns }, {
+      return jsonWithMetrics({ date: snapshotDate, rows: merged, scriptColumns }, {
         headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
       });
     }
@@ -121,13 +138,13 @@ export async function GET(request: NextRequest) {
       filters,
     });
 
-    return NextResponse.json({ date: snapshotDate, rows }, {
+    return jsonWithMetrics({ date: snapshotDate, rows }, {
       headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Screener error";
     recordPerf("api", "/api/screener", Math.round(performance.now() - _perfStart), { status: 500 });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonWithMetrics({ error: message }, { status: 500 });
   } finally {
     recordPerf("api", "/api/screener", Math.round(performance.now() - _perfStart));
   }

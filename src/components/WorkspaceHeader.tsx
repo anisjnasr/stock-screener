@@ -891,7 +891,7 @@ function WorkspaceHeader({
                 >
                   {watchlistNames.map((wl, idx) => {
                     const isFav = favListIds.includes(wl.id);
-                    const isDeletable = wl.id !== FULL_UNIVERSE_ID;
+                    const isDeletable = wl.id !== FULL_UNIVERSE_ID && !wl.id.startsWith("index:");
                     const selectList = () => {
                       if (editingListId) return;
                       onWatchlistChange?.(wl.id);

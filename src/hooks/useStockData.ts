@@ -95,6 +95,12 @@ export function useStockData(symbol: string) {
 
   useEffect(() => {
     if (retryRef.current) clearTimeout(retryRef.current);
+    if (!symbol) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     const initData = consumeInitData(symbol);
     if (initData) {

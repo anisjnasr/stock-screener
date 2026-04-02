@@ -65,6 +65,7 @@ import NinoScriptEditor from "@/components/NinoScriptEditor";
 import NinoScriptHelp from "@/components/NinoScriptHelp";
 
 export const FULL_UNIVERSE_ID = "__full_universe__";
+export const DEFAULT_LISTS_OPEN_ID = "index:nasdaq100";
 
 /** Row shape: core fields + all optional screener/quote columns (camelCase). */
 type WatchlistRow = {
@@ -972,11 +973,20 @@ export default function WatchlistPanel({
     if (activeWatchlistIdSync != null && activeWatchlistIdSync !== "") {
       const isFullUniverse = activeWatchlistIdSync === FULL_UNIVERSE_ID;
       const isFlagWatchlist = activeWatchlistIdSync.startsWith(FLAG_LIST_PREFIX);
-      if (!isFullUniverse && !isFlagWatchlist && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
+      const isIndexWatchlist = activeWatchlistIdSync.startsWith(INDEX_LIST_PREFIX);
+      if (!isFullUniverse && !isFlagWatchlist && !isIndexWatchlist && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
       setSidebarTab("watchlists");
-      if (isFlagWatchlist) {
-        setActiveListId(null);
+      if (isFlagWatchlist || isIndexWatchlist) {
+        setActiveListIdState(null);
         setSelectedCollectionId(activeWatchlistIdSync);
+        if (isIndexWatchlist) {
+          setExpandedListFolderIds((prev) => {
+            if (prev.has("indices")) return prev;
+            const next = new Set(prev);
+            next.add("indices");
+            return next;
+          });
+        }
       } else {
         if (activeWatchlistIdSync !== activeListId) setActiveListId(activeWatchlistIdSync);
         setSelectedCollectionId(null);
@@ -987,6 +997,16 @@ export default function WatchlistPanel({
     else if (activeListId && activeListId !== FULL_UNIVERSE_ID && !lists.find((l) => l.id === activeListId))
       setActiveListId(lists[0]?.id ?? null);
   }, [lists, activeListId, activeWatchlistIdSync, setActiveListId]);
+
+  useEffect(() => {
+    if (sidebarTab !== "watchlists" || !selectedCollectionId) return;
+    if (
+      selectedCollectionId.startsWith(INDEX_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(FLAG_LIST_PREFIX)
+    ) {
+      emitActiveWatchlistRef.current?.(selectedCollectionId);
+    }
+  }, [sidebarTab, selectedCollectionId]);
 
   useEffect(() => {
     if (sectionMode === "scans") setSidebarTab("screener");
@@ -1069,9 +1089,16 @@ export default function WatchlistPanel({
     };
   }, [selectedCollectionId, predefinedListSymbols]);
 
-  // Build sector + industry top lists from screener snapshot once.
+  const shouldLoadClassificationLists = useMemo(() => {
+    if (Object.keys(sectorListSymbols).length > 0 && Object.keys(industryListSymbols).length > 0) return false;
+    if (selectedCollectionId?.startsWith(SECTOR_LIST_PREFIX)) return true;
+    if (selectedCollectionId?.startsWith(INDUSTRY_LIST_PREFIX)) return true;
+    return expandedListFolderIds.has("sectors") || expandedListFolderIds.has("industries");
+  }, [sectorListSymbols, industryListSymbols, selectedCollectionId, expandedListFolderIds]);
+
+  // Build sector + industry top lists only when those views are requested.
   useEffect(() => {
-    if (Object.keys(sectorListSymbols).length > 0 && Object.keys(industryListSymbols).length > 0) return;
+    if (!shouldLoadClassificationLists || classificationListsLoading) return;
     let cancelled = false;
     setClassificationListsLoading(true);
     fetch("/api/screener?limit=20000")
@@ -1122,7 +1149,7 @@ export default function WatchlistPanel({
     return () => {
       cancelled = true;
     };
-  }, [sectorListSymbols, industryListSymbols]);
+  }, [shouldLoadClassificationLists, classificationListsLoading]);
 
   // Fetch thematic ETF constituents when a thematic ETF list is selected.
   useEffect(() => {

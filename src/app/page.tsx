@@ -36,7 +36,7 @@ class PanelErrorBoundary extends React.Component<
 }
 import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
-import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
+import { DEFAULT_LISTS_OPEN_ID, FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
   loadFlags,
   saveFlags,
@@ -68,6 +68,10 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
 
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
+const DEFAULT_INDEX_WATCHLISTS = [
+  { id: "index:nasdaq100", name: "Nasdaq 100" },
+  { id: "index:sp500", name: "S&P 500" },
+];
 
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
@@ -104,7 +108,7 @@ export default function Home() {
 
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
-  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(FULL_UNIVERSE_ID);
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const secondaryPagesPrefetchedRef = useRef(false);
@@ -175,10 +179,12 @@ export default function Home() {
     }
   }, [activeWatchlistId, section]);
 
-  const { getCachedCandles, fetchCandlesFor } = useCandleCache();
-  const { data } = useStockData(symbol);
-  const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(symbol);
-  const { ownershipQuarters, fundCount } = useOwnership(symbol);
+  const { getCachedCandles, setCachedCandles, fetchCandlesFor } = useCandleCache();
+  const shouldLoadRightRailData = section === "scans" || section === "lists";
+  const rightRailSymbol = shouldLoadRightRailData ? symbol : "";
+  const { data } = useStockData(rightRailSymbol);
+  const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(rightRailSymbol);
+  const { ownershipQuarters, fundCount } = useOwnership(rightRailSymbol);
 
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -206,6 +212,7 @@ export default function Home() {
           }
         }
         if (d.candles && Array.isArray(d.candles) && d.candles.length > 0) {
+          setCachedCandles(DEFAULT_SYMBOL, "daily", d.candles);
           setCandles(d.candles);
           setChartLoading(false);
         }
@@ -215,12 +222,12 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [setCachedCandles]);
 
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
     secondaryPagesPrefetchedRef.current = true;
-    const urls = ["/api/market-monitor", "/api/sectors-industries", "/api/breadth?index=sp500"];
+    const urls = ["/api/market-monitor", "/api/sectors-industries"];
     const prefetch = () => { for (const url of urls) fetch(url).catch(() => {}); };
     if (typeof window.requestIdleCallback === "function") {
       const id = window.requestIdleCallback(prefetch, { timeout: 3000 });
@@ -258,13 +265,13 @@ export default function Home() {
   }, [symbol]);
 
   const handleDeleteWatchlist = useCallback((id: string) => {
-    if (id === FULL_UNIVERSE_ID) return;
+    if (id === FULL_UNIVERSE_ID || id.startsWith("index:")) return;
     setWatchlists((prev) => {
       const next = prev.filter((l) => l.id !== id);
       queueMicrotask(() => saveWatchlists(next));
       return next;
     });
-    if (activeWatchlistId === id) setActiveWatchlistId(FULL_UNIVERSE_ID);
+    if (activeWatchlistId === id) setActiveWatchlistId(DEFAULT_LISTS_OPEN_ID);
   }, [activeWatchlistId]);
 
   const handleReorderScans = useCallback((names: string[]) => {
@@ -352,8 +359,12 @@ export default function Home() {
     let cancelled = false;
     const controller = new AbortController();
     const cached = getCachedCandles(symbol, chartTimeframe);
-    if (cached) { setCandles(cached); setChartLoading(false); }
-    else { setChartLoading(true); }
+    if (cached) {
+      setCandles(cached);
+      setChartLoading(false);
+      return () => { cancelled = true; controller.abort(); };
+    }
+    setChartLoading(true);
     fetchCandlesFor(symbol, chartTimeframe, { signal: controller.signal })
       .then((rows) => { if (!cancelled && !controller.signal.aborted) setCandles(rows); })
       .finally(() => { if (!cancelled && !controller.signal.aborted) setChartLoading(false); });
@@ -368,6 +379,7 @@ export default function Home() {
   const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
   const chartWatchlists = useMemo(() => [
     { id: FULL_UNIVERSE_ID, name: "Full Universe" },
+    ...DEFAULT_INDEX_WATCHLISTS,
     ...watchlists.map((l) => ({ id: l.id, name: l.name })),
   ], [watchlists]);
   const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === symbol.toUpperCase()), [scanSymbols, symbol]);
@@ -537,7 +549,7 @@ export default function Home() {
               setOpenToScreenerTrigger({ name: restored, nonce: Date.now() });
             }
           } else if (s === "lists") {
-            const restored = sectionHistoryRef.current.lists || activeWatchlistId || FULL_UNIVERSE_ID;
+            const restored = sectionHistoryRef.current.lists || activeWatchlistId || DEFAULT_LISTS_OPEN_ID;
             pendingAutoSelectRef.current = true;
             setActiveWatchlistId(restored);
           }

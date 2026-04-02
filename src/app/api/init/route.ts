@@ -48,6 +48,24 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 type Candle = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
+  const jsonWithMetrics = (
+    body: unknown,
+    init?: { status?: number; headers?: Record<string, string> }
+  ) => {
+    const payload = JSON.stringify(body);
+    const durationMs = Math.round(performance.now() - startedAt);
+    const payloadBytes = new TextEncoder().encode(payload).length;
+    return new NextResponse(payload, {
+      status: init?.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Server-Timing": `total;dur=${durationMs}`,
+        "X-Payload-Bytes": String(payloadBytes),
+        ...(init?.headers ?? {}),
+      },
+    });
+  };
   const symbol = (request.nextUrl.searchParams.get("symbol") || "SPY").toUpperCase();
   try {
     const latestScreenerDate = getLatestScreenerDate();
@@ -167,11 +185,11 @@ export async function GET(request: NextRequest) {
       candles,
     };
 
-    return NextResponse.json(payload, {
+    return jsonWithMetrics(payload, {
       headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Init API error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonWithMetrics({ error: message }, { status: 500 });
   }
 }

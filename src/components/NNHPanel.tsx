@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useMemo } from "react";
+import { fetchBreadthClient } from "@/lib/breadth-client";
 
 type NNHRow = { date: string; highs: number; lows: number; net: number };
 type Horizon = "oneMonth" | "threeMonths" | "sixMonths" | "fiftyTwoWeek";
@@ -27,8 +28,7 @@ export default function NNHPanel({ visibleRange, collapsed, onToggleCollapse }: 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/breadth?index=sp500")
-      .then((r) => r.json())
+    fetchBreadthClient("sp500", { includeNetNewHighs: true })
       .then((json) => {
         if (cancelled) return;
         const nnh = json?.netNewHighs;

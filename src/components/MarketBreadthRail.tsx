@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useMemo, useState } from "react";
+import { fetchBreadthClient } from "@/lib/breadth-client";
 
 type BreadthPoint = {
   date: string;
@@ -124,9 +125,8 @@ export default function MarketBreadthRail({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/breadth?index=${indexId}`)
-      .then((r) => r.json())
-      .then((d) => { if (!cancelled) setBreadth(d as BreadthResponse); })
+    fetchBreadthClient(indexId as "sp500" | "nasdaq", { includeNetNewHighs: false })
+      .then((d) => { if (!cancelled) setBreadth((d as BreadthResponse | null) ?? null); })
       .catch(() => { if (!cancelled) setBreadth(null); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

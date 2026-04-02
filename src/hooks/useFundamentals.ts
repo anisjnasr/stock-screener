@@ -36,7 +36,13 @@ export function useFundamentals(symbol: string) {
   const [quarterlyLoading, setQuarterlyLoading] = useState(true);
 
   useEffect(() => {
-    if (!symbol) return;
+    if (!symbol) {
+      setAnnualFundamentals([]);
+      setQuarterlyFundamentals([]);
+      setSidebarLoading(false);
+      setQuarterlyLoading(false);
+      return;
+    }
     let cancelled = false;
     setSidebarLoading(true);
     setQuarterlyLoading(true);

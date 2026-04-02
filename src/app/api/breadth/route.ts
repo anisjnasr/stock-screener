@@ -137,12 +137,32 @@ function persistBreadthSeries(
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
+  const jsonWithMetrics = (
+    body: unknown,
+    init?: { status?: number; headers?: Record<string, string> }
+  ) => {
+    const payload = JSON.stringify(body);
+    const durationMs = Math.round(performance.now() - startedAt);
+    const payloadBytes = new TextEncoder().encode(payload).length;
+    return new NextResponse(payload, {
+      status: init?.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Server-Timing": `total;dur=${durationMs}`,
+        "X-Payload-Bytes": String(payloadBytes),
+        ...(init?.headers ?? {}),
+      },
+    });
+  };
   try {
     const indexParam = String(request.nextUrl.searchParams.get("index") ?? "sp500").toLowerCase();
     const indexId: BreadthIndexId = indexParam === "nasdaq" ? "nasdaq" : "sp500";
+    const viewMode = String(request.nextUrl.searchParams.get("view") ?? "full").toLowerCase();
+    const includeNetNewHighs = viewMode !== "breadth";
     const latestDate = getLatestCompletedTradingDate();
     if (!latestDate) {
-      return NextResponse.json({
+      return jsonWithMetrics({
         indexId,
         latestDate: null,
         startDate: null,
@@ -154,7 +174,7 @@ export async function GET(request: NextRequest) {
     const start = new Date(`${latestDate}T00:00:00Z`);
     start.setUTCFullYear(start.getUTCFullYear() - 2);
     const queryStartDate = start.toISOString().slice(0, 10);
-    const cacheKey = `${indexId}:${latestDate}:${queryStartDate}`;
+    const cacheKey = `${indexId}:${latestDate}:${queryStartDate}:${includeNetNewHighs ? "full" : "breadth"}`;
 
     if (existsSync(CACHE_PATH)) {
       try {
@@ -165,32 +185,44 @@ export async function GET(request: NextRequest) {
           parsed.items &&
           parsed.items[cacheKey]
         ) {
-          return NextResponse.json(parsed.items[cacheKey]);
+          return jsonWithMetrics(parsed.items[cacheKey], {
+            headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+          });
         }
       } catch {
         /* ignore cache read errors */
       }
     }
 
-    const nnh1m = getIndexNetNewHighSeries(indexId, 21, queryStartDate, latestDate);
-    const nnh3m = getIndexNetNewHighSeries(indexId, 63, queryStartDate, latestDate);
-    const nnh6m = getIndexNetNewHighSeries(indexId, 126, queryStartDate, latestDate);
-    const nnh52w = getIndexNetNewHighSeries(indexId, 252, queryStartDate, latestDate);
+    const nnh1m = includeNetNewHighs
+      ? getIndexNetNewHighSeries(indexId, 21, queryStartDate, latestDate)
+      : { rows: [] as Array<{ date: string; highs: number; lows: number; net: number }> };
+    const nnh3m = includeNetNewHighs
+      ? getIndexNetNewHighSeries(indexId, 63, queryStartDate, latestDate)
+      : { rows: [] as Array<{ date: string; highs: number; lows: number; net: number }> };
+    const nnh6m = includeNetNewHighs
+      ? getIndexNetNewHighSeries(indexId, 126, queryStartDate, latestDate)
+      : { rows: [] as Array<{ date: string; highs: number; lows: number; net: number }> };
+    const nnh52w = includeNetNewHighs
+      ? getIndexNetNewHighSeries(indexId, 252, queryStartDate, latestDate)
+      : { rows: [] as Array<{ date: string; highs: number; lows: number; net: number }> };
     const breadth = getIndexBreadthSeries(indexId, queryStartDate, latestDate);
 
     const responseStartDate = breadth.rows[0]?.date ?? null;
 
-    try {
-      persistBreadthSeries(indexId, latestDate, {
-        nnh1m: nnh1m.rows,
-        nnh3m: nnh3m.rows,
-        nnh6m: nnh6m.rows,
-        nnh52w: nnh52w.rows,
-        breadth: breadth.rows,
-      });
-    } catch {
-      // Persistence is best-effort; API responses should still succeed even when
-      // the runtime filesystem/database is read-only.
+    if (includeNetNewHighs) {
+      try {
+        persistBreadthSeries(indexId, latestDate, {
+          nnh1m: nnh1m.rows,
+          nnh3m: nnh3m.rows,
+          nnh6m: nnh6m.rows,
+          nnh52w: nnh52w.rows,
+          breadth: breadth.rows,
+        });
+      } catch {
+        // Persistence is best-effort; API responses should still succeed even when
+        // the runtime filesystem/database is read-only.
+      }
     }
 
     const payload = {
@@ -222,12 +254,12 @@ export async function GET(request: NextRequest) {
       /* ignore cache write errors */
     }
 
-    return NextResponse.json(payload, {
+    return jsonWithMetrics(payload, {
       headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Breadth error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonWithMetrics({ error: message }, { status: 500 });
   }
 }
 
