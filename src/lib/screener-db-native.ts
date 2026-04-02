@@ -84,6 +84,10 @@ export type ScreenerRow = {
   [key: string]: unknown;
 };
 
+/** Stored cap from quotes, or shares × last/previous close — must match filter predicates. */
+const EFFECTIVE_MARKET_CAP_SQL =
+  "COALESCE(q.market_cap, c.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
+
 export function buildFilterClauses(filters: ScreenerFilters): { sql: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -104,8 +108,7 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
     if (toVal != null) { conditions.push(` AND ${expr} <= ?`); params.push(toVal); }
   };
 
-  if (num(filters.market_cap_min) != null) { conditions.push(" AND q.market_cap >= ?"); params.push(num(filters.market_cap_min)); }
-  if (num(filters.market_cap_max) != null) { conditions.push(" AND q.market_cap <= ?"); params.push(num(filters.market_cap_max)); }
+  addNumericRange(EFFECTIVE_MARKET_CAP_SQL, "market_cap_min", "market_cap_max");
   if (num(filters.last_price_min) != null) { conditions.push(" AND q.last_price >= ?"); params.push(num(filters.last_price_min)); }
   if (num(filters.last_price_max) != null) { conditions.push(" AND q.last_price <= ?"); params.push(num(filters.last_price_max)); }
   if (num(filters.change_pct_min) != null) { conditions.push(" AND q.change_pct >= ?"); params.push(num(filters.change_pct_min)); }
@@ -838,7 +841,7 @@ export function getScreenerSnapshot(options: {
       c.symbol, c.name, c.exchange, c.industry, c.sector,
       q.date,
       COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol)) AS ipo_date,
-      COALESCE(q.market_cap, c.shares_outstanding * COALESCE(q.last_price, q.prev_close)) AS market_cap,
+      ${EFFECTIVE_MARKET_CAP_SQL} AS market_cap,
       q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
       q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
       q.prev_close,
