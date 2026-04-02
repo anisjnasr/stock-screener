@@ -37,7 +37,6 @@ import {
   NUMERIC_COLUMN_IDS,
   DEFAULT_VISIBLE_COLUMNS,
   loadFlagNames,
-  saveFlagName,
   defaultFlagListLabel,
   passesColumnFilter,
 } from "@/lib/watchlist-storage";
@@ -50,7 +49,6 @@ import {
   deleteScreen,
   loadFolders,
   addFolder,
-  updateFolder,
   deleteFolder,
   seedDefaultScreensIfEmpty,
   ensurePrebuiltScreensPresent,
@@ -59,7 +57,7 @@ import {
   type ScreenerFilters,
   UNIVERSE_OPTIONS,
 } from "@/lib/screener-storage";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
+import { formatDisplayDate } from "@/lib/date-format";
 import { toTitleCase } from "@/lib/text-format";
 import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
@@ -82,6 +80,32 @@ type WatchlistRow = {
   atrPct?: number;
   exchange?: string | null;
   ipoDate?: string;
+  earningsLastReported?: string;
+  salesLastReported?: string;
+  epsRecentQ?: number | null;
+  avgEps2q?: number | null;
+  epsGrowthRecentQ?: number | null;
+  avgEpsGrowth2q?: number | null;
+  avgEpsGrowth3q?: number | null;
+  avgEpsGrowth4q?: number | null;
+  epsTtm?: number | null;
+  avgEps2y?: number | null;
+  epsGrowth1y?: number | null;
+  epsGrowth2yAgo?: number | null;
+  avgEpsGrowth2y?: number | null;
+  avgEpsGrowth3y?: number | null;
+  salesRecentQ?: number | null;
+  avgSales2q?: number | null;
+  salesGrowthRecentQ?: number | null;
+  avgSalesGrowth2q?: number | null;
+  avgSalesGrowth3q?: number | null;
+  avgSalesGrowth4q?: number | null;
+  salesTtm?: number | null;
+  avgSales2y?: number | null;
+  salesGrowth1y?: number | null;
+  salesGrowth2yAgo?: number | null;
+  avgSalesGrowth2y?: number | null;
+  avgSalesGrowth3y?: number | null;
   high52w?: number | null;
   off52wHighPct?: number | null;
   priceChange1wPct?: number | null;
@@ -130,7 +154,6 @@ const THEMATIC_INDUSTRIES_FOLDER_ID = "thematic-industries";
 
 const FLAG_LIST_PREFIX = "__flag_";
 const FLAG_COLORS = ["red", "yellow", "green", "blue"] as const;
-const FLAG_LIST_IDS = FLAG_COLORS.map((c) => `${FLAG_LIST_PREFIX}${c}__`);
 const FLAG_HEX: Record<string, string> = {
   red: "#EF4468",
   yellow: "#F5A524",
@@ -189,6 +212,16 @@ function fmtPct(n: number | undefined): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
+function fmtUsd(n: number | undefined | null): string {
+  if (n == null || Number.isNaN(n)) return "NA";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
 function formatListDisplayName(name: string): string {
   return toTitleCase(name)
     .replace(/\bEtfs\b/g, "ETFs")
@@ -208,6 +241,30 @@ function normalizeExportFileName(name: string): string {
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
     .replace(/\s+/g, " ");
   return cleaned.length > 0 ? cleaned : "export";
+}
+
+const IPO_FROM_MODE_KEY = "ipo_date_from_mode";
+const IPO_TO_MODE_KEY = "ipo_date_to_mode";
+type IpoFromMode = "date" | "half_year_ago" | "one_year_ago" | "two_year_ago";
+type IpoToMode = "date" | "today";
+
+function shiftIsoDate(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function resolveIpoFromDate(mode: IpoFromMode, explicitDate: string | undefined, today: string): string | undefined {
+  if (mode === "date") return explicitDate;
+  if (mode === "half_year_ago") return shiftIsoDate(today, -182);
+  if (mode === "one_year_ago") return shiftIsoDate(today, -365);
+  if (mode === "two_year_ago") return shiftIsoDate(today, -730);
+  return explicitDate;
 }
 
 /** Table column id: standard ColumnId or script criterion label (e.g. "MA(C, 21)"). */
@@ -234,7 +291,9 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
     return formatScriptColumnValue(String(col), v);
   }
   if (col === "lastPrice") return typeof v === "number" ? Number(v).toFixed(2) : String(v);
-  if (col === "ipoDate") return formatDisplayDate(String(v));
+  if (col === "ipoDate" || col === "earningsLastReported" || col === "salesLastReported") {
+    return formatDisplayDate(String(v));
+  }
   if (col === "exchange") {
     const code = String(v).trim().toUpperCase();
     const map: Record<string, string> = {
@@ -245,10 +304,19 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
     return map[code] ?? String(v).trim();
   }
   if (col === "industry") return toTitleCase(String(v));
-  if (col === "changePct" || col === "atrPct" || (typeof v === "number" && String(col).includes("Pct")))
+  if (
+    col === "changePct" ||
+    col === "atrPct" ||
+    String(col).startsWith("epsGrowth") ||
+    String(col).startsWith("avgEpsGrowth") ||
+    String(col).startsWith("salesGrowth") ||
+    String(col).startsWith("avgSalesGrowth") ||
+    (typeof v === "number" && String(col).includes("Pct"))
+  )
     return typeof v === "number" ? (col === "changePct" ? fmtPct(v) : `${Number(v).toFixed(2)}%`) : String(v);
   if (typeof v === "number") {
     if (col === "marketCap") return fmtBillions(Number(v));
+    if (String(col).startsWith("sales") || String(col).startsWith("avgSales")) return fmtUsd(Number(v));
     if (col === "volume" || col === "avgVolume") return Math.round(Number(v)).toLocaleString();
     return Number.isInteger(v) ? v.toLocaleString() : Number(v).toFixed(2);
   }
@@ -257,6 +325,19 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
 
 function getColumnLabel(col: TableColumnId): string {
   return (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+}
+
+function isSignedMetricColumn(col: TableColumnId): boolean {
+  const key = String(col);
+  return (
+    key === "changePct" ||
+    key.startsWith("priceChange") ||
+    key.startsWith("epsGrowth") ||
+    key.startsWith("avgEpsGrowth") ||
+    key.startsWith("salesGrowth") ||
+    key.startsWith("avgSalesGrowth") ||
+    key.startsWith("rsVsSpy")
+  );
 }
 
 function ColumnPickerContent({
@@ -285,10 +366,6 @@ function ColumnPickerContent({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
-
-  useEffect(() => {
-    setLocalOrder([...visibleColumns]);
-  }, [visibleColumns]);
 
   const hidden = useMemo(
     () => ALL_COLUMN_IDS.filter((id) => !localOrder.includes(id)),
@@ -536,7 +613,6 @@ export default function WatchlistPanel({
   }, []);
   const [rows, setRows] = useState<WatchlistRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [flags, setFlags] = useState<Record<string, StockFlag>>({});
   const [flagNames, setFlagNames] = useState<Record<string, string>>(() => loadFlagNames());
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
@@ -553,7 +629,6 @@ export default function WatchlistPanel({
   const [saveSetName, setSaveSetName] = useState("");
   const tableMenuRef = useRef<HTMLDivElement>(null);
   const [inlineTickerValue, setInlineTickerValue] = useState("");
-  const [showInlineTickerRow, setShowInlineTickerRow] = useState(false);
   const inlineTickerRef = useRef<HTMLInputElement>(null);
   const [inlineSuggestions, setInlineSuggestions] = useState<Array<{ symbol: string; name?: string }>>([]);
   const [inlineSuggestionsOpen, setInlineSuggestionsOpen] = useState(false);
@@ -628,13 +703,11 @@ export default function WatchlistPanel({
   const [selectedScreenerSectionId, setSelectedScreenerSectionId] = useState<string | null>(
     SCREENER_FILTER_CATEGORIES[0]?.id ?? null
   );
-  const [screenerDbDate, setScreenerDbDate] = useState<string | null>(null);
   const [screenerResultCount, setScreenerResultCount] = useState<number | null>(null);
   const [screenerError, setScreenerError] = useState<string | null>(null);
   /** For script screeners: column labels from the script (e.g. "MA(C, 21)", "ATR(10)"). */
   const [scriptColumns, setScriptColumns] = useState<string[]>([]);
   /** Per-screen result count (for showing next to each screener name in the list). */
-  const [screenerCounts, setScreenerCounts] = useState<Record<string, number>>({});
   const [addPopupMode, setAddPopupMode] = useState<"create" | "edit" | null>(null);
   const [addPopupListId, setAddPopupListId] = useState<string | null>(null);
   const [addPopupListName, setAddPopupListName] = useState("");
@@ -690,7 +763,7 @@ export default function WatchlistPanel({
   const moveScreenToFolder = useCallback((screenId: string, folderId: string | null) => {
     updateScreen(screenId, { folderId: folderId ?? undefined });
     setScreens(loadScreens());
-  }, [selectedCollectionId]);
+  }, []);
 
   const reorderScreenBefore = useCallback((draggedId: string, targetId: string) => {
     if (!draggedId || !targetId || draggedId === targetId) return;
@@ -931,7 +1004,6 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     if (activeList && sidebarTab === "watchlists" && !selectedCollectionId) {
-      setShowInlineTickerRow(true);
       if (activeList.symbols.length === 0) {
         setTimeout(() => inlineTickerRef.current?.focus(), 80);
       }
@@ -1162,37 +1234,7 @@ export default function WatchlistPanel({
     return { symbols: [] as string[], title: "Select a watchlist", fromScreener: false, screen: null };
   }, [sidebarTab, activeListId, activeList, selectedCollectionId, relatedStocksList, predefinedListSymbols, sectorListSymbols, industryListSymbols, thematicEtfConstituents, listFolders, selectedScreen, flags, flagNames]);
 
-  const activeListTitle = tableSource.title;
   const isUserWatchlist = Boolean(activeList) && sidebarTab === "watchlists" && !selectedCollectionId;
-  const isUserScreen = Boolean(selectedScreen) && sidebarTab === "screener";
-  const isFlagList = Boolean(selectedCollectionId?.startsWith(FLAG_LIST_PREFIX));
-  const canEditTitle = isUserWatchlist || isUserScreen || isFlagList;
-
-  const [editingTitleValue, setEditingTitleValue] = useState<string | null>(null);
-  const commitTitleEdit = useCallback(() => {
-    const trimmed = editingTitleValue?.trim();
-    if (trimmed && isUserWatchlist && activeList && trimmed !== activeList.name) {
-      setLists((prev) => {
-        const next = prev.map((l) => l.id === activeList.id ? { ...l, name: trimmed } : l);
-        saveWatchlists(next);
-        return next;
-      });
-    }
-    if (trimmed && isUserScreen && selectedScreen && trimmed !== selectedScreen.name) {
-      setScreens((prev) => {
-        const next = prev.map((s) => s.id === selectedScreen.id ? { ...s, name: trimmed } : s);
-        saveScreens(next);
-        return next;
-      });
-    }
-    if (trimmed && isFlagList && selectedCollectionId) {
-      const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
-      const updated = saveFlagName(color, trimmed);
-      setFlagNames(updated);
-      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: flags }));
-    }
-    setEditingTitleValue(null);
-  }, [editingTitleValue, activeList, isUserWatchlist, isUserScreen, selectedScreen, isFlagList, selectedCollectionId]);
 
   // When parent triggers "open to related list" (sidebar "Related Stocks" click only), switch to Watchlists and select related list.
   // Only depend on openToRelatedListTrigger so that clicking a ticker in the panel (which updates relatedStocksList) does not switch the view.
@@ -1201,7 +1243,7 @@ export default function WatchlistPanel({
     setSidebarTab("watchlists");
     setSelectedCollectionId(RELATED_LIST_ID);
     setActiveListId(null);
-  }, [openToRelatedListTrigger]);
+  }, [openToRelatedListTrigger, setActiveListId]);
 
   useEffect(() => {
     if (!openToCollectionTrigger?.value?.trim()) return;
@@ -1237,7 +1279,7 @@ export default function WatchlistPanel({
       else next.add("indices");
       return next;
     });
-  }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols]);
+  }, [openToCollectionTrigger, sectorListSymbols, industryListSymbols, setActiveListId]);
 
   const pendingScreenerTriggerRef = useRef<{ name: string; nonce: number } | null>(null);
   /** Prevents re-running __new__ / __edit__ / __clone__ when `screens` updates (e.g. after save) while the same trigger is still set from the parent. */
@@ -1300,7 +1342,7 @@ export default function WatchlistPanel({
     (item: {
       symbol: string;
       quote: { name?: string; price?: number; changesPercentage?: number; volume?: number; avgVolume?: number; marketCap?: number } | null;
-      profile: { companyName?: string; industry?: string; sector?: string; mktCap?: number } | null;
+      profile: { companyName?: string; industry?: string; sector?: string; mktCap?: number; ipoDate?: string } | null;
     }): WatchlistRow => ({
       symbol: item.symbol,
       name:
@@ -1315,6 +1357,7 @@ export default function WatchlistPanel({
       atrPct: undefined,
       industry: item.profile?.industry ?? "NA",
       sector: item.profile?.sector ?? "NA",
+      ipoDate: item.profile?.ipoDate ? String(item.profile.ipoDate).slice(0, 10) : undefined,
     }),
     []
   );
@@ -1339,6 +1382,42 @@ export default function WatchlistPanel({
         : r.ipoDate != null
           ? String(r.ipoDate).slice(0, 10)
           : undefined,
+    earningsLastReported:
+      r.earnings_last_reported != null
+        ? String(r.earnings_last_reported).slice(0, 10)
+        : r.earningsLastReported != null
+          ? String(r.earningsLastReported).slice(0, 10)
+          : undefined,
+    salesLastReported:
+      r.sales_last_reported != null
+        ? String(r.sales_last_reported).slice(0, 10)
+        : r.salesLastReported != null
+          ? String(r.salesLastReported).slice(0, 10)
+          : undefined,
+    epsRecentQ: typeof r.eps_recent_q === "number" ? r.eps_recent_q : typeof r.epsRecentQ === "number" ? r.epsRecentQ : null,
+    avgEps2q: typeof r.avg_eps_2q === "number" ? r.avg_eps_2q : typeof r.avgEps2q === "number" ? r.avgEps2q : null,
+    epsGrowthRecentQ: typeof r.eps_growth_recent_q === "number" ? r.eps_growth_recent_q : typeof r.epsGrowthRecentQ === "number" ? r.epsGrowthRecentQ : null,
+    avgEpsGrowth2q: typeof r.avg_eps_growth_2q === "number" ? r.avg_eps_growth_2q : typeof r.avgEpsGrowth2q === "number" ? r.avgEpsGrowth2q : null,
+    avgEpsGrowth3q: typeof r.avg_eps_growth_3q === "number" ? r.avg_eps_growth_3q : typeof r.avgEpsGrowth3q === "number" ? r.avgEpsGrowth3q : null,
+    avgEpsGrowth4q: typeof r.avg_eps_growth_4q === "number" ? r.avg_eps_growth_4q : typeof r.avgEpsGrowth4q === "number" ? r.avgEpsGrowth4q : null,
+    epsTtm: typeof r.eps_ttm === "number" ? r.eps_ttm : typeof r.epsTtm === "number" ? r.epsTtm : null,
+    avgEps2y: typeof r.avg_eps_2y === "number" ? r.avg_eps_2y : typeof r.avgEps2y === "number" ? r.avgEps2y : null,
+    epsGrowth1y: typeof r.eps_growth_1y === "number" ? r.eps_growth_1y : typeof r.epsGrowth1y === "number" ? r.epsGrowth1y : null,
+    epsGrowth2yAgo: typeof r.eps_growth_2y_ago === "number" ? r.eps_growth_2y_ago : typeof r.epsGrowth2yAgo === "number" ? r.epsGrowth2yAgo : null,
+    avgEpsGrowth2y: typeof r.avg_eps_growth_2y === "number" ? r.avg_eps_growth_2y : typeof r.avgEpsGrowth2y === "number" ? r.avgEpsGrowth2y : null,
+    avgEpsGrowth3y: typeof r.avg_eps_growth_3y === "number" ? r.avg_eps_growth_3y : typeof r.avgEpsGrowth3y === "number" ? r.avgEpsGrowth3y : null,
+    salesRecentQ: typeof r.sales_recent_q === "number" ? r.sales_recent_q : typeof r.salesRecentQ === "number" ? r.salesRecentQ : null,
+    avgSales2q: typeof r.avg_sales_2q === "number" ? r.avg_sales_2q : typeof r.avgSales2q === "number" ? r.avgSales2q : null,
+    salesGrowthRecentQ: typeof r.sales_growth_recent_q === "number" ? r.sales_growth_recent_q : typeof r.salesGrowthRecentQ === "number" ? r.salesGrowthRecentQ : null,
+    avgSalesGrowth2q: typeof r.avg_sales_growth_2q === "number" ? r.avg_sales_growth_2q : typeof r.avgSalesGrowth2q === "number" ? r.avgSalesGrowth2q : null,
+    avgSalesGrowth3q: typeof r.avg_sales_growth_3q === "number" ? r.avg_sales_growth_3q : typeof r.avgSalesGrowth3q === "number" ? r.avgSalesGrowth3q : null,
+    avgSalesGrowth4q: typeof r.avg_sales_growth_4q === "number" ? r.avg_sales_growth_4q : typeof r.avgSalesGrowth4q === "number" ? r.avgSalesGrowth4q : null,
+    salesTtm: typeof r.sales_ttm === "number" ? r.sales_ttm : typeof r.salesTtm === "number" ? r.salesTtm : null,
+    avgSales2y: typeof r.avg_sales_2y === "number" ? r.avg_sales_2y : typeof r.avgSales2y === "number" ? r.avgSales2y : null,
+    salesGrowth1y: typeof r.sales_growth_1y === "number" ? r.sales_growth_1y : typeof r.salesGrowth1y === "number" ? r.salesGrowth1y : null,
+    salesGrowth2yAgo: typeof r.sales_growth_2y_ago === "number" ? r.sales_growth_2y_ago : typeof r.salesGrowth2yAgo === "number" ? r.salesGrowth2yAgo : null,
+    avgSalesGrowth2y: typeof r.avg_sales_growth_2y === "number" ? r.avg_sales_growth_2y : typeof r.avgSalesGrowth2y === "number" ? r.avgSalesGrowth2y : null,
+    avgSalesGrowth3y: typeof r.avg_sales_growth_3y === "number" ? r.avg_sales_growth_3y : typeof r.avgSalesGrowth3y === "number" ? r.avgSalesGrowth3y : null,
     high52w: typeof r.high_52w === "number" ? r.high_52w : null,
     off52wHighPct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
     priceChange1wPct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
@@ -1401,7 +1480,6 @@ export default function WatchlistPanel({
         if (allScreenerRows.length > 0) {
           const newRows: WatchlistRow[] = allScreenerRows.map((r) => mapScreenerRowToWatchlistRow(r));
           setRows(newRows);
-          setLastRefresh(new Date());
           setLoading(false);
           return;
         }
@@ -1419,7 +1497,6 @@ export default function WatchlistPanel({
         const list = results.flat().filter(Boolean);
         const newRows: WatchlistRow[] = list.map((item: unknown) => mapItemToRow(item as Parameters<typeof mapItemToRow>[0]));
         setRows(newRows);
-        setLastRefresh(new Date());
       } catch {
         setRows([]);
       } finally {
@@ -1429,12 +1506,36 @@ export default function WatchlistPanel({
     [mapItemToRow, mapScreenerRowToWatchlistRow]
   );
 
+  const resolveRuntimeFilters = useCallback((filters: ScreenerFilters): ScreenerFilters => {
+    const next: ScreenerFilters = { ...filters };
+    const fromModeRaw = String(next[IPO_FROM_MODE_KEY] ?? "date") as IpoFromMode;
+    const toModeRaw = String(next[IPO_TO_MODE_KEY] ?? "date") as IpoToMode;
+    const fromMode: IpoFromMode = ["date", "half_year_ago", "one_year_ago", "two_year_ago"].includes(fromModeRaw)
+      ? fromModeRaw
+      : "date";
+    const toMode: IpoToMode = toModeRaw === "today" ? "today" : "date";
+    const explicitFrom = typeof next.ipo_date_from === "string" ? next.ipo_date_from : undefined;
+    const explicitTo = typeof next.ipo_date_to === "string" ? next.ipo_date_to : undefined;
+    const today = todayIsoDate();
+    const resolvedFrom = resolveIpoFromDate(fromMode, explicitFrom, today);
+    const resolvedTo = toMode === "today" ? today : explicitTo;
+    delete next[IPO_FROM_MODE_KEY];
+    delete next[IPO_TO_MODE_KEY];
+    if (resolvedFrom) next.ipo_date_from = resolvedFrom;
+    else delete next.ipo_date_from;
+    if (resolvedTo) next.ipo_date_to = resolvedTo;
+    else delete next.ipo_date_to;
+    return next;
+  }, []);
+
   const buildScreenerParams = useCallback(async (screen: SavedScreen, limit = 2000): Promise<URLSearchParams> => {
     const params = new URLSearchParams();
     params.set("limit", String(limit));
+    const runtimeFilters = resolveRuntimeFilters(screen.filters ?? {});
     if (screen.type === "script") {
       params.set("scriptBody", screen.scriptBody ?? "");
       params.set("universe", screen.universe ?? "all");
+      if (Object.keys(runtimeFilters).length > 0) params.set("filters", JSON.stringify(runtimeFilters));
       return params;
     }
     let symbols: string[] | undefined;
@@ -1446,9 +1547,9 @@ export default function WatchlistPanel({
       }
     }
     if (symbols && symbols.length > 0) params.set("symbols", symbols.join(","));
-    if (Object.keys(screen.filters).length > 0) params.set("filters", JSON.stringify(screen.filters));
+    if (Object.keys(runtimeFilters).length > 0) params.set("filters", JSON.stringify(runtimeFilters));
     return params;
-  }, []);
+  }, [resolveRuntimeFilters]);
 
   const fetchScreenerResults = useCallback(async (screen: SavedScreen) => {
     setLoading(true);
@@ -1481,16 +1582,12 @@ export default function WatchlistPanel({
       else if (cols.length > 0) setScriptColumns(cols);
       const newRows: WatchlistRow[] = list.map((r) => mapScreenerRowToWatchlistRow(r, cols));
       setRows(newRows);
-      setLastRefresh(new Date());
-      setScreenerDbDate(data.date ?? null);
       setScreenerResultCount(newRows.length);
-      setScreenerCounts((prev) => ({ ...prev, [screen.id]: newRows.length }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Scan failed to load";
       setScreenerError(msg);
       setRows([]);
       setScriptColumns([]);
-      setScreenerDbDate(null);
       setScreenerResultCount(null);
     } finally {
       setLoading(false);
@@ -1555,21 +1652,13 @@ export default function WatchlistPanel({
       const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
       const newRows: WatchlistRow[] = (data.rows ?? []).map((r) => mapScreenerRowToWatchlistRow(r));
       setRows(newRows);
-      setLastRefresh(new Date());
     } catch { setRows([]); } finally { setLoading(false); }
   }, [mapScreenerRowToWatchlistRow]);
 
-  const fetchRows = useCallback(
-    () =>
-      activeListId === FULL_UNIVERSE_ID
-        ? fetchFullUniverse()
-        : tableSource.fromScreener && tableSource.screen
-          ? fetchScreenerResults(tableSource.screen)
-          : fetchRowsForSymbols(tableSource.symbols),
-    [activeListId, fetchFullUniverse, fetchRowsForSymbols, fetchScreenerResults, tableSource.fromScreener, tableSource.screen, tableSource.symbols]
-  );
-
   const isMinimized = panelHeightPx <= MIN_PANEL_HEIGHT_PX;
+  const tableSourceScreenId = tableSource.screen?.id;
+  const tableSourceScreenType = tableSource.screen?.type;
+  const tableSourceSymbolsKey = tableSource.symbols.join(",");
 
   useEffect(() => {
     if (isMinimized) return;
@@ -1584,7 +1673,7 @@ export default function WatchlistPanel({
     } else {
       setRows([]);
     }
-  }, [isMinimized, activeListId, tableSource.fromScreener, tableSource.screen?.id, tableSource.screen?.type, tableSource.symbols.join(","), fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
+  }, [isMinimized, activeListId, tableSource.fromScreener, tableSource.screen, tableSource.symbols, tableSourceScreenId, tableSourceScreenType, tableSourceSymbolsKey, fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
 
   // Popup: search autocomplete when add popup is open
   useEffect(() => {
@@ -1637,7 +1726,7 @@ export default function WatchlistPanel({
     setSelectedCollectionId(id);
     setActiveListId(null);
     setSidebarTab("watchlists");
-  }, []);
+  }, [setActiveListId]);
 
   const addSymbolToList = useCallback(
     (symbol: string, listId?: string) => {
@@ -1665,7 +1754,6 @@ export default function WatchlistPanel({
       setInlineSuggestions([]);
       setInlineSuggestionsOpen(false);
       setInlineHighlightIdx(-1);
-      setShowInlineTickerRow(true);
       setTimeout(() => inlineTickerRef.current?.focus(), 50);
     },
     [addSymbolToList]
@@ -1718,7 +1806,7 @@ export default function WatchlistPanel({
       );
       closeAddPopup();
     }
-  }, [addPopupMode, addPopupListId, addPopupListName, addPopupSymbols, pendingAdds, addPopupTargetFolderId, closeAddPopup]);
+  }, [addPopupMode, addPopupListId, addPopupListName, addPopupSymbols, pendingAdds, addPopupTargetFolderId, closeAddPopup, setActiveListId]);
 
   const addPendingFromSearch = useCallback(
     (symbol: string, name?: string) => {
@@ -1830,7 +1918,7 @@ export default function WatchlistPanel({
         const includeVal = filters[field.includeKey];
         const excludeVal = filters[field.excludeKey];
         let includeStr = includeVal != null && includeVal !== "" ? String(includeVal).trim() : "";
-        let excludeStr = excludeVal != null && excludeVal !== "" ? String(excludeVal).trim() : "";
+        const excludeStr = excludeVal != null && excludeVal !== "" ? String(excludeVal).trim() : "";
         if (!includeStr && !excludeStr && field.key === "industry_filter") {
           const oldIndustry = filters.industry;
           if (oldIndustry != null && oldIndustry !== "") includeStr = String(oldIndustry);
@@ -2054,7 +2142,11 @@ export default function WatchlistPanel({
         } else if (field.type === "dateRange") {
           const fromVal = filters[field.fromKey];
           const toVal = filters[field.toKey];
-          if ((fromVal != null && fromVal !== "") || (toVal != null && toVal !== "")) filled++;
+          const hasMode =
+            field.fromKey === "ipo_date_from" &&
+            (String(filters[IPO_FROM_MODE_KEY] ?? "date") !== "date" ||
+              String(filters[IPO_TO_MODE_KEY] ?? "date") !== "date");
+          if ((fromVal != null && fromVal !== "") || (toVal != null && toVal !== "") || hasMode) filled++;
         } else if (field.type === "universeSelect") {
           if (newScreenForm.universe && newScreenForm.universe !== "all") filled++;
         }
@@ -2073,8 +2165,8 @@ export default function WatchlistPanel({
     return n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : String(n);
   };
 
-  const parseNumberInput = (s: string, _isPct: boolean): string | number | undefined => {
-    const trimmed = s.replace(/,/g, "").replace(/%/g, "").trim();
+  const parseNumberInput = (s: string, isPct: boolean): string | number | undefined => {
+    const trimmed = isPct ? s.replace(/,/g, "").replace(/%/g, "").trim() : s.replace(/,/g, "").trim();
     if (!trimmed) return undefined;
     const n = parseFloat(trimmed);
     return Number.isNaN(n) ? undefined : n;
@@ -2173,7 +2265,7 @@ export default function WatchlistPanel({
     });
     fetchScreenerResults(screen);
     window.dispatchEvent(new CustomEvent("stock-active-scan", { detail: { name: screen.name } }));
-  }, [newScreenForm, editingScreenId, buildEffectiveFilters, fetchScreenerResults]);
+  }, [newScreenForm, editingScreenId, buildEffectiveFilters, fetchScreenerResults, screens]);
 
   useEffect(() => {
     if (!showNewScreenerModal) return;
@@ -2188,7 +2280,7 @@ export default function WatchlistPanel({
             symbols = Array.isArray(data) ? data.map((s) => String(s).toUpperCase()) : undefined;
           }
         }
-        const filters = buildEffectiveFilters(newScreenForm);
+        const filters = resolveRuntimeFilters(buildEffectiveFilters(newScreenForm));
         const params = new URLSearchParams();
         params.set("countOnly", "1");
         if (symbols && symbols.length > 0) params.set("symbols", symbols.join(","));
@@ -2205,7 +2297,7 @@ export default function WatchlistPanel({
       clearTimeout(timeout);
       abort.abort();
     };
-  }, [showNewScreenerModal, newScreenForm, buildEffectiveFilters]);
+  }, [showNewScreenerModal, newScreenForm, buildEffectiveFilters, resolveRuntimeFilters]);
 
   /* ── Column filter state ── */
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilterDef>>(new Map());
@@ -2316,7 +2408,7 @@ export default function WatchlistPanel({
     const extras = addedColumns.filter((c) => !baseSet.has(c)) as TableColumnId[];
     const merged = [...base, ...extras];
     return hiddenColumns.size > 0 ? merged.filter((c) => !hiddenColumns.has(c)) : merged;
-  }, [sidebarTab, selectedScreen?.type, selectedScreen?.filters, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
+  }, [sidebarTab, selectedScreen, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
 
   const handleSort = useCallback((col: TableColumnId) => {
     if (sortKey === col) {
@@ -2830,7 +2922,7 @@ export default function WatchlistPanel({
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1.5 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                     </div>
                   </li>
                 ))}
@@ -2896,7 +2988,7 @@ export default function WatchlistPanel({
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (!screen) return; setSidebarTab("screener"); if (screen.type === "script") { setEditingScriptScreenId(screen.id); setNewScriptName(screen.name); setNewScriptBody(screen.scriptBody ?? ""); setScanModalMode("script"); setShowNewScriptModal(true); } else { setEditingScreenId(screen.id); setScreenerModalPosition(null); setNewScreenForm({ name: screen.name, universe: screen.universe, filters: { ...screen.filters }, pctOperatorRows: buildPctOperatorRowsFromFilters(screen.filters), includeExcludeRows: buildIncludeExcludeRowsFromFilters(screen.filters), expandedSections: Object.fromEntries(SCREENER_FILTER_CATEGORIES.map((c) => [c.id, c.defaultCollapsed ?? true])) }); setScanModalMode("traditional"); setShowNewScreenerModal(true); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) void exportScreenerSymbols(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Export ${s.name}`} aria-label={`Export ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.5.5 0 0 1 .5.5v6.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 8.293V1.5A.5.5 0 0 1 8 1z"/><path d="M2 11.5A1.5 1.5 0 0 1 3.5 10h9A1.5 1.5 0 0 1 14 11.5v2A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-2zm1.5-.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 0-.5-.5h-9z"/></svg></button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); const screen = screens.find((x) => x.id === s.id); if (screen) openDuplicateScreener(screen); }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700" title={`Duplicate ${s.name}`} aria-label={`Duplicate ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg></button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); setScreenerCounts((p) => { const n = { ...p }; delete n[s.id]; return n; }); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined" && !window.confirm(`Delete scan "${s.name}"? This cannot be undone.`)) return; deleteScreen(s.id); setScreens(loadScreens()); if (selectedScreenId === s.id) { setSelectedScreenId(null); setRows([]); setScreenerResultCount(null); } }} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400" title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg></button>
                               </div>
                             </li>
                           ))}
@@ -3823,22 +3915,49 @@ export default function WatchlistPanel({
                                 );
                               }
                               if (field.type === "dateRange") {
+                                const isIpoRange = field.fromKey === "ipo_date_from" && field.toKey === "ipo_date_to";
+                                const ipoFromMode = (newScreenForm.filters[IPO_FROM_MODE_KEY] as IpoFromMode | undefined) ?? "date";
+                                const ipoToMode = (newScreenForm.filters[IPO_TO_MODE_KEY] as IpoToMode | undefined) ?? "date";
                                 return (
                                   <div key={field.key} className="flex items-center gap-2">
                                     <span className="text-xs text-zinc-500 dark:text-zinc-400 w-36 shrink-0">{field.label}</span>
                                     <div className="flex gap-2 flex-1 min-w-0">
+                                      {isIpoRange ? (
+                                        <select
+                                          value={ipoFromMode}
+                                          onChange={(e) => setNewScreenForm((prev) => ({ ...prev, filters: { ...prev.filters, [IPO_FROM_MODE_KEY]: e.target.value as IpoFromMode } }))}
+                                          className="w-36 shrink-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300"
+                                        >
+                                          <option value="date">Specific date</option>
+                                          <option value="half_year_ago">Half year ago</option>
+                                          <option value="one_year_ago">1 year ago</option>
+                                          <option value="two_year_ago">2 years ago</option>
+                                        </select>
+                                      ) : null}
                                       <input
                                         type="date"
                                         value={String(newScreenForm.filters[field.fromKey] ?? "")}
                                         onChange={(e) => setNewScreenFilter(field.fromKey, e.target.value || undefined)}
-                                        className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300"
+                                        disabled={isIpoRange && ipoFromMode !== "date"}
+                                        className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300 disabled:opacity-60"
                                       />
                                       <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">to</span>
+                                      {isIpoRange ? (
+                                        <select
+                                          value={ipoToMode}
+                                          onChange={(e) => setNewScreenForm((prev) => ({ ...prev, filters: { ...prev.filters, [IPO_TO_MODE_KEY]: e.target.value as IpoToMode } }))}
+                                          className="w-32 shrink-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300"
+                                        >
+                                          <option value="date">Specific date</option>
+                                          <option value="today">Today</option>
+                                        </select>
+                                      ) : null}
                                       <input
                                         type="date"
                                         value={String(newScreenForm.filters[field.toKey] ?? "")}
                                         onChange={(e) => setNewScreenFilter(field.toKey, e.target.value || undefined)}
-                                        className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300"
+                                        disabled={isIpoRange && ipoToMode === "today"}
+                                        className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1 text-sm font-normal text-zinc-800 dark:text-zinc-300 disabled:opacity-60"
                                       />
                                     </div>
                                   </div>
@@ -4180,7 +4299,6 @@ export default function WatchlistPanel({
                   <button
                     type="button"
                     onClick={() => {
-                      setShowInlineTickerRow(true);
                       setInlineTickerValue("");
                       setTimeout(() => inlineTickerRef.current?.focus(), 50);
                     }}
@@ -4585,12 +4703,12 @@ export default function WatchlistPanel({
                           {tableColumns.map((col, colIndex) => {
                             const isScriptCol = scriptColumnSet.has(col as string);
                             const isNumeric = NUMERIC_COLUMN_IDS.has(col as ColumnId) || isScriptCol;
-                            const isChangePct = col === "changePct";
+                            const isSignedMetric = isSignedMetricColumn(col);
                             const numVal = isNumeric ? (getRowValue(row, col) as number | undefined) : null;
                             const cellClass =
                               col === "ticker"
                                 ? "py-1.5 px-2 font-medium font-mono text-zinc-900 dark:text-zinc-100"
-                                : isChangePct && numVal != null
+                                : isSignedMetric && numVal != null
                                   ? `py-1.5 px-2 tabular-nums text-right ${numVal >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`
                                   : isNumeric
                                     ? "py-1.5 px-2 tabular-nums text-zinc-900 dark:text-zinc-100 text-right"
@@ -4638,7 +4756,6 @@ export default function WatchlistPanel({
                             value={inlineTickerValue}
                             onChange={(e) => setInlineTickerValue(e.target.value.toUpperCase())}
                             onFocus={() => {
-                              setShowInlineTickerRow(true);
                               if (inlineSuggestions.length > 0) setInlineSuggestionsOpen(true);
                             }}
                             onKeyDown={(e) => {
@@ -4735,6 +4852,7 @@ export default function WatchlistPanel({
             </div>
             <div className="p-4 overflow-y-auto flex-1">
               <ColumnPickerContent
+                key={visibleColumns.join("|")}
                 visibleColumns={visibleColumns}
                 columnSets={columnSets}
                 onSave={(cols, saveAsName) => {

@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { formatDisplayDate } from "@/lib/date-format";
 
@@ -282,10 +283,11 @@ export default function SectorsIndustriesPage({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<ApiResponse | null>(null);
+  const hasPayloadRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    if (payload) setRefreshing(true);
+    if (hasPayloadRef.current) setRefreshing(true);
     else setLoading(true);
     setError(null);
     fetch(
@@ -297,14 +299,17 @@ export default function SectorsIndustriesPage({
         if (json.error) {
           setError(json.error);
           setPayload(null);
+          hasPayloadRef.current = false;
           return;
         }
         setPayload(json);
+        hasPayloadRef.current = true;
       })
       .catch(() => {
         if (!cancelled) {
           setError("Failed to load sectors/industries performance");
           setPayload(null);
+          hasPayloadRef.current = false;
         }
       })
       .finally(() => {

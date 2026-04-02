@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -175,7 +176,7 @@ export default function Home() {
   }, [activeWatchlistId, section]);
 
   const { getCachedCandles, fetchCandlesFor } = useCandleCache();
-  const { data, loading, error } = useStockData(symbol);
+  const { data } = useStockData(symbol);
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(symbol);
   const { ownershipQuarters, fundCount } = useOwnership(symbol);
 

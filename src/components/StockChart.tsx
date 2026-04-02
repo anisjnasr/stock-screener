@@ -398,6 +398,26 @@ function StockChart({
     const b = parseInt(hex.slice(4, 6), 16);
     return (r * 299 + g * 587 + b * 114) / 1000 > 150;
   }, [settings.backgroundColor]);
+  const isUsingLightTheme = useMemo(
+    () => settings.backgroundColor.toLowerCase() === LIGHT_CHART_THEME.backgroundColor.toLowerCase(),
+    [settings.backgroundColor]
+  );
+  const applyThemePalette = useCallback((theme: ChartSettings) => {
+    setSettings((prev) => {
+      const next: ChartSettings = {
+        ...prev,
+        backgroundColor: theme.backgroundColor,
+        candleUpBodyColor: theme.candleUpBodyColor,
+        candleDownBodyColor: theme.candleDownBodyColor,
+        candleUpBorderColor: theme.candleUpBorderColor,
+        candleDownBorderColor: theme.candleDownBorderColor,
+        candleUpWickColor: theme.candleUpWickColor,
+        candleDownWickColor: theme.candleDownWickColor,
+      };
+      saveChartSettings(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const el = chartAreaRef.current;
@@ -867,16 +887,23 @@ function StockChart({
       chart.addSeries(
         HistogramSeries,
         {
-          priceFormat: { type: "volume" },
+          priceFormat: { type: "custom", minMove: 1, formatter: (v: number) => fmtVol(v) },
           priceScaleId: "",
-          lastValueVisible: false,
+          lastValueVisible: true,
           priceLineVisible: false,
         },
         1
       ).setData(volumeData);
       try {
         const volScale = chart.priceScale("");
-        if (volScale) volScale.applyOptions({ visible: true, borderVisible: false } as Record<string, unknown>);
+        if (volScale) {
+          volScale.applyOptions({
+            visible: true,
+            borderVisible: true,
+            borderColor: isLightBackground ? "rgba(0,0,0,0.2)" : "rgba(113,113,122,0.5)",
+            minimumWidth: 64,
+          } as Record<string, unknown>);
+        }
       } catch { /* ignore */ }
       const panes = chart.panes();
       if (panes[0]) panes[0].setStretchFactor(7);
@@ -1252,6 +1279,14 @@ function StockChart({
                 </button>
               ))}
           </div>
+          <button
+            type="button"
+            onClick={() => applyThemePalette(isUsingLightTheme ? DEFAULT_CHART_SETTINGS : LIGHT_CHART_THEME)}
+            className="px-2 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+            title="Toggle chart theme"
+          >
+            {isUsingLightTheme ? "Light" : "Dark"}
+          </button>
           <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
           <div className="flex items-center gap-1">
           <button
@@ -1932,20 +1967,14 @@ function StockChart({
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSettings(LIGHT_CHART_THEME);
-                      saveChartSettings(LIGHT_CHART_THEME);
-                    }}
+                    onClick={() => applyThemePalette(LIGHT_CHART_THEME)}
                     className="text-ws-label text-zinc-500 dark:text-zinc-400 hover:underline"
                   >
                     Light theme
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setSettings(DEFAULT_CHART_SETTINGS);
-                      saveChartSettings(DEFAULT_CHART_SETTINGS);
-                    }}
+                    onClick={() => applyThemePalette(DEFAULT_CHART_SETTINGS)}
                     className="text-ws-label text-zinc-500 dark:text-zinc-400 hover:underline"
                   >
                     Reset to default

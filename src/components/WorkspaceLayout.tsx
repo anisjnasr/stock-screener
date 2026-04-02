@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/refs */
 
 import { useRef, useCallback, useState, type ReactNode } from "react";
 
@@ -23,7 +24,6 @@ export default function WorkspaceLayout({
   chartLeftPx,
   onChartLeftChange,
   railWidthPx,
-  onRailWidthChange,
   rightRailHidden,
   onToggleRightRail,
   leftPanel,

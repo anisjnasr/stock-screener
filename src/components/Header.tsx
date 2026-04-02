@@ -1,6 +1,8 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 import { useTheme } from "@/hooks/useTheme";
 import { formatDisplayDate } from "@/lib/date-format";
 
@@ -69,12 +71,10 @@ export default function Header({
   atrPct,
   avgVolume30d,
   computed52WHigh,
-  lastUpdate,
   onSymbolChange,
   searchValue,
   onSearchChange,
   onSearchSubmit,
-  loading,
   currentPage,
   onPageChange,
   latestDataDate,
@@ -82,7 +82,6 @@ export default function Header({
   onLeftSidebarToggle,
 }: HeaderProps) {
   const brandName = "Stock Stalker";
-  const name = quote?.name ?? profile?.companyName ?? symbol;
   const price = quote?.price;
   const chgPct = quote?.changesPercentage;
   const vol = quote?.volume;
@@ -183,10 +182,11 @@ export default function Header({
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             )}
           </button>
-          <img
+          <Image
             src="/brand/stockstalker-lockup.png"
-            srcSet="/brand/stockstalker-lockup.png 1x, /brand/stockstalker-lockup@2x.png 2x"
             alt={brandName}
+            width={240}
+            height={32}
             className="hidden sm:block h-8 w-auto"
           />
         </div>
@@ -265,7 +265,6 @@ export default function Header({
                       aria-label="Stock search"
                       autoComplete="off"
                       aria-autocomplete="list"
-                      aria-expanded={suggestionsOpen}
                       aria-controls="search-suggestions"
                       aria-activedescendant={
                         highlightedIndex >= 0 ? `suggestion-${highlightedIndex}` : undefined

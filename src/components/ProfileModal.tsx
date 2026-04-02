@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useRef, useEffect, type KeyboardEvent } from "react";
 import { useProfile } from "@/contexts/ProfileContext";

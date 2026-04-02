@@ -34,7 +34,6 @@ export function tokenize(source: string): Token[] {
   const n = source.length;
 
   while (i < n) {
-    const start = i;
     const c = source[i]!;
 
     if (isSpace(c)) {

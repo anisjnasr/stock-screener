@@ -435,7 +435,7 @@ export async function fetchIncomeStatement(
  * Institutional holders: not provided by Massive/Polygon.
  * Use SEC EDGAR 13F for fund ownership (see PROJECT_PLAN.md).
  */
-export async function fetchInstitutionalHolders(_symbol: string): Promise<InstitutionalHolder[]> {
+export async function fetchInstitutionalHolders(): Promise<InstitutionalHolder[]> {
   return [];
 }
 

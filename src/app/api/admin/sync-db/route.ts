@@ -7,13 +7,13 @@ import {
 } from "fs";
 import { join } from "path";
 import { exec } from "child_process";
+import Database from "better-sqlite3";
 import { resetDbConnection } from "@/lib/screener-db-native";
 import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
 
 const DATA_DIR = getDataDir();
 const DB_PATH = getScreenerDbPath();
 const GITHUB_REPO = "anisjnasr/stock-screener";
-const SYNC_LOG = join(DATA_DIR, "sync.log");
 
 const STALE_CACHES = [
   "market-monitor-cache.json",
@@ -196,7 +196,6 @@ export async function POST(request: NextRequest) {
           resetDbConnection();
           log("DB connection reset — next query will open fresh connection");
           try {
-            const Database = require("better-sqlite3");
             const testDb = new Database(DB_PATH);
             // Detailed integrity check (first 20 issues)
             const ic = testDb.pragma("integrity_check(20)") as Array<Record<string, string>>;

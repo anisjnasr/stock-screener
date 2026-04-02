@@ -67,13 +67,13 @@ export const LIGHT_CHART_THEME: ChartSettings = {
   showEma40Weekly: true,
   showVertGrid: false,
   showHorzGrid: false,
-  backgroundColor: "#ffffff",
-  candleUpBodyColor: "#ffffff",
-  candleDownBodyColor: "#000000",
-  candleUpBorderColor: "#000000",
-  candleDownBorderColor: "#000000",
-  candleUpWickColor: "#000000",
-  candleDownWickColor: "#000000",
+  backgroundColor: "#cccccc",
+  candleUpBodyColor: "#9c9c9c",
+  candleDownBodyColor: "#0f0f0f",
+  candleUpBorderColor: "#0f0f0f",
+  candleDownBorderColor: "#0f0f0f",
+  candleUpWickColor: "#0f0f0f",
+  candleDownWickColor: "#0f0f0f",
 };
 
 export function loadChartSettings(): ChartSettings {

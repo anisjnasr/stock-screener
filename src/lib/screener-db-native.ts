@@ -55,6 +55,32 @@ export type ScreenerRow = {
   sector_rank_3m: number | null;
   sector_rank_6m: number | null;
   sector_rank_12m: number | null;
+  earnings_last_reported: string | null;
+  sales_last_reported: string | null;
+  eps_recent_q: number | null;
+  avg_eps_2q: number | null;
+  eps_growth_recent_q: number | null;
+  avg_eps_growth_2q: number | null;
+  avg_eps_growth_3q: number | null;
+  avg_eps_growth_4q: number | null;
+  eps_ttm: number | null;
+  avg_eps_2y: number | null;
+  eps_growth_1y: number | null;
+  eps_growth_2y_ago: number | null;
+  avg_eps_growth_2y: number | null;
+  avg_eps_growth_3y: number | null;
+  sales_recent_q: number | null;
+  avg_sales_2q: number | null;
+  sales_growth_recent_q: number | null;
+  avg_sales_growth_2q: number | null;
+  avg_sales_growth_3q: number | null;
+  avg_sales_growth_4q: number | null;
+  sales_ttm: number | null;
+  avg_sales_2y: number | null;
+  sales_growth_1y: number | null;
+  sales_growth_2y_ago: number | null;
+  avg_sales_growth_2y: number | null;
+  avg_sales_growth_3y: number | null;
   [key: string]: unknown;
 };
 
@@ -65,6 +91,18 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
     v === undefined || v === "" ? null : typeof v === "number" ? v : Number(v);
   const str = (v: string | number | undefined): string | null =>
     v === undefined || v === "" ? null : String(v).trim() || null;
+  const addNumericRange = (expr: string, minKey: string, maxKey: string) => {
+    const minVal = num(filters[minKey]);
+    const maxVal = num(filters[maxKey]);
+    if (minVal != null) { conditions.push(` AND ${expr} >= ?`); params.push(minVal); }
+    if (maxVal != null) { conditions.push(` AND ${expr} <= ?`); params.push(maxVal); }
+  };
+  const addDateRange = (expr: string, fromKey: string, toKey: string) => {
+    const fromVal = str(filters[fromKey]);
+    const toVal = str(filters[toKey]);
+    if (fromVal != null) { conditions.push(` AND ${expr} >= ?`); params.push(fromVal); }
+    if (toVal != null) { conditions.push(` AND ${expr} <= ?`); params.push(toVal); }
+  };
 
   if (num(filters.market_cap_min) != null) { conditions.push(" AND q.market_cap >= ?"); params.push(num(filters.market_cap_min)); }
   if (num(filters.market_cap_max) != null) { conditions.push(" AND q.market_cap <= ?"); params.push(num(filters.market_cap_max)); }
@@ -116,6 +154,233 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
   if (ipoTo != null) { conditions.push(` AND ${effectiveIpoDateExpr} <= ?`); params.push(ipoTo); }
   if (num(filters.shares_outstanding_min) != null) { conditions.push(" AND c.shares_outstanding >= ?"); params.push(num(filters.shares_outstanding_min)); }
   if (num(filters.shares_outstanding_max) != null) { conditions.push(" AND c.shares_outstanding <= ?"); params.push(num(filters.shares_outstanding_max)); }
+  const latestQuarterlyPeriodEndExpr = `(
+    SELECT fq.period_end
+    FROM financials fq
+    WHERE fq.symbol = c.symbol
+      AND fq.period_type = 'quarterly'
+      AND fq.period_end IS NOT NULL
+    ORDER BY fq.period_end DESC
+    LIMIT 1
+  )`;
+  const latestQuarterlyEpsExpr = `(
+    SELECT fq.eps
+    FROM financials fq
+    WHERE fq.symbol = c.symbol
+      AND fq.period_type = 'quarterly'
+      AND fq.eps IS NOT NULL
+    ORDER BY fq.period_end DESC
+    LIMIT 1
+  )`;
+  const avgQuarterlyEps2Expr = `(
+    SELECT AVG(x.eps)
+    FROM (
+      SELECT fq.eps
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.eps IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT 2
+    ) x
+  )`;
+  const latestQuarterlyEpsGrowthExpr = `(
+    SELECT fq.eps_growth_yoy
+    FROM financials fq
+    WHERE fq.symbol = c.symbol
+      AND fq.period_type = 'quarterly'
+      AND fq.eps_growth_yoy IS NOT NULL
+    ORDER BY fq.period_end DESC
+    LIMIT 1
+  )`;
+  const avgQuarterlyEpsGrowthExpr = (periods: number) => `(
+    SELECT AVG(x.eps_growth_yoy)
+    FROM (
+      SELECT fq.eps_growth_yoy
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.eps_growth_yoy IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT ${periods}
+    ) x
+  )`;
+  const epsTtmExpr = `(
+    SELECT SUM(x.eps)
+    FROM (
+      SELECT fq.eps
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.eps IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT 4
+    ) x
+  )`;
+  const avgAnnualEps2Expr = `(
+    SELECT AVG(x.eps)
+    FROM (
+      SELECT fa.eps
+      FROM financials fa
+      WHERE fa.symbol = c.symbol
+        AND fa.period_type = 'annual'
+        AND fa.eps IS NOT NULL
+      ORDER BY fa.period_end DESC
+      LIMIT 2
+    ) x
+  )`;
+  const latestAnnualEpsGrowthExpr = `(
+    SELECT fa.eps_growth_yoy
+    FROM financials fa
+    WHERE fa.symbol = c.symbol
+      AND fa.period_type = 'annual'
+      AND fa.eps_growth_yoy IS NOT NULL
+    ORDER BY fa.period_end DESC
+    LIMIT 1
+  )`;
+  const annualEpsGrowthAtOffsetExpr = (offset: number) => `(
+    SELECT fa.eps_growth_yoy
+    FROM financials fa
+    WHERE fa.symbol = c.symbol
+      AND fa.period_type = 'annual'
+      AND fa.eps_growth_yoy IS NOT NULL
+    ORDER BY fa.period_end DESC
+    LIMIT 1 OFFSET ${offset}
+  )`;
+  const avgAnnualEpsGrowthExpr = (periods: number) => `(
+    SELECT AVG(x.eps_growth_yoy)
+    FROM (
+      SELECT fa.eps_growth_yoy
+      FROM financials fa
+      WHERE fa.symbol = c.symbol
+        AND fa.period_type = 'annual'
+        AND fa.eps_growth_yoy IS NOT NULL
+      ORDER BY fa.period_end DESC
+      LIMIT ${periods}
+    ) x
+  )`;
+  const latestQuarterlySalesExpr = `(
+    SELECT fq.sales
+    FROM financials fq
+    WHERE fq.symbol = c.symbol
+      AND fq.period_type = 'quarterly'
+      AND fq.sales IS NOT NULL
+    ORDER BY fq.period_end DESC
+    LIMIT 1
+  )`;
+  const avgQuarterlySales2Expr = `(
+    SELECT AVG(x.sales)
+    FROM (
+      SELECT fq.sales
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.sales IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT 2
+    ) x
+  )`;
+  const latestQuarterlySalesGrowthExpr = `(
+    SELECT fq.sales_growth_yoy
+    FROM financials fq
+    WHERE fq.symbol = c.symbol
+      AND fq.period_type = 'quarterly'
+      AND fq.sales_growth_yoy IS NOT NULL
+    ORDER BY fq.period_end DESC
+    LIMIT 1
+  )`;
+  const avgQuarterlySalesGrowthExpr = (periods: number) => `(
+    SELECT AVG(x.sales_growth_yoy)
+    FROM (
+      SELECT fq.sales_growth_yoy
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.sales_growth_yoy IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT ${periods}
+    ) x
+  )`;
+  const salesTtmExpr = `(
+    SELECT SUM(x.sales)
+    FROM (
+      SELECT fq.sales
+      FROM financials fq
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+        AND fq.sales IS NOT NULL
+      ORDER BY fq.period_end DESC
+      LIMIT 4
+    ) x
+  )`;
+  const avgAnnualSales2Expr = `(
+    SELECT AVG(x.sales)
+    FROM (
+      SELECT fa.sales
+      FROM financials fa
+      WHERE fa.symbol = c.symbol
+        AND fa.period_type = 'annual'
+        AND fa.sales IS NOT NULL
+      ORDER BY fa.period_end DESC
+      LIMIT 2
+    ) x
+  )`;
+  const latestAnnualSalesGrowthExpr = `(
+    SELECT fa.sales_growth_yoy
+    FROM financials fa
+    WHERE fa.symbol = c.symbol
+      AND fa.period_type = 'annual'
+      AND fa.sales_growth_yoy IS NOT NULL
+    ORDER BY fa.period_end DESC
+    LIMIT 1
+  )`;
+  const annualSalesGrowthAtOffsetExpr = (offset: number) => `(
+    SELECT fa.sales_growth_yoy
+    FROM financials fa
+    WHERE fa.symbol = c.symbol
+      AND fa.period_type = 'annual'
+      AND fa.sales_growth_yoy IS NOT NULL
+    ORDER BY fa.period_end DESC
+    LIMIT 1 OFFSET ${offset}
+  )`;
+  const avgAnnualSalesGrowthExpr = (periods: number) => `(
+    SELECT AVG(x.sales_growth_yoy)
+    FROM (
+      SELECT fa.sales_growth_yoy
+      FROM financials fa
+      WHERE fa.symbol = c.symbol
+        AND fa.period_type = 'annual'
+        AND fa.sales_growth_yoy IS NOT NULL
+      ORDER BY fa.period_end DESC
+      LIMIT ${periods}
+    ) x
+  )`;
+  addDateRange(latestQuarterlyPeriodEndExpr, "earnings_last_reported_from", "earnings_last_reported_to");
+  addDateRange(latestQuarterlyPeriodEndExpr, "sales_last_reported_from", "sales_last_reported_to");
+  addNumericRange(latestQuarterlyEpsExpr, "eps_recent_q_min", "eps_recent_q_max");
+  addNumericRange(avgQuarterlyEps2Expr, "avg_eps_2q_min", "avg_eps_2q_max");
+  addNumericRange(latestQuarterlyEpsGrowthExpr, "eps_growth_recent_q_min", "eps_growth_recent_q_max");
+  addNumericRange(avgQuarterlyEpsGrowthExpr(2), "avg_eps_growth_2q_min", "avg_eps_growth_2q_max");
+  addNumericRange(avgQuarterlyEpsGrowthExpr(3), "avg_eps_growth_3q_min", "avg_eps_growth_3q_max");
+  addNumericRange(avgQuarterlyEpsGrowthExpr(4), "avg_eps_growth_4q_min", "avg_eps_growth_4q_max");
+  addNumericRange(epsTtmExpr, "eps_ttm_min", "eps_ttm_max");
+  addNumericRange(avgAnnualEps2Expr, "avg_eps_2y_min", "avg_eps_2y_max");
+  addNumericRange(latestAnnualEpsGrowthExpr, "eps_growth_1y_min", "eps_growth_1y_max");
+  addNumericRange(annualEpsGrowthAtOffsetExpr(1), "eps_growth_2y_ago_min", "eps_growth_2y_ago_max");
+  addNumericRange(avgAnnualEpsGrowthExpr(2), "avg_eps_growth_2y_min", "avg_eps_growth_2y_max");
+  addNumericRange(avgAnnualEpsGrowthExpr(3), "avg_eps_growth_3y_min", "avg_eps_growth_3y_max");
+  addNumericRange(latestQuarterlySalesExpr, "sales_recent_q_min", "sales_recent_q_max");
+  addNumericRange(avgQuarterlySales2Expr, "avg_sales_2q_min", "avg_sales_2q_max");
+  addNumericRange(latestQuarterlySalesGrowthExpr, "sales_growth_recent_q_min", "sales_growth_recent_q_max");
+  addNumericRange(avgQuarterlySalesGrowthExpr(2), "avg_sales_growth_2q_min", "avg_sales_growth_2q_max");
+  addNumericRange(avgQuarterlySalesGrowthExpr(3), "avg_sales_growth_3q_min", "avg_sales_growth_3q_max");
+  addNumericRange(avgQuarterlySalesGrowthExpr(4), "avg_sales_growth_4q_min", "avg_sales_growth_4q_max");
+  addNumericRange(salesTtmExpr, "sales_ttm_min", "sales_ttm_max");
+  addNumericRange(avgAnnualSales2Expr, "avg_sales_2y_min", "avg_sales_2y_max");
+  addNumericRange(latestAnnualSalesGrowthExpr, "sales_growth_1y_min", "sales_growth_1y_max");
+  addNumericRange(annualSalesGrowthAtOffsetExpr(1), "sales_growth_2y_ago_min", "sales_growth_2y_ago_max");
+  addNumericRange(avgAnnualSalesGrowthExpr(2), "avg_sales_growth_2y_min", "avg_sales_growth_2y_max");
+  addNumericRange(avgAnnualSalesGrowthExpr(3), "avg_sales_growth_3y_min", "avg_sales_growth_3y_max");
 
   const priceChangePeriods = ["1w", "1m", "3m", "6m", "12m"] as const;
   for (const period of priceChangePeriods) {
@@ -373,6 +638,32 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
     sector_rank_3m: typeof r.sector_rank_3m === "number" ? r.sector_rank_3m : null,
     sector_rank_6m: typeof r.sector_rank_6m === "number" ? r.sector_rank_6m : null,
     sector_rank_12m: typeof r.sector_rank_12m === "number" ? r.sector_rank_12m : null,
+    earnings_last_reported: r.earnings_last_reported != null ? String(r.earnings_last_reported).slice(0, 10) : null,
+    sales_last_reported: r.sales_last_reported != null ? String(r.sales_last_reported).slice(0, 10) : null,
+    eps_recent_q: typeof r.eps_recent_q === "number" ? r.eps_recent_q : null,
+    avg_eps_2q: typeof r.avg_eps_2q === "number" ? r.avg_eps_2q : null,
+    eps_growth_recent_q: typeof r.eps_growth_recent_q === "number" ? r.eps_growth_recent_q : null,
+    avg_eps_growth_2q: typeof r.avg_eps_growth_2q === "number" ? r.avg_eps_growth_2q : null,
+    avg_eps_growth_3q: typeof r.avg_eps_growth_3q === "number" ? r.avg_eps_growth_3q : null,
+    avg_eps_growth_4q: typeof r.avg_eps_growth_4q === "number" ? r.avg_eps_growth_4q : null,
+    eps_ttm: typeof r.eps_ttm === "number" ? r.eps_ttm : null,
+    avg_eps_2y: typeof r.avg_eps_2y === "number" ? r.avg_eps_2y : null,
+    eps_growth_1y: typeof r.eps_growth_1y === "number" ? r.eps_growth_1y : null,
+    eps_growth_2y_ago: typeof r.eps_growth_2y_ago === "number" ? r.eps_growth_2y_ago : null,
+    avg_eps_growth_2y: typeof r.avg_eps_growth_2y === "number" ? r.avg_eps_growth_2y : null,
+    avg_eps_growth_3y: typeof r.avg_eps_growth_3y === "number" ? r.avg_eps_growth_3y : null,
+    sales_recent_q: typeof r.sales_recent_q === "number" ? r.sales_recent_q : null,
+    avg_sales_2q: typeof r.avg_sales_2q === "number" ? r.avg_sales_2q : null,
+    sales_growth_recent_q: typeof r.sales_growth_recent_q === "number" ? r.sales_growth_recent_q : null,
+    avg_sales_growth_2q: typeof r.avg_sales_growth_2q === "number" ? r.avg_sales_growth_2q : null,
+    avg_sales_growth_3q: typeof r.avg_sales_growth_3q === "number" ? r.avg_sales_growth_3q : null,
+    avg_sales_growth_4q: typeof r.avg_sales_growth_4q === "number" ? r.avg_sales_growth_4q : null,
+    sales_ttm: typeof r.sales_ttm === "number" ? r.sales_ttm : null,
+    avg_sales_2y: typeof r.avg_sales_2y === "number" ? r.avg_sales_2y : null,
+    sales_growth_1y: typeof r.sales_growth_1y === "number" ? r.sales_growth_1y : null,
+    sales_growth_2y_ago: typeof r.sales_growth_2y_ago === "number" ? r.sales_growth_2y_ago : null,
+    avg_sales_growth_2y: typeof r.avg_sales_growth_2y === "number" ? r.avg_sales_growth_2y : null,
+    avg_sales_growth_3y: typeof r.avg_sales_growth_3y === "number" ? r.avg_sales_growth_3y : null,
   };
 }
 
@@ -555,7 +846,289 @@ export function getScreenerSnapshot(options: {
       i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
-      i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m
+      i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m,
+      (
+        SELECT fq.period_end
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.period_end IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS earnings_last_reported,
+      (
+        SELECT fq.period_end
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.period_end IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS sales_last_reported,
+      (
+        SELECT fq.eps
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.eps IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS eps_recent_q,
+      (
+        SELECT AVG(x.eps)
+        FROM (
+          SELECT fq.eps
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.eps IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_eps_2q,
+      (
+        SELECT fq.eps_growth_yoy
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.eps_growth_yoy IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS eps_growth_recent_q,
+      (
+        SELECT AVG(x.eps_growth_yoy)
+        FROM (
+          SELECT fq.eps_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.eps_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_eps_growth_2q,
+      (
+        SELECT AVG(x.eps_growth_yoy)
+        FROM (
+          SELECT fq.eps_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.eps_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 3
+        ) x
+      ) AS avg_eps_growth_3q,
+      (
+        SELECT AVG(x.eps_growth_yoy)
+        FROM (
+          SELECT fq.eps_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.eps_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 4
+        ) x
+      ) AS avg_eps_growth_4q,
+      (
+        SELECT SUM(x.eps)
+        FROM (
+          SELECT fq.eps
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.eps IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 4
+        ) x
+      ) AS eps_ttm,
+      (
+        SELECT AVG(x.eps)
+        FROM (
+          SELECT fa.eps
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.eps IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_eps_2y,
+      (
+        SELECT fa.eps_growth_yoy
+        FROM financials fa
+        WHERE fa.symbol = c.symbol
+          AND fa.period_type = 'annual'
+          AND fa.eps_growth_yoy IS NOT NULL
+        ORDER BY fa.period_end DESC
+        LIMIT 1
+      ) AS eps_growth_1y,
+      (
+        SELECT fa.eps_growth_yoy
+        FROM financials fa
+        WHERE fa.symbol = c.symbol
+          AND fa.period_type = 'annual'
+          AND fa.eps_growth_yoy IS NOT NULL
+        ORDER BY fa.period_end DESC
+        LIMIT 1 OFFSET 1
+      ) AS eps_growth_2y_ago,
+      (
+        SELECT AVG(x.eps_growth_yoy)
+        FROM (
+          SELECT fa.eps_growth_yoy
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.eps_growth_yoy IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_eps_growth_2y,
+      (
+        SELECT AVG(x.eps_growth_yoy)
+        FROM (
+          SELECT fa.eps_growth_yoy
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.eps_growth_yoy IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 3
+        ) x
+      ) AS avg_eps_growth_3y,
+      (
+        SELECT fq.sales
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.sales IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS sales_recent_q,
+      (
+        SELECT AVG(x.sales)
+        FROM (
+          SELECT fq.sales
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.sales IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_sales_2q,
+      (
+        SELECT fq.sales_growth_yoy
+        FROM financials fq
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+          AND fq.sales_growth_yoy IS NOT NULL
+        ORDER BY fq.period_end DESC
+        LIMIT 1
+      ) AS sales_growth_recent_q,
+      (
+        SELECT AVG(x.sales_growth_yoy)
+        FROM (
+          SELECT fq.sales_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.sales_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_sales_growth_2q,
+      (
+        SELECT AVG(x.sales_growth_yoy)
+        FROM (
+          SELECT fq.sales_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.sales_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 3
+        ) x
+      ) AS avg_sales_growth_3q,
+      (
+        SELECT AVG(x.sales_growth_yoy)
+        FROM (
+          SELECT fq.sales_growth_yoy
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.sales_growth_yoy IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 4
+        ) x
+      ) AS avg_sales_growth_4q,
+      (
+        SELECT SUM(x.sales)
+        FROM (
+          SELECT fq.sales
+          FROM financials fq
+          WHERE fq.symbol = c.symbol
+            AND fq.period_type = 'quarterly'
+            AND fq.sales IS NOT NULL
+          ORDER BY fq.period_end DESC
+          LIMIT 4
+        ) x
+      ) AS sales_ttm,
+      (
+        SELECT AVG(x.sales)
+        FROM (
+          SELECT fa.sales
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.sales IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_sales_2y,
+      (
+        SELECT fa.sales_growth_yoy
+        FROM financials fa
+        WHERE fa.symbol = c.symbol
+          AND fa.period_type = 'annual'
+          AND fa.sales_growth_yoy IS NOT NULL
+        ORDER BY fa.period_end DESC
+        LIMIT 1
+      ) AS sales_growth_1y,
+      (
+        SELECT fa.sales_growth_yoy
+        FROM financials fa
+        WHERE fa.symbol = c.symbol
+          AND fa.period_type = 'annual'
+          AND fa.sales_growth_yoy IS NOT NULL
+        ORDER BY fa.period_end DESC
+        LIMIT 1 OFFSET 1
+      ) AS sales_growth_2y_ago,
+      (
+        SELECT AVG(x.sales_growth_yoy)
+        FROM (
+          SELECT fa.sales_growth_yoy
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.sales_growth_yoy IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 2
+        ) x
+      ) AS avg_sales_growth_2y,
+      (
+        SELECT AVG(x.sales_growth_yoy)
+        FROM (
+          SELECT fa.sales_growth_yoy
+          FROM financials fa
+          WHERE fa.symbol = c.symbol
+            AND fa.period_type = 'annual'
+            AND fa.sales_growth_yoy IS NOT NULL
+          ORDER BY fa.period_end DESC
+          LIMIT 3
+        ) x
+      ) AS avg_sales_growth_3y
     FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
@@ -685,27 +1258,6 @@ export type NetNewHighRow = {
   lows: number;
   net: number;
 };
-
-function getPerformanceColumn(timeframe: PerformanceTimeframe): string {
-  switch (timeframe) {
-    case "day":
-      return "q.change_pct";
-    case "week":
-      return "i.price_change_1w_pct";
-    case "month":
-      return "i.price_change_1m_pct";
-    case "quarter":
-      return "i.price_change_3m_pct";
-    case "half_year":
-      return "i.price_change_6m_pct";
-    case "year":
-      return "i.price_change_12m_pct";
-    case "ytd":
-      return "q.change_pct";
-    default:
-      return "q.change_pct";
-  }
-}
 
 function getPerformanceLookbackDays(timeframe: PerformanceTimeframe, asOfDate?: string): number {
   switch (timeframe) {
@@ -1348,7 +1900,6 @@ export function getNetNewHighSeries(
 
   // Need lookbackDays of extra history before the earliest display date
   // so the window function has full preceding rows for every displayed date
-  const requiredHistoryRows = Math.max(0, lookbackDays + Math.max(5, displayDays) + 20);
   const scanBufferRows = Math.max(0, lookbackDays * 2 + Math.max(5, displayDays) + 20);
   const startRow = db
     .prepare(

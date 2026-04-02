@@ -94,7 +94,7 @@ export function parseScript(source: string): ScriptAst {
   }
 
   function parseCompare(): AstNode {
-    let left = parseAdd();
+    const left = parseAdd();
     if (is("op")) {
       const op = tokenValue(cur());
       if (op === ">" || op === "<" || op === ">=" || op === "<=" || op === "=" || op === "<>") {

@@ -7,7 +7,7 @@
  * write-through cache.
  */
 
-import { getSupabase, isSupabaseConfigured } from "./supabase";
+import { getSupabase } from "./supabase";
 import { cloudSyncSetting, cloudSyncWatchlists, cloudSyncScreens, cloudSyncFlags } from "./cloud-sync";
 import type { Watchlist, WatchlistFolder, StockFlag, ColumnSet, ColumnId, WatchlistPanelMode } from "./watchlist-storage";
 import type { SavedScreen, ScreenerFolder } from "./screener-storage";

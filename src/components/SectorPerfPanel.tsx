@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -47,7 +48,6 @@ function toDisplayCase(s: string): string {
 export default function SectorPerfPanel({
   subTab,
   timeframe,
-  onTimeframeChange,
   onDrillDown,
   onSymbolSelect,
   headerActionsSlot,

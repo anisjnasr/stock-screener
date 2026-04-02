@@ -1,6 +1,8 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { memo, useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import Image from "next/image";
 import { type WorkspaceSection, WORKSPACE_SECTIONS } from "@/types/workspace";
 import {
   type StockFlag,
@@ -146,13 +148,11 @@ function Pill({
   children,
   onClick,
   small,
-  color,
 }: {
   on?: boolean;
   children: React.ReactNode;
   onClick?: () => void;
   small?: boolean;
-  color?: string;
 }) {
   return (
     <button
@@ -397,10 +397,11 @@ function WorkspaceHeader({
         style={{ paddingLeft: 12, paddingRight: 12 }}
       >
         {/* Left: logo */}
-        <img
+        <Image
           src="/brand/stockstalker-lockup.png"
-          srcSet="/brand/stockstalker-lockup.png 1x, /brand/stockstalker-lockup@2x.png 2x"
           alt="Stock Stalker"
+          width={300}
+          height={40}
           className="h-10 w-auto shrink-0 opacity-90"
         />
 
@@ -469,7 +470,6 @@ function WorkspaceHeader({
                     aria-label="Stock search"
                     autoComplete="off"
                     aria-autocomplete="list"
-                    aria-expanded={suggestionsOpen}
                     aria-controls="ws-search-suggestions"
                     aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
                   />

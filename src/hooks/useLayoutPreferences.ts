@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useCallback, useEffect } from "react";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";

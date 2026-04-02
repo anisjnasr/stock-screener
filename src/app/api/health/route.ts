@@ -3,8 +3,6 @@ import { existsSync, statSync, readSync, openSync, closeSync, readdirSync } from
 import { getScreenerDbPath, getDataDir } from "@/lib/data-path";
 import {
   getLatestScreenerDate,
-  getOwnershipNative,
-  getFinancialsNative,
 } from "@/lib/screener-db-native";
 import Database from "better-sqlite3";
 

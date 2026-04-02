@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 type ShortcutAction = () => void;
 
@@ -38,7 +38,9 @@ export type ShortcutDefinition = Omit<Shortcut, "action"> & { id: string };
 
 export function useKeyboardShortcuts(shortcuts: Shortcut[]) {
   const shortcutsRef = useRef(shortcuts);
-  shortcutsRef.current = shortcuts;
+  useEffect(() => {
+    shortcutsRef.current = shortcuts;
+  }, [shortcuts]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

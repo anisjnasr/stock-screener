@@ -74,14 +74,6 @@ function fmtCompactCurrency(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-function fmtCompact(n: number): string {
-  if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(1)}T`;
-  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
-  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return n.toFixed(2);
-}
-
 /** Revenue column in fundamentals table: compact scale with two decimal places. */
 function fmtRevenueTwoDecimals(n: number): string {
   if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
@@ -89,14 +81,6 @@ function fmtRevenueTwoDecimals(n: number): string {
   if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
   return n.toFixed(2);
-}
-
-function fmtShares(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return n.toLocaleString();
 }
 
 function exchangeFriendlyName(code: string | undefined): string {
@@ -138,7 +122,6 @@ function fmtDateToQuarter(dateStr: string): string {
 }
 
 export default function RightRail({
-  section,
   symbol,
   profile,
   marketCap,
@@ -177,9 +160,7 @@ export default function RightRail({
   const marketCapLabel =
     capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtCompactCurrency(capValue) : "—";
 
-  const SectionDivider = () => (
-    <div style={{ height: 1, background: "var(--ws-border)", margin: "4px -12px" }} />
-  );
+  const sectionDivider = <div style={{ height: 1, background: "var(--ws-border)", margin: "4px -12px" }} />;
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
@@ -286,7 +267,7 @@ export default function RightRail({
             </div>
           )}
 
-          {rsRank && <SectionDivider />}
+          {rsRank && sectionDivider}
 
           {/* REVENUE & EPS — combined table */}
           <div>
@@ -360,7 +341,7 @@ export default function RightRail({
             </table>
           </div>
 
-          <SectionDivider />
+          {sectionDivider}
 
           {/* INSTITUTIONAL OWNERS */}
           <div>

@@ -272,6 +272,32 @@ export type ColumnId =
   | "industry"
   | "sector"
   | "ipoDate"
+  | "earningsLastReported"
+  | "salesLastReported"
+  | "epsRecentQ"
+  | "avgEps2q"
+  | "epsGrowthRecentQ"
+  | "avgEpsGrowth2q"
+  | "avgEpsGrowth3q"
+  | "avgEpsGrowth4q"
+  | "epsTtm"
+  | "avgEps2y"
+  | "epsGrowth1y"
+  | "epsGrowth2yAgo"
+  | "avgEpsGrowth2y"
+  | "avgEpsGrowth3y"
+  | "salesRecentQ"
+  | "avgSales2q"
+  | "salesGrowthRecentQ"
+  | "avgSalesGrowth2q"
+  | "avgSalesGrowth3q"
+  | "avgSalesGrowth4q"
+  | "salesTtm"
+  | "avgSales2y"
+  | "salesGrowth1y"
+  | "salesGrowth2yAgo"
+  | "avgSalesGrowth2y"
+  | "avgSalesGrowth3y"
   | "marketCap"
   | "lastPrice"
   | "changePct"
@@ -312,6 +338,32 @@ export const ALL_COLUMN_IDS: ColumnId[] = [
   "industry",
   "sector",
   "ipoDate",
+  "earningsLastReported",
+  "salesLastReported",
+  "epsRecentQ",
+  "avgEps2q",
+  "epsGrowthRecentQ",
+  "avgEpsGrowth2q",
+  "avgEpsGrowth3q",
+  "avgEpsGrowth4q",
+  "epsTtm",
+  "avgEps2y",
+  "epsGrowth1y",
+  "epsGrowth2yAgo",
+  "avgEpsGrowth2y",
+  "avgEpsGrowth3y",
+  "salesRecentQ",
+  "avgSales2q",
+  "salesGrowthRecentQ",
+  "avgSalesGrowth2q",
+  "avgSalesGrowth3q",
+  "avgSalesGrowth4q",
+  "salesTtm",
+  "avgSales2y",
+  "salesGrowth1y",
+  "salesGrowth2yAgo",
+  "avgSalesGrowth2y",
+  "avgSalesGrowth3y",
   "marketCap",
   "lastPrice",
   "changePct",
@@ -352,6 +404,32 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   industry: "Industry",
   sector: "Sector",
   ipoDate: "IPO Date",
+  earningsLastReported: "Earnings Reported",
+  salesLastReported: "Sales Reported",
+  epsRecentQ: "EPS Qtr",
+  avgEps2q: "Avg EPS 2Q",
+  epsGrowthRecentQ: "EPS Growth Qtr %",
+  avgEpsGrowth2q: "Avg EPS Growth 2Q %",
+  avgEpsGrowth3q: "Avg EPS Growth 3Q %",
+  avgEpsGrowth4q: "Avg EPS Growth 4Q %",
+  epsTtm: "EPS TTM",
+  avgEps2y: "Avg EPS 2Y",
+  epsGrowth1y: "EPS Growth 1Y %",
+  epsGrowth2yAgo: "EPS Growth 2Y Ago %",
+  avgEpsGrowth2y: "Avg EPS Growth 2Y %",
+  avgEpsGrowth3y: "Avg EPS Growth 3Y %",
+  salesRecentQ: "Revenue Qtr (USD)",
+  avgSales2q: "Avg Revenue 2Q (USD)",
+  salesGrowthRecentQ: "Revenue Growth Qtr %",
+  avgSalesGrowth2q: "Avg Revenue Growth 2Q %",
+  avgSalesGrowth3q: "Avg Revenue Growth 3Q %",
+  avgSalesGrowth4q: "Avg Revenue Growth 4Q %",
+  salesTtm: "Revenue TTM (USD)",
+  avgSales2y: "Avg Revenue 2Y (USD)",
+  salesGrowth1y: "Revenue Growth 1Y %",
+  salesGrowth2yAgo: "Revenue Growth 2Y Ago %",
+  avgSalesGrowth2y: "Avg Revenue Growth 2Y %",
+  avgSalesGrowth3y: "Avg Revenue Growth 3Y %",
   marketCap: "Mkt Cap (bn)",
   lastPrice: "Price",
   changePct: "Change %",
@@ -388,6 +466,30 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
 /** Columns that are numeric (right-align, sortable as number). */
 export const NUMERIC_COLUMN_IDS = new Set<ColumnId>([
   "marketCap",
+  "epsRecentQ",
+  "avgEps2q",
+  "epsGrowthRecentQ",
+  "avgEpsGrowth2q",
+  "avgEpsGrowth3q",
+  "avgEpsGrowth4q",
+  "epsTtm",
+  "avgEps2y",
+  "epsGrowth1y",
+  "epsGrowth2yAgo",
+  "avgEpsGrowth2y",
+  "avgEpsGrowth3y",
+  "salesRecentQ",
+  "avgSales2q",
+  "salesGrowthRecentQ",
+  "avgSalesGrowth2q",
+  "avgSalesGrowth3q",
+  "avgSalesGrowth4q",
+  "salesTtm",
+  "avgSales2y",
+  "salesGrowth1y",
+  "salesGrowth2yAgo",
+  "avgSalesGrowth2y",
+  "avgSalesGrowth3y",
   "lastPrice",
   "changePct",
   "volume",

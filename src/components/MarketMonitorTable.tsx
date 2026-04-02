@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { formatDisplayDate } from "@/lib/date-format";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 
 type ApiResponse = {
@@ -64,7 +63,6 @@ function getPairCellClass(up: number | null | undefined, down: number | null | u
 export default function MarketMonitorTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [latestDate, setLatestDate] = useState<string | null>(null);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
 
   useEffect(() => {
@@ -77,7 +75,6 @@ export default function MarketMonitorTable() {
           setError(json.error);
         } else {
           setError(null);
-          setLatestDate(json.latestDate ?? null);
           const all = json.rows ?? [];
           if (all.length > 0) {
             const latest = new Date(`${all[0].date}T00:00:00Z`);

@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         symbols: passingSymbols,
         limit: limit != null ? parseInt(limit, 10) : undefined,
         offset: offset != null ? parseInt(offset, 10) : undefined,
-        filters: {},
+        filters,
       });
       const merged = rows.map((r) => {
         const sym = (r as { symbol?: string }).symbol;
