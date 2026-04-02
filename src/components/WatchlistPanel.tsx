@@ -1662,18 +1662,19 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     if (isMinimized) return;
-    if (activeListId === FULL_UNIVERSE_ID) {
-      fetchFullUniverse();
-      return;
-    }
     if (tableSource.fromScreener && tableSource.screen) {
       fetchScreenerResults(tableSource.screen);
+      return;
+    }
+    if (sidebarTab === "watchlists" && activeListId === FULL_UNIVERSE_ID) {
+      fetchFullUniverse();
+      return;
     } else if (tableSource.symbols.length > 0) {
       fetchRowsForSymbols(tableSource.symbols);
     } else {
       setRows([]);
     }
-  }, [isMinimized, activeListId, tableSource.fromScreener, tableSource.screen, tableSource.symbols, tableSourceScreenId, tableSourceScreenType, tableSourceSymbolsKey, fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
+  }, [isMinimized, sidebarTab, activeListId, tableSource.fromScreener, tableSource.screen, tableSource.symbols, tableSourceScreenId, tableSourceScreenType, tableSourceSymbolsKey, fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
 
   // Popup: search autocomplete when add popup is open
   useEffect(() => {
