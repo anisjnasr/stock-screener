@@ -418,6 +418,15 @@ function StockChart({
       return next;
     });
   }, []);
+  const toolbarMutedClass = isLightBackground
+    ? "text-zinc-800 hover:bg-zinc-200/70"
+    : "text-zinc-200 hover:bg-white/10";
+  const toolbarActiveClass = isLightBackground
+    ? "bg-zinc-900 text-zinc-100"
+    : "bg-zinc-200 text-zinc-900";
+  const toolbarDividerClass = isLightBackground
+    ? "bg-zinc-700/30"
+    : "bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]";
 
   useEffect(() => {
     const el = chartAreaRef.current;
@@ -1261,7 +1270,13 @@ function StockChart({
         className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap"
         style={{ paddingRight: CHART_PRICE_SCALE_GUTTER_PX, pointerEvents: "none" }}
       >
-        <div className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "transparent" }}>
+        <div
+          className="flex items-center gap-1 flex-wrap ml-auto rounded-b px-1.5 py-0.5"
+          style={{
+            pointerEvents: "auto",
+            background: isLightBackground ? "rgba(255,255,255,0.28)" : "transparent",
+          }}
+        >
           <div className="flex items-center gap-1">
             {onTimeframeChange &&
               timeframes.map((tf) => (
@@ -1270,9 +1285,7 @@ function StockChart({
                   type="button"
                   onClick={() => onTimeframeChange(tf)}
                   className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
-                    timeframe === tf
-                      ? "bg-zinc-200 text-zinc-900 dark:bg-[var(--ws-bg3)] dark:text-[var(--ws-text)]"
-                      : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                    timeframe === tf ? toolbarActiveClass : toolbarMutedClass
                   }`}
                 >
                   {tf.charAt(0).toUpperCase() + tf.slice(1)}
@@ -1282,12 +1295,12 @@ function StockChart({
           <button
             type="button"
             onClick={() => applyThemePalette(isUsingLightTheme ? DEFAULT_CHART_SETTINGS : LIGHT_CHART_THEME)}
-            className="px-2 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
             title="Toggle chart theme"
           >
             {isUsingLightTheme ? "Light" : "Dark"}
           </button>
-          <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
+          <span className={`mx-1 h-4 w-px ${toolbarDividerClass}`} />
           <div className="flex items-center gap-1">
           <button
             type="button"
@@ -1299,7 +1312,7 @@ function StockChart({
             className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               drawMode === "ray"
                 ? "bg-amber-300 text-zinc-900 dark:bg-amber-500/25 dark:text-amber-100"
-                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                : toolbarMutedClass
             }`}
             title="Draw horizontal ray"
           >
@@ -1315,7 +1328,7 @@ function StockChart({
             className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               drawMode === "trend"
                 ? "bg-violet-300 text-zinc-900 dark:bg-violet-500/25 dark:text-violet-100"
-                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                : toolbarMutedClass
             }`}
             title="Draw trend line"
           >
@@ -1327,7 +1340,7 @@ function StockChart({
             className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               snapToOhlc
                 ? "bg-cyan-300 text-zinc-900 dark:bg-[var(--ws-cyan-dim)] dark:text-[var(--ws-cyan)]"
-                : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                : toolbarMutedClass
             }`}
             title="Snap to OHLC"
           >
@@ -1335,7 +1348,7 @@ function StockChart({
           </button>
           </div>
           {showGlobalControls && (
-            <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
+            <span className={`mx-1 h-4 w-px ${toolbarDividerClass}`} />
           )}
           {showGlobalControls && onToggleDualMode && (
             <button
@@ -1343,8 +1356,8 @@ function StockChart({
               onClick={onToggleDualMode}
               className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
                 dualModeEnabled
-                  ? "bg-zinc-200 text-zinc-900 dark:bg-[var(--ws-bg3)] dark:text-[var(--ws-text)]"
-                  : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                  ? toolbarActiveClass
+                  : toolbarMutedClass
               }`}
               title="Toggle dual chart mode"
               aria-label="Toggle dual chart mode"
@@ -1362,7 +1375,7 @@ function StockChart({
               className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
                 crosshairSyncEnabled
                   ? "bg-sky-300 text-zinc-900 dark:bg-[rgba(92,158,245,0.2)] dark:text-[var(--ws-blue)]"
-                  : "text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                  : toolbarMutedClass
               }`}
               title="Toggle crosshair sync"
               aria-label="Toggle crosshair sync"
@@ -1379,11 +1392,11 @@ function StockChart({
               </svg>
             </button>
           )}
-          <span className="mx-1 h-4 w-px bg-zinc-400/50 dark:bg-[var(--ws-border-hover)]" />
+          <span className={`mx-1 h-4 w-px ${toolbarDividerClass}`} />
           <button
             type="button"
             onClick={handleResetView}
-            className="px-2 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
             title="Reset chart view"
             aria-label="Reset chart view"
           >
@@ -1394,7 +1407,7 @@ function StockChart({
               <button
                 type="button"
                 onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistPicker(false); }}
-                className="px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)] flex items-center gap-1"
+                className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass} flex items-center gap-1`}
                 title="Flag stock"
               >
                 <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
@@ -1430,7 +1443,7 @@ function StockChart({
               <button
                 type="button"
                 onClick={() => { setShowWatchlistPicker((v) => !v); setShowFlagPicker(false); }}
-                className="px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors text-zinc-600 dark:text-[var(--ws-text-dim)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)]"
+                className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
                 title="Add to watchlist"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
