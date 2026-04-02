@@ -10,6 +10,8 @@ export type IncomeLine = {
   revenue?: number;
   netIncome?: number;
   eps?: number;
+  epsGrowth?: number;
+  salesGrowth?: number;
 };
 
 export type YearlyRow = {
@@ -85,19 +87,21 @@ export function useFundamentals(symbol: string) {
         year: l.calendarYear ?? l.date?.slice(0, 4) ?? "",
         eps: l.eps ?? null,
         sales: l.revenue ?? null,
+        epsGrowth: typeof l.epsGrowth === "number" ? l.epsGrowth : null,
+        salesGrowth: typeof l.salesGrowth === "number" ? l.salesGrowth : null,
       }))
       .filter((r) => r.year)
       .sort((a, b) => b.year.localeCompare(a.year));
     return byYear.map((row, i) => {
       const prev = byYear[i + 1];
-      const epsGrowth =
-        row.eps != null && prev?.eps != null && prev.eps !== 0
+      const epsGrowth = row.epsGrowth ??
+        (row.eps != null && prev?.eps != null && prev.eps !== 0
           ? ((row.eps - prev.eps) / Math.abs(prev.eps)) * 100
-          : null;
-      const salesGrowth =
-        row.sales != null && prev?.sales != null && prev.sales !== 0
+          : null);
+      const salesGrowth = row.salesGrowth ??
+        (row.sales != null && prev?.sales != null && prev.sales !== 0
           ? ((row.sales - prev.sales) / Math.abs(prev.sales)) * 100
-          : null;
+          : null);
       return { year: row.year, eps: row.eps, epsGrowth, sales: row.sales, salesGrowth };
     });
   }, [annualFundamentals]);
@@ -109,32 +113,28 @@ export function useFundamentals(symbol: string) {
       const yr = l.calendarYear ?? l.date?.slice(0, 4) ?? "";
       const q = l.period ?? "";
       const period = q && yr ? `${q} ${yr}` : q || l.date || "";
-      return { date: l.date, period, eps: l.eps ?? null, sales: l.revenue ?? null };
+      return {
+        date: l.date,
+        period,
+        eps: l.eps ?? null,
+        sales: l.revenue ?? null,
+        epsGrowth: typeof l.epsGrowth === "number" ? l.epsGrowth : null,
+        salesGrowth: typeof l.salesGrowth === "number" ? l.salesGrowth : null,
+      };
     });
     const sorted = withPeriod
       .filter((r) => r.period)
       .sort((a, b) => (b.date || b.period).localeCompare(a.date || a.period));
-    const byYearMonth = new Map<string, (typeof sorted)[number]>();
-    for (const r of sorted) {
-      if (!r.date) continue;
-      const key = `${r.date.slice(0, 4)}-${r.date.slice(5, 7)}`;
-      if (!byYearMonth.has(key)) byYearMonth.set(key, r);
-    }
     return sorted.map((row, i) => {
       const prev = sorted[i + 1];
-      const priorYearSameQuarter = row.date
-        ? byYearMonth.get(`${String(Number(row.date.slice(0, 4)) - 1)}-${row.date.slice(5, 7)}`)
-        : undefined;
-      const useYoY = i === 0 && priorYearSameQuarter;
-      const compareRow = useYoY ? priorYearSameQuarter : prev;
-      const epsGrowth =
-        row.eps != null && compareRow?.eps != null && compareRow.eps !== 0
-          ? ((row.eps - compareRow.eps) / Math.abs(compareRow.eps)) * 100
-          : null;
-      const salesGrowth =
-        row.sales != null && compareRow?.sales != null && compareRow.sales !== 0
-          ? ((row.sales - compareRow.sales) / Math.abs(compareRow.sales)) * 100
-          : null;
+      const epsGrowth = row.epsGrowth ??
+        (row.eps != null && prev?.eps != null && prev.eps !== 0
+          ? ((row.eps - prev.eps) / Math.abs(prev.eps)) * 100
+          : null);
+      const salesGrowth = row.salesGrowth ??
+        (row.sales != null && prev?.sales != null && prev.sales !== 0
+          ? ((row.sales - prev.sales) / Math.abs(prev.sales)) * 100
+          : null);
       return { period: row.period, date: row.date, eps: row.eps, epsGrowth, sales: row.sales, salesGrowth };
     });
   }, [quarterlyFundamentals]);

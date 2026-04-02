@@ -9,6 +9,8 @@ type IncomeStatementLine = {
   revenue?: number;
   netIncome?: number;
   eps?: number;
+  epsGrowth?: number;
+  salesGrowth?: number;
 };
 
 type FundamentalsCacheEntry = {
@@ -59,6 +61,8 @@ export async function GET(request: NextRequest) {
         revenue: row.sales ?? undefined,
         netIncome: undefined,
         eps: row.eps ?? undefined,
+        epsGrowth: row.eps_growth_yoy ?? undefined,
+        salesGrowth: row.sales_growth_yoy ?? undefined,
       }));
       cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
       return NextResponse.json(data, {
