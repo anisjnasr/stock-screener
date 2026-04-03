@@ -30,6 +30,18 @@ function formatNewsTime(utc?: string): string {
   }
 }
 
+function isToday(utc?: string): boolean {
+  if (!utc) return false;
+  try {
+    const d = new Date(utc);
+    if (Number.isNaN(d.getTime())) return false;
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  } catch {
+    return false;
+  }
+}
+
 export default function NewsSidebar({ symbol, embedded = false }: NewsSidebarProps) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,7 +109,12 @@ export default function NewsSidebar({ symbol, embedded = false }: NewsSidebarPro
                   {item.source && <span>{item.source}</span>}
                   {(item.source && (item.publishedUtc || item.publishedDate)) && <span>·</span>}
                   {(item.publishedUtc || item.publishedDate) && (
-                    <span>{formatNewsTime(item.publishedUtc || item.publishedDate)}</span>
+                    <span
+                      className={isToday(item.publishedUtc || item.publishedDate) ? "font-semibold rounded px-1 py-0.5" : ""}
+                      style={isToday(item.publishedUtc || item.publishedDate) ? { background: "rgba(245, 158, 11, 0.2)", color: "rgb(245, 158, 11)" } : undefined}
+                    >
+                      {formatNewsTime(item.publishedUtc || item.publishedDate)}
+                    </span>
                   )}
                 </p>
               </li>

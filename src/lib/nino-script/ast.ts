@@ -4,10 +4,12 @@
 
 export type AstNode =
   | { kind: "number"; value: number }
+  | { kind: "string"; value: string }
   | { kind: "variable"; name: string; lookback: AstNode | null }
   | { kind: "binary"; op: string; left: AstNode; right: AstNode }
   | { kind: "unary"; op: string; operand: AstNode }
-  | { kind: "call"; name: string; args: AstNode[] };
+  | { kind: "call"; name: string; args: AstNode[] }
+  | { kind: "lookback"; target: AstNode; offset: AstNode };
 
 export type ScriptAst = {
   assignments: Array<{ name: string; expr: AstNode }>;

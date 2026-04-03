@@ -14,7 +14,7 @@ import {
   defaultFlagListLabel,
 } from "@/lib/watchlist-storage";
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
-import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds } from "@/lib/screener-storage";
+import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds, type SavedScreen, type ScreenerFolder, loadFolders, saveFolders, addFolder, updateFolder, deleteFolder, saveScreens, loadScreens } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import ProfileIcon from "@/components/ProfileIcon";
 
@@ -77,6 +77,10 @@ type WorkspaceHeaderProps = {
   onSectorTimeframeChange?: (t: SectorTimeframe) => void;
   // Scans contextual
   scanList?: string[];
+  screens?: SavedScreen[];
+  scanFolders?: ScreenerFolder[];
+  onScreensChange?: (screens: SavedScreen[]) => void;
+  onFoldersChange?: (folders: ScreenerFolder[]) => void;
   activeScan?: string;
   onScanChange?: (name: string) => void;
   onNewScan?: () => void;
@@ -238,6 +242,10 @@ function WorkspaceHeader({
   sectorTimeframe = "1w",
   onSectorTimeframeChange,
   scanList = [],
+  screens: screensProp,
+  scanFolders: scanFoldersProp,
+  onScreensChange,
+  onFoldersChange,
   activeScan = "",
   onScanChange,
   onNewScan,
@@ -265,6 +273,68 @@ function WorkspaceHeader({
   const [scanDDOpen, setScanDDOpen] = useState(false);
   const [listDDOpen, setListDDOpen] = useState(false);
   const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renamingFolderName, setRenamingFolderName] = useState("");
+
+  const folders = useMemo(() => scanFoldersProp ?? loadFolders(), [scanFoldersProp]);
+  const screensList = useMemo(() => screensProp ?? loadScreens(), [screensProp]);
+
+  const folderMap = useMemo(() => {
+    const m = new Map<string, ScreenerFolder>();
+    for (const f of folders) m.set(f.id, f);
+    return m;
+  }, [folders]);
+
+  const { folderedItems, unfolderedScreenNames } = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    const unfoldered: string[] = [];
+    const nameByScreen = new Map(screensList.map((s) => [s.name, s]));
+    for (const s of scanList) {
+      const screen = nameByScreen.get(s);
+      if (screen?.folderId && folderMap.has(screen.folderId)) {
+        const list = grouped.get(screen.folderId) ?? [];
+        list.push(s);
+        grouped.set(screen.folderId, list);
+      } else {
+        unfoldered.push(s);
+      }
+    }
+    return { folderedItems: grouped, unfolderedScreenNames: unfoldered };
+  }, [scanList, screensList, folderMap]);
+
+  const handleCreateFolder = useCallback(() => {
+    const name = prompt("Folder name:");
+    if (!name?.trim()) return;
+    const f = addFolder({ name: name.trim() });
+    onFoldersChange?.([...folders, f]);
+  }, [folders, onFoldersChange]);
+
+  const handleRenameFolder = useCallback((id: string, newName: string) => {
+    if (!newName.trim()) return;
+    updateFolder(id, { name: newName.trim() });
+    const updated = folders.map((f) => f.id === id ? { ...f, name: newName.trim() } : f);
+    onFoldersChange?.(updated);
+    setRenamingFolderId(null);
+  }, [folders, onFoldersChange]);
+
+  const handleDeleteFolder = useCallback((id: string) => {
+    const folder = folderMap.get(id);
+    if (!folder) return;
+    if (!window.confirm(`Delete folder "${folder.name}"? Scans will be moved to root.`)) return;
+    deleteFolder(id);
+    onFoldersChange?.(folders.filter((f) => f.id !== id));
+    const updated = screensList.map((s) => s.folderId === id ? { ...s, folderId: undefined } : s);
+    onScreensChange?.(updated);
+  }, [folders, folderMap, screensList, onFoldersChange, onScreensChange]);
+
+  const handleMoveScanToFolder = useCallback((scanName: string, folderId: string | null) => {
+    const updated = screensList.map((s) =>
+      s.name === scanName ? { ...s, folderId: folderId ?? undefined } : s
+    );
+    saveScreens(updated);
+    onScreensChange?.(updated);
+  }, [screensList, onScreensChange]);
   const [favListIds, setFavListIds] = useState<string[]>(() => loadFavoriteWatchlistIds());
   const [dragScanIdx, setDragScanIdx] = useState<number | null>(null);
   const [dragListIdx, setDragListIdx] = useState<number | null>(null);
@@ -589,173 +659,169 @@ function WorkspaceHeader({
               >
                 {activeScan || "Select scan"}
               </button>
-              {scanDDOpen && scanList.length > 0 && (
-                <div
-                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
-                  style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
-                  onDragOver={(e) => {
-                    if (scanDragFromRef.current == null) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                  }}
-                >
-                  {scanList.map((s, idx) => {
-                    const isFav = favScreenIds.includes(s);
-                    return (
-                      <Fragment key={s}>
-                        {dragScanIdx != null && scanDropInsertBefore === idx && (
-                          <div
-                            className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
-                            style={{ background: "var(--ws-cyan)" }}
-                            aria-hidden
-                          />
-                        )}
-                        <div
-                        draggable
-                        onDragStart={() => {
-                          setDragScanIdx(idx);
-                          scanDragFromRef.current = idx;
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                          if (scanDragFromRef.current == null) return;
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
-                          scanDropInsertRef.current = insertBefore;
-                          setScanDropInsertBefore(insertBefore);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const from = scanDragFromRef.current;
-                          if (from == null) return;
-                          let insertBefore = scanDropInsertRef.current;
-                          if (insertBefore == null) {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
-                          }
-                          insertBefore = Math.max(0, Math.min(insertBefore, scanList.length));
-                          const reordered = reorderByInsertBefore(scanList, from, insertBefore);
-                          if (!reordered.every((item, i) => item === scanList[i])) {
-                            onReorderScans?.(reordered);
-                          }
-                          setDragScanIdx(null);
-                          setScanDropInsertBefore(null);
-                          scanDropInsertRef.current = null;
-                          scanDragFromRef.current = null;
-                        }}
-                        onDragEnd={() => {
-                          setDragScanIdx(null);
-                          setScanDropInsertBefore(null);
-                          scanDropInsertRef.current = null;
-                          scanDragFromRef.current = null;
-                        }}
-                        className="group/sc px-3 py-1.5 text-xs rounded mx-1 transition-colors flex items-center"
-                        style={{
-                          color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text)",
-                          background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
+              {scanDDOpen && scanList.length > 0 && (() => {
+                const renderScanItem = (s: string, indent = false) => {
+                  const isFav = favScreenIds.includes(s);
+                  return (
+                    <div
+                      key={s}
+                      draggable
+                      onDragStart={() => { scanDragFromRef.current = scanList.indexOf(s); setDragScanIdx(scanList.indexOf(s)); }}
+                      onDragEnd={() => { setDragScanIdx(null); setScanDropInsertBefore(null); scanDropInsertRef.current = null; scanDragFromRef.current = null; }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (scanDragFromRef.current == null) return;
+                        const idx = scanList.indexOf(s);
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const insertBefore = e.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+                        scanDropInsertRef.current = insertBefore;
+                        setScanDropInsertBefore(insertBefore);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = scanDragFromRef.current;
+                        if (from == null) return;
+                        let insertBefore = scanDropInsertRef.current ?? scanList.indexOf(s);
+                        insertBefore = Math.max(0, Math.min(insertBefore, scanList.length));
+                        const reordered = reorderByInsertBefore(scanList, from, insertBefore);
+                        if (!reordered.every((item, i) => item === scanList[i])) onReorderScans?.(reordered);
+                        setDragScanIdx(null); setScanDropInsertBefore(null); scanDropInsertRef.current = null; scanDragFromRef.current = null;
+                      }}
+                      className="group/sc py-1.5 text-xs rounded mx-1 transition-colors flex items-center"
+                      style={{
+                        paddingLeft: indent ? 24 : 12,
+                        paddingRight: 12,
+                        color: s === activeScan ? "var(--ws-cyan)" : "var(--ws-text)",
+                        background: s === activeScan ? "rgba(0,229,204,0.08)" : "transparent",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "rgba(255,255,255,0.06)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = s === activeScan ? "rgba(0,229,204,0.08)" : "transparent"; }}
+                    >
+                      <span
+                        className="text-ws-body"
+                        style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
+                        role="button"
+                        tabIndex={0}
                       >
-                        <span
-                          className="text-ws-body"
-                          style={{ color: isFav ? "var(--ws-yellow, #ffc107)" : "var(--ws-text-vdim, #555)", marginRight: 8, cursor: "pointer" }}
-                          onClick={(e) => { e.stopPropagation(); setFavScreenIds(toggleFavoriteScreen(s)); }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setFavScreenIds(toggleFavoriteScreen(s));
-                            }
+                        {isFav ? "★" : "☆"}
+                      </span>
+                      <span
+                        className="flex-1 truncate cursor-pointer min-w-0"
+                        onClick={(e) => { e.stopPropagation(); onScanChange?.(s); setScanDDOpen(false); }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        {s}
+                      </span>
+                      <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/sc:opacity-100 transition-opacity">
+                        <span className="rounded p-0.5 hover:bg-white/10 cursor-pointer" title={`Edit ${s}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditScan?.(s); setScanDDOpen(false); }} role="button" tabIndex={0}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
+                        </span>
+                        <span className="rounded p-0.5 hover:bg-white/10 cursor-pointer" title={`Clone ${s}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCloneScan?.(s); setScanDDOpen(false); }} role="button" tabIndex={0}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
+                        </span>
+                        {folders.length > 0 && (
+                          <select
+                            className="rounded p-0.5 text-[10px] border-0 bg-transparent cursor-pointer"
+                            style={{ color: "inherit", maxWidth: 50 }}
+                            title="Move to folder"
+                            value={screensList.find((sc) => sc.name === s)?.folderId ?? ""}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => { e.stopPropagation(); handleMoveScanToFolder(s, e.target.value || null); }}
+                          >
+                            <option value="">Root</option>
+                            {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                        )}
+                        <button type="button" className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center shrink-0" style={{ color: "inherit" }} title={`Delete ${s}`} aria-label={`Delete scan ${s}`} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); const scanName = s; queueMicrotask(() => { if (!window.confirm(`Delete scan "${scanName}"? This cannot be undone.`)) return; onDeleteScan?.(scanName); setScanDDOpen(false); }); }}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                  );
+                };
+
+                return (
+                <div
+                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[220px] max-h-80 overflow-auto shadow-lg"
+                  style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+                  onDragOver={(e) => { if (scanDragFromRef.current == null) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                >
+                  {/* Folders */}
+                  {folders.map((folder) => {
+                    const items = folderedItems.get(folder.id) ?? [];
+                    const isCollapsed = collapsedFolders.has(folder.id);
+                    return (
+                      <div key={folder.id}>
+                        <div
+                          className="group/fd flex items-center gap-1 px-2 py-1 text-xs font-semibold cursor-pointer transition-colors mx-1 rounded"
+                          style={{ color: "var(--ws-text-dim)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                          onClick={() => setCollapsedFolders((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
+                            return next;
+                          })}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const from = scanDragFromRef.current;
+                            if (from == null) return;
+                            const scanName = scanList[from];
+                            if (scanName) handleMoveScanToFolder(scanName, folder.id);
+                            setDragScanIdx(null); scanDragFromRef.current = null;
                           }}
                         >
-                          {isFav ? "★" : "☆"}
-                        </span>
-                        <span
-                          className="flex-1 truncate cursor-pointer min-w-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onScanChange?.(s);
-                            setScanDDOpen(false);
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onScanChange?.(s);
-                              setScanDDOpen(false);
-                            }
-                          }}
-                        >
-                          {s}
-                        </span>
-                        <span className="ml-2 shrink-0 flex items-center gap-0.5 opacity-0 group-hover/sc:opacity-100 transition-opacity">
-                          <span
-                            className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
-                            title={`Edit ${s}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onEditScan?.(s);
-                              setScanDDOpen(false);
-                            }}
-                            role="button"
-                            tabIndex={0}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
+                          <span style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.15s", display: "inline-block" }}>▾</span>
+                          {renamingFolderId === folder.id ? (
+                            <input
+                              className="flex-1 bg-transparent border-b text-xs"
+                              style={{ color: "var(--ws-text)", borderColor: "var(--ws-cyan)" }}
+                              value={renamingFolderName}
+                              onChange={(e) => setRenamingFolderName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { handleRenameFolder(folder.id, renamingFolderName); } else if (e.key === "Escape") { setRenamingFolderId(null); } }}
+                              onBlur={() => handleRenameFolder(folder.id, renamingFolderName)}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="flex-1 truncate">{folder.name}</span>
+                          )}
+                          <span className="text-[10px] tabular-nums" style={{ color: "var(--ws-text-vdim)" }}>{items.length}</span>
+                          <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover/fd:opacity-100 transition-opacity">
+                            <span className="rounded p-0.5 hover:bg-white/10 cursor-pointer" title="Rename folder" onClick={(e) => { e.stopPropagation(); setRenamingFolderId(folder.id); setRenamingFolderName(folder.name); }} role="button" tabIndex={0}>
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146 3.146a.5.5 0 0 1 .708 0l.999.999a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.168.11l-3 1a.5.5 0 0 1-.65-.65l1-3a.5.5 0 0 1 .11-.168l7-7zM11.207 4.5 5 10.707V11h.293L11.5 4.793 11.207 4.5z" /></svg>
+                            </span>
+                            <span className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer" title="Delete folder" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }} role="button" tabIndex={0}>
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
+                            </span>
                           </span>
-                          <span
-                            className="rounded p-0.5 hover:bg-white/10 cursor-pointer"
-                            title={`Clone ${s}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onCloneScan?.(s);
-                              setScanDDOpen(false);
-                            }}
-                            role="button"
-                            tabIndex={0}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
-                          </span>
-                          <button
-                            type="button"
-                            className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center shrink-0"
-                            style={{ color: "inherit" }}
-                            title={`Delete ${s}`}
-                            aria-label={`Delete scan ${s}`}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const scanName = s;
-                              queueMicrotask(() => {
-                                if (!window.confirm(`Delete scan "${scanName}"? This cannot be undone.`)) return;
-                                onDeleteScan?.(scanName);
-                                setScanDDOpen(false);
-                              });
-                            }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
-                          </button>
-                        </span>
+                        </div>
+                        {!isCollapsed && items.map((s) => renderScanItem(s, true))}
                       </div>
-                      </Fragment>
                     );
                   })}
-                  {dragScanIdx != null && scanDropInsertBefore === scanList.length && (
-                    <div
-                      className="mx-2 h-0.5 rounded-full shrink-0 my-0.5"
-                      style={{ background: "var(--ws-cyan)" }}
-                      aria-hidden
-                    />
+                  {folders.length > 0 && unfolderedScreenNames.length > 0 && (
+                    <div className="mx-2 my-1 h-px" style={{ background: "var(--ws-border)" }} />
                   )}
+                  {/* Unfoldered scans */}
+                  {unfolderedScreenNames.map((s) => renderScanItem(s, false))}
+                  {/* New Folder button */}
+                  <div className="mx-2 mt-1 mb-0.5 h-px" style={{ background: "var(--ws-border)" }} />
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1 text-xs transition-colors hover:bg-white/[0.06]"
+                    style={{ color: "var(--ws-text-vdim)" }}
+                    onClick={handleCreateFolder}
+                  >
+                    + New Folder
+                  </button>
                 </div>
-              )}
+                );
+              })()}
             </div>
             {rowCountDisplay && (
               <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--ws-text-dim)" }}>

@@ -13,9 +13,12 @@ export type Bar = {
   volume: number;
 };
 
+export type SnapshotData = Record<string, number | string | null>;
+
 export type EvalContext = {
   bars: Bar[];
   variables: Record<string, number>;
+  snapshot?: SnapshotData;
 };
 
 const PRICE_VOLUME = new Set(["P", "C", "O", "H", "L", "V"]);
@@ -28,6 +31,41 @@ const SERIES_KEYS: Record<string, keyof Bar> = {
   V: "volume",
 };
 
+const SNAPSHOT_NUMERIC: Record<string, string> = {
+  MC: "market_cap",
+};
+
+const SNAPSHOT_STRING: Record<string, string> = {
+  IPODATE: "ipo_date",
+  SECTOR: "sector",
+  INDUSTRY: "industry",
+};
+
+const RS_PERIODS: Record<number, string> = {
+  1: "rs_pct_1w",
+  4: "rs_pct_1m",
+  13: "rs_pct_3m",
+  26: "rs_pct_6m",
+  52: "rs_pct_12m",
+};
+const RS_PERIOD_ALIAS: Record<number, string> = {
+  1: "rs_pct_1w",
+  3: "rs_pct_3m",
+  6: "rs_pct_6m",
+  12: "rs_pct_12m",
+};
+
+const INDRS_PERIODS: Record<number, string> = {
+  1: "industry_rank_1m",
+  3: "industry_rank_3m",
+  6: "industry_rank_6m",
+  12: "industry_rank_12m",
+};
+
+function resolveRsPeriod(n: number): string | undefined {
+  return RS_PERIODS[n] ?? RS_PERIOD_ALIAS[n];
+}
+
 const MAX_LOOKBACK = 500;
 
 function getSeriesValue(bars: Bar[], barIndex: number, name: string): number | null {
@@ -38,35 +76,85 @@ function getSeriesValue(bars: Bar[], barIndex: number, name: string): number | n
   return typeof v === "number" && !Number.isNaN(v) ? v : null;
 }
 
-function evalNode(node: AstNode, ctx: EvalContext): number | null {
+type EvalValue = number | string | null;
+
+function toNumber(v: EvalValue): number | null {
+  if (typeof v === "number") return v;
+  return null;
+}
+
+function compareDateStrings(a: string, b: string): number {
+  const da = new Date(a + (a.length === 10 ? "T00:00:00Z" : ""));
+  const db = new Date(b + (b.length === 10 ? "T00:00:00Z" : ""));
+  if (isNaN(da.getTime()) || isNaN(db.getTime())) return NaN;
+  return da.getTime() - db.getTime();
+}
+
+function evalNodeFull(node: AstNode, ctx: EvalContext): EvalValue {
   switch (node.kind) {
     case "number":
+      return node.value;
+    case "string":
       return node.value;
     case "variable": {
       let index = 0;
       if (node.lookback !== null) {
-        const n = evalNode(node.lookback, ctx);
+        const n = toNumber(evalNodeFull(node.lookback, ctx));
         if (n === null || n < 0 || !Number.isInteger(n) || n > MAX_LOOKBACK) return null;
         index = n;
       }
       if (PRICE_VOLUME.has(node.name)) {
         return getSeriesValue(ctx.bars, index, node.name);
       }
+      if (SNAPSHOT_NUMERIC[node.name] && ctx.snapshot) {
+        const v = ctx.snapshot[SNAPSHOT_NUMERIC[node.name]!];
+        return typeof v === "number" ? v : null;
+      }
+      if (SNAPSHOT_STRING[node.name] && ctx.snapshot) {
+        const v = ctx.snapshot[SNAPSHOT_STRING[node.name]!];
+        return typeof v === "string" ? v : null;
+      }
       const v = ctx.variables[node.name];
       return v !== undefined && typeof v === "number" ? v : null;
     }
     case "binary": {
       if (node.op === "AND" || node.op === "OR") {
-        const a = evalNode(node.left, ctx);
-        const b = evalNode(node.right, ctx);
-        const ba = a !== null && a !== 0;
-        const bb = b !== null && b !== 0;
+        const a = evalNodeFull(node.left, ctx);
+        const b = evalNodeFull(node.right, ctx);
+        const ba = a !== null && a !== 0 && a !== "";
+        const bb = b !== null && b !== 0 && b !== "";
         if (node.op === "AND") return ba && bb ? 1 : 0;
         return ba || bb ? 1 : 0;
       }
-      const left = evalNode(node.left, ctx);
-      const right = evalNode(node.right, ctx);
+      const left = evalNodeFull(node.left, ctx);
+      const right = evalNodeFull(node.right, ctx);
       if (left === null || right === null) return null;
+
+      if (typeof left === "string" || typeof right === "string") {
+        const ls = String(left);
+        const rs = String(right);
+        const isDateCompare = (typeof left === "string" && /^\d{4}-\d{2}-\d{2}/.test(ls)) ||
+                              (typeof right === "string" && /^\d{4}-\d{2}-\d{2}/.test(rs));
+        if (isDateCompare) {
+          const diff = compareDateStrings(ls, rs);
+          if (isNaN(diff)) return null;
+          switch (node.op) {
+            case ">": return diff > 0 ? 1 : 0;
+            case "<": return diff < 0 ? 1 : 0;
+            case ">=": return diff >= 0 ? 1 : 0;
+            case "<=": return diff <= 0 ? 1 : 0;
+            case "=": return diff === 0 ? 1 : 0;
+            case "<>": return diff !== 0 ? 1 : 0;
+            default: return null;
+          }
+        }
+        switch (node.op) {
+          case "=": return ls === rs ? 1 : 0;
+          case "<>": return ls !== rs ? 1 : 0;
+          default: return null;
+        }
+      }
+
       switch (node.op) {
         case "+":
           return left + right;
@@ -77,7 +165,7 @@ function evalNode(node: AstNode, ctx: EvalContext): number | null {
         case "/":
           return right === 0 ? null : left / right;
         case "^":
-          return left ** right;
+          return (left as number) ** (right as number);
         case ">":
           return left > right ? 1 : 0;
         case "<":
@@ -95,7 +183,7 @@ function evalNode(node: AstNode, ctx: EvalContext): number | null {
       }
     }
     case "unary": {
-      const operand = evalNode(node.operand, ctx);
+      const operand = toNumber(evalNodeFull(node.operand, ctx));
       if (operand === null) return null;
       if (node.op === "NOT") return operand !== 0 ? 0 : 1;
       if (node.op === "-") return -operand;
@@ -103,7 +191,28 @@ function evalNode(node: AstNode, ctx: EvalContext): number | null {
     }
     case "call": {
       const name = node.name;
-      const args = node.args.map((a) => evalNode(a, ctx));
+
+      if (name === "RS" && ctx.snapshot) {
+        if (node.args.length < 1) return null;
+        const period = toNumber(evalNodeFull(node.args[0]!, ctx));
+        if (period === null) return null;
+        const field = resolveRsPeriod(period);
+        if (!field) return null;
+        const v = ctx.snapshot[field];
+        return typeof v === "number" ? v : null;
+      }
+
+      if (name === "INDRS" && ctx.snapshot) {
+        if (node.args.length < 1) return null;
+        const period = toNumber(evalNodeFull(node.args[0]!, ctx));
+        if (period === null) return null;
+        const field = INDRS_PERIODS[period];
+        if (!field) return null;
+        const v = ctx.snapshot[field];
+        return typeof v === "number" ? v : null;
+      }
+
+      const args = node.args.map((a) => toNumber(evalNodeFull(a, ctx)));
       if (args.some((a) => a === null)) return null;
       const numArgs = args as number[];
 
@@ -206,9 +315,21 @@ function evalNode(node: AstNode, ctx: EvalContext): number | null {
           return null;
       }
     }
+    case "lookback": {
+      const n = toNumber(evalNodeFull(node.offset, ctx));
+      if (n === null || n < 0 || !Number.isInteger(n) || n > MAX_LOOKBACK) return null;
+      if (n === 0) return evalNodeFull(node.target, ctx);
+      const shifted: EvalContext = { ...ctx, bars: ctx.bars.slice(n) };
+      if (shifted.bars.length === 0) return null;
+      return evalNodeFull(node.target, shifted);
+    }
     default:
       return null;
   }
+}
+
+function evalNode(node: AstNode, ctx: EvalContext): number | null {
+  return toNumber(evalNodeFull(node, ctx));
 }
 
 export function evaluateScript(ast: ScriptAst, ctx: EvalContext): boolean {
@@ -218,8 +339,9 @@ export function evaluateScript(ast: ScriptAst, ctx: EvalContext): boolean {
     if (v === null) return false;
     ctx.variables[name] = v;
   }
-  const result = evalNode(ast.expression, ctx);
+  const result = evalNodeFull(ast.expression, ctx);
   if (result === null) return false;
+  if (typeof result === "string") return result !== "";
   return result !== 0;
 }
 

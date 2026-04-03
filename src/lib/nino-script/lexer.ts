@@ -4,6 +4,7 @@
 
 export type Token =
   | { type: "number"; value: string }
+  | { type: "string"; value: string }
   | { type: "id"; value: string }
   | { type: "keyword"; value: string }
   | { type: "op"; value: string }
@@ -39,6 +40,19 @@ export function lex(source: string): Token[] {
 
     if (isSpace(c)) {
       i++;
+      continue;
+    }
+
+    if (c === '"' || c === "'") {
+      const quote = c;
+      i++;
+      let val = "";
+      while (i < n && source[i] !== quote) {
+        val += source[i];
+        i++;
+      }
+      if (i < n) i++;
+      tokens.push({ type: "string", value: val });
       continue;
     }
 

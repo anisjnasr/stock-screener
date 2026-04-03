@@ -5,8 +5,8 @@
 export { parseScript, ParseError } from "./parser";
 export type { ScriptAst, AstNode } from "./ast";
 export { evaluateScript, evaluateExpression } from "./interpreter";
-export type { Bar, EvalContext } from "./interpreter";
-export { getBarsForSymbol } from "./get-bars";
+export type { Bar, EvalContext, SnapshotData } from "./interpreter";
+export { getBarsForSymbol, getSnapshotForSymbol } from "./get-bars";
 export { runNinoScript } from "./run";
 export type { RunNinoScriptResult } from "./run";
 export { astToString, collectDisplayExpressions } from "./display-expressions";

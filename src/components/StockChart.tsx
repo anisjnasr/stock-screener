@@ -54,7 +54,7 @@ type StockChartProps = {
   onAddToWatchlist?: (watchlistId: string) => void;
 };
 
-type DrawMode = "none" | "ray" | "trend";
+type DrawMode = "none" | "ray" | "trend" | "measure";
 type DrawTemplate = "weekly" | "daily" | "custom";
 
 type DrawingStyle = {
@@ -83,7 +83,17 @@ type TrendLineDrawing = {
   style: DrawingStyle;
 };
 
-type ChartDrawing = HorizontalRayDrawing | TrendLineDrawing;
+type MeasureDrawing = {
+  id: string;
+  kind: "measure";
+  startTime: UTCTimestamp;
+  startPrice: number;
+  endTime: UTCTimestamp;
+  endPrice: number;
+  style: DrawingStyle;
+};
+
+type ChartDrawing = HorizontalRayDrawing | TrendLineDrawing | MeasureDrawing;
 
 type DragHandle = "ray-anchor" | "trend-start" | "trend-end";
 type DragState = {
@@ -140,6 +150,16 @@ function timeToDateKey(raw: unknown): string | null {
     return toIsoDate(t);
   }
   return null;
+}
+
+function formatMeasureLabel(d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number }): string {
+  const priceDelta = d.endPrice - d.startPrice;
+  const pricePct = d.startPrice !== 0 ? (priceDelta / d.startPrice) * 100 : 0;
+  const sign = priceDelta >= 0 ? "+" : "";
+  const startSec = Number(d.startTime);
+  const endSec = Number(d.endTime);
+  const daysDiff = Math.round(Math.abs(endSec - startSec) / 86400);
+  return `${sign}${priceDelta.toFixed(2)} (${sign}${pricePct.toFixed(1)}%) · ${daysDiff} bars`;
 }
 
 function getDrawingStorageKey(symbol: string): string {
@@ -305,6 +325,8 @@ function StockChart({
   const [pendingTrendStart, setPendingTrendStart] = useState<{ time: UTCTimestamp; price: number } | null>(
     null
   );
+  const [pendingMeasureStart, setPendingMeasureStart] = useState<{ time: UTCTimestamp; price: number } | null>(null);
+  const [pendingMeasureDrawingId, setPendingMeasureDrawingId] = useState<string | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showSelectedDrawingSettings, setShowSelectedDrawingSettings] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -720,7 +742,7 @@ function StockChart({
             axisLabelTextColor: c,
           });
         }
-      } else {
+      } else if (d.kind === "measure" || d.kind === "trend") {
         const first = d.startTime <= d.endTime ? { t: d.startTime, p: d.startPrice } : { t: d.endTime, p: d.endPrice };
         const second = d.startTime <= d.endTime ? { t: d.endTime, p: d.endPrice } : { t: d.startTime, p: d.startPrice };
         if (first.t === second.t) {
@@ -733,6 +755,18 @@ function StockChart({
             { time: first.t, value: first.p },
             { time: second.t, value: second.p },
           ]);
+        }
+        if (d.kind === "measure" && d.style.label) {
+          lineSeries.createPriceLine({
+            price: d.endPrice,
+            color: d.style.color,
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: false,
+            title: d.style.label,
+            axisLabelColor: "transparent",
+            axisLabelTextColor: d.style.color,
+          });
         }
       }
     }
@@ -844,6 +878,36 @@ function StockChart({
       const price = mainSeries.coordinateToPrice(param.point.y);
       if (timeRaw == null || price == null || !Number.isFinite(price)) return;
       const snapped = snapPointToCandle(timeRaw, price);
+
+      if (drawMode === "measure") {
+        if (pendingMeasureStart == null) {
+          const measure: MeasureDrawing = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            kind: "measure",
+            startTime: snapped.time,
+            startPrice: snapped.price,
+            endTime: snapped.time,
+            endPrice: snapped.price,
+            style: { ...activeDrawingStyle, color: "#f59e0b", lineStyle: 2, showLabel: true, label: "" },
+          };
+          setDrawings((prev) => [...prev, measure]);
+          setPendingMeasureStart({ time: snapped.time, price: snapped.price });
+          setPendingMeasureDrawingId(measure.id);
+          return;
+        }
+        setDrawings((prev) =>
+          prev.map((d) => {
+            if (d.id !== pendingMeasureDrawingId || d.kind !== "measure") return d;
+            const updated = { ...d, endTime: snapped.time, endPrice: snapped.price };
+            return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated) } };
+          })
+        );
+        setSelectedDrawingId(pendingMeasureDrawingId);
+        setPendingMeasureDrawingId(null);
+        setPendingMeasureStart(null);
+        setDrawMode("none");
+        return;
+      }
 
       if (drawMode === "ray") {
         const ray: HorizontalRayDrawing = {
@@ -1054,6 +1118,8 @@ function StockChart({
     activeDrawingStyle,
     pendingTrendStart,
     pendingTrendDrawingId,
+    pendingMeasureStart,
+    pendingMeasureDrawingId,
     snapPointToCandle,
     selectedDrawingId,
     timeToCandle,
@@ -1126,6 +1192,13 @@ function StockChart({
         setDrawMode((m) => (m === "trend" ? "none" : "trend"));
         setPendingTrendStart(null);
         setPendingTrendDrawingId(null);
+        return;
+      }
+      if (e.altKey && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        setDrawMode((m) => (m === "measure" ? "none" : "measure"));
+        setPendingMeasureStart(null);
+        setPendingMeasureDrawingId(null);
         return;
       }
 
@@ -1239,6 +1312,46 @@ function StockChart({
     return () => el.removeEventListener("mousemove", onMove);
   }, [pendingTrendDrawingId, snapPointToCandle]);
 
+  useEffect(() => {
+    if (!pendingMeasureDrawingId) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      const chart = chartRef.current;
+      const mainSeries = mainSeriesRef.current;
+      if (!chart || !mainSeries) return;
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const rawTime = chart.timeScale().coordinateToTime(x);
+      const timeRaw = normalizeTime(rawTime);
+      const price = mainSeries.coordinateToPrice(y);
+      if (timeRaw == null || price == null || !Number.isFinite(price)) return;
+      const snapped = snapPointToCandle(timeRaw, price);
+      setDrawings((prev) =>
+        prev.map((d) =>
+          d.id === pendingMeasureDrawingId && d.kind === "measure"
+            ? { ...d, endTime: snapped.time, endPrice: snapped.price }
+            : d
+        )
+      );
+    };
+    el.addEventListener("mousemove", onMove);
+    return () => el.removeEventListener("mousemove", onMove);
+  }, [pendingMeasureDrawingId, snapPointToCandle]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onShiftClick = (e: MouseEvent) => {
+      if (e.shiftKey && drawMode === "none") {
+        setDrawMode("measure");
+      }
+    };
+    el.addEventListener("mousedown", onShiftClick);
+    return () => el.removeEventListener("mousedown", onShiftClick);
+  }, [drawMode]);
+
   const selectedHandles = useMemo(() => {
     if (!selectedDrawing) return [];
     if (selectedDrawing.kind === "ray") {
@@ -1333,6 +1446,22 @@ function StockChart({
             title="Draw trend line"
           >
             Trend
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawMode((m) => (m === "measure" ? "none" : "measure"));
+              setPendingMeasureStart(null);
+              setPendingMeasureDrawingId(null);
+            }}
+            className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
+              drawMode === "measure"
+                ? "bg-orange-300 text-zinc-900 dark:bg-orange-500/25 dark:text-orange-100"
+                : toolbarMutedClass
+            }`}
+            title="Measure tool (SHIFT+click or Alt+M)"
+          >
+            Measure
           </button>
           <button
             type="button"
@@ -1767,9 +1896,26 @@ function StockChart({
                     <button
                       type="button"
                       onClick={() => {
+                        setDrawMode((m) => (m === "measure" ? "none" : "measure"));
+                        setPendingMeasureStart(null);
+                        setPendingMeasureDrawingId(null);
+                      }}
+                      className={`px-2 py-0.5 rounded border text-ws-label ${
+                        drawMode === "measure"
+                          ? "border-zinc-700 dark:border-zinc-300 text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-700"
+                          : "border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                      }`}
+                    >
+                      Measure
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setDrawings([]);
                         setPendingTrendStart(null);
                         setPendingTrendDrawingId(null);
+                        setPendingMeasureStart(null);
+                        setPendingMeasureDrawingId(null);
                         setDrawMode("none");
                       }}
                       className="px-2 py-0.5 rounded border text-ws-label border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
@@ -1808,6 +1954,10 @@ function StockChart({
                       ? "Select a draw tool, then click on chart."
                       : drawMode === "ray"
                       ? "Ray mode: click once to place."
+                      : drawMode === "measure"
+                      ? pendingMeasureStart
+                        ? "Measure: click second point."
+                        : "Measure: click first point (or SHIFT+click)."
                       : pendingTrendStart
                       ? "Trend mode: click second point."
                       : "Trend mode: click first point."}

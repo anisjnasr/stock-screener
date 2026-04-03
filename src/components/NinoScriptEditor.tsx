@@ -1,7 +1,10 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { tokenize, tokenClass } from "@/lib/nino-script-tokens";
+import { parseScript, ParseError } from "@/lib/nino-script";
+
+export type ValidationStatus = { status: "ok" | "invalid" | "empty"; error?: string };
 
 type NinoScriptEditorProps = {
   value: string;
@@ -9,6 +12,7 @@ type NinoScriptEditorProps = {
   placeholder?: string;
   className?: string;
   minHeight?: string;
+  onValidation?: (status: ValidationStatus) => void;
 };
 
 export default function NinoScriptEditor({
@@ -17,9 +21,11 @@ export default function NinoScriptEditor({
   placeholder = "e.g. P > 10 and MA(C, 50) > 500000",
   className = "",
   minHeight = "200px",
+  onValidation,
 }: NinoScriptEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
+  const [validation, setValidation] = useState<ValidationStatus>({ status: "empty" });
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -32,6 +38,29 @@ export default function NinoScriptEditor({
     ta.addEventListener("scroll", syncScroll);
     return () => ta.removeEventListener("scroll", syncScroll);
   }, []);
+
+  useEffect(() => {
+    if (!value.trim()) {
+      const s: ValidationStatus = { status: "empty" };
+      setValidation(s);
+      onValidation?.(s);
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        parseScript(value.trim());
+        const s: ValidationStatus = { status: "ok" };
+        setValidation(s);
+        onValidation?.(s);
+      } catch (e) {
+        const msg = e instanceof ParseError ? e.message : e instanceof Error ? e.message : "Parse error";
+        const s: ValidationStatus = { status: "invalid", error: msg };
+        setValidation(s);
+        onValidation?.(s);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [value, onValidation]);
 
   const handleChange = (raw: string) => {
     const lines = raw.split("\n");
@@ -69,27 +98,41 @@ export default function NinoScriptEditor({
   });
 
   return (
-    <div className={`relative rounded border border-zinc-300 dark:border-zinc-600 overflow-hidden bg-white dark:bg-zinc-900 ${className}`} style={{ minHeight }}>
-      {/* Highlight layer (behind): colored tokens */}
-      <div
-        ref={highlightRef}
-        className="absolute inset-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 text-sm font-mono pointer-events-none z-0"
-        style={{ minHeight }}
-        aria-hidden
-      >
-        {value ? highlightedLines : "\u00a0"}
+    <div className={`flex flex-col ${className}`}>
+      <div className="relative rounded-t border border-zinc-300 dark:border-zinc-600 overflow-hidden bg-white dark:bg-zinc-900 flex-1" style={{ minHeight }}>
+        {/* Highlight layer (behind): colored tokens */}
+        <div
+          ref={highlightRef}
+          className="absolute inset-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 text-sm font-mono pointer-events-none z-0"
+          style={{ minHeight }}
+          aria-hidden
+        >
+          {value ? highlightedLines : "\u00a0"}
+        </div>
+        {/* Textarea on top: transparent text so highlight shows through, caret visible */}
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label="NinoScript editor"
+          className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-inset px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
+          style={{ minHeight }}
+          spellCheck={false}
+        />
       </div>
-      {/* Textarea on top: transparent text so highlight shows through, caret visible */}
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label="NinoScript editor"
-        className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-inset px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
-        style={{ minHeight }}
-        spellCheck={false}
-      />
+      {validation.status !== "empty" && (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-b border border-t-0 border-zinc-300 dark:border-zinc-600 text-xs font-medium"
+          style={{
+            background: validation.status === "ok" ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)",
+            color: validation.status === "ok" ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)",
+          }}
+        >
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: "currentColor" }} />
+          {validation.status === "ok" ? "OK" : `Invalid — ${validation.error}`}
+        </div>
+      )}
     </div>
   );
 }

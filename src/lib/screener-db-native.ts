@@ -1146,6 +1146,36 @@ export function getScreenerSnapshot(options: {
   return { rows, date };
 }
 
+export type NinoScriptSnapshot = Record<string, number | string | null>;
+
+/** Get a lightweight snapshot of screener data for NinoScript evaluation. */
+export function getNinoScriptSnapshot(symbol: string, asOfDate: string): NinoScriptSnapshot | null {
+  const db = getDb();
+  if (!db) return null;
+  const row = db.prepare(`
+    SELECT
+      q.last_price, q.volume, q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
+      ${EFFECTIVE_MARKET_CAP_SQL} AS market_cap,
+      c.ipo_date, c.sector, c.industry, c.exchange,
+      i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
+      i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
+      i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m
+    FROM companies c
+    LEFT JOIN daily_quotes q ON q.symbol = c.symbol AND q.date = ?
+    LEFT JOIN indicators i ON i.symbol = c.symbol AND i.date = ?
+    WHERE c.symbol = ?
+    LIMIT 1
+  `).get(asOfDate, asOfDate, symbol) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const snapshot: NinoScriptSnapshot = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (v === null || v === undefined) snapshot[k] = null;
+    else if (typeof v === "number") snapshot[k] = v;
+    else snapshot[k] = String(v);
+  }
+  return snapshot;
+}
+
 export type DailyBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
 /** Get daily bars for a symbol up to asOfDate, newest-first. For Nino Script. */

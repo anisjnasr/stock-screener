@@ -45,7 +45,7 @@ import {
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
-import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deleteScreen, type SavedScreen } from "@/lib/screener-storage";
+import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deleteScreen, loadFolders, type SavedScreen, type ScreenerFolder } from "@/lib/screener-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -95,6 +95,7 @@ export default function Home() {
   // Scans contextual state
   const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
   const [screens, setScreens] = useState<SavedScreen[]>([]);
+  const [scanFolders, setScanFolders] = useState<ScreenerFolder[]>([]);
   const [activeScanName, setActiveScanName] = useState("");
   const [openToScreenerTrigger, setOpenToScreenerTrigger] = useState<{ name: string; nonce: number } | null>(null);
 
@@ -194,6 +195,7 @@ export default function Home() {
     ensurePrebuiltScreensPresent();
     const loaded = loadScreens();
     setScreens(loaded);
+    setScanFolders(loadFolders());
     if (loaded.length > 0) setActiveScanName(loaded[0].name);
 
     if (initFetchedRef.current) return;
@@ -227,14 +229,29 @@ export default function Home() {
   useEffect(() => {
     if (secondaryPagesPrefetchedRef.current) return;
     secondaryPagesPrefetchedRef.current = true;
-    const urls = ["/api/market-monitor", "/api/sectors-industries"];
-    const prefetch = () => { for (const url of urls) fetch(url).catch(() => {}); };
+
+    const sectorTimeframes = ["week", "month", "quarter", "half_year", "year", "ytd", "day"];
+    const sectorUrls = sectorTimeframes.map(
+      (tf) => `/api/sectors-industries?indicesTimeframe=${tf}&sectorsTimeframe=${tf}&industriesTimeframe=${tf}`
+    );
+    const phase1Urls = ["/api/market-monitor"];
+    const phase2Urls = sectorUrls;
+
+    const prefetchPhase1 = () => {
+      for (const url of phase1Urls) fetch(url).catch(() => {});
+    };
+    const prefetchPhase2 = () => {
+      for (const url of phase2Urls) fetch(url).catch(() => {});
+    };
+
     if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(prefetch, { timeout: 3000 });
-      return () => window.cancelIdleCallback(id);
+      const id1 = window.requestIdleCallback(prefetchPhase1, { timeout: 2000 });
+      const id2 = window.requestIdleCallback(prefetchPhase2, { timeout: 5000 });
+      return () => { window.cancelIdleCallback(id1); window.cancelIdleCallback(id2); };
     }
-    const timer = window.setTimeout(prefetch, 1500);
-    return () => window.clearTimeout(timer);
+    const t1 = window.setTimeout(prefetchPhase1, 1000);
+    const t2 = window.setTimeout(prefetchPhase2, 2500);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
   }, []);
 
   const handleSymbolSelect = useCallback((sym: string) => {
@@ -577,6 +594,10 @@ export default function Home() {
         sectorTimeframe={sectorTimeframe}
         onSectorTimeframeChange={setSectorTimeframe}
         scanList={screens.map((s) => s.name)}
+        screens={screens}
+        scanFolders={scanFolders}
+        onScreensChange={(updated) => { setScreens(updated); saveScreens(updated); }}
+        onFoldersChange={setScanFolders}
         activeScan={activeScanName}
         onScanChange={(name) => {
           pendingAutoSelectRef.current = true;

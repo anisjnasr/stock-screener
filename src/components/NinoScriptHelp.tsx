@@ -37,8 +37,11 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
           <section>
             <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-2">What is Nino Script?</h3>
             <p className="mb-2">
-              Nino Script is a simple expression language for custom scans. You write a condition (and optional variable assignments) that is evaluated for each stock using its historical daily OHLCV data. Stocks that make the condition true appear in your scan results.
+              Nino Script is a simple expression language for custom scans. You write a condition (and optional variable assignments) that is evaluated for each stock using its historical daily OHLCV data and database indicators. Stocks that make the condition true appear in your scan results.
             </p>
+            <div className="p-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs mb-2">
+              <strong>Important:</strong> Nino Script uses only <em>database data</em>, not real-time data. <code className="font-mono">C</code> (or <code className="font-mono">P</code>) today returns yesterday&apos;s close (the most recent saved data point). Therefore <code className="font-mono">C[1]</code> = close from 2 days ago.
+            </div>
             <p>
               <strong>Syntax:</strong> You can write a single boolean expression, or one or more assignments followed by an expression. Use a semicolon <code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono text-xs">;</code> to separate statements. The last expression is the scan condition.
             </p>
@@ -48,7 +51,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
             <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Punctuation</h3>
             <ul className="list-disc pl-5 space-y-1">
               <li><code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono">( )</code> — Parentheses for grouping and function arguments.</li>
-              <li><code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono">[ ]</code> — Brackets for lookback: <code className="font-mono">P[1]</code> means close 1 bar ago.</li>
+              <li><code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono">[ ]</code> — Brackets for lookback on any expression: <code className="font-mono">P[1]</code> = close 1 bar ago, <code className="font-mono">MA(C, 20)[10]</code> = 20-day MA as of 10 bars ago.</li>
               <li><code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono">,</code> — Comma to separate function arguments, e.g. <code className="font-mono">MA(C, 50)</code>.</li>
               <li><code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono">;</code> — Semicolon to separate statements, e.g. <code className="font-mono">X = MA(C, 50); P &gt; X</code>.</li>
             </ul>
@@ -76,6 +79,29 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
             <p className="mt-2">
               <strong>Lookback (bars ago):</strong> <code className="font-mono">P[1]</code> = close 1 bar ago (yesterday), <code className="font-mono">H[5]</code> = high 5 bars ago, etc.
             </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Database Indicators &amp; Datapoints</h3>
+            <p className="mb-2">Access screener database fields directly. These are evaluated from the latest snapshot, not computed from bars.</p>
+            <table className="w-full border border-zinc-200 dark:border-zinc-600 rounded overflow-hidden text-left">
+              <thead>
+                <tr className="bg-zinc-100 dark:bg-zinc-700">
+                  <th className="px-2 py-1.5 font-medium">Syntax</th>
+                  <th className="px-2 py-1.5 font-medium">Description</th>
+                  <th className="px-2 py-1.5 font-medium">Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">RS(n)</td><td>Relative Strength percentile. n = 1 (1W), 3 (3M), 6 (6M), 12 (12M)</td><td className="font-mono text-xs">RS(12) &gt; 90</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">INDRS(n)</td><td>Industry RS rank. n = 1 (1M), 3 (3M), 6 (6M), 12 (12M)</td><td className="font-mono text-xs">INDRS(3) &gt; 80</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">MC</td><td>Market cap (USD)</td><td className="font-mono text-xs">MC &gt;= 300000000</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">IPODATE</td><td>IPO date (string, &quot;YYYY-MM-DD&quot;). Compare with date strings.</td><td className="font-mono text-xs">IPODATE &gt;= &quot;2025-01-01&quot;</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">SECTOR</td><td>GICS sector name (string)</td><td className="font-mono text-xs">SECTOR = &quot;Technology&quot;</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">INDUSTRY</td><td>GICS industry name (string)</td><td className="font-mono text-xs">INDUSTRY = &quot;Semiconductors&quot;</td></tr>
+              </tbody>
+            </table>
+            <p className="mt-2"><strong>String literals:</strong> Use double or single quotes for text values: <code className="font-mono">&quot;Technology&quot;</code> or <code className="font-mono">&apos;2025-01-01&apos;</code>.</p>
           </section>
 
           <section>
@@ -158,6 +184,14 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
                 <tr className="border-t border-zinc-200 dark:border-zinc-600">
                   <td className="px-2 py-1.5 font-mono">ABS(x)</td>
                   <td>Absolute value of x (one numeric expression).</td>
+                </tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600">
+                  <td className="px-2 py-1.5 font-mono">RS(n)</td>
+                  <td>Relative Strength percentile from database. Periods: 1 (1W), 3 (3M), 6 (6M), 12 (12M). Example: RS(12) &gt; 90 filters 90th percentile 12-month RS.</td>
+                </tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600">
+                  <td className="px-2 py-1.5 font-mono">INDRS(n)</td>
+                  <td>Industry RS rank from database. Periods: 1 (1M), 3 (3M), 6 (6M), 12 (12M). Example: INDRS(6) &gt; 80.</td>
                 </tr>
               </tbody>
             </table>

@@ -129,59 +129,66 @@ export default function MarketMonitorTable() {
         <table className="min-w-full text-ws-body text-center border-collapse">
           <thead>
             <tr>
-              <th className="sticky top-0 z-10 px-3 py-2 border-b border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
               <th
-                className="sticky top-0 z-10 px-3 py-2 border-b text-ws-body font-semibold"
+                scope="colgroup"
+                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
                 colSpan={6}
                 style={{ background: "rgba(0, 229, 204, 0.1)", borderColor: "var(--ws-border)", color: "var(--ws-cyan)" }}
               >
                 Primary Breadth Indicators
               </th>
               <th
-                className="sticky top-0 z-10 px-3 py-2 border-b border-l text-ws-body font-semibold"
+                scope="colgroup"
+                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
                 colSpan={4}
                 style={{ background: "rgba(92, 158, 245, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-blue)" }}
               >
                 Secondary Breadth Indicators
               </th>
               <th
-                className="sticky top-0 z-10 px-3 py-2 border-b border-l text-ws-body font-semibold"
+                scope="colgroup"
+                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
                 colSpan={2}
                 style={{ background: "rgba(167, 139, 250, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-purple)" }}
               >
                 S&amp;P 500 Breadth
               </th>
               <th
-                className="sticky top-0 z-10 px-3 py-2 border-b text-ws-body font-semibold"
+                scope="colgroup"
+                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
                 colSpan={2}
                 style={{ background: "rgba(167, 139, 250, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-purple)" }}
               >
                 Nasdaq Breadth
               </th>
-              <th className="sticky top-0 z-10 px-3 py-2 border-b border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
               {["Date", "Up %", "Down %", "5D Ratio", "10D Ratio", "Up 25% (Q)", "Down 25% (Q)", "Up 25% (M)", "Down 25% (M)", "Up 50% (M)", "Down 50% (M)"].map((label, idx) => (
                 <th
+                  scope="col"
                   key={label}
-                  className={`sticky top-10 z-10 px-3 py-1.5 border-b text-ws-label font-medium${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+                  className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-medium${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
+                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
                 >
                   {label}
                 </th>
               ))}
               {["% > 50 SMA", "% > 200 SMA", "% > 50 SMA", "% > 200 SMA"].map((label, idx) => (
                 <th
+                  scope="col"
                   key={`breadth-${idx}`}
-                  className={`sticky top-10 z-10 px-2 py-1 border-b text-ws-label font-medium${idx === 0 ? " border-l" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+                  className={`sticky top-[2.375rem] z-10 px-2 py-1 border-b text-xs font-medium${idx === 0 ? " border-l" : ""}`}
+                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
                 >
                   {label}
                 </th>
               ))}
               <th
-                className="sticky top-10 z-10 px-3 py-1.5 border-b border-l text-ws-label font-medium"
-                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+                scope="col"
+                className="sticky top-[2.375rem] z-10 px-3 py-1 border-b border-l text-xs font-medium"
+                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
               >
                 Stock Universe
               </th>

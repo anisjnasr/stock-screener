@@ -64,7 +64,7 @@ type RightRailProps = {
   loading?: boolean;
 };
 
-type RailTab = "fundamentals" | "news";
+type RailTab = "profile" | "news";
 
 function fmtCompactCurrency(n: number): string {
   if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
@@ -132,9 +132,9 @@ export default function RightRail({
   rsRank,
   loading,
 }: RightRailProps) {
-  const [railTab, setRailTab] = useState<RailTab>("fundamentals");
+  const [railTab, setRailTab] = useState<RailTab>("profile");
   const [showFullDesc, setShowFullDesc] = useState(false);
-  const [finFreq, setFinFreq] = useState<"annual" | "quarterly">("quarterly");
+  const [finFreq, setFinFreq] = useState<"annual" | "quarterly">("annual");
 
   if (loading) {
     return (
@@ -162,82 +162,100 @@ export default function RightRail({
 
   const sectionDivider = <div style={{ height: 1, background: "var(--ws-border)", margin: "4px -12px" }} />;
 
+  const tabLabels: Record<RailTab, string> = { profile: "Profile", news: "News" };
+
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
-      {/* Profile header — order: Ticker + Name inline, Website, Description, Exchange, Sector, Industry, Market Cap, Float */}
-      <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
-            {symbol}
-          </span>
-          {profile?.companyName && (
-            <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
-              {safe(profile.companyName)}
-            </span>
-          )}
-        </div>
-        {profile?.website && typeof profile.website === "string" && (
-          <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-            target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm font-medium" style={{ color: "var(--ws-cyan)" }}>
-            {safe(profile.website).replace(/^https?:\/\//, "")}
-          </a>
-        )}
-
-        {desc && (
-          <div className="mt-2">
-            <p className="text-sm leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
-              {showFullDesc ? desc : truncatedDesc}
-            </p>
-            {desc.length > 150 && (
-              <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-ws-body mt-0.5" style={{ color: "var(--ws-cyan)" }}>
-                {showFullDesc ? "Less" : "More"}
-              </button>
-            )}
-          </div>
-        )}
-
-        <div
-          className="mt-2 grid gap-x-2 gap-y-1.5 text-ws-title items-center"
-          style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
-        >
-          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
-          <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
-
-          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
-          <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-            {profile?.sector ? safe(profile.sector) : "—"}
-          </span>
-
-          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
-          <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-            {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
-          </span>
-
-          <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
-          <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
-        </div>
-      </div>
-
-      {/* Tab row */}
+      {/* Tab row at the very top */}
       <div className="flex items-center gap-1 px-3 py-1" role="tablist" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        {(["fundamentals", "news"] as RailTab[]).map((tab) => (
+        {(["profile", "news"] as RailTab[]).map((tab) => (
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
             role="tab"
             aria-selected={railTab === tab}
-            className={`px-3 py-1 text-ws-title font-semibold rounded transition-colors capitalize ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
+            className={`px-3 py-1 text-ws-title font-semibold rounded transition-colors ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : undefined,
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
             }}>
-            {tab}
+            {tabLabels[tab]}
           </button>
         ))}
       </div>
 
       {railTab === "news" ? (
-        <NewsSidebar symbol={symbol} />
+        <>
+          {/* Ticker + Name header for News tab */}
+          <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+                {symbol}
+              </span>
+              {profile?.companyName && (
+                <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+                  {safe(profile.companyName)}
+                </span>
+              )}
+            </div>
+          </div>
+          <NewsSidebar symbol={symbol} />
+        </>
       ) : (
-        <div className="px-3 py-2 space-y-2.5">
+        <>
+          {/* Profile header */}
+          <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+                {symbol}
+              </span>
+              {profile?.companyName && (
+                <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+                  {safe(profile.companyName)}
+                </span>
+              )}
+            </div>
+            {profile?.website && typeof profile.website === "string" && (
+              <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
+                target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm font-medium" style={{ color: "var(--ws-cyan)" }}>
+                {safe(profile.website).replace(/^https?:\/\//, "")}
+              </a>
+            )}
+
+            {desc && (
+              <div className="mt-2">
+                <p className="text-sm leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
+                  {showFullDesc ? desc : truncatedDesc}
+                </p>
+                {desc.length > 150 && (
+                  <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-ws-body mt-0.5" style={{ color: "var(--ws-cyan)" }}>
+                    {showFullDesc ? "Less" : "More"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div
+              className="mt-2 grid gap-x-2 gap-y-1.5 text-ws-title items-center"
+              style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
+            >
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
+              <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
+
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
+              <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+                {profile?.sector ? safe(profile.sector) : "—"}
+              </span>
+
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
+              <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+                {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
+              </span>
+
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
+              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+            </div>
+          </div>
+
+          <div className="px-3 py-2 space-y-2.5">
 
           {/* RS RANK */}
           {rsRank && (
@@ -377,6 +395,7 @@ export default function RightRail({
           </div>
 
         </div>
+        </>
       )}
     </div>
   );

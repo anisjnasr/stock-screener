@@ -8,6 +8,8 @@ export function astToString(node: AstNode): string {
   switch (node.kind) {
     case "number":
       return String(node.value);
+    case "string":
+      return `"${node.value}"`;
     case "variable": {
       const n = node.name;
       if (node.lookback !== null) {
@@ -30,6 +32,11 @@ export function astToString(node: AstNode): string {
     case "call": {
       const args = node.args.map(astToString).join(", ");
       return `${node.name}(${args})`;
+    }
+    case "lookback": {
+      const target = astToString(node.target);
+      const offset = astToString(node.offset);
+      return `${target}[${offset}]`;
     }
     default:
       return "";

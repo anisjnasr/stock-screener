@@ -138,9 +138,20 @@ export function parseScript(source: string): ScriptAst {
       expect("(");
       const operand = parseExpression();
       expect(")");
-      return { kind: "call", name: "ABS", args: [operand] };
+      return parsePostfix({ kind: "call", name: "ABS", args: [operand] });
     }
-    return parsePrimary();
+    return parsePostfix(parsePrimary());
+  }
+
+  /** Wrap a node with zero or more postfix `[expr]` lookback operators. */
+  function parsePostfix(node: AstNode): AstNode {
+    while (is("[")) {
+      advance();
+      const offset = parseExpression();
+      expect("]");
+      node = { kind: "lookback", target: node, offset };
+    }
+    return node;
   }
 
   function parsePrimary(): AstNode {
@@ -149,6 +160,16 @@ export function parseScript(source: string): ScriptAst {
       const value = parseFloat(tokenValue(t));
       if (Number.isNaN(value)) throw new ParseError("Invalid number");
       return { kind: "number", value };
+    }
+    if (is("string")) {
+      const t = advance();
+      return { kind: "string", value: tokenValue(t) };
+    }
+    if (is("(")) {
+      advance();
+      const expr = parseExpression();
+      expect(")");
+      return expr;
     }
     if (is("id")) {
       const t = advance();

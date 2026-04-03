@@ -6,6 +6,7 @@ import { parseScript } from "./parser";
 import { ParseError } from "./parser";
 import { evaluateScript, evaluateExpression } from "./interpreter";
 import { getBarsForSymbol } from "./get-bars";
+import { getSnapshotForSymbol } from "./get-bars";
 import { collectDisplayExpressions } from "./display-expressions";
 
 const DEFAULT_BAR_LIMIT = 300;
@@ -41,7 +42,8 @@ export async function runNinoScript(
     try {
       const bars = await getBarsForSymbol(symbol, asOfDate, barLimit);
       if (bars.length === 0) continue;
-      const ctx = { bars, variables: {} };
+      const snapshot = getSnapshotForSymbol(symbol, asOfDate);
+      const ctx = { bars, variables: {}, snapshot: snapshot ?? undefined };
       const pass = evaluateScript(ast, ctx);
       if (!pass) continue;
       passingSymbols.push(symbol);

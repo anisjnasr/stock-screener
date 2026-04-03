@@ -124,24 +124,26 @@ export default function QuarterlyBox({ rows, ownershipRows = [], loading }: Quar
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-zinc-200 dark:border-zinc-700">
-              <th className="py-0.5 px-2 font-medium text-zinc-600 dark:text-zinc-400 text-left whitespace-nowrap w-20 border-r border-zinc-200 dark:border-zinc-700" />
+            <tr className="border-b-2 border-zinc-300 dark:border-zinc-600">
+              <th scope="col" className="py-1 px-2 font-bold text-zinc-600 dark:text-zinc-300 text-left whitespace-nowrap w-20 border-r border-zinc-200 dark:border-zinc-700" />
               {yearGroups.map((g) => (
                 <th
+                  scope="colgroup"
                   key={g.year + g.count}
                   colSpan={g.count}
-                  className="py-0.5 px-2 font-medium text-zinc-600 dark:text-zinc-400 text-center whitespace-nowrap min-w-[3.5rem]"
+                  className="py-1 px-2 font-bold text-zinc-700 dark:text-zinc-300 text-center whitespace-nowrap min-w-[3.5rem]"
                 >
                   {g.year}
                 </th>
               ))}
             </tr>
             <tr className="border-b border-zinc-200 dark:border-zinc-700">
-              <th className="py-0.5 px-2 font-medium text-zinc-500 dark:text-zinc-400 text-left whitespace-nowrap w-20 border-r border-zinc-200 dark:border-zinc-700" />
+              <th scope="col" className="py-0.5 px-2 font-medium text-zinc-400 dark:text-zinc-500 text-left whitespace-nowrap w-20 border-r border-zinc-200 dark:border-zinc-700" />
               {ordered.map((row, i) => (
                 <th
+                  scope="col"
                   key={row.date ?? `${row.period}-${i}`}
-                  className={`py-0.5 px-2 font-medium text-zinc-500 dark:text-zinc-400 text-center whitespace-nowrap min-w-[3.5rem] ${yearEndColIndices.has(i) ? cellBorder : ""}`}
+                  className={`py-0.5 px-2 font-medium text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap min-w-[3.5rem] ${yearEndColIndices.has(i) ? cellBorder : ""}`}
                 >
                   {row.period}
                 </th>

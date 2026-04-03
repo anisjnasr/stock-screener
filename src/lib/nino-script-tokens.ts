@@ -3,16 +3,17 @@
  * Produces tokens with types: keyword, function, variable, number, operator, punctuation, space.
  */
 
-export type TokenType = "keyword" | "function" | "variable" | "number" | "operator" | "punctuation" | "identifier" | "space";
+export type TokenType = "keyword" | "function" | "variable" | "number" | "string" | "operator" | "punctuation" | "identifier" | "space";
 
 export type Token = { type: TokenType; value: string };
 
 const KEYWORDS = new Set(["AND", "OR", "NOT"]);
 const BUILTIN_FUNCTIONS = new Set([
-  "MA", "EMA", "SUM", "MAX", "MIN", "ATR", "ATRP", "ROC", "RVOL", "ABS",
+  "MA", "EMA", "SUM", "MAX", "MIN", "ATR", "ATRP", "ROC", "RVOL", "ABS", "RS", "INDRS",
 ]);
 /** P and C both mean Close; O, H, L, V are Open, High, Low, Volume. */
 const PRICE_VOLUME_VARS = new Set(["P", "C", "O", "H", "L", "V"]);
+const SNAPSHOT_VARS = new Set(["MC", "IPODATE", "SECTOR", "INDUSTRY"]);
 
 const MULTI_CHAR_OPS = ["<>", ">=", "<="];
 const SINGLE_OPS = "><=+-*/^";
@@ -46,7 +47,19 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
-    // Number: digits and optional . and more digits
+    if (c === '"' || c === "'") {
+      const quote = c;
+      let val = c;
+      i++;
+      while (i < n && source[i] !== quote) {
+        val += source[i];
+        i++;
+      }
+      if (i < n) { val += source[i]; i++; }
+      tokens.push({ type: "string", value: val });
+      continue;
+    }
+
     if (isDigit(c) || (c === "." && i + 1 < n && isDigit(source[i + 1]!))) {
       let val = "";
       while (i < n && (isDigit(source[i]!) || source[i] === ".")) {
@@ -70,6 +83,8 @@ export function tokenize(source: string): Token[] {
       } else if (BUILTIN_FUNCTIONS.has(upper)) {
         tokens.push({ type: "function", value: val });
       } else if (PRICE_VOLUME_VARS.has(upper)) {
+        tokens.push({ type: "variable", value: val });
+      } else if (SNAPSHOT_VARS.has(upper)) {
         tokens.push({ type: "variable", value: val });
       } else {
         tokens.push({ type: "identifier", value: val });
@@ -125,6 +140,8 @@ export function tokenClass(type: TokenType): string {
     case "variable":
       return "text-amber-700 dark:text-amber-400";
     case "number":
+      return "text-zinc-100 dark:text-zinc-100";
+    case "string":
       return "text-emerald-600 dark:text-emerald-400";
     case "operator":
       return "text-zinc-700 dark:text-zinc-300";
