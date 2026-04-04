@@ -1,0 +1,572 @@
+{
+  "generatedAt": "2026-04-04T04:47:04.623Z",
+  "dbPath": "C:\\Users\\USER\\stock-tool\\data\\screener.db",
+  "sections": [
+    {
+      "label": "thematic",
+      "etfCount": 38,
+      "totalSymbols": 569,
+      "totalInDb": 553,
+      "etfs": [
+        {
+          "etf": "MSOS",
+          "count": 8,
+          "inCompanies": 0,
+          "missingInDb": 8,
+          "missingSample": [
+            "TCNNF",
+            "GTBIF",
+            "CURLF",
+            "CRLBF",
+            "VRNOF",
+            "JUSHF",
+            "TRSSF",
+            "TSNDF"
+          ]
+        },
+        {
+          "etf": "BOTZ",
+          "count": 12,
+          "inCompanies": 11,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "CIBR",
+          "count": 24,
+          "inCompanies": 23,
+          "missingInDb": 1,
+          "missingSample": [
+            "OKTA"
+          ]
+        },
+        {
+          "etf": "ARKX",
+          "count": 21,
+          "inCompanies": 20,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "ARKK",
+          "count": 24,
+          "inCompanies": 23,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "URA",
+          "count": 6,
+          "inCompanies": 5,
+          "missingInDb": 1,
+          "missingSample": [
+            "OKLO"
+          ]
+        },
+        {
+          "etf": "LIT",
+          "count": 5,
+          "inCompanies": 4,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "GRID",
+          "count": 12,
+          "inCompanies": 11,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "IBIT",
+          "count": 1,
+          "inCompanies": 0,
+          "missingInDb": 1,
+          "missingSample": [
+            "IBIT"
+          ]
+        },
+        {
+          "etf": "SMH",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "SKYY",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "DTCR",
+          "count": 18,
+          "inCompanies": 18,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "SNSR",
+          "count": 19,
+          "inCompanies": 19,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "QTUM",
+          "count": 18,
+          "inCompanies": 18,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XOP",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ICLN",
+          "count": 9,
+          "inCompanies": 9,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "TAN",
+          "count": 12,
+          "inCompanies": 12,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "HYDR",
+          "count": 6,
+          "inCompanies": 6,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "PHO",
+          "count": 23,
+          "inCompanies": 23,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "PAVE",
+          "count": 24,
+          "inCompanies": 24,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ITA",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "GDX",
+          "count": 7,
+          "inCompanies": 7,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "SIL",
+          "count": 6,
+          "inCompanies": 6,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "COPX",
+          "count": 3,
+          "inCompanies": 3,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "REMX",
+          "count": 6,
+          "inCompanies": 6,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "MOO",
+          "count": 13,
+          "inCompanies": 13,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "BLOK",
+          "count": 20,
+          "inCompanies": 20,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "FINX",
+          "count": 21,
+          "inCompanies": 21,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XBI",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "OZEM",
+          "count": 13,
+          "inCompanies": 13,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "BETZ",
+          "count": 12,
+          "inCompanies": 12,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ESPO",
+          "count": 6,
+          "inCompanies": 6,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ITB",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "JETS",
+          "count": 19,
+          "inCompanies": 19,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "SOCL",
+          "count": 15,
+          "inCompanies": 15,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IBUY",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "KWEB",
+          "count": 7,
+          "inCompanies": 7,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "INDA",
+          "count": 4,
+          "inCompanies": 4,
+          "missingInDb": 0,
+          "missingSample": []
+        }
+      ],
+      "warnings": 2
+    },
+    {
+      "label": "sector",
+      "etfCount": 11,
+      "totalSymbols": 270,
+      "totalInDb": 268,
+      "etfs": [
+        {
+          "etf": "XLY",
+          "count": 25,
+          "inCompanies": 24,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "XLE",
+          "count": 22,
+          "inCompanies": 21,
+          "missingInDb": 1,
+          "missingSample": [
+            "OKE"
+          ]
+        },
+        {
+          "etf": "XLK",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLF",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLV",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLP",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLC",
+          "count": 23,
+          "inCompanies": 23,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLI",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLB",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLRE",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLU",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        }
+      ],
+      "warnings": 0
+    },
+    {
+      "label": "industry",
+      "etfCount": 23,
+      "totalSymbols": 522,
+      "totalInDb": 521,
+      "etfs": [
+        {
+          "etf": "CARZ",
+          "count": 18,
+          "inCompanies": 17,
+          "missingInDb": 1,
+          "missingSample": [
+            "TSLA"
+          ]
+        },
+        {
+          "etf": "ITA",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "JETS",
+          "count": 18,
+          "inCompanies": 18,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "KBE",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "KRE",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "PBJ",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XBI",
+          "count": 24,
+          "inCompanies": 24,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "KCE",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XPH",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "BETZ",
+          "count": 12,
+          "inCompanies": 12,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "GDX",
+          "count": 6,
+          "inCompanies": 6,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IHF",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ITB",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "KIE",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IHI",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XME",
+          "count": 24,
+          "inCompanies": 24,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XOP",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "VNQ",
+          "count": 24,
+          "inCompanies": 24,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "SMH",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IGV",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XRT",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IYZ",
+          "count": 21,
+          "inCompanies": 21,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "IYT",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        }
+      ],
+      "warnings": 0
+    }
+  ],
+  "summary": {
+    "filesPresent": 3,
+    "warningCount": 2
+  }
+}
