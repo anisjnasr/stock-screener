@@ -648,7 +648,7 @@ export default function WatchlistPanel({
   rightRailHidden,
   setRightRailHidden,
 }: WatchlistPanelProps) {
-  const [lists, setLists] = useState<Watchlist[]>([]);
+  const [lists, setLists] = useState<Watchlist[]>(() => loadWatchlists());
   const [activeListId, setActiveListIdState] = useState<string | null>(null);
   const emitActiveWatchlistRef = useRef<((id: string | null) => void) | undefined>(undefined);
   emitActiveWatchlistRef.current = onActiveWatchlistIdChange;
@@ -693,7 +693,7 @@ export default function WatchlistPanel({
   const [sectorListSymbols, setSectorListSymbols] = useState<Record<string, string[]>>({});
   const [industryListSymbols, setIndustryListSymbols] = useState<Record<string, string[]>>({});
   const [classificationListsLoading, setClassificationListsLoading] = useState(false);
-  const [listFolders, setListFolders] = useState<WatchlistFolder[]>([]);
+  const [listFolders, setListFolders] = useState<WatchlistFolder[]>(() => loadWatchlistFolders());
   const [expandedListFolderIds, setExpandedListFolderIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -874,10 +874,8 @@ export default function WatchlistPanel({
     });
   }, []);
 
-  // Persist lists and flags from localStorage on mount and when changed
+  // Hydrate from localStorage on mount (lists/folders use lazy useState so we never save [] before this runs)
   useEffect(() => {
-    setLists(loadWatchlists());
-    setListFolders(loadWatchlistFolders());
     setFlags(loadFlags());
     setColumnWidths(loadColumnWidths());
     seedDefaultScreensIfEmpty();
@@ -4528,7 +4526,7 @@ export default function WatchlistPanel({
                   onClick={() => {
                     const symbols = sortedRows.map((r) => r.symbol);
                     if (symbols.length === 0) return;
-                    const newId = `wl-${Date.now()}`;
+                    const newId = crypto.randomUUID();
                     const newList = { id: newId, name: `Filtered (${symbols.length})`, symbols };
                     setLists((prev) => {
                       const next = [...prev, newList];

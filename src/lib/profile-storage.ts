@@ -10,7 +10,7 @@
 import { getSupabase } from "./supabase";
 import { cloudSyncSetting, cloudSyncWatchlists, cloudSyncScreens, cloudSyncFlags } from "./cloud-sync";
 import type { Watchlist, WatchlistFolder, StockFlag, ColumnSet, ColumnId, WatchlistPanelMode } from "./watchlist-storage";
-import { loadWatchlists, loadWatchlistFolders } from "./watchlist-storage";
+import { loadWatchlists, loadWatchlistFolders, loadFavoriteWatchlistIds, loadFlags } from "./watchlist-storage";
 import type { SavedScreen, ScreenerFolder } from "./screener-storage";
 import type { ChartSettings } from "./chart-settings";
 
@@ -249,8 +249,14 @@ export function hydrateLocalStorage(data: ProfileData): void {
 
   s.setItem("stock-research-watchlists", JSON.stringify(mergedWl));
   s.setItem("stock-research-watchlist-folders", JSON.stringify(mergedFolders));
-  s.setItem("stock-research-favorite-watchlist-ids", JSON.stringify(data.favoriteWatchlistIds));
-  s.setItem("stock-research-stock-flags", JSON.stringify(data.flags));
+  const localFav = loadFavoriteWatchlistIds();
+  const mergedFav =
+    data.watchlists.length === 0 && localFav.length > 0 ? localFav : data.favoriteWatchlistIds;
+  s.setItem("stock-research-favorite-watchlist-ids", JSON.stringify(mergedFav));
+  const localFlags = loadFlags();
+  const mergedFlags =
+    Object.keys(data.flags).length === 0 && Object.keys(localFlags).length > 0 ? localFlags : data.flags;
+  s.setItem("stock-research-stock-flags", JSON.stringify(mergedFlags));
 
   s.setItem("stock-research-screener-screens", JSON.stringify(data.screens));
   s.setItem("stock-research-screener-folders", JSON.stringify(data.screenFolders));

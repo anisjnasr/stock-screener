@@ -744,7 +744,7 @@ export default function Home() {
           const source = watchlists.find((w) => w.id === id);
           if (!source) return;
           pendingAutoSelectRef.current = true;
-          const newList: Watchlist = { id: `wl-${Date.now()}`, name: `Copy of ${source.name}`, symbols: [...source.symbols] };
+          const newList: Watchlist = { id: crypto.randomUUID(), name: `Copy of ${source.name}`, symbols: [...source.symbols] };
           const updated = [...watchlists, newList];
           setWatchlists(updated);
           saveWatchlists(updated);
@@ -760,7 +760,7 @@ export default function Home() {
           const existing = new Set(watchlists.map((w) => w.name));
           let num = 1;
           while (existing.has(`List ${num}`)) num++;
-          const newList: Watchlist = { id: `wl-${Date.now()}`, name: `List ${num}`, symbols: [] };
+          const newList: Watchlist = { id: crypto.randomUUID(), name: `List ${num}`, symbols: [] };
           const updated = [...watchlists, newList];
           setWatchlists(updated);
           saveWatchlists(updated);

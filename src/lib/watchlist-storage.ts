@@ -9,6 +9,14 @@
 import { cloudSyncWatchlists, cloudSyncFlags, cloudSyncSetting } from "./cloud-sync";
 
 const STORAGE_KEY_LISTS = "stock-research-watchlists";
+
+/** Postgres/Supabase `uuid` columns reject legacy `wl-*` and other non-UUID ids. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuidString(id: string): boolean {
+  return UUID_RE.test(id);
+}
 const STORAGE_KEY_LIST_FOLDERS = "stock-research-watchlist-folders";
 const STORAGE_KEY_FLAGS = "stock-research-stock-flags";
 const STORAGE_KEY_PANEL = "stock-research-watchlist-panel";
@@ -69,12 +77,44 @@ export function loadWatchlists(): Watchlist[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     const list = Array.isArray(parsed) ? parsed : [];
-    return list.map((l: { id?: string; name?: string; symbols?: string[] }) => ({
+    let rows = list.map((l: { id?: string; name?: string; symbols?: string[] }) => ({
       id: typeof l.id === "string" ? l.id : crypto.randomUUID(),
       name: typeof l.name === "string" ? l.name : "Unnamed",
       symbols: Array.isArray(l.symbols) ? l.symbols : [],
       folderId: typeof (l as { folderId?: unknown }).folderId === "string" ? String((l as { folderId?: string }).folderId) : undefined,
     }));
+    const idMap = new Map<string, string>();
+    for (const l of rows) {
+      if (!isUuidString(l.id)) idMap.set(l.id, crypto.randomUUID());
+    }
+    if (idMap.size > 0) {
+      rows = rows.map((l) => ({ ...l, id: idMap.get(l.id) ?? l.id }));
+      try {
+        localStorage.setItem(STORAGE_KEY_LISTS, JSON.stringify(rows));
+      } catch {
+        /* ignore */
+      }
+      try {
+        const favRaw = localStorage.getItem(STORAGE_KEY_FAV_LISTS);
+        const favParsed = favRaw ? JSON.parse(favRaw) : [];
+        if (Array.isArray(favParsed) && favParsed.some((id: unknown) => typeof id === "string" && idMap.has(id))) {
+          const nextFav = favParsed.map((id: unknown) =>
+            typeof id === "string" ? (idMap.get(id) ?? id) : id
+          );
+          localStorage.setItem(STORAGE_KEY_FAV_LISTS, JSON.stringify(nextFav));
+        }
+      } catch {
+        /* ignore */
+      }
+      queueMicrotask(() => {
+        try {
+          cloudSyncWatchlists(rows, loadWatchlistFolders(), loadFavoriteWatchlistIds());
+        } catch {
+          /* ignore */
+        }
+      });
+    }
+    return rows;
   } catch {
     return [];
   }
