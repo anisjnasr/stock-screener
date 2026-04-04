@@ -521,7 +521,9 @@ export default function Home() {
     <PanelErrorBoundary name="LeftPanel">
     <div
       ref={leftPanelMeasureRef}
-      className="h-full min-h-0 flex flex-col overflow-hidden w-max max-w-[min(92vw,1600px)]"
+      className={`h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] ${
+        section === "market" || section === "sectors-industries" ? "w-full" : "w-max"
+      }`}
       style={{ background: "var(--ws-bg2)" }}
     >
       {section === "market" ? (
