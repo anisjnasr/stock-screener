@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
-import { fetchQuote } from "@/lib/massive";
+import { fetchQuote, fetchHistoricalDaily } from "@/lib/massive";
 import { isUSMarketOpen } from "@/lib/market-hours";
 
 type Candle = {
@@ -93,8 +93,32 @@ export async function GET(request: NextRequest) {
     if (cached && cached.expiresAt <= Date.now()) {
       cache.delete(cacheKey);
     }
-    const DAILY_LIMIT = 2500;
-    const bars = getDailyBars(symbol, latest, DAILY_LIMIT);
+    const DAILY_LIMIT = 5000;
+    let bars = getDailyBars(symbol, latest, DAILY_LIMIT);
+    if (!bars.length && process.env.MASSIVE_API_KEY) {
+      try {
+        const from = new Date();
+        from.setUTCFullYear(from.getUTCFullYear() - 15);
+        const fromStr = from.toISOString().slice(0, 10);
+        const live = await fetchHistoricalDaily(symbol, fromStr, latest);
+        if (live.length > 0) {
+          bars = live
+            .filter((c) => c.date <= latest)
+            .slice(-DAILY_LIMIT)
+            .reverse()
+            .map((b) => ({
+              date: b.date,
+              open: b.open,
+              high: b.high,
+              low: b.low,
+              close: b.close,
+              volume: b.volume,
+            }));
+        }
+      } catch {
+        /* fall through to empty */
+      }
+    }
     if (!bars.length) {
       return NextResponse.json([] as Candle[]);
     }

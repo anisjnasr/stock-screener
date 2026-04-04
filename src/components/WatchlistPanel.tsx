@@ -332,6 +332,7 @@ function isSignedMetricColumn(col: TableColumnId): boolean {
   const key = String(col);
   return (
     key === "changePct" ||
+    key === "off52wHighPct" ||
     key.startsWith("priceChange") ||
     key.startsWith("epsGrowth") ||
     key.startsWith("avgEpsGrowth") ||
@@ -367,11 +368,30 @@ function ColumnPickerContent({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [columnSearch, setColumnSearch] = useState("");
 
   const hidden = useMemo(
     () => ALL_COLUMN_IDS.filter((id) => !localOrder.includes(id)),
     [localOrder]
   );
+
+  const visibleFiltered = useMemo(() => {
+    const q = columnSearch.trim().toLowerCase();
+    if (!q) return localOrder;
+    return localOrder.filter((col) => {
+      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+      return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
+    });
+  }, [localOrder, columnSearch]);
+
+  const hiddenFiltered = useMemo(() => {
+    const q = columnSearch.trim().toLowerCase();
+    if (!q) return hidden;
+    return hidden.filter((col) => {
+      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+      return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
+    });
+  }, [hidden, columnSearch]);
 
   const toggleVisible = (col: ColumnId) => {
     setLocalOrder((prev) =>
@@ -501,11 +521,34 @@ function ColumnPickerContent({
         )}
       </div>
 
+      <div className="flex items-center gap-2">
+        <input
+          type="search"
+          value={columnSearch}
+          onChange={(e) => setColumnSearch(e.target.value)}
+          placeholder="Search columns…"
+          className="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-1.5 text-sm text-zinc-900 dark:text-zinc-100"
+          aria-label="Filter columns"
+        />
+        {columnSearch.trim() && (
+          <button
+            type="button"
+            onClick={() => setColumnSearch("")}
+            className="shrink-0 px-2 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            aria-label="Clear column search"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       {/* Visible columns: checkboxes + drag to reorder */}
       <div>
-        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Visible (order) — drag to reorder</h3>
-        <ul className="space-y-0.5 max-h-48 overflow-y-auto border border-zinc-200 dark:border-zinc-600 rounded p-1 bg-zinc-50 dark:bg-zinc-900">
-          {localOrder.map((col, idx) => (
+        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1 whitespace-nowrap">Visible (order) — drag to reorder</h3>
+        <ul className="space-y-0.5 max-h-48 overflow-y-auto border border-zinc-200 dark:border-zinc-600 rounded p-1 bg-zinc-50 dark:bg-zinc-900 min-w-[20rem]">
+          {visibleFiltered.map((col) => {
+            const idx = localOrder.indexOf(col);
+            return (
             <li
               key={col}
               draggable
@@ -523,19 +566,20 @@ function ColumnPickerContent({
                 className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600"
                 aria-label={`Hide ${COLUMN_LABELS[col]}`}
               />
-              <span className="flex-1 text-sm text-zinc-900 dark:text-zinc-100 truncate cursor-grab active:cursor-grabbing">
+              <span className="flex-1 text-sm text-zinc-900 dark:text-zinc-100 whitespace-nowrap truncate cursor-grab active:cursor-grabbing text-left">
                 {COLUMN_LABELS[col]}
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </div>
 
       {/* Hidden columns: checkboxes to add */}
       <div>
-        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Hidden</h3>
-        <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-zinc-200 dark:border-zinc-600 rounded p-1 bg-zinc-50 dark:bg-zinc-900">
-          {hidden.map((col) => (
+        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1 whitespace-nowrap">Hidden</h3>
+        <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-zinc-200 dark:border-zinc-600 rounded p-1 bg-zinc-50 dark:bg-zinc-900 min-w-[20rem]">
+          {hiddenFiltered.map((col) => (
             <li key={col} className="flex items-center gap-2 py-1 px-1">
               <input
                 type="checkbox"
@@ -544,7 +588,7 @@ function ColumnPickerContent({
                 className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600"
                 aria-label={`Show ${COLUMN_LABELS[col]}`}
               />
-              <span className="text-sm text-zinc-600 dark:text-zinc-400 truncate">{COLUMN_LABELS[col]}</span>
+              <span className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-nowrap truncate text-left">{COLUMN_LABELS[col]}</span>
             </li>
           ))}
         </ul>
@@ -2451,8 +2495,8 @@ export default function WatchlistPanel({
     (col: TableColumnId): number => {
       const w = columnWidths[col as ColumnId];
       if (w != null) return w;
-      if (col === "name" || col === "industry" || col === "sector") return 180;
-      if (col === "ticker") return 72;
+      if (col === "name" || col === "industry" || col === "sector") return 200;
+      if (col === "ticker") return 56;
       return 100;
     },
     [columnWidths]
@@ -2499,6 +2543,69 @@ export default function WatchlistPanel({
       document.removeEventListener("mouseup", onUp);
     };
   }, [resizingCol]);
+
+  const autoSizeSingleColumn = useCallback(
+    (col: TableColumnId) => {
+      const table = tableRef.current;
+      if (!table) return;
+      const colIdx = tableColumns.indexOf(col);
+      if (colIdx < 0) return;
+      const colOffset = 1;
+      const i = colIdx;
+      const headerCells = table.querySelectorAll("thead th");
+      const allRows = table.querySelectorAll("tr");
+      const origStyles: { el: HTMLElement; w: string; mw: string }[] = [];
+      allRows.forEach((row) => {
+        const cell = row.children[colOffset + i] as HTMLElement | undefined;
+        if (cell) {
+          origStyles.push({ el: cell, w: cell.style.width, mw: cell.style.minWidth });
+          cell.style.width = "auto";
+          cell.style.minWidth = "auto";
+        }
+      });
+      void table.offsetHeight;
+      const th = headerCells[colOffset + i] as HTMLElement | undefined;
+      if (!th) {
+        origStyles.forEach(({ el, w: ow, mw }) => {
+          el.style.width = ow;
+          el.style.minWidth = mw;
+        });
+        return;
+      }
+      let maxW = th.getBoundingClientRect().width;
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        const td = row.children[colOffset + i] as HTMLElement | undefined;
+        if (td) maxW = Math.max(maxW, td.getBoundingClientRect().width);
+      });
+      const cap = col === "industry" || col === "name" || col === "sector" ? 520 : 380;
+      const w = Math.max(60, Math.min(cap, Math.ceil(maxW) + 8));
+      origStyles.forEach(({ el, w: ow, mw }) => {
+        el.style.width = ow;
+        el.style.minWidth = mw;
+      });
+      setColumnWidths((prev) => {
+        const next = { ...prev, [col]: w };
+        saveColumnWidths(next);
+        return next;
+      });
+    },
+    [tableColumns]
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "a") return;
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae?.closest("input, textarea, select, [contenteditable=true]")) return;
+      const root = tableRef.current;
+      if (!root || sortedRows.length === 0) return;
+      if (!root.contains(e.target as Node)) return;
+      e.preventDefault();
+      setSelectedSymbols(new Set(sortedRows.map((r) => r.symbol)));
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sortedRows]);
 
   const handleAutoSizeColumns = useCallback(() => {
     const table = tableRef.current;
@@ -3361,7 +3468,7 @@ export default function WatchlistPanel({
             const list = lists.find((l) => l.id === addPopupListId);
             return (
               <div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4"
                 style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
                 onClick={(e) => e.target === e.currentTarget && closeAddPopup()}
                 role="dialog"
@@ -3369,7 +3476,7 @@ export default function WatchlistPanel({
                 aria-labelledby="add-stocks-title"
               >
                 <div
-                  className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-md max-h-[80vh] flex flex-col"
+                  className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl min-w-[min(100%,28rem)] max-h-[80vh] flex flex-col"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
@@ -3538,7 +3645,7 @@ export default function WatchlistPanel({
           {/* New Folder modal */}
           {showNewFolderModal && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4"
               style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
               onClick={(e) => e.target === e.currentTarget && setShowNewFolderModal(false)}
               role="dialog"
@@ -3588,7 +3695,7 @@ export default function WatchlistPanel({
           {/* Unified New Scan modal (Traditional + NinoScript tabs) */}
           {(showNewScriptModal || showNewScreenerModal) && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4"
               style={{ background: "rgba(0,0,0,0.95)" }}
               onClick={(e) => { if (e.target === e.currentTarget) { setShowNewScriptModal(false); setShowNewScreenerModal(false); setEditingScriptScreenId(null); } }}
               role="dialog"
@@ -4577,8 +4684,13 @@ export default function WatchlistPanel({
                                 e.stopPropagation();
                                 handleResizeStart(col)(e);
                               }}
+                              onDoubleClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                autoSizeSingleColumn(col);
+                              }}
                               role="separator"
-                              aria-label={`Resize ${getColumnLabel(col)}`}
+                              aria-label={`Resize ${getColumnLabel(col)} (double-click to auto-size)`}
                             />
                           )}
                         </th>
@@ -4853,14 +4965,14 @@ export default function WatchlistPanel({
 
       {showColumnPicker && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
           onClick={(e) => e.target === e.currentTarget && setShowColumnPicker(false)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="column-picker-title"
         >
           <div
-            className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-md max-h-[85vh] flex flex-col"
+            className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl min-w-[min(100%,28rem)] max-h-[85vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">

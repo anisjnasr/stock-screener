@@ -49,6 +49,13 @@ type RsRank = {
   rs_pct_12m: number | null;
 } | null;
 
+type IndustryRanks = {
+  industry_rank_1m: number | null;
+  industry_rank_3m: number | null;
+  industry_rank_6m: number | null;
+  industry_rank_12m: number | null;
+} | null;
+
 type RightRailProps = {
   section: WorkspaceSection;
   symbol: string;
@@ -61,6 +68,7 @@ type RightRailProps = {
   ownershipQuarters: OwnershipQuarter[];
   fundCount?: number;
   rsRank?: RsRank;
+  industryRanks?: IndustryRanks;
   loading?: boolean;
 };
 
@@ -130,6 +138,7 @@ export default function RightRail({
   quarterlyRows,
   ownershipQuarters,
   rsRank,
+  industryRanks,
   loading,
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("profile");
@@ -172,7 +181,7 @@ export default function RightRail({
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
             role="tab"
             aria-selected={railTab === tab}
-            className={`px-3 py-1 text-ws-title font-semibold rounded transition-colors ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
+            className={`px-3 py-1 text-xs font-semibold rounded transition-colors ws-focus-ring ${railTab !== tab ? "hover:bg-white/[0.06]" : ""}`}
             style={{
               background: railTab === tab ? "var(--ws-bg3)" : undefined,
               color: railTab === tab ? "var(--ws-text)" : "var(--ws-text-dim)",
@@ -187,11 +196,11 @@ export default function RightRail({
           {/* Ticker + Name header for News tab */}
           <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+              <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
                 {symbol}
               </span>
               {profile?.companyName && (
-                <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+                <span className="text-sm font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
                   {safe(profile.companyName)}
                 </span>
               )}
@@ -204,11 +213,11 @@ export default function RightRail({
           {/* Profile header */}
           <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-xl font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+              <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
                 {symbol}
               </span>
               {profile?.companyName && (
-                <span className="text-ws-lead font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+                <span className="text-sm font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
                   {safe(profile.companyName)}
                 </span>
               )}
@@ -234,7 +243,7 @@ export default function RightRail({
             )}
 
             <div
-              className="mt-2 grid gap-x-2 gap-y-1.5 text-ws-title items-center"
+              className="mt-2 grid gap-x-2 gap-y-1.5 text-xs items-center"
               style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
             >
               <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
@@ -260,10 +269,10 @@ export default function RightRail({
           {/* RS RANK */}
           {rsRank && (
             <div>
-              <div className="text-ws-title font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
                 RS Rank
               </div>
-              <table className="w-full text-ws-title" style={{ borderCollapse: "collapse" }}>
+              <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
@@ -274,7 +283,7 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums text-ws-title"
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums"
                         style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
@@ -285,17 +294,48 @@ export default function RightRail({
             </div>
           )}
 
-          {rsRank && sectionDivider}
+          {industryRanks && (
+            <div>
+              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
+                Industry RS rank (1 = best)
+              </div>
+              <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
+                    {["1M", "3M", "6M", "12M"].map((p) => (
+                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text-vdim)" }}>{p}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {[
+                      industryRanks.industry_rank_1m,
+                      industryRanks.industry_rank_3m,
+                      industryRanks.industry_rank_6m,
+                      industryRanks.industry_rank_12m,
+                    ].map((v, i) => (
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums" style={{ color: v != null ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                        {v != null ? String(Math.round(v)) : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {(rsRank || industryRanks) && sectionDivider}
 
           {/* REVENUE & EPS — combined table */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-ws-title font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
+              <span className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
               <div className="flex items-center gap-0.5">
                 {(["annual", "quarterly"] as const).map((v) => (
                   <button key={v} type="button" onClick={() => setFinFreq(v)}
                     aria-pressed={finFreq === v}
-                    className={`px-2 py-0.5 text-ws-body rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
+                    className={`px-2 py-0.5 text-xs rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
                     style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
                     {v}
                   </button>

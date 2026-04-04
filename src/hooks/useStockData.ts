@@ -38,6 +38,12 @@ export type StockData = {
     rs_pct_6m: number | null;
     rs_pct_12m: number | null;
   } | null;
+  industryRanks?: {
+    industry_rank_1m: number | null;
+    industry_rank_3m: number | null;
+    industry_rank_6m: number | null;
+    industry_rank_12m: number | null;
+  } | null;
 };
 
 const MAX_RETRIES = 3;

@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { type WorkspaceSection } from "@/types/workspace";
 import type { ChartTimeframe } from "@/components/StockChart";
@@ -132,6 +132,50 @@ export default function Home() {
 
   const chartHidden = section === "market" && marketSubTab === "monitor";
   const isSectorSection = section === "sectors-industries";
+
+  const leftPanelMeasureRef = useRef<HTMLDivElement>(null);
+  const sectionLayoutKeyRef = useRef<string>("");
+
+  useLayoutEffect(() => {
+    if (chartHidden) return;
+    const key = `${section}:${marketSubTab}:${sectorSubTab}`;
+    if (sectionLayoutKeyRef.current === key) return;
+    sectionLayoutKeyRef.current = key;
+
+    const railGutter = (rightRailHidden ? 0 : railWidthPx + 2) + 32;
+    const run = () => {
+      const el = leftPanelMeasureRef.current;
+      const cw = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const maxLeft = Math.max(420, cw - railGutter - 80);
+      let target = 520;
+      if (el) {
+        const w = Math.max(el.scrollWidth, el.getBoundingClientRect().width);
+        target = Math.ceil(w + 24);
+      }
+      if (section === "market") {
+        if (marketSubTab === "monitor") target = Math.max(target, 720);
+        target = Math.max(380, Math.min(maxLeft, target));
+        setChartLeftPx(target);
+      } else if (section === "sectors-industries") {
+        target = Math.max(520, Math.min(maxLeft, Math.max(target, Math.round(cw * 0.44))));
+        setChartLeftSectorsPx(target);
+      } else {
+        target = Math.max(400, Math.min(maxLeft, target));
+        setChartLeftPx(target);
+      }
+    };
+    const id = requestAnimationFrame(() => requestAnimationFrame(run));
+    return () => cancelAnimationFrame(id);
+  }, [
+    section,
+    marketSubTab,
+    sectorSubTab,
+    chartHidden,
+    rightRailHidden,
+    railWidthPx,
+    setChartLeftPx,
+    setChartLeftSectorsPx,
+  ]);
 
   const activeChartLeft = isSectorSection
     ? (chartLeftSectorsPx < 0
@@ -328,19 +372,38 @@ export default function Home() {
     saveWatchlists(reordered);
   }, []);
 
-  const handleAddToWatchlist = useCallback((watchlistId: string) => {
-    setWatchlists((prev) => {
-      const sym = symbol.toUpperCase();
-      const next = prev.map((l) =>
-        l.id === watchlistId && !l.symbols.includes(sym)
-          ? { ...l, symbols: [...l.symbols, sym] }
-          : l
-      );
-      saveWatchlists(next);
-      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
-      return next;
-    });
-  }, [symbol]);
+  const handleWatchlistMembershipSave = useCallback(
+    (changes: { id: string; add: boolean }[]) => {
+      if (changes.length === 0) return;
+      setWatchlists((prev) => {
+        const sym = symbol.toUpperCase();
+        let next = prev;
+        for (const { id, add } of changes) {
+          next = next.map((l) => {
+            if (l.id !== id) return l;
+            const has = l.symbols.map((s) => s.toUpperCase()).includes(sym);
+            if (add && !has) return { ...l, symbols: [...l.symbols, sym] };
+            if (!add && has) return { ...l, symbols: l.symbols.filter((s) => s.toUpperCase() !== sym) };
+            return l;
+          });
+        }
+        saveWatchlists(next);
+        window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: next }));
+        return next;
+      });
+    },
+    [symbol]
+  );
+
+  const watchlistPickerLists = useMemo(
+    () =>
+      watchlists.map((l) => ({
+        id: l.id,
+        name: l.name,
+        hasSymbol: l.symbols.map((s) => s.toUpperCase()).includes(symbol.toUpperCase()),
+      })),
+    [watchlists, symbol]
+  );
 
   useEffect(() => {
     const onFlagsChanged = (e: Event) => {
@@ -456,7 +519,11 @@ export default function Home() {
 
   const leftPanel = (
     <PanelErrorBoundary name="LeftPanel">
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
+    <div
+      ref={leftPanelMeasureRef}
+      className="h-full min-h-0 flex flex-col overflow-hidden w-max max-w-[min(92vw,1600px)]"
+      style={{ background: "var(--ws-bg2)" }}
+    >
       {section === "market" ? (
         <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} activeTab={marketSubTab} />
       ) : section === "sectors-industries" ? (
@@ -512,8 +579,8 @@ export default function Home() {
           chartInstanceId="single"
           stockFlag={currentStockFlag}
           onFlagChange={handleFlagChange}
-          watchlists={chartWatchlists}
-          onAddToWatchlist={handleAddToWatchlist}
+          watchlistPickerLists={watchlistPickerLists}
+          onWatchlistMembershipSave={handleWatchlistMembershipSave}
         />
       </div>
       {section === "market" && (
@@ -543,6 +610,7 @@ export default function Home() {
         ownershipQuarters={ownershipQuarters}
         fundCount={fundCount}
         rsRank={data?.rsRank}
+        industryRanks={data?.industryRanks}
         loading={sidebarLoading}
       />
     )}

@@ -463,10 +463,9 @@ function WorkspaceHeader({
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
       {/* ===== ROW 1 — Main Header ===== */}
       <div
-        className="relative flex items-center h-[50px]"
+        className="relative flex items-center h-[50px] gap-3 min-w-0"
         style={{ paddingLeft: 12, paddingRight: 12 }}
       >
-        {/* Left: logo */}
         <Image
           src="/brand/stockstalker-lockup.png"
           alt="Stock Stalker"
@@ -475,9 +474,86 @@ function WorkspaceHeader({
           className="h-10 w-auto shrink-0 opacity-90"
         />
 
-        {/* Center: nav + search */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <nav className="flex items-center gap-1 pointer-events-auto">
+        <div ref={searchContainerRef} className="relative shrink-0 w-48 min-[900px]:w-56">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+                selectSymbol(suggestions[highlightedIndex].symbol);
+              } else {
+                onSearchSubmit();
+              }
+            }}
+            className="flex items-center gap-1"
+          >
+            <div className="relative w-full">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
+              >
+                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+              </svg>
+              <input
+                type="text"
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
+                onFocus={(e) => {
+                  (e.target as HTMLInputElement).select();
+                  if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Search"
+                className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
+                style={{
+                  background: "var(--ws-bg3)",
+                  color: "var(--ws-text)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                }}
+                aria-label="Stock search"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-controls="ws-search-suggestions"
+                aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
+              />
+            </div>
+          </form>
+          {suggestionsOpen && (
+            <ul
+              id="ws-search-suggestions"
+              role="listbox"
+              className="absolute left-0 top-full z-[100] mt-1 max-h-[50vh] w-[28rem] max-w-[min(92vw,28rem)] overflow-auto rounded py-1 shadow-lg"
+              style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
+            >
+              {suggestionsLoading ? (
+                <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
+              ) : (
+                suggestions.map((s, i) => (
+                  <li
+                    key={`${s.symbol}-${i}`}
+                    id={`ws-suggestion-${i}`}
+                    role="option"
+                    aria-selected={i === highlightedIndex}
+                    className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
+                    style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
+                    onMouseEnter={() => setHighlightedIndex(i)}
+                    onMouseDown={(e) => { e.preventDefault(); selectSymbol(s.symbol); }}
+                  >
+                    <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
+                      {s.symbol}
+                    </span>
+                    {s.name && typeof s.name === "string" && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex-1 flex items-center justify-center min-w-0">
+          <nav className="flex items-center gap-1 flex-wrap justify-center">
             {WORKSPACE_SECTIONS.map((s) => (
               <button
                 key={s.id}
@@ -498,89 +574,11 @@ function WorkspaceHeader({
                 {s.label}
               </button>
             ))}
-
-            <div ref={searchContainerRef} className="relative shrink-0 ml-2">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (suggestionsOpen && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-                    selectSymbol(suggestions[highlightedIndex].symbol);
-                  } else {
-                    onSearchSubmit();
-                  }
-                }}
-                className="flex items-center gap-1"
-              >
-                <div className="relative w-48">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
-                    style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
-                  >
-                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={searchValue}
-                    onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-                    onFocus={(e) => {
-                      (e.target as HTMLInputElement).select();
-                      if (suggestions.length > 0 || searchValue.trim().length > 0) setSuggestionsOpen(true);
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Search"
-                    className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
-                    style={{
-                      background: "var(--ws-bg3)",
-                      color: "var(--ws-text)",
-                      border: "1px solid rgba(255,255,255,0.18)",
-                    }}
-                    aria-label="Stock search"
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    aria-controls="ws-search-suggestions"
-                    aria-activedescendant={highlightedIndex >= 0 ? `ws-suggestion-${highlightedIndex}` : undefined}
-                  />
-                </div>
-              </form>
-              {suggestionsOpen && (
-                <ul
-                  id="ws-search-suggestions"
-                  role="listbox"
-                  className="absolute right-0 top-full z-50 mt-1 max-h-60 w-[28rem] max-w-[90vw] overflow-auto rounded py-1 shadow-lg"
-                  style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
-                >
-                  {suggestionsLoading ? (
-                    <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
-                  ) : (
-                    suggestions.map((s, i) => (
-                      <li
-                        key={`${s.symbol}-${i}`}
-                        id={`ws-suggestion-${i}`}
-                        role="option"
-                        aria-selected={i === highlightedIndex}
-                        className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
-                        style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
-                        onMouseEnter={() => setHighlightedIndex(i)}
-                        onMouseDown={(e) => { e.preventDefault(); selectSymbol(s.symbol); }}
-                      >
-                        <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
-                          {s.symbol}
-                        </span>
-                        {s.name && typeof s.name === "string" && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              )}
-            </div>
           </nav>
         </div>
 
-        {/* Right: updated + profile — always far-right */}
         <div className="ml-auto flex items-center gap-3 shrink-0 z-10">
+          <MarketStatusClock />
           {lastUpdated && (
             <span className="shrink-0 text-ws-label tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
               {lastUpdated}
@@ -745,7 +743,7 @@ function WorkspaceHeader({
 
                 return (
                 <div
-                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[220px] max-h-80 overflow-auto shadow-lg"
+                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[220px] max-h-[50vh] overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                   onDragOver={(e) => { if (scanDragFromRef.current == null) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
                 >
@@ -947,7 +945,7 @@ function WorkspaceHeader({
               </button>
               {listDDOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg"
+                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-[50vh] overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                   onDragOver={(e) => {
                     if (listDragFromRef.current == null) return;
@@ -1356,7 +1354,6 @@ function WorkspaceHeader({
           </div>
         )}
 
-        <MarketStatusClock />
       </div>
     </header>
   );

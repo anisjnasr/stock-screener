@@ -122,6 +122,48 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
   if (num(filters.atr_pct_21d_min) != null) { conditions.push(" AND q.atr_pct_21d >= ?"); params.push(num(filters.atr_pct_21d_min)); }
   if (num(filters.atr_pct_21d_max) != null) { conditions.push(" AND q.atr_pct_21d <= ?"); params.push(num(filters.atr_pct_21d_max)); }
 
+  for (const p of [20, 50, 100, 200] as const) {
+    addNumericRange(`i.pct_from_ema_${p}`, `pct_from_ema_${p}_min`, `pct_from_ema_${p}_max`);
+  }
+
+  const aboveEmaCols = ["above_ema_20", "above_ema_50", "above_ema_100", "above_ema_200"] as const;
+  for (const col of aboveEmaCols) {
+    const v = str(filters[col]);
+    if (v === "1") {
+      conditions.push(` AND i.${col} = 1`);
+    } else if (v === "0") {
+      conditions.push(` AND (i.${col} = 0 OR i.${col} IS NULL)`);
+    }
+  }
+
+  const emaPairCols = ["ema_20_above_50", "ema_50_above_100", "ema_50_above_200", "ema_100_above_200"] as const;
+  for (const col of emaPairCols) {
+    const v = str(filters[col]);
+    if (v === "1") {
+      conditions.push(` AND i.${col} = 1`);
+    } else if (v === "0") {
+      conditions.push(` AND (i.${col} = 0 OR i.${col} IS NULL)`);
+    }
+  }
+
+  const ema200LagFilters = [
+    ["ema_200_vs_lag_20", "ema_200", "ema_200_lag_20"],
+    ["ema_200_vs_lag_30", "ema_200", "ema_200_lag_30"],
+    ["ema_200_vs_lag_60", "ema_200", "ema_200_lag_60"],
+  ] as const;
+  for (const [filterKey, curCol, lagCol] of ema200LagFilters) {
+    const v = str(filters[filterKey]);
+    if (v === "above") {
+      conditions.push(
+        ` AND i.${curCol} IS NOT NULL AND i.${lagCol} IS NOT NULL AND i.${curCol} > i.${lagCol}`
+      );
+    } else if (v === "below") {
+      conditions.push(
+        ` AND i.${curCol} IS NOT NULL AND i.${lagCol} IS NOT NULL AND i.${curCol} < i.${lagCol}`
+      );
+    }
+  }
+
   const industryInclude = str(filters.industry_include);
   if (industryInclude != null) {
     const vals = industryInclude.split(",").map((s) => s.trim()).filter(Boolean);

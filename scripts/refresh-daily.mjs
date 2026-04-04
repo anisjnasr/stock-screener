@@ -391,7 +391,16 @@ async function main() {
   );
 
   const indCols = new Set(db.prepare("PRAGMA table_info(indicators_daily)").all().map((r) => r.name));
-  for (const col of ["rs_pct_1w", "rs_pct_1m", "rs_pct_3m", "rs_pct_6m", "rs_pct_12m"]) {
+  for (const col of [
+    "rs_pct_1w",
+    "rs_pct_1m",
+    "rs_pct_3m",
+    "rs_pct_6m",
+    "rs_pct_12m",
+    "ema_200_lag_20",
+    "ema_200_lag_30",
+    "ema_200_lag_60",
+  ]) {
     if (!indCols.has(col)) db.exec(`ALTER TABLE indicators_daily ADD COLUMN ${col} REAL`);
   }
 
@@ -412,10 +421,11 @@ async function main() {
       avg_volume_1w, avg_volume_1m,
       atr_14, atr_pct_14, atr_21, atr_pct_21,
       ema_20, ema_50, ema_100, ema_200,
+      ema_200_lag_20, ema_200_lag_30, ema_200_lag_60,
       above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200,
       ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct,
       rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const getBarsStmt = db.prepare(
     "SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date <= ? ORDER BY date"
@@ -468,7 +478,7 @@ async function main() {
       const vol30 = bars.slice(-30).map((b) => b.volume);
       const avgVol30 = vol30.length ? vol30.reduce((a, b) => a + b, 0) / vol30.length : null;
       const high52w = Math.max(...bars.slice(-252).map((b) => b.high));
-      const off52w = high52w ? ((high52w - lastBar.close) / high52w) * 100 : null;
+      const off52w = high52w ? ((lastBar.close - high52w) / high52w) * 100 : null;
       const atr21Arr = computeATR(bars, 21);
       const atr21 = atr21Arr[atr21Arr.length - 1];
       const atrPct21 = lastBar.close && atr21 ? (atr21 / lastBar.close) * 100 : null;
@@ -496,6 +506,10 @@ async function main() {
       const ema50 = ema50Arr[ema50Arr.length - 1];
       const ema100 = ema100Arr[ema100Arr.length - 1];
       const ema200 = ema200Arr[ema200Arr.length - 1];
+      const barIdx = bars.length - 1;
+      const ema200Lag20 = barIdx >= 20 ? ema200Arr[barIdx - 20] : null;
+      const ema200Lag30 = barIdx >= 30 ? ema200Arr[barIdx - 30] : null;
+      const ema200Lag60 = barIdx >= 60 ? ema200Arr[barIdx - 60] : null;
 
       const close5 = bars.length >= 6 ? bars[bars.length - 6].close : null;
       const close21 = bars.length >= 22 ? bars[bars.length - 22].close : null;
@@ -555,6 +569,9 @@ async function main() {
         ema50,
         ema100,
         ema200,
+        ema200Lag20,
+        ema200Lag30,
+        ema200Lag60,
         lastBar.close > ema20 ? 1 : 0,
         pctFrom(lastBar.close, ema20),
         lastBar.close > ema50 ? 1 : 0,

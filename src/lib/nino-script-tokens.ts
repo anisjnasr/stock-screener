@@ -134,19 +134,19 @@ export function tokenClass(type: TokenType): string {
     case "space":
       return "";
     case "keyword":
-      return "text-purple-600 dark:text-purple-400 font-semibold";
+      return "text-violet-600 dark:text-violet-400/90 font-medium";
     case "function":
-      return "text-blue-600 dark:text-blue-400";
+      return "text-sky-700 dark:text-sky-400/90";
     case "variable":
-      return "text-amber-700 dark:text-amber-400";
+      return "text-amber-800/90 dark:text-amber-400/85";
     case "number":
-      return "text-zinc-100 dark:text-zinc-100";
+      return "text-zinc-900 dark:text-zinc-100";
     case "string":
-      return "text-emerald-600 dark:text-emerald-400";
+      return "text-emerald-700 dark:text-emerald-400/90";
     case "operator":
-      return "text-zinc-700 dark:text-zinc-300";
+      return "text-zinc-600 dark:text-zinc-400";
     case "punctuation":
-      return "text-zinc-500 dark:text-zinc-400";
+      return "text-zinc-500 dark:text-zinc-500";
     default:
       return "text-zinc-800 dark:text-zinc-200";
   }

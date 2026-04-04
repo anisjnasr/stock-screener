@@ -10,6 +10,7 @@
 import { getSupabase } from "./supabase";
 import { cloudSyncSetting, cloudSyncWatchlists, cloudSyncScreens, cloudSyncFlags } from "./cloud-sync";
 import type { Watchlist, WatchlistFolder, StockFlag, ColumnSet, ColumnId, WatchlistPanelMode } from "./watchlist-storage";
+import { loadWatchlists, loadWatchlistFolders } from "./watchlist-storage";
 import type { SavedScreen, ScreenerFolder } from "./screener-storage";
 import type { ChartSettings } from "./chart-settings";
 
@@ -116,6 +117,39 @@ export const syncFlags = cloudSyncFlags;
 // Pull from Supabase → localStorage  (called once on login)
 // ---------------------------------------------------------------------------
 
+/** Merge cloud watchlists with existing local rows so empty cloud or partial sync does not wipe lists. */
+export function mergeWatchlistsForHydration(cloud: Watchlist[], local: Watchlist[]): Watchlist[] {
+  if (cloud.length === 0 && local.length > 0) return local.map((w) => ({ ...w, symbols: [...w.symbols] }));
+
+  const localById = new Map(local.map((w) => [w.id, w]));
+  const merged: Watchlist[] = [];
+
+  for (const cw of cloud) {
+    const loc = localById.get(cw.id);
+    if (!loc) {
+      merged.push({ ...cw, symbols: [...(cw.symbols ?? [])] });
+      continue;
+    }
+    const symSet = new Set<string>();
+    for (const s of cw.symbols ?? []) symSet.add(String(s).toUpperCase());
+    for (const s of loc.symbols ?? []) symSet.add(String(s).toUpperCase());
+    merged.push({ ...cw, symbols: [...symSet] });
+  }
+
+  const cloudIds = new Set(cloud.map((w) => w.id));
+  for (const loc of local) {
+    if (!cloudIds.has(loc.id)) merged.push({ ...loc, symbols: [...loc.symbols] });
+  }
+  return merged;
+}
+
+function mergeWatchlistFoldersForHydration(cloud: WatchlistFolder[], local: WatchlistFolder[]): WatchlistFolder[] {
+  if (cloud.length === 0 && local.length > 0) return [...local];
+  const seen = new Set(cloud.map((f) => f.id));
+  const extra = local.filter((f) => !seen.has(f.id));
+  return [...cloud, ...extra];
+}
+
 export type ProfileData = {
   watchlists: Watchlist[];
   watchlistFolders: WatchlistFolder[];
@@ -208,8 +242,13 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (typeof window === "undefined") return;
   const s = localStorage;
 
-  s.setItem("stock-research-watchlists", JSON.stringify(data.watchlists));
-  s.setItem("stock-research-watchlist-folders", JSON.stringify(data.watchlistFolders));
+  const localWl = loadWatchlists();
+  const localFolders = loadWatchlistFolders();
+  const mergedWl = mergeWatchlistsForHydration(data.watchlists, localWl);
+  const mergedFolders = mergeWatchlistFoldersForHydration(data.watchlistFolders, localFolders);
+
+  s.setItem("stock-research-watchlists", JSON.stringify(mergedWl));
+  s.setItem("stock-research-watchlist-folders", JSON.stringify(mergedFolders));
   s.setItem("stock-research-favorite-watchlist-ids", JSON.stringify(data.favoriteWatchlistIds));
   s.setItem("stock-research-stock-flags", JSON.stringify(data.flags));
 

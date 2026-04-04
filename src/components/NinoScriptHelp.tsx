@@ -40,7 +40,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
               Nino Script is a simple expression language for custom scans. You write a condition (and optional variable assignments) that is evaluated for each stock using its historical daily OHLCV data and database indicators. Stocks that make the condition true appear in your scan results.
             </p>
             <div className="p-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs mb-2">
-              <strong>Important:</strong> Nino Script uses only <em>database data</em>, not real-time data. <code className="font-mono">C</code> (or <code className="font-mono">P</code>) today returns yesterday&apos;s close (the most recent saved data point). Therefore <code className="font-mono">C[1]</code> = close from 2 days ago.
+              <strong>Database only (not live):</strong> Scans run against your saved screener snapshot and daily bars — there is no real-time feed. <code className="font-mono">C</code> / <code className="font-mono">P</code> on the latest bar is the most recent <em>stored</em> close (often the prior session). <code className="font-mono">C[1]</code> is one bar before that. <code className="font-mono">RS</code>, <code className="font-mono">INDRS</code>, <code className="font-mono">MC</code>, sector/industry, etc. come from the same snapshot, not from intraday quotes.
             </div>
             <p>
               <strong>Syntax:</strong> You can write a single boolean expression, or one or more assignments followed by an expression. Use a semicolon <code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 font-mono text-xs">;</code> to separate statements. The last expression is the scan condition.
@@ -136,7 +136,12 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
 
           <section>
             <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Functions</h3>
-            <p className="mb-2">All functions use the current bar as the rightmost bar; lookback is over the last <code className="font-mono">n</code> bars.</p>
+            <p className="mb-2">
+              All bar-based functions use the current bar as the rightmost bar; the period <code className="font-mono">n</code> is the number of bars in the window. There is <strong>no separate <code className="font-mono">SMA</code> keyword</strong> — <code className="font-mono">MA</code> <em>is</em> the simple (arithmetic) moving average. Use <code className="font-mono">EMA</code> for exponential.
+            </p>
+            <p className="mb-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <code className="font-mono">RS(n)</code> snapshot columns: <code className="font-mono">1</code> = 1W; <code className="font-mono">4</code> = 1M; <code className="font-mono">3</code> or <code className="font-mono">13</code> = 3M; <code className="font-mono">6</code> or <code className="font-mono">26</code> = 6M; <code className="font-mono">12</code> or <code className="font-mono">52</code> = 12M (duplicate numbers read the same DB field). <code className="font-mono">INDRS(n)</code> accepts <code className="font-mono">1</code>, <code className="font-mono">3</code>, <code className="font-mono">6</code>, <code className="font-mono">12</code> for industry rank (1M–12M).
+            </p>
             <table className="w-full border border-zinc-200 dark:border-zinc-600 rounded overflow-hidden text-left">
               <thead>
                 <tr className="bg-zinc-100 dark:bg-zinc-700">

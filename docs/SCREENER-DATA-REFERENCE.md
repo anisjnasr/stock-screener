@@ -51,7 +51,7 @@ This document lists all data points in the screener database: those from your or
 | Avg daily volume — shares (30 days) | `avg_volume_30d_shares` | ✓ | **Formula:** \(\frac{1}{30} \sum_{i=1}^{30} V_i\) over the last 30 trading days (\(V\) = daily volume). |
 | Avg daily volume — USD (30 days) | `avg_volume_30d_usd` | ✓ | Schema only; not populated. |
 | 52-week high | `high_52w` | ✓ | **Formula:** \(\max(\text{high})\) over the last 252 trading days. |
-| Off 52-week high | `off_52w_high_pct` | ✓ | **Formula:** \((\text{high\_52w} - P_{\text{close}}) / \text{high\_52w} \times 100\). % below 52w high. |
+| Off 52-week high | `off_52w_high_pct` | ✓ | **Formula (signed):** \((P_{\text{close}} - \text{high\_52w}) / \text{high\_52w} \times 100\). Negative when price is below the 52w high, zero at the high, positive if close exceeds the trailing 52w high. |
 | ATR % (21 days) | `atr_pct_21d` | ✓ | **Formula:** \(\text{ATR}(21) / P_{\text{close}} \times 100\). See [ATR](#atr-average-true-range) below. |
 | Free float | `free_float` | ✓ | Not populated by current scripts. |
 | Date | `date` | — | Snapshot date (part of key). |
@@ -257,6 +257,18 @@ For screener filtering by percentile instead of raw RS. All stocks are ranked by
 | Sector rank 3 months | `sector_rank_3m` | ✓ | Same, sort by `rs_vs_spy_3m`. |
 | Sector rank 6 months | `sector_rank_6m` | ✓ | Same, sort by `rs_vs_spy_6m`. |
 | Sector rank 12 months | `sector_rank_12m` | ✓ | Same, sort by `rs_vs_spy_12m`. |
+
+---
+
+### ETF constituents (thematic / sector / industry)
+
+Constituent symbol lists live in `data/thematic-etf-constituents.json`, `data/sector-etf-constituents.json`, and `data/industry-etf-constituents.json` (built by the `build-thematic-etf-constituents` and `build-sector-industry-etf-constituents` scripts). They reflect **top holdings** from the scraper, not a full regulatory holdings file, so symbol counts are a lower bound.
+
+To check how many listed symbols exist in `companies` and spot empty or weak lists:
+
+`npm run audit-etf-constituents`
+
+Writes `data/etf-constituents-audit.json` (override with `--out`).
 
 ---
 

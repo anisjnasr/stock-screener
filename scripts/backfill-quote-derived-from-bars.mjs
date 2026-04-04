@@ -128,7 +128,7 @@ function main() {
       avg_vol_30,
       high_52w,
       CASE
-        WHEN high_52w > 0 THEN ((high_52w - close) / high_52w) * 100.0
+        WHEN high_52w > 0 THEN ((close - high_52w) / high_52w) * 100.0
         ELSE NULL
       END AS off_52w_high_pct,
       CASE

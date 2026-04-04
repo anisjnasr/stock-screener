@@ -35,6 +35,8 @@ type StockApiCacheEntry = {
     quote: Record<string, unknown>;
     profile?: Record<string, unknown>;
     nextEarnings?: string;
+    rsRank?: unknown;
+    industryRanks?: unknown;
   };
   expiresAt: number;
   staleAt: number;
@@ -224,11 +226,21 @@ export async function GET(request: NextRequest) {
       rs_pct_12m: dbRow.rs_pct_12m ?? null,
     } : null;
 
+    const industryRanks = dbRow
+      ? {
+          industry_rank_1m: dbRow.industry_rank_1m ?? null,
+          industry_rank_3m: dbRow.industry_rank_3m ?? null,
+          industry_rank_6m: dbRow.industry_rank_6m ?? null,
+          industry_rank_12m: dbRow.industry_rank_12m ?? null,
+        }
+      : null;
+
     const payload = {
       quote: quoteWithFallback,
       profile: mergedProfile,
       nextEarnings,
       rsRank,
+      industryRanks,
     };
     const ttl = marketOpen ? STOCK_API_TTL_OPEN_MS : STOCK_API_TTL_CLOSED_MS;
     const staleAt = Date.now() + ttl;

@@ -103,13 +103,19 @@ async function runNativeCompute(LIMIT, YEARS) {
     .prepare("SELECT date, close FROM daily_bars WHERE symbol = 'SPY' AND date >= ? AND date <= ? ORDER BY date")
     .all(fromStr, toStr);
 
+  const indInfo0 = db.prepare("PRAGMA table_info(indicators_daily)").all();
+  const indCols0 = new Set(indInfo0.map((r) => r.name));
+  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60"]) {
+    if (!indCols0.has(col)) db.exec("ALTER TABLE indicators_daily ADD COLUMN " + col + " REAL");
+  }
+
   const upsertQuote = db.prepare(`
     INSERT OR REPLACE INTO quote_daily (symbol, date, market_cap, last_price, change_pct, volume, avg_volume_30d_shares, high_52w, off_52w_high_pct, atr_pct_21d, free_float)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const upsertInd = db.prepare(`
-    INSERT OR REPLACE INTO indicators_daily (symbol, date, price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct, avg_volume_1w, avg_volume_1m, atr_14, atr_pct_14, atr_21, atr_pct_21, ema_20, ema_50, ema_100, ema_200, above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200, ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct, rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m, industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m, sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO indicators_daily (symbol, date, price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct, avg_volume_1w, avg_volume_1m, atr_14, atr_pct_14, atr_21, atr_pct_21, ema_20, ema_50, ema_100, ema_200, ema_200_lag_20, ema_200_lag_30, ema_200_lag_60, above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200, ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct, rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m, industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m, sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const getBars = db.prepare("SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date");
   const getQuote = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
@@ -140,7 +146,7 @@ async function runNativeCompute(LIMIT, YEARS) {
       const vol30 = slice.slice(-30).map((b) => b.volume);
       const avgVol30 = vol30.length ? vol30.reduce((a, b) => a + b, 0) / vol30.length : null;
       const high52w = Math.max(...slice.slice(-252).map((b) => b.high));
-      const off52w = high52w ? ((high52w - lastBar.close) / high52w) * 100 : null;
+      const off52w = high52w ? ((lastBar.close - high52w) / high52w) * 100 : null;
       const atr21Arr = computeATR(slice, 21);
       const atr21 = atr21Arr[atr21Arr.length - 1];
       const atrPct21 = lastBar.close && atr21 ? (atr21 / lastBar.close) * 100 : null;
@@ -154,6 +160,10 @@ async function runNativeCompute(LIMIT, YEARS) {
       const ema50 = ema50Arr[ema50Arr.length - 1];
       const ema100 = ema100Arr[ema100Arr.length - 1];
       const ema200 = ema200Arr[ema200Arr.length - 1];
+      const barIdx = i;
+      const ema200Lag20 = barIdx >= 20 ? ema200Arr[barIdx - 20] : null;
+      const ema200Lag30 = barIdx >= 30 ? ema200Arr[barIdx - 30] : null;
+      const ema200Lag60 = barIdx >= 60 ? ema200Arr[barIdx - 60] : null;
       const close5 = slice.length >= 6 ? slice[slice.length - 6].close : null;
       const close21 = slice.length >= 22 ? slice[slice.length - 22].close : null;
       const close63 = slice.length >= 64 ? slice[slice.length - 64].close : null;
@@ -190,7 +200,7 @@ async function runNativeCompute(LIMIT, YEARS) {
       const rs12m = rs(ch12m, spyRet12m);
       upsertInd.run(
         sym, date, ch1w, ch1m, ch3m, ch6m, ch12m, avgVol1w, avgVol1m, atr14, atrPct14, atr21, atrPct21,
-        ema20, ema50, ema100, ema200,
+        ema20, ema50, ema100, ema200, ema200Lag20, ema200Lag30, ema200Lag60,
         lastBar.close > ema20 ? 1 : 0, pctFrom(lastBar.close, ema20), lastBar.close > ema50 ? 1 : 0, pctFrom(lastBar.close, ema50), lastBar.close > ema100 ? 1 : 0, pctFrom(lastBar.close, ema100), lastBar.close > ema200 ? 1 : 0, pctFrom(lastBar.close, ema200),
         ema20 > ema50 ? 1 : 0, spread(ema20, ema50), ema50 > ema100 ? 1 : 0, spread(ema50, ema100), ema50 > ema200 ? 1 : 0, spread(ema50, ema200), ema100 > ema200 ? 1 : 0, spread(ema100, ema200),
         rs1w, rs1m, rs3m, rs6m, rs12m, null, null, null, null, null, null, null, null
@@ -282,6 +292,12 @@ async function main() {
   const buf = readFileSync(DB_PATH);
   const db = new SQL.Database(buf);
 
+  const indInfoSqljs = db.exec("PRAGMA table_info(indicators_daily)");
+  const indColNamesSqljs = new Set((indInfoSqljs[0]?.values ?? []).map((r) => r[1]));
+  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60"]) {
+    if (!indColNamesSqljs.has(col)) db.run("ALTER TABLE indicators_daily ADD COLUMN " + col + " REAL");
+  }
+
   const symbolRows = db.exec("SELECT symbol FROM companies ORDER BY symbol");
   let symbols = symbolRows[0]?.values?.map((r) => r[0]) ?? [];
   if (LIMIT != null && LIMIT > 0) {
@@ -306,12 +322,13 @@ async function main() {
       avg_volume_1w, avg_volume_1m,
       atr_14, atr_pct_14, atr_21, atr_pct_21,
       ema_20, ema_50, ema_100, ema_200,
+      ema_200_lag_20, ema_200_lag_30, ema_200_lag_60,
       above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200,
       ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct,
       rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m,
       industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m,
       sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getQuote = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
@@ -373,7 +390,7 @@ async function main() {
       const vol30 = slice.slice(-30).map((b) => b.volume);
       const avgVol30 = vol30.length ? vol30.reduce((a, b) => a + b, 0) / vol30.length : null;
       const high52w = Math.max(...slice.slice(-252).map((b) => b.high));
-      const off52w = high52w ? ((high52w - lastBar.close) / high52w) * 100 : null;
+      const off52w = high52w ? ((lastBar.close - high52w) / high52w) * 100 : null;
 
       const atr21Arr = computeATR(slice, 21);
       const atr21 = atr21Arr[atr21Arr.length - 1];
@@ -403,6 +420,10 @@ async function main() {
       const ema50 = ema50Arr[ema50Arr.length - 1];
       const ema100 = ema100Arr[ema100Arr.length - 1];
       const ema200 = ema200Arr[ema200Arr.length - 1];
+      const barIdx = i;
+      const ema200Lag20 = barIdx >= 20 ? ema200Arr[barIdx - 20] : null;
+      const ema200Lag30 = barIdx >= 30 ? ema200Arr[barIdx - 30] : null;
+      const ema200Lag60 = barIdx >= 60 ? ema200Arr[barIdx - 60] : null;
 
       const close5 = slice.length >= 6 ? slice[slice.length - 6].close : null;
       const close21 = slice.length >= 22 ? slice[slice.length - 22].close : null;
@@ -463,6 +484,9 @@ async function main() {
         ema50,
         ema100,
         ema200,
+        ema200Lag20,
+        ema200Lag30,
+        ema200Lag60,
         lastBar.close > ema20 ? 1 : 0,
         pctFrom(lastBar.close, ema20),
         lastBar.close > ema50 ? 1 : 0,

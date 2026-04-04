@@ -165,7 +165,7 @@ function IndicesTable({
   const HDR_STYLE: React.CSSProperties = { color: "var(--ws-text-dim)" };
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 min-h-0 overflow-auto min-w-[min(100%,640px)]">
       <table
         className="border-collapse whitespace-nowrap"
         style={{ color: "var(--ws-text)", fontSize: 13, lineHeight: "1.4", minWidth: "max-content" }}

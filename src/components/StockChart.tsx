@@ -50,8 +50,8 @@ type StockChartProps = {
   chartInstanceId?: string;
   stockFlag?: "red" | "yellow" | "green" | "blue" | null;
   onFlagChange?: (flag: "red" | "yellow" | "green" | "blue" | null) => void;
-  watchlists?: Array<{ id: string; name: string }>;
-  onAddToWatchlist?: (watchlistId: string) => void;
+  watchlistPickerLists?: Array<{ id: string; name: string; hasSymbol: boolean }>;
+  onWatchlistMembershipSave?: (changes: { id: string; add: boolean }[]) => void;
 };
 
 type DrawMode = "none" | "ray" | "trend" | "measure";
@@ -300,8 +300,8 @@ function StockChart({
   chartInstanceId = "single",
   stockFlag,
   onFlagChange,
-  watchlists,
-  onAddToWatchlist,
+  watchlistPickerLists,
+  onWatchlistMembershipSave,
 }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
@@ -332,7 +332,8 @@ function StockChart({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapToOhlc, setSnapToOhlc] = useState(false);
   const [showFlagPicker, setShowFlagPicker] = useState(false);
-  const [showWatchlistPicker, setShowWatchlistPicker] = useState(false);
+  const [showWatchlistModal, setShowWatchlistModal] = useState(false);
+  const [wlDraft, setWlDraft] = useState<Record<string, boolean>>({});
   const [pendingTrendDrawingId, setPendingTrendDrawingId] = useState<string | null>(null);
   const [chartNarrow, setChartNarrow] = useState(false);
   const suppressCrosshairBroadcastRef = useRef(false);
@@ -1352,6 +1353,13 @@ function StockChart({
     return () => el.removeEventListener("mousedown", onShiftClick);
   }, [drawMode]);
 
+  useEffect(() => {
+    if (!showWatchlistModal || !watchlistPickerLists) return;
+    const d: Record<string, boolean> = {};
+    for (const w of watchlistPickerLists) d[w.id] = w.hasSymbol;
+    setWlDraft(d);
+  }, [showWatchlistModal, watchlistPickerLists]);
+
   const selectedHandles = useMemo(() => {
     if (!selectedDrawing) return [];
     if (selectedDrawing.kind === "ray") {
@@ -1378,6 +1386,7 @@ function StockChart({
   }, [selectedDrawing, getHandlePoint]);
 
   return (
+    <>
     <div className="flex-1 min-h-0 relative overflow-hidden bg-white dark:bg-[var(--ws-bg)]">
       <div
         className="absolute top-0 left-0 right-0 z-20 px-2 py-1 flex items-center justify-between gap-2 flex-wrap"
@@ -1411,7 +1420,7 @@ function StockChart({
             className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
             title="Toggle chart theme"
           >
-            {isUsingLightTheme ? "Light" : "Dark"}
+            {isUsingLightTheme ? "Dark" : "Light"}
           </button>
           <span className={`mx-1 h-4 w-px ${toolbarDividerClass}`} />
           <div className="flex items-center gap-1">
@@ -1535,7 +1544,7 @@ function StockChart({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistPicker(false); }}
+                onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistModal(false); }}
                 className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass} flex items-center gap-1`}
                 title="Flag stock"
               >
@@ -1567,32 +1576,18 @@ function StockChart({
               )}
             </div>
           )}
-          {onAddToWatchlist && watchlists && watchlists.length > 0 && (
+          {onWatchlistMembershipSave && watchlistPickerLists != null && (
             <div className="relative">
               <button
                 type="button"
-                onClick={() => { setShowWatchlistPicker((v) => !v); setShowFlagPicker(false); }}
+                onClick={() => { setShowWatchlistModal((v) => !v); setShowFlagPicker(false); }}
                 className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
-                title="Add to watchlist"
+                title="Lists"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
                   <path d="M8 3v10M3 8h10" />
                 </svg>
               </button>
-              {showWatchlistPicker && (
-                <div className="absolute top-full right-0 mt-1 z-30 rounded border shadow-lg py-1 min-w-[140px] bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)]">
-                  {watchlists.map((wl) => (
-                    <button
-                      key={wl.id}
-                      type="button"
-                      onClick={() => { onAddToWatchlist(wl.id); setShowWatchlistPicker(false); }}
-                      className="w-full text-left px-3 py-1 text-ws-label text-zinc-800 dark:text-[var(--ws-text)] hover:bg-zinc-100 dark:hover:bg-[var(--ws-hover)] transition-colors"
-                    >
-                      {wl.name}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -2149,6 +2144,74 @@ function StockChart({
         </div>
       )}
     </div>
+    {showWatchlistModal && onWatchlistMembershipSave && watchlistPickerLists != null && (
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.85)" }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setShowWatchlistModal(false);
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chart-watchlist-modal-title"
+      >
+        <div
+          className="rounded-lg shadow-xl w-full max-w-md border border-zinc-200 dark:border-[var(--ws-border)] p-4 bg-white dark:bg-[var(--ws-bg3)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 id="chart-watchlist-modal-title" className="text-sm font-semibold mb-3 dark:text-[var(--ws-text)]">
+            Lists for {symbol.toUpperCase()}
+          </h2>
+          {watchlistPickerLists.length === 0 ? (
+            <p className="text-xs text-zinc-600 dark:text-[var(--ws-text-dim)] mb-3">
+              Create a list in the Lists section, then return here.
+            </p>
+          ) : (
+            <ul className="space-y-2 max-h-[50vh] overflow-y-auto mb-4">
+              {watchlistPickerLists.map((wl) => (
+                <li key={wl.id} className="flex items-center gap-2">
+                  <input
+                    id={`wl-cb-${wl.id}`}
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-zinc-400"
+                    checked={!!wlDraft[wl.id]}
+                    onChange={(e) => setWlDraft((prev) => ({ ...prev, [wl.id]: e.target.checked }))}
+                  />
+                  <label htmlFor={`wl-cb-${wl.id}`} className="text-sm cursor-pointer dark:text-[var(--ws-text)]">
+                    {wl.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 text-xs rounded border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-[var(--ws-text-dim)]"
+              onClick={() => setShowWatchlistModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 text-xs rounded bg-cyan-600 text-white hover:bg-cyan-500"
+              onClick={() => {
+                const changes: { id: string; add: boolean }[] = [];
+                for (const w of watchlistPickerLists) {
+                  const want = !!wlDraft[w.id];
+                  if (want !== w.hasSymbol) changes.push({ id: w.id, add: want });
+                }
+                onWatchlistMembershipSave(changes);
+                setShowWatchlistModal(false);
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
