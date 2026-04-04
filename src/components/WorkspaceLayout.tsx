@@ -41,6 +41,8 @@ export default function WorkspaceLayout({
   const effectiveChartLeft = chartIsMaximized
     ? containerWidth() - railTotal
     : chartLeftPx;
+  /** Chart starts after the divider unless maximized (overlay eats almost full width; keep chart full-bleed under it). */
+  const chartColumnLeft = chartIsMaximized ? 0 : effectiveChartLeft + HANDLE_PX;
 
   const startDragChartLeft = useCallback(
     (e: React.MouseEvent) => {
@@ -100,11 +102,13 @@ export default function WorkspaceLayout({
       <div
         className="ws-pane ws-chart-column absolute top-0 bottom-0 min-h-0"
         style={{
-          left: 0,
+          left: chartColumnLeft,
           right: railTotal,
           zIndex: 5,
-          transition: `right ${SLIDE_TRANSITION}`,
-          willChange: "right",
+          transition: draggingChart
+            ? "none"
+            : `left ${SLIDE_TRANSITION}, right ${SLIDE_TRANSITION}`,
+          willChange: "left",
         }}
         onPointerDownCapture={() => setActivePane("center")}
       >
@@ -127,12 +131,10 @@ export default function WorkspaceLayout({
         onPointerDownCapture={() => setActivePane("left")}
       >
         <div
-          className="h-full min-h-0 overflow-hidden"
+          className="h-full min-h-0 min-w-0 overflow-x-auto overflow-y-hidden"
           style={{
-            width: `calc(100vw - ${railTotal}px)`,
-            minWidth: `calc(100vw - ${railTotal}px)`,
-            transition: `width ${SLIDE_TRANSITION}, min-width ${SLIDE_TRANSITION}`,
-            willChange: "width",
+            width: "100%",
+            transition: draggingChart ? "none" : `width ${SLIDE_TRANSITION}`,
           }}
         >
           {leftPanel}
