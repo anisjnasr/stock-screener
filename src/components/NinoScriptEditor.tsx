@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { tokenize, tokenClass } from "@/lib/nino-script-tokens";
-import { parseScript, ParseError } from "@/lib/nino-script";
+import { parseScript, ParseError } from "@/lib/nino-script/parser";
 
 export type ValidationStatus = { status: "ok" | "invalid" | "empty"; error?: string };
 
