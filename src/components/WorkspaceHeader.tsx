@@ -98,6 +98,9 @@ type WorkspaceHeaderProps = {
   onCloneList?: (id: string) => void;
   onReorderLists?: (ids: string[]) => void;
   onNewList?: () => void;
+  newListDraft?: { id: string; name: string; nonce: number } | null;
+  onNewListNameCommitted?: (id: string) => void;
+  onNewListNameCancelled?: (id: string) => void;
   customPages?: CustomPage[];
   onCreateCustomPage?: (input: Omit<CustomPage, "id" | "createdAt">) => void;
   lastUpdated?: string | null;
@@ -264,6 +267,9 @@ function WorkspaceHeader({
   onCloneList,
   onReorderLists,
   onNewList,
+  newListDraft = null,
+  onNewListNameCommitted,
+  onNewListNameCancelled,
   customPages = [],
   onCreateCustomPage,
   lastUpdated,
@@ -358,6 +364,10 @@ function WorkspaceHeader({
   const listDragFromRef = useRef<number | null>(null);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
+  const pendingNewListDraftIdRef = useRef<string | null>(null);
+  const consumedNewListDraftNonceRef = useRef<number | null>(null);
+  const draftRenameActivatedAtRef = useRef<number>(0);
+  const listNameInputRef = useRef<HTMLInputElement>(null);
   const [flagNames, setFlagNames] = useState<Record<string, string>>(() => loadFlagNames());
   const [editingFlag, setEditingFlag] = useState<StockFlag | null>(null);
   const [editingFlagName, setEditingFlagName] = useState("");
@@ -375,6 +385,59 @@ function WorkspaceHeader({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!newListDraft) {
+      pendingNewListDraftIdRef.current = null;
+      return;
+    }
+    if (consumedNewListDraftNonceRef.current === newListDraft.nonce) return;
+    const exists = watchlistNames.some((wl) => wl.id === newListDraft.id);
+    if (!exists) return;
+    consumedNewListDraftNonceRef.current = newListDraft.nonce;
+    setListDDOpen(true);
+    setEditingListId(newListDraft.id);
+    setEditingListName(newListDraft.name);
+    pendingNewListDraftIdRef.current = newListDraft.id;
+    draftRenameActivatedAtRef.current = Date.now();
+    setTimeout(() => {
+      listNameInputRef.current?.focus();
+      listNameInputRef.current?.select();
+    }, 0);
+  }, [newListDraft, watchlistNames]);
+
+  const commitListNameEdit = useCallback((listId: string, currentName: string, source: "enter" | "blur") => {
+    if (editingListId !== listId) return;
+    if (
+      source === "blur" &&
+      pendingNewListDraftIdRef.current === listId &&
+      Date.now() - draftRenameActivatedAtRef.current < 250
+    ) {
+      // Ignore immediate synthetic blur right after draft activation.
+      requestAnimationFrame(() => {
+        listNameInputRef.current?.focus();
+        listNameInputRef.current?.select();
+      });
+      return;
+    }
+    const trimmed = editingListName.trim();
+    const shouldRename = trimmed.length > 0 && trimmed !== currentName;
+    if (shouldRename) onRenameList?.(listId, trimmed);
+    if (trimmed.length > 0 && pendingNewListDraftIdRef.current === listId) {
+      setListDDOpen(false);
+      onNewListNameCommitted?.(listId);
+    }
+    pendingNewListDraftIdRef.current = null;
+    setEditingListId(null);
+  }, [editingListId, editingListName, onNewListNameCommitted, onRenameList]);
+
+  const cancelListNameEdit = useCallback((listId: string) => {
+    if (pendingNewListDraftIdRef.current === listId) {
+      pendingNewListDraftIdRef.current = null;
+      onNewListNameCancelled?.(listId);
+    }
+    setEditingListId(null);
+  }, [onNewListNameCancelled]);
 
   useEffect(() => {
     if (!searchValue.trim()) {
@@ -1101,23 +1164,19 @@ function WorkspaceHeader({
                         </span>
                         {editingListId === wl.id ? (
                           <input
+                            ref={listNameInputRef}
                             autoFocus
                             type="text"
                             value={editingListName}
                             onChange={(e) => setEditingListName(e.target.value)}
                             onFocus={(e) => e.currentTarget.select()}
-                            onBlur={() => {
-                              const trimmed = editingListName.trim();
-                              if (trimmed && trimmed !== wl.name) onRenameList?.(wl.id, trimmed);
-                              setEditingListId(null);
-                            }}
+                            onBlur={() => commitListNameEdit(wl.id, wl.name, "blur")}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
-                                const trimmed = editingListName.trim();
-                                if (trimmed && trimmed !== wl.name) onRenameList?.(wl.id, trimmed);
-                                setEditingListId(null);
+                                e.preventDefault();
+                                commitListNameEdit(wl.id, wl.name, "enter");
                               }
-                              if (e.key === "Escape") setEditingListId(null);
+                              if (e.key === "Escape") cancelListNameEdit(wl.id);
                             }}
                             onClick={(e) => e.stopPropagation()}
                             className="flex-1 min-w-0 bg-transparent border-b outline-none text-xs px-0 py-0"

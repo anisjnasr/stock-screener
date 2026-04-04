@@ -121,6 +121,8 @@ export default function Home() {
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const [customPages, setCustomPages] = useState<CustomPage[]>(() => loadCustomPages());
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
+  const [newListDraft, setNewListDraft] = useState<{ id: string; name: string; nonce: number } | null>(null);
+  const [focusTickerTrigger, setFocusTickerTrigger] = useState(0);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const secondaryPagesPrefetchedRef = useRef(false);
@@ -582,6 +584,8 @@ export default function Home() {
           openToScreenerTrigger={section === "scans" ? openToScreenerTrigger : null}
           hideSidebar
           activeWatchlistIdSync={activeWatchlistId}
+          focusTickerTrigger={focusTickerTrigger}
+          suppressAutoTickerFocus={newListDraft != null}
           onActiveWatchlistIdChange={setActiveWatchlistId}
           sectionMode={section === "scans" ? "scans" : "lists"}
           headerActionsSlot={headerSlotEl}
@@ -740,6 +744,14 @@ export default function Home() {
           saveWatchlists(updated);
           window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: updated }));
         }}
+        newListDraft={newListDraft}
+        onNewListNameCommitted={() => {
+          setNewListDraft(null);
+          setFocusTickerTrigger((n) => n + 1);
+        }}
+        onNewListNameCancelled={() => {
+          setNewListDraft(null);
+        }}
         onCloneList={(id) => {
           const source = watchlists.find((w) => w.id === id);
           if (!source) return;
@@ -767,6 +779,7 @@ export default function Home() {
           window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: updated }));
           setActiveWatchlistId(newList.id);
           setSection("lists");
+          setNewListDraft({ id: newList.id, name: newList.name, nonce: Date.now() });
         }}
         customPages={customPages}
         onCreateCustomPage={(input) => {

@@ -191,6 +191,10 @@ type WatchlistPanelProps = {
   openToScreenerTrigger?: { name: string; nonce: number } | null;
   /** Sync active user watchlist with workspace header (non-null id selects that list). */
   activeWatchlistIdSync?: string | null;
+  /** Incrementing trigger: focus inline ticker input after new-list name is committed. */
+  focusTickerTrigger?: number;
+  /** While true, skip default empty-list auto-focus and wait for explicit focus trigger. */
+  suppressAutoTickerFocus?: boolean;
   onActiveWatchlistIdChange?: (id: string | null) => void;
   /** Explicitly control whether the panel shows lists or screener data. */
   sectionMode?: "scans" | "lists";
@@ -641,6 +645,8 @@ export default function WatchlistPanel({
   hideSidebar = false,
   openToScreenerTrigger,
   activeWatchlistIdSync,
+  focusTickerTrigger = 0,
+  suppressAutoTickerFocus = false,
   onActiveWatchlistIdChange,
   sectionMode,
   headerActionsSlot,
@@ -1065,12 +1071,20 @@ export default function WatchlistPanel({
   }, [listFolders]);
 
   useEffect(() => {
+    if (suppressAutoTickerFocus) return;
     if (activeList && sidebarTab === "watchlists" && !selectedCollectionId) {
       if (activeList.symbols.length === 0) {
         setTimeout(() => inlineTickerRef.current?.focus(), 80);
       }
     }
-  }, [activeListId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeListId, suppressAutoTickerFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (focusTickerTrigger <= 0) return;
+    if (sidebarTab !== "watchlists" || selectedCollectionId) return;
+    if (!activeList || activeList.id === FULL_UNIVERSE_ID) return;
+    setTimeout(() => inlineTickerRef.current?.focus(), 50);
+  }, [focusTickerTrigger, activeList, sidebarTab, selectedCollectionId]);
 
   useEffect(() => {
     if (!inlineTickerValue.trim()) {

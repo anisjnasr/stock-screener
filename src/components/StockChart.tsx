@@ -18,11 +18,10 @@ import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChart
 
 /** Inset from chart right for price scale (see rightPriceScale minimumWidth). */
 const CHART_PRICE_SCALE_GUTTER_PX = 88;
-/** Legend column width (dot + longest label e.g. EMA(200)) so OHLC readout does not overlap toggles. */
-const CHART_INDICATOR_STRIP_PX = 120;
-const CHART_OHLC_READOUT_RIGHT_PX = CHART_PRICE_SCALE_GUTTER_PX + CHART_INDICATOR_STRIP_PX;
 /** Vertical gap below toolbar / OHLC strip before first EMA row. */
 const CHART_INDICATOR_COLUMN_TOP_PX = 70;
+/** Right-aligned OHLC readout sits directly above indicator toggles. */
+const CHART_OHLC_READOUT_TOP_PX = CHART_INDICATOR_COLUMN_TOP_PX - 22;
 
 type Candle = {
   date: string;
@@ -1660,8 +1659,12 @@ function StockChart({
               : null;
             return (
               <div
-                className="absolute z-10 px-2 py-1 rounded text-ws-label font-mono flex items-center gap-3 bg-zinc-100/95 text-zinc-800 dark:bg-[var(--ws-bg3)]/95 dark:text-[var(--ws-text)]"
-                style={{ top: 32, right: CHART_OHLC_READOUT_RIGHT_PX }}
+                className="absolute z-10 text-ws-label font-medium flex items-center justify-end gap-3 whitespace-nowrap pointer-events-none"
+                style={{
+                  top: CHART_OHLC_READOUT_TOP_PX,
+                  right: CHART_PRICE_SCALE_GUTTER_PX,
+                  color: isLightBackground ? "#333333" : "var(--ws-text, #e5e5e5)",
+                }}
               >
                 <span>O {crosshairCandle.open.toFixed(2)}</span>
                 <span>H {crosshairCandle.high.toFixed(2)}</span>
