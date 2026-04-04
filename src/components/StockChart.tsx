@@ -155,9 +155,18 @@ function formatMeasureLabel(
   d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number },
   barIndexByTime?: Map<number, number>
 ): string {
+  const stats = getMeasureStats(d, barIndexByTime);
+  const pct = `${stats.pricePct >= 0 ? "+" : ""}${stats.pricePct.toFixed(2)}%`;
+  const usd = `$ ${stats.priceDelta >= 0 ? "+" : ""}${stats.priceDelta.toFixed(2)}`;
+  return `${pct}  |  ${usd}  |  ${stats.barsDiff} bars  |  ${stats.daysDiff} days`;
+}
+
+function getMeasureStats(
+  d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number },
+  barIndexByTime?: Map<number, number>
+) {
   const priceDelta = d.endPrice - d.startPrice;
   const pricePct = d.startPrice !== 0 ? (priceDelta / d.startPrice) * 100 : 0;
-  const sign = priceDelta >= 0 ? "+" : "";
   const startSec = Number(d.startTime);
   const endSec = Number(d.endTime);
   const daysDiff = Math.max(0, Math.round(Math.abs(endSec - startSec) / 86400));
@@ -170,8 +179,7 @@ function formatMeasureLabel(
       barsDiff = Math.abs(endIdx - startIdx);
     }
   }
-
-  return `% ${sign}${pricePct.toFixed(2)} | Δ$ ${sign}${priceDelta.toFixed(2)} | ${barsDiff} bars | ${daysDiff} days`;
+  return { priceDelta, pricePct, barsDiff, daysDiff };
 }
 
 function getDrawingStorageKey(symbol: string): string {
@@ -339,6 +347,7 @@ function StockChart({
   );
   const [pendingMeasureStart, setPendingMeasureStart] = useState<{ time: UTCTimestamp; price: number } | null>(null);
   const [pendingMeasureDrawingId, setPendingMeasureDrawingId] = useState<string | null>(null);
+  const [pendingMeasureCursorPoint, setPendingMeasureCursorPoint] = useState<{ x: number; y: number } | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showSelectedDrawingSettings, setShowSelectedDrawingSettings] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -351,6 +360,14 @@ function StockChart({
   const suppressCrosshairBroadcastRef = useRef(false);
   const suppressDrawingBroadcastRef = useRef(false);
   const suppressViewportMemoryRef = useRef(false);
+  const drawModeRef = useRef<DrawMode>("none");
+  const pendingMeasureStartRef = useRef<{ time: UTCTimestamp; price: number } | null>(null);
+  const pendingMeasureDrawingIdRef = useRef<string | null>(null);
+  const skipNextChartClickRef = useRef(false);
+
+  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+  useEffect(() => { pendingMeasureStartRef.current = pendingMeasureStart; }, [pendingMeasureStart]);
+  useEffect(() => { pendingMeasureDrawingIdRef.current = pendingMeasureDrawingId; }, [pendingMeasureDrawingId]);
 
   const chronological = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -728,8 +745,28 @@ function StockChart({
 
     const drawingStepSeconds: number =
       timeframe === "monthly" ? 60 * 60 * 24 * 30 : timeframe === "weekly" ? 60 * 60 * 24 * 7 : 60 * 60 * 24;
+    const firstSeriesTime = seriesData[0]?.time ?? (dateToTime("1970-01-01") as UTCTimestamp);
     const lastSeriesTime = seriesData[seriesData.length - 1]?.time ?? (dateToTime("1970-01-01") as UTCTimestamp);
+    const firstSeriesIndex = 0;
+    const lastSeriesIndex = Math.max(0, seriesData.length - 1);
     const farRightTime = (Number(lastSeriesTime) + drawingStepSeconds * 3600) as UTCTimestamp;
+    const resolveTimeAtX = (x: number, preferredRawTime?: unknown): UTCTimestamp | null => {
+      const direct = normalizeTime(preferredRawTime ?? chart.timeScale().coordinateToTime(x));
+      if (direct != null) return direct;
+      const logical = (
+        chart.timeScale() as unknown as { coordinateToLogical?: (coord: number) => number | null | undefined }
+      ).coordinateToLogical?.(x);
+      if (logical == null || !Number.isFinite(logical)) return null;
+      const roundedLogical = Math.round(logical);
+      const clampedLogical = Math.max(firstSeriesIndex - 5000, Math.min(lastSeriesIndex + 5000, roundedLogical));
+      if (clampedLogical >= lastSeriesIndex) {
+        return (Number(lastSeriesTime) + (clampedLogical - lastSeriesIndex) * drawingStepSeconds) as UTCTimestamp;
+      }
+      if (clampedLogical <= firstSeriesIndex) {
+        return (Number(firstSeriesTime) - (firstSeriesIndex - clampedLogical) * drawingStepSeconds) as UTCTimestamp;
+      }
+      return (Number(firstSeriesTime) + (clampedLogical - firstSeriesIndex) * drawingStepSeconds) as UTCTimestamp;
+    };
 
     for (const d of drawings) {
       const baseWidth = Math.max(1, Math.min(4, Math.round(d.style.lineWidth)));
@@ -742,6 +779,8 @@ function StockChart({
         lastValueVisible: false,
         priceLineVisible: false,
         crosshairMarkerVisible: false,
+        // Drawings should never autoscale the main price axis.
+        autoscaleInfoProvider: () => null,
       });
       if (d.kind === "ray") {
         lineSeries.setData([
@@ -775,24 +814,41 @@ function StockChart({
             { time: second.t, value: second.p },
           ]);
         }
-        if (d.kind === "measure" && d.style.label) {
-          lineSeries.createPriceLine({
-            price: d.endPrice,
-            color: d.style.color,
-            lineWidth: 1,
-            lineStyle: 2,
-            axisLabelVisible: false,
-            title: d.style.label,
-            axisLabelColor: "transparent",
-            axisLabelTextColor: d.style.color,
-          });
-        }
       }
     }
-    const unsubCrosshair = chart.subscribeCrosshairMove((param) => {
+    const onCrosshairMove = (param: { time?: unknown; point?: { x: number; y: number } }) => {
       if (param.time != null) {
         const candle = timeToCandle.get(param.time as number);
         setCrosshairCandle(candle ?? null);
+        if (pendingMeasureDrawingIdRef.current && param.point) {
+          setPendingMeasureCursorPoint({ x: param.point.x, y: param.point.y });
+          const timeRaw = resolveTimeAtX(param.point.x, param.time);
+          const clampedY = Math.max(0, Math.min(el.clientHeight - 1, param.point.y));
+          const price = mainSeries.coordinateToPrice(clampedY);
+          if (timeRaw != null && price != null && Number.isFinite(price)) {
+            const snapped = snapPointToCandle(timeRaw, price);
+            setDrawings((prev) =>
+              prev.map((d) =>
+                d.id === pendingMeasureDrawingIdRef.current && d.kind === "measure"
+                  ? {
+                      ...d,
+                      endTime: snapped.time,
+                      endPrice: snapped.price,
+                      style: {
+                        ...d.style,
+                        label: formatMeasureLabel(
+                          { startTime: d.startTime, startPrice: d.startPrice, endTime: snapped.time, endPrice: snapped.price },
+                          barIndexByTime
+                        ),
+                      },
+                    }
+                  : d
+              )
+            );
+          }
+        } else if (!pendingMeasureDrawingIdRef.current) {
+          setPendingMeasureCursorPoint(null);
+        }
         if (crosshairSyncEnabled && !suppressCrosshairBroadcastRef.current) {
           const close = candle?.close;
           if (close != null && Number.isFinite(close)) {
@@ -810,6 +866,7 @@ function StockChart({
         }
       } else {
         setCrosshairCandle(null);
+        if (!pendingMeasureDrawingIdRef.current) setPendingMeasureCursorPoint(null);
         if (crosshairSyncEnabled && !suppressCrosshairBroadcastRef.current) {
           window.dispatchEvent(
             new CustomEvent("stock-chart-crosshair", {
@@ -823,7 +880,8 @@ function StockChart({
           );
         }
       }
-    });
+    };
+    chart.subscribeCrosshairMove(onCrosshairMove as never);
 
     const onRemoteCrosshair = (evt: Event) => {
       if (!crosshairSyncEnabled) return;
@@ -850,12 +908,51 @@ function StockChart({
     };
     window.addEventListener("stock-chart-crosshair", onRemoteCrosshair as EventListener);
 
+    const finalizePendingMeasureAtPoint = (point: { x: number; y: number }) => {
+      const activeMeasureId = pendingMeasureDrawingIdRef.current;
+      if (!activeMeasureId) return false;
+      const timeRaw = resolveTimeAtX(point.x);
+      const clampedY = Math.max(0, Math.min(el.clientHeight - 1, point.y));
+      const price = mainSeries.coordinateToPrice(clampedY);
+      if (timeRaw == null || price == null || !Number.isFinite(price)) return false;
+      const snapped = snapPointToCandle(timeRaw, price);
+      setDrawings((prev) =>
+        prev.map((d) => {
+          if (d.id !== activeMeasureId || d.kind !== "measure") return d;
+          const updated = { ...d, endTime: snapped.time, endPrice: snapped.price };
+          return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated, barIndexByTime) } };
+        })
+      );
+      setSelectedDrawingId(activeMeasureId);
+      setPendingMeasureDrawingId(null);
+      setPendingMeasureStart(null);
+      pendingMeasureDrawingIdRef.current = null;
+      pendingMeasureStartRef.current = null;
+      setPendingMeasureCursorPoint(null);
+      setDrawMode("none");
+      return true;
+    };
+
+    const onContainerMouseDown = (evt: MouseEvent) => {
+      if (drawModeRef.current !== "measure" || !pendingMeasureDrawingIdRef.current) return;
+      const rect = el.getBoundingClientRect();
+      const point = { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+      if (finalizePendingMeasureAtPoint(point)) {
+        skipNextChartClickRef.current = true;
+      }
+    };
+    el.addEventListener("mousedown", onContainerMouseDown);
+
     const onChartClick = (param: {
       time?: unknown;
       point?: { x: number; y: number };
     }) => {
+      if (skipNextChartClickRef.current) {
+        skipNextChartClickRef.current = false;
+        return;
+      }
       if (!param.point) return;
-      if (drawMode === "none") {
+      if (drawModeRef.current === "none") {
         const x = param.point.x;
         const y = param.point.y;
         let bestId: string | null = null;
@@ -892,14 +989,14 @@ function StockChart({
         setSelectedDrawingId(bestDist <= threshold ? bestId : null);
         return;
       }
-      const rawTime = chart.timeScale().coordinateToTime(param.point.x);
-      const timeRaw = normalizeTime(rawTime);
-      const price = mainSeries.coordinateToPrice(param.point.y);
+      const timeRaw = resolveTimeAtX(param.point.x);
+      const clampedY = Math.max(0, Math.min(el.clientHeight - 1, param.point.y));
+      const price = mainSeries.coordinateToPrice(clampedY);
       if (timeRaw == null || price == null || !Number.isFinite(price)) return;
       const snapped = snapPointToCandle(timeRaw, price);
 
-      if (drawMode === "measure") {
-        if (pendingMeasureStart == null) {
+      if (drawModeRef.current === "measure") {
+        if (pendingMeasureStartRef.current == null) {
           const measure: MeasureDrawing = {
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             kind: "measure",
@@ -912,19 +1009,12 @@ function StockChart({
           setDrawings((prev) => [...prev, measure]);
           setPendingMeasureStart({ time: snapped.time, price: snapped.price });
           setPendingMeasureDrawingId(measure.id);
+          pendingMeasureStartRef.current = { time: snapped.time, price: snapped.price };
+          pendingMeasureDrawingIdRef.current = measure.id;
+          setPendingMeasureCursorPoint({ x: param.point.x, y: param.point.y });
           return;
         }
-        setDrawings((prev) =>
-          prev.map((d) => {
-            if (d.id !== pendingMeasureDrawingId || d.kind !== "measure") return d;
-            const updated = { ...d, endTime: snapped.time, endPrice: snapped.price };
-            return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated, barIndexByTime) } };
-          })
-        );
-        setSelectedDrawingId(pendingMeasureDrawingId);
-        setPendingMeasureDrawingId(null);
-        setPendingMeasureStart(null);
-        setDrawMode("none");
+        finalizePendingMeasureAtPoint(param.point);
         return;
       }
 
@@ -1102,8 +1192,9 @@ function StockChart({
 
     return () => {
       el.removeEventListener("wheel", handleWheel);
+      el.removeEventListener("mousedown", onContainerMouseDown);
       try {
-        (unsubCrosshair as (() => void) | undefined)?.();
+        chart.unsubscribeCrosshairMove(onCrosshairMove as never);
       } catch {
         /* ignore */
       }
@@ -1145,6 +1236,7 @@ function StockChart({
     crosshairSyncEnabled,
     onVisibleDateRangeChange,
     chartInstanceId,
+    barIndexByTime,
   ]);
 
   const timeframes: ChartTimeframe[] = ["daily", "weekly", "monthly"];
@@ -1218,6 +1310,9 @@ function StockChart({
         setDrawMode((m) => (m === "measure" ? "none" : "measure"));
         setPendingMeasureStart(null);
         setPendingMeasureDrawingId(null);
+        pendingMeasureStartRef.current = null;
+        pendingMeasureDrawingIdRef.current = null;
+        setPendingMeasureCursorPoint(null);
         return;
       }
 
@@ -1332,45 +1427,6 @@ function StockChart({
   }, [pendingTrendDrawingId, snapPointToCandle]);
 
   useEffect(() => {
-    if (!pendingMeasureDrawingId) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const onMove = (e: MouseEvent) => {
-      const chart = chartRef.current;
-      const mainSeries = mainSeriesRef.current;
-      if (!chart || !mainSeries) return;
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const rawTime = chart.timeScale().coordinateToTime(x);
-      const timeRaw = normalizeTime(rawTime);
-      const price = mainSeries.coordinateToPrice(y);
-      if (timeRaw == null || price == null || !Number.isFinite(price)) return;
-      const snapped = snapPointToCandle(timeRaw, price);
-      setDrawings((prev) =>
-        prev.map((d) =>
-          d.id === pendingMeasureDrawingId && d.kind === "measure"
-            ? {
-                ...d,
-                endTime: snapped.time,
-                endPrice: snapped.price,
-                style: {
-                  ...d.style,
-                  label: formatMeasureLabel(
-                    { startTime: d.startTime, startPrice: d.startPrice, endTime: snapped.time, endPrice: snapped.price },
-                    barIndexByTime
-                  ),
-                },
-              }
-            : d
-        )
-      );
-    };
-    el.addEventListener("mousemove", onMove);
-    return () => el.removeEventListener("mousemove", onMove);
-  }, [barIndexByTime, pendingMeasureDrawingId, snapPointToCandle]);
-
-  useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onShiftClick = (e: MouseEvent) => {
@@ -1413,6 +1469,26 @@ function StockChart({
     if (start && end) return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
     return start ?? end ?? null;
   }, [selectedDrawing, getHandlePoint]);
+
+  const measureLabels = useMemo(
+    () =>
+      drawings
+        .filter((d): d is MeasureDrawing => d.kind === "measure" && Boolean(d.style.label?.trim()))
+        .map((d) => ({
+          id: d.id,
+          color: d.style.color,
+          stats: getMeasureStats(
+            { startTime: d.startTime, startPrice: d.startPrice, endTime: d.endTime, endPrice: d.endPrice },
+            barIndexByTime
+          ),
+          point:
+            d.id === pendingMeasureDrawingId && pendingMeasureCursorPoint
+              ? pendingMeasureCursorPoint
+              : getHandlePoint(d, "trend-end"),
+        }))
+        .filter((m) => m.point != null),
+    [drawings, getHandlePoint, pendingMeasureDrawingId, pendingMeasureCursorPoint, barIndexByTime]
+  );
 
   return (
     <>
@@ -1491,6 +1567,9 @@ function StockChart({
               setDrawMode((m) => (m === "measure" ? "none" : "measure"));
               setPendingMeasureStart(null);
               setPendingMeasureDrawingId(null);
+              pendingMeasureStartRef.current = null;
+              pendingMeasureDrawingIdRef.current = null;
+              setPendingMeasureCursorPoint(null);
             }}
             className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
               drawMode === "measure"
@@ -1711,6 +1790,31 @@ function StockChart({
               </button>
             ))}
           </div>
+          {measureLabels.map((m) => (
+            <div
+              key={m.id}
+              className="absolute z-15 pointer-events-none rounded px-1.5 py-0.5 text-[13px] font-medium leading-tight whitespace-nowrap"
+              style={{
+                left: `${m.point!.x + 8}px`,
+                top: `${m.point!.y - 10}px`,
+                color: m.color,
+                background: isLightBackground ? "rgba(255,255,255,0.85)" : "rgba(20,24,30,0.78)",
+                border: `1px solid ${m.color}55`,
+              }}
+            >
+              <span style={{ color: m.stats.pricePct >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
+                {m.stats.pricePct >= 0 ? "+" : ""}{m.stats.pricePct.toFixed(2)}%
+              </span>
+              {"  |  "}
+              <span style={{ color: m.stats.priceDelta >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
+                $ {m.stats.priceDelta >= 0 ? "+" : ""}{m.stats.priceDelta.toFixed(2)}
+              </span>
+              {"  |  "}
+              <span>{m.stats.barsDiff} bars</span>
+              {"  |  "}
+              <span>{m.stats.daysDiff} days</span>
+            </div>
+          ))}
           {selectedHandles.map((h) => (
             <button
               key={h.key}
@@ -1927,6 +2031,9 @@ function StockChart({
                         setDrawMode((m) => (m === "measure" ? "none" : "measure"));
                         setPendingMeasureStart(null);
                         setPendingMeasureDrawingId(null);
+                        pendingMeasureStartRef.current = null;
+                        pendingMeasureDrawingIdRef.current = null;
+                        setPendingMeasureCursorPoint(null);
                       }}
                       className={`px-2 py-0.5 rounded border text-ws-label ${
                         drawMode === "measure"
@@ -1944,6 +2051,9 @@ function StockChart({
                         setPendingTrendDrawingId(null);
                         setPendingMeasureStart(null);
                         setPendingMeasureDrawingId(null);
+                        pendingMeasureStartRef.current = null;
+                        pendingMeasureDrawingIdRef.current = null;
+                        setPendingMeasureCursorPoint(null);
                         setDrawMode("none");
                       }}
                       className="px-2 py-0.5 rounded border text-ws-label border-transparent text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
