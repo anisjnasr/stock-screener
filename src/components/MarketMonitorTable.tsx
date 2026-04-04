@@ -170,7 +170,7 @@ export default function MarketMonitorTable() {
                   scope="col"
                   key={label}
                   className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-medium${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
+                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
                 >
                   {label}
                 </th>
@@ -180,7 +180,7 @@ export default function MarketMonitorTable() {
                   scope="col"
                   key={`breadth-${idx}`}
                   className={`sticky top-[2.375rem] z-10 px-2 py-1 border-b text-xs font-medium${idx === 0 ? " border-l" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
+                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
                 >
                   {label}
                 </th>
@@ -188,7 +188,7 @@ export default function MarketMonitorTable() {
               <th
                 scope="col"
                 className="sticky top-[2.375rem] z-10 px-3 py-1 border-b border-l text-xs font-medium"
-                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text-vdim)" }}
+                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
               >
                 Stock Universe
               </th>
