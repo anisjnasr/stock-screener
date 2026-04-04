@@ -276,7 +276,7 @@ export default function RightRail({
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1W", "1M", "3M", "6M", "12M"].map((p) => (
-                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text-vdim)" }}>{p}</th>
+                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text)" }}>{p}</th>
                     ))}
                   </tr>
                 </thead>
@@ -303,7 +303,7 @@ export default function RightRail({
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                     {["1M", "3M", "6M", "12M"].map((p) => (
-                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text-vdim)" }}>{p}</th>
+                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text)" }}>{p}</th>
                     ))}
                   </tr>
                 </thead>
@@ -336,25 +336,25 @@ export default function RightRail({
                   <button key={v} type="button" onClick={() => setFinFreq(v)}
                     aria-pressed={finFreq === v}
                     className={`px-2 py-0.5 text-xs rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
-                    style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: finFreq === v ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
+                    style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: "var(--ws-text)" }}>
                     {v}
                   </button>
                 ))}
               </div>
             </div>
             {nextEarnings && (
-              <div className="text-ws-body mb-1.5" style={{ color: "var(--ws-text-vdim)" }}>
-                Next earnings: <span style={{ color: "var(--ws-text-dim)" }}>{safe(nextEarnings)}</span>
+              <div className="text-ws-body mb-1.5" style={{ color: "var(--ws-text)" }}>
+                Next earnings: <span style={{ color: "var(--ws-text)" }}>{safe(nextEarnings)}</span>
               </div>
             )}
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Rev</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Rev %</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>EPS %</th>
+                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text)" }}>Period</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Rev</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Rev %</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>EPS</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>EPS %</th>
                 </tr>
               </thead>
               <tbody>
@@ -375,7 +375,7 @@ export default function RightRail({
                     }))
                 ).map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    <td className="py-1 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{r.period}</td>
+                    <td className="py-1 text-left tabular-nums" style={{ color: "var(--ws-text)" }}>{r.period}</td>
                     <td className="py-1 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
                       {r.revenue != null ? fmtRevenueTwoDecimals(r.revenue) : "—"}
                     </td>
@@ -409,15 +409,15 @@ export default function RightRail({
             <table className="w-full text-ws-title" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text-vdim)" }}>Period</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Count</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text-vdim)" }}>Change</th>
+                  <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text)" }}>Period</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Count</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Change</th>
                 </tr>
               </thead>
               <tbody>
                 {ownershipQuarters.slice(0, 8).map((q, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text-dim)" }}>{fmtDateToQuarter(q.report_date)}</td>
+                    <td className="py-1.5 text-left tabular-nums" style={{ color: "var(--ws-text)" }}>{fmtDateToQuarter(q.report_date)}</td>
                     <td className="py-1.5 text-right font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
                       {q.num_funds != null ? q.num_funds.toLocaleString() : "—"}
                     </td>

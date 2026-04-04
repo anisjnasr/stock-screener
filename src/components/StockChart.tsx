@@ -152,14 +152,27 @@ function timeToDateKey(raw: unknown): string | null {
   return null;
 }
 
-function formatMeasureLabel(d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number }): string {
+function formatMeasureLabel(
+  d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number },
+  barIndexByTime?: Map<number, number>
+): string {
   const priceDelta = d.endPrice - d.startPrice;
   const pricePct = d.startPrice !== 0 ? (priceDelta / d.startPrice) * 100 : 0;
   const sign = priceDelta >= 0 ? "+" : "";
   const startSec = Number(d.startTime);
   const endSec = Number(d.endTime);
-  const daysDiff = Math.round(Math.abs(endSec - startSec) / 86400);
-  return `${sign}${priceDelta.toFixed(2)} (${sign}${pricePct.toFixed(1)}%) · ${daysDiff} bars`;
+  const daysDiff = Math.max(0, Math.round(Math.abs(endSec - startSec) / 86400));
+
+  let barsDiff = daysDiff;
+  if (barIndexByTime) {
+    const startIdx = barIndexByTime.get(startSec);
+    const endIdx = barIndexByTime.get(endSec);
+    if (startIdx != null && endIdx != null) {
+      barsDiff = Math.abs(endIdx - startIdx);
+    }
+  }
+
+  return `% ${sign}${pricePct.toFixed(2)} | Δ$ ${sign}${priceDelta.toFixed(2)} | ${barsDiff} bars | ${daysDiff} days`;
 }
 
 function getDrawingStorageKey(symbol: string): string {
@@ -359,6 +372,12 @@ function StockChart({
   const timeToCandle = useMemo(() => {
     const m = new Map<number, Candle>();
     chronological.forEach((c) => m.set(dateToTime(c.date), c));
+    return m;
+  }, [chronological]);
+
+  const barIndexByTime = useMemo(() => {
+    const m = new Map<number, number>();
+    chronological.forEach((c, i) => m.set(Number(dateToTime(c.date)), i));
     return m;
   }, [chronological]);
 
@@ -900,7 +919,7 @@ function StockChart({
           prev.map((d) => {
             if (d.id !== pendingMeasureDrawingId || d.kind !== "measure") return d;
             const updated = { ...d, endTime: snapped.time, endPrice: snapped.price };
-            return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated) } };
+            return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated, barIndexByTime) } };
           })
         );
         setSelectedDrawingId(pendingMeasureDrawingId);
@@ -1332,14 +1351,25 @@ function StockChart({
       setDrawings((prev) =>
         prev.map((d) =>
           d.id === pendingMeasureDrawingId && d.kind === "measure"
-            ? { ...d, endTime: snapped.time, endPrice: snapped.price }
+            ? {
+                ...d,
+                endTime: snapped.time,
+                endPrice: snapped.price,
+                style: {
+                  ...d.style,
+                  label: formatMeasureLabel(
+                    { startTime: d.startTime, startPrice: d.startPrice, endTime: snapped.time, endPrice: snapped.price },
+                    barIndexByTime
+                  ),
+                },
+              }
             : d
         )
       );
     };
     el.addEventListener("mousemove", onMove);
     return () => el.removeEventListener("mousemove", onMove);
-  }, [pendingMeasureDrawingId, snapPointToCandle]);
+  }, [barIndexByTime, pendingMeasureDrawingId, snapPointToCandle]);
 
   useEffect(() => {
     const el = containerRef.current;
