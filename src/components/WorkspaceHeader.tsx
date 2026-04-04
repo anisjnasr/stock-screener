@@ -591,7 +591,14 @@ function WorkspaceHeader({
       {/* ===== ROW 2 — Sub-bar ===== */}
       <div
         className="flex items-center gap-2 h-[40px]"
-        style={{ paddingLeft: 12, paddingRight: padR, borderTop: "1px solid var(--ws-border)" }}
+        style={{
+          paddingLeft: 12,
+          paddingRight: padR,
+          background: "var(--ws-bg3)",
+          borderTop: "1px solid var(--ws-border)",
+          borderBottom: "1px solid var(--ws-border)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+        }}
       >
         {/* Section-specific content is below; market status/clock are right-aligned at the end of this row */}
         {section === "market" && (
