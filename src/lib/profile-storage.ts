@@ -263,6 +263,7 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.visible_columns !== undefined) s.setItem("stock-research-watchlist-visible-columns", JSON.stringify(st.visible_columns));
   if (st.column_widths !== undefined) s.setItem("stock-research-watchlist-column-widths", JSON.stringify(st.column_widths));
   if (st.column_sets !== undefined) s.setItem("stock-research-watchlist-column-sets", JSON.stringify(st.column_sets));
+  if (st.custom_pages !== undefined) s.setItem("stock-research-custom-pages", JSON.stringify(st.custom_pages));
   if (st.panel_mode !== undefined) s.setItem("stock-research-watchlist-panel", st.panel_mode as string);
   if (st.panel_height !== undefined) s.setItem("stock-research-watchlist-panel-height-px", String(st.panel_height));
   if (st.sidebar_width !== undefined) s.setItem("stock-research-watchlist-sidebar-width-px", String(st.sidebar_width));
@@ -312,6 +313,7 @@ export function pushLocalStorageToCloud(): void {
     ["stock-research-watchlist-visible-columns", "visible_columns"],
     ["stock-research-watchlist-column-widths", "column_widths"],
     ["stock-research-watchlist-column-sets", "column_sets"],
+    ["stock-research-custom-pages", "custom_pages"],
     ["stock-research-watchlist-panel", "panel_mode"],
     ["stock-research-watchlist-panel-height-px", "panel_height"],
     ["stock-research-watchlist-sidebar-width-px", "sidebar_width"],

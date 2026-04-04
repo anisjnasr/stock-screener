@@ -1,6 +1,7 @@
-export type WorkspaceSection = "market" | "sectors-industries" | "scans" | "lists";
+export type BaseWorkspaceSection = "market" | "sectors-industries" | "scans" | "lists";
+export type WorkspaceSection = BaseWorkspaceSection | `custom-${string}`;
 
-export const WORKSPACE_SECTIONS: { id: WorkspaceSection; label: string; shortLabel: string; key: string }[] = [
+export const WORKSPACE_SECTIONS: { id: BaseWorkspaceSection; label: string; shortLabel: string; key: string }[] = [
   { id: "market", label: "Market", shortLabel: "Market", key: "1" },
   { id: "sectors-industries", label: "Sectors / Industries", shortLabel: "Sectors", key: "2" },
   { id: "scans", label: "Scans", shortLabel: "Scans", key: "3" },

@@ -38,6 +38,11 @@ import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimef
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { DEFAULT_LISTS_OPEN_ID, FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
+  createCustomPage,
+  loadCustomPages,
+  type CustomPage,
+} from "@/lib/custom-pages-storage";
+import {
   loadFlags,
   saveFlags,
   loadWatchlists,
@@ -61,6 +66,7 @@ const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { 
 const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
 const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
 const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
+const CustomPromptPage = dynamic(() => import("@/components/CustomPromptPage"), { ssr: false });
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -72,6 +78,10 @@ const DEFAULT_INDEX_WATCHLISTS = [
   { id: "index:nasdaq100", name: "Nasdaq 100" },
   { id: "index:sp500", name: "S&P 500" },
 ];
+
+function isCustomSection(section: WorkspaceSection): section is `custom-${string}` {
+  return section.startsWith("custom-");
+}
 
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
@@ -109,6 +119,7 @@ export default function Home() {
 
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
+  const [customPages, setCustomPages] = useState<CustomPage[]>(() => loadCustomPages());
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
@@ -130,6 +141,10 @@ export default function Home() {
     handleRightRailToggle,
   } = useLayoutPreferences();
 
+  const customSectionActive = isCustomSection(section);
+  const activeCustomPage = customSectionActive
+    ? customPages.find((p) => `custom-${p.id}` === section) ?? null
+    : null;
   const chartHidden = section === "market" && marketSubTab === "monitor";
   const isSectorSection = section === "sectors-industries";
 
@@ -207,10 +222,12 @@ export default function Home() {
       setRightRailHidden(true);
     } else if (section === "sectors-industries") {
       setRightRailHidden(true);
+    } else if (customSectionActive) {
+      setRightRailHidden(true);
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
     }
-  }, [section, setRightRailHidden]);
+  }, [customSectionActive, section, setRightRailHidden]);
 
   useEffect(() => {
     if (section === "scans" && activeScanName) {
@@ -224,8 +241,14 @@ export default function Home() {
     }
   }, [activeWatchlistId, section]);
 
+  useEffect(() => {
+    if (customSectionActive && !activeCustomPage) {
+      setSection("market");
+    }
+  }, [activeCustomPage, customSectionActive]);
+
   const { getCachedCandles, setCachedCandles, fetchCandlesFor } = useCandleCache();
-  const shouldLoadRightRailData = section === "scans" || section === "lists";
+  const shouldLoadRightRailData = section === "scans" || section === "lists" || customSectionActive;
   const rightRailSymbol = shouldLoadRightRailData ? symbol : "";
   const { data } = useStockData(rightRailSymbol);
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(rightRailSymbol);
@@ -418,6 +441,10 @@ export default function Home() {
       const detail = (e as CustomEvent<SavedScreen[]>).detail;
       if (Array.isArray(detail)) setScreens(detail);
     };
+    const onCustomPagesChanged = (e: Event) => {
+      const detail = (e as CustomEvent<CustomPage[]>).detail;
+      if (Array.isArray(detail)) setCustomPages(detail);
+    };
     const onActiveScan = (e: Event) => {
       const detail = (e as CustomEvent<{ name?: string }>).detail;
       if (detail && typeof detail.name === "string") setActiveScanName(detail.name);
@@ -425,11 +452,13 @@ export default function Home() {
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
     window.addEventListener("stock-screens-changed", onScreensChanged);
+    window.addEventListener("stock-custom-pages-changed", onCustomPagesChanged);
     window.addEventListener("stock-active-scan", onActiveScan);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
       window.removeEventListener("stock-screens-changed", onScreensChanged);
+      window.removeEventListener("stock-custom-pages-changed", onCustomPagesChanged);
       window.removeEventListener("stock-active-scan", onActiveScan);
     };
   }, []);
@@ -739,18 +768,36 @@ export default function Home() {
           setActiveWatchlistId(newList.id);
           setSection("lists");
         }}
+        customPages={customPages}
+        onCreateCustomPage={(input) => {
+          const created = createCustomPage(input);
+          const updated = loadCustomPages();
+          setCustomPages(updated);
+          setSection(`custom-${created.id}`);
+        }}
       />
-      <WorkspaceLayout
-        chartLeftPx={chartHidden ? 99999 : activeChartLeft}
-        onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
-        railWidthPx={railWidthPx}
-        onRailWidthChange={setRailWidthPx}
-        rightRailHidden={rightRailHidden}
-        onToggleRightRail={handleRightRailToggle}
-        leftPanel={leftPanel}
-        centerPanel={centerPanel}
-        rightPanel={rightPanel}
-      />
+      {customSectionActive && activeCustomPage ? (
+        <div className="flex-1 min-h-0">
+          <CustomPromptPage
+            page={activeCustomPage}
+            symbol={symbol}
+            companyName={data?.profile?.companyName ?? null}
+            onSymbolSubmit={setSymbol}
+          />
+        </div>
+      ) : (
+        <WorkspaceLayout
+          chartLeftPx={chartHidden ? 99999 : activeChartLeft}
+          onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
+          railWidthPx={railWidthPx}
+          onRailWidthChange={setRailWidthPx}
+          rightRailHidden={rightRailHidden}
+          onToggleRightRail={handleRightRailToggle}
+          leftPanel={leftPanel}
+          centerPanel={centerPanel}
+          rightPanel={rightPanel}
+        />
+      )}
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
