@@ -14,13 +14,16 @@ export const runtime = "nodejs";
 
 type ModelChoice = "auto" | "sonnet" | "opus";
 type ModelUsed = "sonnet" | "opus";
+type LookbackUnit = "weeks" | "months" | "years";
+type DataLookback = { value: number; unit: LookbackUnit } | null;
 
 type ReqBody = {
   prompt?: string;
   model?: ModelChoice;
+  templateModel?: ModelChoice;
   symbol?: string;
   dataSources?: Array<"database" | "web">;
-  dataLookback?: "1y" | "5y" | "";
+  dataLookback?: unknown;
 };
 
 function normalizeSymbol(input: unknown): string {
@@ -33,10 +36,34 @@ function parseBody(raw: unknown): ReqBody {
   return raw as ReqBody;
 }
 
-function chooseBarsLimit(lookback: "1y" | "5y" | ""): number {
-  if (lookback === "1y") return 252;
-  if (lookback === "5y") return 1260;
-  return 300;
+function parseDataLookback(raw: unknown): DataLookback {
+  if (!raw) return null;
+  // Backward-compatible support.
+  if (raw === "1y") return { value: 1, unit: "years" };
+  if (raw === "5y") return { value: 5, unit: "years" };
+  if (typeof raw !== "object") return null;
+  const value = Number((raw as { value?: unknown }).value);
+  const unitRaw = (raw as { unit?: unknown }).unit;
+  const unit: LookbackUnit | null =
+    unitRaw === "weeks" || unitRaw === "months" || unitRaw === "years" ? unitRaw : null;
+  if (!unit || !Number.isFinite(value) || value <= 0) return null;
+  return { value: Math.max(1, Math.round(value)), unit };
+}
+
+function formatDataLookback(lookback: DataLookback): string {
+  if (!lookback) return "default";
+  return `${lookback.value} ${lookback.unit}`;
+}
+
+function chooseBarsLimit(lookback: DataLookback): number {
+  if (!lookback) return 300;
+  const perUnit = lookback.unit === "weeks" ? 5 : lookback.unit === "months" ? 21 : 252;
+  const bars = lookback.value * perUnit;
+  if (!Number.isFinite(bars)) return 300;
+  // Safety bounds for DB fetch size.
+  if (bars < 20) return 20;
+  if (bars > 10000) return 10000;
+  return Math.round(bars);
 }
 
 function jsonLine(obj: unknown): Uint8Array {
@@ -60,7 +87,7 @@ async function classifyModel(anthropic: Anthropic, prompt: string): Promise<Mode
   return text.includes("opus") ? "opus" : "sonnet";
 }
 
-function buildDatabaseContext(symbol: string, lookback: "1y" | "5y" | ""): Record<string, unknown> {
+function buildDatabaseContext(symbol: string, lookback: DataLookback): Record<string, unknown> {
   const asOfDate = getLatestScreenerDate() ?? "";
   const snapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1 }).rows[0] ?? null;
   const company = {
@@ -89,10 +116,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "symbol and prompt are required" }, { status: 400 });
   }
   const dataSources = Array.isArray(body.dataSources) ? body.dataSources : ["database"];
-  const dataLookback = body.dataLookback === "1y" || body.dataLookback === "5y" ? body.dataLookback : "";
-  const requestedModel: ModelChoice = body.model === "opus" || body.model === "sonnet" || body.model === "auto"
-    ? body.model
-    : "auto";
+  const dataLookback = parseDataLookback(body.dataLookback);
+  const requestedModel: ModelChoice =
+    body.model === "opus" || body.model === "sonnet" || body.model === "auto"
+      ? body.model
+      : body.templateModel === "opus" || body.templateModel === "sonnet" || body.templateModel === "auto"
+        ? body.templateModel
+        : "auto";
 
   const anthropic = new Anthropic({ apiKey });
 
@@ -127,7 +157,7 @@ export async function POST(req: Request) {
           const user = [
             `Symbol: ${symbol}`,
             `Data sources: ${dataSources.join(", ")}`,
-            dataLookback ? `Data lookback: ${dataLookback}` : "",
+            `Data lookback: ${formatDataLookback(dataLookback)}`,
             "",
             "Context JSON:",
             JSON.stringify(context, null, 2),

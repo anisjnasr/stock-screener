@@ -5,12 +5,30 @@ const STORAGE_KEY_CUSTOM_PAGES = "stock-research-custom-pages";
 export type CustomPage = {
   id: string;
   name: string;
-  aiModel: "sonnet" | "opus";
+  aiModel: "auto" | "sonnet" | "opus";
   dataSources: ("database" | "web")[];
-  dataLookback: "1y" | "5y" | "";
+  dataLookback: DataLookback;
   prompt: string;
   createdAt: string;
 };
+
+export type LookbackUnit = "weeks" | "months" | "years";
+export type DataLookback = { value: number; unit: LookbackUnit } | null;
+
+function normalizeLookback(input: unknown): DataLookback {
+  if (!input) return null;
+  // Backward-compatible migration for legacy string storage.
+  if (input === "1y") return { value: 1, unit: "years" };
+  if (input === "5y") return { value: 5, unit: "years" };
+  if (input === "") return null;
+  if (typeof input !== "object") return null;
+  const valueRaw = Number((input as { value?: unknown }).value);
+  const unitRaw = (input as { unit?: unknown }).unit;
+  const unit: LookbackUnit | null =
+    unitRaw === "weeks" || unitRaw === "months" || unitRaw === "years" ? unitRaw : null;
+  if (!unit || !Number.isFinite(valueRaw) || valueRaw <= 0) return null;
+  return { value: Math.max(1, Math.round(valueRaw)), unit };
+}
 
 function sanitizePage(input: Partial<CustomPage>): CustomPage {
   const dataSourcesRaw = Array.isArray(input.dataSources) ? input.dataSources : [];
@@ -19,9 +37,9 @@ function sanitizePage(input: Partial<CustomPage>): CustomPage {
   return {
     id: typeof input.id === "string" && input.id.trim() ? input.id : crypto.randomUUID(),
     name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : "New AI page",
-    aiModel: input.aiModel === "opus" ? "opus" : "sonnet",
+    aiModel: input.aiModel === "opus" || input.aiModel === "auto" ? input.aiModel : "sonnet",
     dataSources: dataSources.length > 0 ? dataSources : ["database"],
-    dataLookback: input.dataLookback === "1y" || input.dataLookback === "5y" ? input.dataLookback : "",
+    dataLookback: normalizeLookback(input.dataLookback),
     prompt: typeof input.prompt === "string" ? input.prompt : "",
     createdAt: typeof input.createdAt === "string" ? input.createdAt : new Date().toISOString(),
   };

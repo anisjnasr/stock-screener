@@ -17,7 +17,7 @@ import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds, type SavedScreen, type ScreenerFolder, loadFolders, saveFolders, addFolder, updateFolder, deleteFolder, saveScreens, loadScreens } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import ProfileIcon from "@/components/ProfileIcon";
-import type { CustomPage } from "@/lib/custom-pages-storage";
+import type { CustomPage, LookbackUnit } from "@/lib/custom-pages-storage";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
@@ -285,10 +285,11 @@ function WorkspaceHeader({
   const [listDDOpen, setListDDOpen] = useState(false);
   const [showCustomPageModal, setShowCustomPageModal] = useState(false);
   const [customPageName, setCustomPageName] = useState("");
-  const [customPageAiModel, setCustomPageAiModel] = useState<"sonnet" | "opus">("sonnet");
+  const [customPageAiModel, setCustomPageAiModel] = useState<"auto" | "sonnet" | "opus">("auto");
   const [customPageUseDatabase, setCustomPageUseDatabase] = useState(true);
   const [customPageUseWeb, setCustomPageUseWeb] = useState(false);
-  const [customPageLookback, setCustomPageLookback] = useState<"1y" | "5y" | "">("1y");
+  const [customPageLookbackValue, setCustomPageLookbackValue] = useState("1");
+  const [customPageLookbackUnit, setCustomPageLookbackUnit] = useState<LookbackUnit>("years");
   const [customPagePrompt, setCustomPagePrompt] = useState("");
   const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
@@ -1520,10 +1521,11 @@ function WorkspaceHeader({
                 AI model default
                 <select
                   value={customPageAiModel}
-                  onChange={(e) => setCustomPageAiModel(e.target.value as "sonnet" | "opus")}
+                  onChange={(e) => setCustomPageAiModel(e.target.value as "auto" | "sonnet" | "opus")}
                   className="mt-1 w-full rounded px-2 py-1 text-sm"
                   style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                 >
+                  <option value="auto">Recommended (Auto)</option>
                   <option value="sonnet">Sonnet</option>
                   <option value="opus">Opus</option>
                 </select>
@@ -1548,15 +1550,25 @@ function WorkspaceHeader({
               </label>
               <label className="inline-flex items-center gap-1.5">
                 Lookback
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={customPageLookbackValue}
+                  onChange={(e) => setCustomPageLookbackValue(e.target.value)}
+                  className="rounded px-1.5 py-0.5 text-xs w-14"
+                  style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                  aria-label="Lookback value"
+                />
                 <select
-                  value={customPageLookback}
-                  onChange={(e) => setCustomPageLookback(e.target.value as "1y" | "5y" | "")}
+                  value={customPageLookbackUnit}
+                  onChange={(e) => setCustomPageLookbackUnit(e.target.value as LookbackUnit)}
                   className="rounded px-1.5 py-0.5 text-xs"
                   style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
                 >
-                  <option value="">Default</option>
-                  <option value="1y">1Y</option>
-                  <option value="5y">5Y</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months">Months</option>
+                  <option value="years">Years</option>
                 </select>
               </label>
             </div>
@@ -1590,20 +1602,25 @@ function WorkspaceHeader({
                   const dataSources: ("database" | "web")[] = [];
                   if (customPageUseDatabase) dataSources.push("database");
                   if (customPageUseWeb) dataSources.push("web");
+                  const parsedLookback = Number(customPageLookbackValue);
                   onCreateCustomPage?.({
                     name,
                     prompt,
                     aiModel: customPageAiModel,
                     dataSources: dataSources.length > 0 ? dataSources : ["database"],
-                    dataLookback: customPageLookback,
+                    dataLookback:
+                      Number.isFinite(parsedLookback) && parsedLookback > 0
+                        ? { value: Math.max(1, Math.round(parsedLookback)), unit: customPageLookbackUnit }
+                        : null,
                   });
                   setShowCustomPageModal(false);
                   setCustomPageName("");
                   setCustomPagePrompt("");
-                  setCustomPageAiModel("sonnet");
+                  setCustomPageAiModel("auto");
                   setCustomPageUseDatabase(true);
                   setCustomPageUseWeb(false);
-                  setCustomPageLookback("1y");
+                  setCustomPageLookbackValue("1");
+                  setCustomPageLookbackUnit("years");
                 }}
               >
                 Create

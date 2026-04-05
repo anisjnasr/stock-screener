@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CustomPage } from "@/lib/custom-pages-storage";
+import { updateCustomPage } from "@/lib/custom-pages-storage";
 
 type ModelChoice = "auto" | "sonnet" | "opus";
 type ModelUsed = "sonnet" | "opus";
@@ -76,9 +77,20 @@ function markdownToHtml(markdown: string): string {
   return out.join("\n");
 }
 
+function formatLookback(lookback: CustomPage["dataLookback"]): string {
+  if (!lookback) return "Default";
+  const unit =
+    lookback.unit === "weeks"
+      ? lookback.value === 1 ? "Week" : "Weeks"
+      : lookback.unit === "months"
+        ? lookback.value === 1 ? "Month" : "Months"
+        : lookback.value === 1 ? "Year" : "Years";
+  return `${lookback.value} ${unit}`;
+}
+
 export default function CustomPromptPage({ page, symbol, companyName, onSymbolSubmit }: Props) {
   const [querySymbol, setQuerySymbol] = useState(symbol.toUpperCase());
-  const [modelChoice, setModelChoice] = useState<ModelChoice>("auto");
+  const [modelChoice, setModelChoice] = useState<ModelChoice>(page.aiModel);
   const [modelUsed, setModelUsed] = useState<ModelUsed | null>(null);
   const [responseText, setResponseText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,6 +99,10 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
   useEffect(() => {
     setQuerySymbol(symbol.toUpperCase());
   }, [symbol]);
+
+  useEffect(() => {
+    setModelChoice(page.aiModel);
+  }, [page.aiModel, page.id]);
 
   const runPrompt = useCallback(async (targetSymbol: string) => {
     if (!targetSymbol.trim()) return;
@@ -125,7 +141,14 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
           const trimmed = line.trim();
           if (!trimmed) continue;
           const evt = JSON.parse(trimmed) as { type: string; text?: string; modelUsed?: ModelUsed; error?: string };
-          if (evt.type === "meta" && evt.modelUsed) setModelUsed(evt.modelUsed);
+          if (evt.type === "meta" && evt.modelUsed) {
+            setModelUsed(evt.modelUsed);
+            // If this run used auto/recommended, lock in the chosen model for future runs.
+            if (modelChoice === "auto") {
+              updateCustomPage(page.id, { aiModel: evt.modelUsed });
+              setModelChoice(evt.modelUsed);
+            }
+          }
           if (evt.type === "delta" && evt.text) setResponseText((prev) => prev + evt.text);
           if (evt.type === "error") throw new Error(evt.error || "AI stream failed");
         }
@@ -177,7 +200,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
             style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
             aria-label="Model override"
           >
-            <option value="auto">Auto</option>
+            <option value="auto">Recommended (Auto)</option>
             <option value="sonnet">Sonnet</option>
             <option value="opus">Opus</option>
           </select>
@@ -193,10 +216,10 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
 
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
-          Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice === "auto" ? "Auto-selecting..." : modelChoice}
+          Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice === "auto" ? "Recommended (auto-selecting...)" : modelChoice}
         </span>
         <span className="text-xs" style={{ color: "var(--ws-text-dim)" }}>
-          Sources: {page.dataSources.join(", ")} {page.dataLookback ? `· Lookback ${page.dataLookback}` : ""}
+          Sources: {page.dataSources.join(", ")} · Lookback {formatLookback(page.dataLookback)}
         </span>
       </div>
 
