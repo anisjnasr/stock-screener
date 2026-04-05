@@ -439,6 +439,23 @@ async function main() {
     .all()
     .map((r) => ({ date: r.date, close: r.close }));
   const spyIndexByDate = new Map(spyBarsList.map((r, i) => [r.date, i]));
+  const latestSpyIdx = spyIndexByDate.get(latestDate);
+  const latestSpyClose = latestSpyIdx != null ? spyBarsList[latestSpyIdx]?.close : null;
+  const spyClose21 = latestSpyIdx != null && latestSpyIdx >= 21 ? spyBarsList[latestSpyIdx - 21]?.close : null;
+  const spyClose63 = latestSpyIdx != null && latestSpyIdx >= 63 ? spyBarsList[latestSpyIdx - 63]?.close : null;
+  const spyClose126 = latestSpyIdx != null && latestSpyIdx >= 126 ? spyBarsList[latestSpyIdx - 126]?.close : null;
+  const spyClose252 = latestSpyIdx != null && latestSpyIdx >= 252 ? spyBarsList[latestSpyIdx - 252]?.close : null;
+  const spyRet1m =
+    latestSpyClose != null && spyClose21 ? ((latestSpyClose - spyClose21) / spyClose21) * 100 : null;
+  const spyRet3m =
+    latestSpyClose != null && spyClose63 ? ((latestSpyClose - spyClose63) / spyClose63) * 100 : null;
+  const spyRet6m =
+    latestSpyClose != null && spyClose126 ? ((latestSpyClose - spyClose126) / spyClose126) * 100 : null;
+  const spyRet12m =
+    latestSpyClose != null && spyClose252 ? ((latestSpyClose - spyClose252) / spyClose252) * 100 : null;
+  const spyClose5 = latestSpyIdx != null && latestSpyIdx >= 5 ? spyBarsList[latestSpyIdx - 5]?.close : null;
+  const spyRet1w =
+    latestSpyClose != null && spyClose5 ? ((latestSpyClose - spyClose5) / spyClose5) * 100 : null;
 
   const indicatorRows = [];
   const pctFrom = (close, ema) => (ema ? ((close - ema) / ema) * 100 : null);
@@ -531,20 +548,6 @@ async function main() {
       const atr14 = atr14Arr[atr14Arr.length - 1];
       const atrPct14 = lastBar.close && atr14 ? (atr14 / lastBar.close) * 100 : null;
 
-      const spyIdx = spyIndexByDate.get(latestDate);
-      const spyClose = spyIdx != null ? spyBarsList[spyIdx]?.close : null;
-      const spyClose5 = spyIdx != null && spyIdx >= 5 ? spyBarsList[spyIdx - 5]?.close : null;
-      const spyClose21 = spyIdx != null && spyIdx >= 21 ? spyBarsList[spyIdx - 21]?.close : null;
-      const spyClose63 = spyIdx != null && spyIdx >= 63 ? spyBarsList[spyIdx - 63]?.close : null;
-      const spyClose126 = spyIdx != null && spyIdx >= 126 ? spyBarsList[spyIdx - 126]?.close : null;
-      const spyClose252 = spyIdx != null && spyIdx >= 252 ? spyBarsList[spyIdx - 252]?.close : null;
-
-      const spyRet1w = spyClose5 ? ((spyClose - spyClose5) / spyClose5) * 100 : null;
-      const spyRet1m = spyClose21 ? ((spyClose - spyClose21) / spyClose21) * 100 : null;
-      const spyRet3m = spyClose63 ? ((spyClose - spyClose63) / spyClose63) * 100 : null;
-      const spyRet6m = spyClose126 ? ((spyClose - spyClose126) / spyClose126) * 100 : null;
-      const spyRet12m = spyClose252 ? ((spyClose - spyClose252) / spyClose252) * 100 : null;
-
       const rs1w = rs(ch1w, spyRet1w);
       const rs1m = rs(ch1m, spyRet1m);
       const rs3m = rs(ch3m, spyRet3m);
@@ -605,34 +608,97 @@ async function main() {
         rs3m: rs3m ?? -1e9,
         rs6m: rs6m ?? -1e9,
         rs12m: rs12m ?? -1e9,
+        ret1m: ch1m,
+        ret3m: ch3m,
+        ret6m: ch6m,
+        ret12m: ch12m,
+        marketCapWeight: marketCap != null && Number.isFinite(marketCap) && marketCap > 0 ? marketCap : null,
       });
     }
   });
   calcTx();
 
-  const byIndustry = new Map();
   const bySector = new Map();
   for (const r of indicatorRows) {
-    if (r.industry) {
-      if (!byIndustry.has(r.industry)) byIndustry.set(r.industry, []);
-      byIndustry.get(r.industry).push(r);
-    }
     if (r.sector) {
       if (!bySector.has(r.sector)) bySector.set(r.sector, []);
       bySector.get(r.sector).push(r);
     }
   }
 
-  for (const [, list] of byIndustry) {
-    list.sort((a, b) => b.rs1m - a.rs1m);
-    list.forEach((r, i) => (r.industry_rank_1m = i + 1));
-    list.sort((a, b) => b.rs3m - a.rs3m);
-    list.forEach((r, i) => (r.industry_rank_3m = i + 1));
-    list.sort((a, b) => b.rs6m - a.rs6m);
-    list.forEach((r, i) => (r.industry_rank_6m = i + 1));
-    list.sort((a, b) => b.rs12m - a.rs12m);
-    list.forEach((r, i) => (r.industry_rank_12m = i + 1));
+  // Industry leaderboard ranks: compute market-cap-weighted industry returns, convert to RS vs SPY,
+  // then rank industries against each other (1 = strongest).
+  const industryAgg = new Map();
+  for (const r of indicatorRows) {
+    if (!r.industry) continue;
+    const w = r.marketCapWeight;
+    if (w == null || !Number.isFinite(w) || w <= 0) continue;
+    if (!industryAgg.has(r.industry)) {
+      industryAgg.set(r.industry, {
+        w1m: 0,
+        wr1m: 0,
+        w3m: 0,
+        wr3m: 0,
+        w6m: 0,
+        wr6m: 0,
+        w12m: 0,
+        wr12m: 0,
+      });
+    }
+    const agg = industryAgg.get(r.industry);
+    if (r.ret1m != null && Number.isFinite(r.ret1m)) {
+      agg.w1m += w;
+      agg.wr1m += w * r.ret1m;
+    }
+    if (r.ret3m != null && Number.isFinite(r.ret3m)) {
+      agg.w3m += w;
+      agg.wr3m += w * r.ret3m;
+    }
+    if (r.ret6m != null && Number.isFinite(r.ret6m)) {
+      agg.w6m += w;
+      agg.wr6m += w * r.ret6m;
+    }
+    if (r.ret12m != null && Number.isFinite(r.ret12m)) {
+      agg.w12m += w;
+      agg.wr12m += w * r.ret12m;
+    }
   }
+
+  const industryRows = [];
+  for (const [industry, agg] of industryAgg.entries()) {
+    const indRet1m = agg.w1m > 0 ? agg.wr1m / agg.w1m : null;
+    const indRet3m = agg.w3m > 0 ? agg.wr3m / agg.w3m : null;
+    const indRet6m = agg.w6m > 0 ? agg.wr6m / agg.w6m : null;
+    const indRet12m = agg.w12m > 0 ? agg.wr12m / agg.w12m : null;
+    industryRows.push({
+      industry,
+      rs1m: rs(indRet1m, spyRet1m),
+      rs3m: rs(indRet3m, spyRet3m),
+      rs6m: rs(indRet6m, spyRet6m),
+      rs12m: rs(indRet12m, spyRet12m),
+    });
+  }
+
+  const applyIndustryLeaderboardRanks = (rsKey, rankKey) => {
+    const sorted = [...industryRows].sort((a, b) => {
+      const av = a[rsKey];
+      const bv = b[rsKey];
+      if (av == null && bv == null) return a.industry.localeCompare(b.industry);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return bv - av;
+    });
+    const rankByIndustry = new Map();
+    sorted.forEach((row, idx) => rankByIndustry.set(row.industry, idx + 1));
+    for (const r of indicatorRows) {
+      r[rankKey] = r.industry ? rankByIndustry.get(r.industry) ?? null : null;
+    }
+  };
+
+  applyIndustryLeaderboardRanks("rs1m", "industry_rank_1m");
+  applyIndustryLeaderboardRanks("rs3m", "industry_rank_3m");
+  applyIndustryLeaderboardRanks("rs6m", "industry_rank_6m");
+  applyIndustryLeaderboardRanks("rs12m", "industry_rank_12m");
   for (const [, list] of bySector) {
     list.sort((a, b) => b.rs1m - a.rs1m);
     list.forEach((r, i) => (r.sector_rank_1m = i + 1));

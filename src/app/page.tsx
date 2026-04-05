@@ -636,7 +636,6 @@ export default function Home() {
         section={section}
         symbol={symbol}
         profile={data?.profile ?? null}
-        marketCap={data?.quote?.marketCap}
         nextEarnings={data?.nextEarnings}
         yearlyRows={yearlyRows}
         quarterlyRows={quarterlyRows}
@@ -644,6 +643,8 @@ export default function Home() {
         fundCount={fundCount}
         rsRank={data?.rsRank}
         industryRanks={data?.industryRanks}
+        industryRankUniverse={data?.industryRankUniverse}
+        dbProfileMetrics={data?.dbProfileMetrics}
         loading={sidebarLoading}
       />
     )}

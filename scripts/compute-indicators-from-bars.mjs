@@ -102,6 +102,7 @@ async function runNativeCompute(LIMIT, YEARS) {
   const spyBarsList = db
     .prepare("SELECT date, close FROM daily_bars WHERE symbol = 'SPY' AND date >= ? AND date <= ? ORDER BY date")
     .all(fromStr, toStr);
+  const spyIndexByDate = new Map(spyBarsList.map((r, i) => [r.date, i]));
 
   const indInfo0 = db.prepare("PRAGMA table_info(indicators_daily)").all();
   const indCols0 = new Set(indInfo0.map((r) => r.name));
@@ -181,13 +182,13 @@ async function runNativeCompute(LIMIT, YEARS) {
       const atr14Arr = computeATR(slice, 14);
       const atr14 = atr14Arr[atr14Arr.length - 1];
       const atrPct14 = lastBar.close && atr14 ? (atr14 / lastBar.close) * 100 : null;
-      const spyIdx = spyBarsList.findIndex((r) => r.date === date);
-      const spyClose = spyIdx >= 0 ? spyBarsList[spyIdx].close : null;
-      const spyClose5 = spyIdx >= 5 ? spyBarsList[spyIdx - 5].close : null;
-      const spyClose21 = spyIdx >= 21 ? spyBarsList[spyIdx - 21].close : null;
-      const spyClose63 = spyIdx >= 63 ? spyBarsList[spyIdx - 63].close : null;
-      const spyClose126 = spyIdx >= 126 ? spyBarsList[spyIdx - 126].close : null;
-      const spyClose252 = spyIdx >= 252 ? spyBarsList[spyIdx - 252].close : null;
+      const spyIdx = spyIndexByDate.get(date);
+      const spyClose = spyIdx != null ? spyBarsList[spyIdx]?.close : null;
+      const spyClose5 = spyIdx != null && spyIdx >= 5 ? spyBarsList[spyIdx - 5]?.close : null;
+      const spyClose21 = spyIdx != null && spyIdx >= 21 ? spyBarsList[spyIdx - 21]?.close : null;
+      const spyClose63 = spyIdx != null && spyIdx >= 63 ? spyBarsList[spyIdx - 63]?.close : null;
+      const spyClose126 = spyIdx != null && spyIdx >= 126 ? spyBarsList[spyIdx - 126]?.close : null;
+      const spyClose252 = spyIdx != null && spyIdx >= 252 ? spyBarsList[spyIdx - 252]?.close : null;
       const spyRet1w = spyClose5 ? ((spyClose - spyClose5) / spyClose5) * 100 : null;
       const spyRet1m = spyClose21 ? ((spyClose - spyClose21) / spyClose21) * 100 : null;
       const spyRet3m = spyClose63 ? ((spyClose - spyClose63) / spyClose63) * 100 : null;
@@ -218,24 +219,98 @@ async function runNativeCompute(LIMIT, YEARS) {
     if (!indCols.has(col)) db.exec("ALTER TABLE indicators_daily ADD COLUMN " + col + " REAL");
   }
   const dateList = db.prepare("SELECT DISTINCT date FROM indicators_daily WHERE date >= ? AND date <= ? ORDER BY date").all(fromStr, toStr).map((r) => r.date);
-  const getIndForDate = db.prepare("SELECT i.symbol, c.industry, c.sector, i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m FROM indicators_daily i LEFT JOIN companies c ON c.symbol = i.symbol WHERE i.date = ?");
+  const getIndForDate = db.prepare(
+    "SELECT i.symbol, c.industry, c.sector, i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct, q.market_cap, c.shares_outstanding, b.close FROM indicators_daily i LEFT JOIN companies c ON c.symbol = i.symbol LEFT JOIN quote_daily q ON q.symbol = i.symbol AND q.date = i.date LEFT JOIN daily_bars b ON b.symbol = i.symbol AND b.date = i.date WHERE i.date = ?"
+  );
   const updateRanks = db.prepare("UPDATE indicators_daily SET industry_rank_1m=?, industry_rank_3m=?, industry_rank_6m=?, industry_rank_12m=?, sector_rank_1m=?, sector_rank_3m=?, sector_rank_6m=?, sector_rank_12m=?, rs_pct_1w=?, rs_pct_1m=?, rs_pct_3m=?, rs_pct_6m=?, rs_pct_12m=? WHERE symbol=? AND date=?");
 
   for (let d = 0; d < dateList.length; d++) {
     const date = dateList[d];
-    const rows = getIndForDate.all(date).map((r) => ({ symbol: r.symbol, industry: r.industry, sector: r.sector, rs1w: r.rs_vs_spy_1w, rs1m: r.rs_vs_spy_1m, rs3m: r.rs_vs_spy_3m, rs6m: r.rs_vs_spy_6m, rs12m: r.rs_vs_spy_12m }));
+    const rows = getIndForDate.all(date).map((r) => {
+      const cap = r.market_cap != null ? Number(r.market_cap) : null;
+      const shares = r.shares_outstanding != null ? Number(r.shares_outstanding) : null;
+      const close = r.close != null ? Number(r.close) : null;
+      return {
+        symbol: r.symbol,
+        industry: r.industry,
+        sector: r.sector,
+        rs1w: r.rs_vs_spy_1w,
+        rs1m: r.rs_vs_spy_1m,
+        rs3m: r.rs_vs_spy_3m,
+        rs6m: r.rs_vs_spy_6m,
+        rs12m: r.rs_vs_spy_12m,
+        ret1m: r.price_change_1m_pct,
+        ret3m: r.price_change_3m_pct,
+        ret6m: r.price_change_6m_pct,
+        ret12m: r.price_change_12m_pct,
+        marketCapWeight:
+          cap != null && Number.isFinite(cap) && cap > 0
+            ? cap
+            : shares != null && Number.isFinite(shares) && shares > 0 && close != null && Number.isFinite(close) && close > 0
+              ? shares * close
+              : null,
+      };
+    });
     const byIndustry = new Map();
     const bySector = new Map();
     for (const r of rows) {
-      if (r.industry) { if (!byIndustry.has(r.industry)) byIndustry.set(r.industry, []); byIndustry.get(r.industry).push(r); }
       if (r.sector) { if (!bySector.has(r.sector)) bySector.set(r.sector, []); bySector.get(r.sector).push(r); }
+      if (r.industry) {
+        if (!byIndustry.has(r.industry)) {
+          byIndustry.set(r.industry, { w1m: 0, wr1m: 0, w3m: 0, wr3m: 0, w6m: 0, wr6m: 0, w12m: 0, wr12m: 0 });
+        }
+        const agg = byIndustry.get(r.industry);
+        const w = r.marketCapWeight;
+        if (w != null && Number.isFinite(w) && w > 0) {
+          if (r.ret1m != null && Number.isFinite(r.ret1m)) { agg.w1m += w; agg.wr1m += w * r.ret1m; }
+          if (r.ret3m != null && Number.isFinite(r.ret3m)) { agg.w3m += w; agg.wr3m += w * r.ret3m; }
+          if (r.ret6m != null && Number.isFinite(r.ret6m)) { agg.w6m += w; agg.wr6m += w * r.ret6m; }
+          if (r.ret12m != null && Number.isFinite(r.ret12m)) { agg.w12m += w; agg.wr12m += w * r.ret12m; }
+        }
+      }
     }
-    for (const [, list] of byIndustry) {
-      list.sort((a, b) => (b.rs1m ?? -1e9) - (a.rs1m ?? -1e9)); list.forEach((r, i) => { r.industry_rank_1m = i + 1; });
-      list.sort((a, b) => (b.rs3m ?? -1e9) - (a.rs3m ?? -1e9)); list.forEach((r, i) => { r.industry_rank_3m = i + 1; });
-      list.sort((a, b) => (b.rs6m ?? -1e9) - (a.rs6m ?? -1e9)); list.forEach((r, i) => { r.industry_rank_6m = i + 1; });
-      list.sort((a, b) => (b.rs12m ?? -1e9) - (a.rs12m ?? -1e9)); list.forEach((r, i) => { r.industry_rank_12m = i + 1; });
+    const spyIdx = spyIndexByDate.get(date);
+    const spyClose = spyIdx != null ? spyBarsList[spyIdx]?.close : null;
+    const spyClose21 = spyIdx != null && spyIdx >= 21 ? spyBarsList[spyIdx - 21]?.close : null;
+    const spyClose63 = spyIdx != null && spyIdx >= 63 ? spyBarsList[spyIdx - 63]?.close : null;
+    const spyClose126 = spyIdx != null && spyIdx >= 126 ? spyBarsList[spyIdx - 126]?.close : null;
+    const spyClose252 = spyIdx != null && spyIdx >= 252 ? spyBarsList[spyIdx - 252]?.close : null;
+    const spyRet1m = spyClose != null && spyClose21 ? ((spyClose - spyClose21) / spyClose21) * 100 : null;
+    const spyRet3m = spyClose != null && spyClose63 ? ((spyClose - spyClose63) / spyClose63) * 100 : null;
+    const spyRet6m = spyClose != null && spyClose126 ? ((spyClose - spyClose126) / spyClose126) * 100 : null;
+    const spyRet12m = spyClose != null && spyClose252 ? ((spyClose - spyClose252) / spyClose252) * 100 : null;
+
+    const industryRows = [];
+    for (const [industry, agg] of byIndustry.entries()) {
+      const indRet1m = agg.w1m > 0 ? agg.wr1m / agg.w1m : null;
+      const indRet3m = agg.w3m > 0 ? agg.wr3m / agg.w3m : null;
+      const indRet6m = agg.w6m > 0 ? agg.wr6m / agg.w6m : null;
+      const indRet12m = agg.w12m > 0 ? agg.wr12m / agg.w12m : null;
+      industryRows.push({
+        industry,
+        rs1m: rs(indRet1m, spyRet1m),
+        rs3m: rs(indRet3m, spyRet3m),
+        rs6m: rs(indRet6m, spyRet6m),
+        rs12m: rs(indRet12m, spyRet12m),
+      });
     }
+    const applyIndustryRanks = (rsCol, rankCol) => {
+      const sorted = [...industryRows].sort((a, b) => {
+        const av = a[rsCol];
+        const bv = b[rsCol];
+        if (av == null && bv == null) return a.industry.localeCompare(b.industry);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return bv - av;
+      });
+      const rankByIndustry = new Map();
+      sorted.forEach((row, i) => rankByIndustry.set(row.industry, i + 1));
+      for (const row of rows) row[rankCol] = row.industry ? rankByIndustry.get(row.industry) ?? null : null;
+    };
+    applyIndustryRanks("rs1m", "industry_rank_1m");
+    applyIndustryRanks("rs3m", "industry_rank_3m");
+    applyIndustryRanks("rs6m", "industry_rank_6m");
+    applyIndustryRanks("rs12m", "industry_rank_12m");
     for (const [, list] of bySector) {
       list.sort((a, b) => (b.rs1m ?? -1e9) - (a.rs1m ?? -1e9)); list.forEach((r, i) => { r.sector_rank_1m = i + 1; });
       list.sort((a, b) => (b.rs3m ?? -1e9) - (a.rs3m ?? -1e9)); list.forEach((r, i) => { r.sector_rank_3m = i + 1; });
@@ -309,6 +384,7 @@ async function main() {
     "SELECT date, close FROM daily_bars WHERE symbol = 'SPY' AND date >= '" + fromStr + "' AND date <= '" + toStr + "' ORDER BY date"
   );
   const spyBarsList = spyRows[0]?.values ?? [];
+  const spyIndexByDate = new Map(spyBarsList.map((r, i) => [r[0], i]));
 
   const upsertQuote = db.prepare(`
     INSERT OR REPLACE INTO quote_daily (symbol, date, market_cap, last_price, change_pct, volume, avg_volume_30d_shares, high_52w, off_52w_high_pct, atr_pct_21d, free_float)
@@ -552,19 +628,21 @@ async function main() {
   const dateList = (dates[0]?.values ?? []).map((r) => r[0]);
 
   const getIndForDate = db.prepare(
-    "SELECT i.symbol, c.industry, c.sector, i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m FROM indicators_daily i LEFT JOIN companies c ON c.symbol = i.symbol WHERE i.date = ?"
+    "SELECT i.symbol, c.industry, c.sector, i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct, q.market_cap, c.shares_outstanding, b.close FROM indicators_daily i LEFT JOIN companies c ON c.symbol = i.symbol LEFT JOIN quote_daily q ON q.symbol = i.symbol AND q.date = i.date LEFT JOIN daily_bars b ON b.symbol = i.symbol AND b.date = i.date WHERE i.date = ?"
   );
   const updateRanks = db.prepare(
     "UPDATE indicators_daily SET industry_rank_1m=?, industry_rank_3m=?, industry_rank_6m=?, industry_rank_12m=?, sector_rank_1m=?, sector_rank_3m=?, sector_rank_6m=?, sector_rank_12m=?, rs_pct_1w=?, rs_pct_1m=?, rs_pct_3m=?, rs_pct_6m=?, rs_pct_12m=? WHERE symbol=? AND date=?"
   );
 
-  const periods = ["1m", "3m", "6m", "12m"];
   for (let d = 0; d < dateList.length; d++) {
     const date = dateList[d];
     getIndForDate.bind([date]);
     const rows = [];
     while (getIndForDate.step()) {
       const r = getIndForDate.get();
+      const cap = r[12] != null ? Number(r[12]) : null;
+      const shares = r[13] != null ? Number(r[13]) : null;
+      const close = r[14] != null ? Number(r[14]) : null;
       rows.push({
         symbol: r[0],
         industry: r[1],
@@ -574,6 +652,16 @@ async function main() {
         rs3m: r[5],
         rs6m: r[6],
         rs12m: r[7],
+        ret1m: r[8],
+        ret3m: r[9],
+        ret6m: r[10],
+        ret12m: r[11],
+        marketCapWeight:
+          cap != null && Number.isFinite(cap) && cap > 0
+            ? cap
+            : shares != null && Number.isFinite(shares) && shares > 0 && close != null && Number.isFinite(close) && close > 0
+              ? shares * close
+              : null,
       });
     }
     getIndForDate.reset();
@@ -582,8 +670,17 @@ async function main() {
     const bySector = new Map();
     for (const r of rows) {
       if (r.industry) {
-        if (!byIndustry.has(r.industry)) byIndustry.set(r.industry, []);
-        byIndustry.get(r.industry).push(r);
+        if (!byIndustry.has(r.industry)) {
+          byIndustry.set(r.industry, { w1m: 0, wr1m: 0, w3m: 0, wr3m: 0, w6m: 0, wr6m: 0, w12m: 0, wr12m: 0 });
+        }
+        const agg = byIndustry.get(r.industry);
+        const w = r.marketCapWeight;
+        if (w != null && Number.isFinite(w) && w > 0) {
+          if (r.ret1m != null && Number.isFinite(r.ret1m)) { agg.w1m += w; agg.wr1m += w * r.ret1m; }
+          if (r.ret3m != null && Number.isFinite(r.ret3m)) { agg.w3m += w; agg.wr3m += w * r.ret3m; }
+          if (r.ret6m != null && Number.isFinite(r.ret6m)) { agg.w6m += w; agg.wr6m += w * r.ret6m; }
+          if (r.ret12m != null && Number.isFinite(r.ret12m)) { agg.w12m += w; agg.wr12m += w * r.ret12m; }
+        }
       }
       if (r.sector) {
         if (!bySector.has(r.sector)) bySector.set(r.sector, []);
@@ -591,24 +688,48 @@ async function main() {
       }
     }
 
-    for (const [, list] of byIndustry) {
-      list.sort((a, b) => (b.rs1m ?? -1e9) - (a.rs1m ?? -1e9));
-      list.forEach((r, i) => {
-        r.industry_rank_1m = i + 1;
-      });
-      list.sort((a, b) => (b.rs3m ?? -1e9) - (a.rs3m ?? -1e9));
-      list.forEach((r, i) => {
-        r.industry_rank_3m = i + 1;
-      });
-      list.sort((a, b) => (b.rs6m ?? -1e9) - (a.rs6m ?? -1e9));
-      list.forEach((r, i) => {
-        r.industry_rank_6m = i + 1;
-      });
-      list.sort((a, b) => (b.rs12m ?? -1e9) - (a.rs12m ?? -1e9));
-      list.forEach((r, i) => {
-        r.industry_rank_12m = i + 1;
+    const spyIdx = spyIndexByDate.get(date);
+    const spyClose = spyIdx != null ? spyBarsList[spyIdx][1] : null;
+    const spyClose21 = spyIdx != null && spyIdx >= 21 ? spyBarsList[spyIdx - 21][1] : null;
+    const spyClose63 = spyIdx != null && spyIdx >= 63 ? spyBarsList[spyIdx - 63][1] : null;
+    const spyClose126 = spyIdx != null && spyIdx >= 126 ? spyBarsList[spyIdx - 126][1] : null;
+    const spyClose252 = spyIdx != null && spyIdx >= 252 ? spyBarsList[spyIdx - 252][1] : null;
+    const spyRet1m = spyClose != null && spyClose21 ? ((spyClose - spyClose21) / spyClose21) * 100 : null;
+    const spyRet3m = spyClose != null && spyClose63 ? ((spyClose - spyClose63) / spyClose63) * 100 : null;
+    const spyRet6m = spyClose != null && spyClose126 ? ((spyClose - spyClose126) / spyClose126) * 100 : null;
+    const spyRet12m = spyClose != null && spyClose252 ? ((spyClose - spyClose252) / spyClose252) * 100 : null;
+
+    const industryRows = [];
+    for (const [industry, agg] of byIndustry.entries()) {
+      const indRet1m = agg.w1m > 0 ? agg.wr1m / agg.w1m : null;
+      const indRet3m = agg.w3m > 0 ? agg.wr3m / agg.w3m : null;
+      const indRet6m = agg.w6m > 0 ? agg.wr6m / agg.w6m : null;
+      const indRet12m = agg.w12m > 0 ? agg.wr12m / agg.w12m : null;
+      industryRows.push({
+        industry,
+        rs1m: rs(indRet1m, spyRet1m),
+        rs3m: rs(indRet3m, spyRet3m),
+        rs6m: rs(indRet6m, spyRet6m),
+        rs12m: rs(indRet12m, spyRet12m),
       });
     }
+    const applyIndustryRanks = (rsCol, rankCol) => {
+      const sorted = [...industryRows].sort((a, b) => {
+        const av = a[rsCol];
+        const bv = b[rsCol];
+        if (av == null && bv == null) return a.industry.localeCompare(b.industry);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return bv - av;
+      });
+      const rankByIndustry = new Map();
+      sorted.forEach((row, i) => rankByIndustry.set(row.industry, i + 1));
+      for (const row of rows) row[rankCol] = row.industry ? rankByIndustry.get(row.industry) ?? null : null;
+    };
+    applyIndustryRanks("rs1m", "industry_rank_1m");
+    applyIndustryRanks("rs3m", "industry_rank_3m");
+    applyIndustryRanks("rs6m", "industry_rank_6m");
+    applyIndustryRanks("rs12m", "industry_rank_12m");
     for (const [, list] of bySector) {
       list.sort((a, b) => (b.rs1m ?? -1e9) - (a.rs1m ?? -1e9));
       list.forEach((r, i) => {

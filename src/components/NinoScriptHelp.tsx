@@ -94,7 +94,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
               </thead>
               <tbody>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">RS(n)</td><td>Relative Strength percentile. n = 1 (1W), 3 (3M), 6 (6M), 12 (12M)</td><td className="font-mono text-xs">RS(12) &gt; 90</td></tr>
-                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">INDRS(n)</td><td>Industry RS rank. n = 1 (1M), 3 (3M), 6 (6M), 12 (12M)</td><td className="font-mono text-xs">INDRS(3) &gt; 80</td></tr>
+                <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">INDRS(n)</td><td>Cross-industry leaderboard rank (1 = strongest industry). n = 1 (1M), 3 (3M), 6 (6M), 12 (12M)</td><td className="font-mono text-xs">INDRS(3) &lt;= 20</td></tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">MC</td><td>Market cap (USD)</td><td className="font-mono text-xs">MC &gt;= 300000000</td></tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">IPODATE</td><td>IPO date (string, &quot;YYYY-MM-DD&quot;). Compare with date strings.</td><td className="font-mono text-xs">IPODATE &gt;= &quot;2025-01-01&quot;</td></tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600"><td className="px-2 py-1.5 font-mono">SECTOR</td><td>GICS sector name (string)</td><td className="font-mono text-xs">SECTOR = &quot;Technology&quot;</td></tr>
@@ -140,7 +140,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
               All bar-based functions use the current bar as the rightmost bar; the period <code className="font-mono">n</code> is the number of bars in the window. There is <strong>no separate <code className="font-mono">SMA</code> keyword</strong> — <code className="font-mono">MA</code> <em>is</em> the simple (arithmetic) moving average. Use <code className="font-mono">EMA</code> for exponential.
             </p>
             <p className="mb-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <code className="font-mono">RS(n)</code> snapshot columns: <code className="font-mono">1</code> = 1W; <code className="font-mono">4</code> = 1M; <code className="font-mono">3</code> or <code className="font-mono">13</code> = 3M; <code className="font-mono">6</code> or <code className="font-mono">26</code> = 6M; <code className="font-mono">12</code> or <code className="font-mono">52</code> = 12M (duplicate numbers read the same DB field). <code className="font-mono">INDRS(n)</code> accepts <code className="font-mono">1</code>, <code className="font-mono">3</code>, <code className="font-mono">6</code>, <code className="font-mono">12</code> for industry rank (1M–12M).
+              <code className="font-mono">RS(n)</code> snapshot columns: <code className="font-mono">1</code> = 1W; <code className="font-mono">4</code> = 1M; <code className="font-mono">3</code> or <code className="font-mono">13</code> = 3M; <code className="font-mono">6</code> or <code className="font-mono">26</code> = 6M; <code className="font-mono">12</code> or <code className="font-mono">52</code> = 12M (duplicate numbers read the same DB field). <code className="font-mono">INDRS(n)</code> accepts <code className="font-mono">1</code>, <code className="font-mono">3</code>, <code className="font-mono">6</code>, <code className="font-mono">12</code> for cross-industry leaderboard rank (1M–12M, lower is better).
             </p>
             <table className="w-full border border-zinc-200 dark:border-zinc-600 rounded overflow-hidden text-left">
               <thead>
@@ -196,7 +196,7 @@ export default function NinoScriptHelp({ onClose }: NinoScriptHelpProps) {
                 </tr>
                 <tr className="border-t border-zinc-200 dark:border-zinc-600">
                   <td className="px-2 py-1.5 font-mono">INDRS(n)</td>
-                  <td>Industry RS rank from database. Periods: 1 (1M), 3 (3M), 6 (6M), 12 (12M). Example: INDRS(6) &gt; 80.</td>
+                  <td>Cross-industry leaderboard rank from database (1 = strongest industry). Periods: 1 (1M), 3 (3M), 6 (6M), 12 (12M). Example: INDRS(6) &lt;= 20.</td>
                 </tr>
               </tbody>
             </table>

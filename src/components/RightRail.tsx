@@ -56,12 +56,23 @@ type IndustryRanks = {
   industry_rank_12m: number | null;
 } | null;
 
+type IndustryRankUniverse = {
+  industry_rank_1m: number;
+  industry_rank_3m: number;
+  industry_rank_6m: number;
+  industry_rank_12m: number;
+} | null;
+
+type DbProfileMetrics = {
+  marketCap: number | null;
+  avgVolume20d: number | null;
+  atrPct21d: number | null;
+} | null;
+
 type RightRailProps = {
   section: WorkspaceSection;
   symbol: string;
   profile: ProfileData;
-  /** Fallback when profile.mktCap is missing (e.g. from quote.marketCap). */
-  marketCap?: number;
   nextEarnings?: string;
   yearlyRows: YearlyRow[];
   quarterlyRows: QuarterlyRow[];
@@ -69,17 +80,20 @@ type RightRailProps = {
   fundCount?: number;
   rsRank?: RsRank;
   industryRanks?: IndustryRanks;
+  industryRankUniverse?: IndustryRankUniverse;
+  dbProfileMetrics?: DbProfileMetrics;
   loading?: boolean;
 };
 
 type RailTab = "profile" | "news";
 
-function fmtCompactCurrency(n: number): string {
-  if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
-  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(2)}`;
+function fmtMarketCapNoDollar(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${(n / 1e12).toFixed(1)} tn`;
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)} bn`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)} m`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(1)} k`;
+  return n.toFixed(0);
 }
 
 /** Revenue column in fundamentals table: compact scale with two decimal places. */
@@ -132,13 +146,14 @@ function fmtDateToQuarter(dateStr: string): string {
 export default function RightRail({
   symbol,
   profile,
-  marketCap,
   nextEarnings,
   yearlyRows,
   quarterlyRows,
   ownershipQuarters,
   rsRank,
   industryRanks,
+  industryRankUniverse,
+  dbProfileMetrics,
   loading,
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("profile");
@@ -165,11 +180,27 @@ export default function RightRail({
   const desc = safe(profile?.description);
   const truncatedDesc = desc.length > 150 ? desc.slice(0, 150) + "…" : desc;
 
-  const capValue = profile?.mktCap ?? marketCap;
+  const capValue = dbProfileMetrics?.marketCap ?? null;
   const marketCapLabel =
-    capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtCompactCurrency(capValue) : "—";
+    capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtMarketCapNoDollar(capValue) : "—";
+  const avgVol20dLabel =
+    dbProfileMetrics?.avgVolume20d != null && Number.isFinite(dbProfileMetrics.avgVolume20d)
+      ? Math.round(dbProfileMetrics.avgVolume20d).toLocaleString("en-US")
+      : "—";
+  const atrPctLabel =
+    dbProfileMetrics?.atrPct21d != null && Number.isFinite(dbProfileMetrics.atrPct21d)
+      ? `${dbProfileMetrics.atrPct21d.toFixed(2)}%`
+      : "—";
 
   const sectionDivider = <div style={{ height: 1, background: "var(--ws-border)", margin: "4px -12px" }} />;
+  const getIndustryRankColor = (rank: number | null, totalIndustries: number | null | undefined): string => {
+    if (rank == null) return "var(--ws-text-vdim)";
+    if (rank <= 20) return "var(--ws-green)";
+    if (totalIndustries != null && Number.isFinite(totalIndustries) && rank > totalIndustries - 20) {
+      return "var(--ws-red)";
+    }
+    return "var(--ws-text)";
+  };
 
   const tabLabels: Record<RailTab, string> = { profile: "Profile", news: "News" };
 
@@ -261,6 +292,12 @@ export default function RightRail({
 
               <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
               <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Avg Vol (20D)</span>
+              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{avgVol20dLabel}</span>
+
+              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>ATR %</span>
+              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{atrPctLabel}</span>
             </div>
           </div>
 
@@ -297,7 +334,7 @@ export default function RightRail({
           {industryRanks && (
             <div>
               <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
-                Industry RS rank (1 = best)
+                Industry Leaderboard Rank (1 = best)
               </div>
               <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
                 <thead>
@@ -310,13 +347,13 @@ export default function RightRail({
                 <tbody>
                   <tr>
                     {[
-                      industryRanks.industry_rank_1m,
-                      industryRanks.industry_rank_3m,
-                      industryRanks.industry_rank_6m,
-                      industryRanks.industry_rank_12m,
-                    ].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums" style={{ color: v != null ? "var(--ws-text)" : "var(--ws-text-vdim)" }}>
-                        {v != null ? String(Math.round(v)) : "—"}
+                      { rank: industryRanks.industry_rank_1m, total: industryRankUniverse?.industry_rank_1m ?? null },
+                      { rank: industryRanks.industry_rank_3m, total: industryRankUniverse?.industry_rank_3m ?? null },
+                      { rank: industryRanks.industry_rank_6m, total: industryRankUniverse?.industry_rank_6m ?? null },
+                      { rank: industryRanks.industry_rank_12m, total: industryRankUniverse?.industry_rank_12m ?? null },
+                    ].map((item, i) => (
+                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums" style={{ color: getIndustryRankColor(item.rank, item.total) }}>
+                        {item.rank != null ? String(Math.round(item.rank)) : "—"}
                       </td>
                     ))}
                   </tr>

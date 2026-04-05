@@ -718,6 +718,93 @@ export function getLatestScreenerDate(): string | null {
   return getLatestReliableScreenerDateFromDb(db);
 }
 
+export type IndustryRankUniverseCounts = {
+  industry_rank_1m: number;
+  industry_rank_3m: number;
+  industry_rank_6m: number;
+  industry_rank_12m: number;
+};
+
+export function getIndustryRankUniverseCounts(date?: string): {
+  date: string | null;
+  counts: IndustryRankUniverseCounts | null;
+} {
+  const db = getDb();
+  if (!db) return { date: null, counts: null };
+  const targetDate = date ?? getLatestReliableScreenerDateFromDb(db);
+  if (!targetDate) return { date: null, counts: null };
+  const row = db
+    .prepare(
+      `
+      SELECT
+        COUNT(DISTINCT CASE WHEN i.industry_rank_1m IS NOT NULL THEN c.industry END) AS c1m,
+        COUNT(DISTINCT CASE WHEN i.industry_rank_3m IS NOT NULL THEN c.industry END) AS c3m,
+        COUNT(DISTINCT CASE WHEN i.industry_rank_6m IS NOT NULL THEN c.industry END) AS c6m,
+        COUNT(DISTINCT CASE WHEN i.industry_rank_12m IS NOT NULL THEN c.industry END) AS c12m
+      FROM indicators_daily i
+      INNER JOIN companies c ON c.symbol = i.symbol
+      WHERE i.date = ?
+        AND c.industry IS NOT NULL
+        AND TRIM(c.industry) <> ''
+      `
+    )
+    .get(targetDate) as
+    | { c1m?: number | null; c3m?: number | null; c6m?: number | null; c12m?: number | null }
+    | undefined;
+  if (!row) return { date: targetDate, counts: null };
+  return {
+    date: targetDate,
+    counts: {
+      industry_rank_1m: Number(row.c1m ?? 0),
+      industry_rank_3m: Number(row.c3m ?? 0),
+      industry_rank_6m: Number(row.c6m ?? 0),
+      industry_rank_12m: Number(row.c12m ?? 0),
+    },
+  };
+}
+
+export type StockProfileDbMetrics = {
+  marketCap: number | null;
+  avgVolume20d: number | null;
+  atrPct21d: number | null;
+};
+
+export function getStockProfileDbMetrics(symbol: string, date?: string): {
+  date: string | null;
+  metrics: StockProfileDbMetrics | null;
+} {
+  const db = getDb();
+  if (!db) return { date: null, metrics: null };
+  const targetDate = date ?? getLatestReliableScreenerDateFromDb(db);
+  if (!targetDate) return { date: null, metrics: null };
+  const row = db
+    .prepare(
+      `
+      SELECT
+        q.market_cap AS market_cap,
+        i.avg_volume_1m AS avg_volume_1m,
+        q.atr_pct_21d AS atr_pct_21d
+      FROM quote_daily q
+      LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
+      WHERE q.symbol = ?
+        AND q.date = ?
+      LIMIT 1
+      `
+    )
+    .get(String(symbol).toUpperCase(), targetDate) as
+    | { market_cap?: number | null; avg_volume_1m?: number | null; atr_pct_21d?: number | null }
+    | undefined;
+  if (!row) return { date: targetDate, metrics: null };
+  return {
+    date: targetDate,
+    metrics: {
+      marketCap: typeof row.market_cap === "number" ? row.market_cap : null,
+      avgVolume20d: typeof row.avg_volume_1m === "number" ? row.avg_volume_1m : null,
+      atrPct21d: typeof row.atr_pct_21d === "number" ? row.atr_pct_21d : null,
+    },
+  };
+}
+
 export function getOwnershipNative(symbol: string, limit = 8): OwnershipQuarterNative[] {
   const db = getDb();
   if (!db) return [];

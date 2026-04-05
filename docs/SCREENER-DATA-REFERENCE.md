@@ -238,14 +238,14 @@ For screener filtering by percentile instead of raw RS. All stocks are ranked by
 
 ---
 
-### Industry rank (IBD-style, 1 = best)
+### Industry leaderboard rank (cross-industry, 1 = best)
 
 | Data point | Column | In your list | Formula |
 |------------|--------|--------------|---------|
-| Industry rank 1 month | `industry_rank_1m` | ✓ | Within same GICS **industry**, sort by `rs_vs_spy_1m` descending; rank = 1-based position (1 = highest RS). |
-| Industry rank 3 months | `industry_rank_3m` | ✓ | Same, sort by `rs_vs_spy_3m`. |
-| Industry rank 6 months | `industry_rank_6m` | ✓ | Same, sort by `rs_vs_spy_6m`. |
-| Industry rank 12 months | `industry_rank_12m` | ✓ | Same, sort by `rs_vs_spy_12m`. |
+| Industry rank 1 month | `industry_rank_1m` | ✓ | For each industry, compute market-cap-weighted 1M industry return, convert to RS vs SPY, then rank **all industries** descending (1 = strongest). |
+| Industry rank 3 months | `industry_rank_3m` | ✓ | Same, using 3M weighted industry return and SPY 3M return. |
+| Industry rank 6 months | `industry_rank_6m` | ✓ | Same, using 6M weighted industry return and SPY 6M return. |
+| Industry rank 12 months | `industry_rank_12m` | ✓ | Same, using 12M weighted industry return and SPY 12M return. |
 
 ---
 

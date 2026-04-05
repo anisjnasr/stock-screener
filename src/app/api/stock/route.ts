@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchQuote, fetchProfile } from "@/lib/massive";
 import { fetchNextEarningsDate } from "@/lib/yahoo-earnings";
 import { getStockRecord } from "@/lib/stocks-db";
-import { getCompanyClassification, getLatestScreenerDate, getScreenerSnapshot } from "@/lib/screener-db-native";
+import {
+  getCompanyClassification,
+  getIndustryRankUniverseCounts,
+  getLatestScreenerDate,
+  getStockProfileDbMetrics,
+  getScreenerSnapshot,
+} from "@/lib/screener-db-native";
 import { isUSMarketOpen } from "@/lib/market-hours";
 
 function pickStr(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
@@ -37,6 +43,8 @@ type StockApiCacheEntry = {
     nextEarnings?: string;
     rsRank?: unknown;
     industryRanks?: unknown;
+    industryRankUniverse?: unknown;
+    dbProfileMetrics?: unknown;
   };
   expiresAt: number;
   staleAt: number;
@@ -119,6 +127,8 @@ export async function GET(request: NextRequest) {
     const companyClass = getCompanyClassification(symbolUpper);
     const dbSnapshot = getScreenerSnapshot({ symbols: [symbolUpper], limit: 1 });
     const dbRow = dbSnapshot.rows[0] ?? null;
+    const industryRankUniverse = getIndustryRankUniverseCounts(dbSnapshot.date ?? undefined).counts;
+    const dbProfileMetrics = getStockProfileDbMetrics(symbolUpper, dbSnapshot.date ?? undefined).metrics;
 
     const [quote, profile, nextEarnings] = await Promise.all([
       withTimeout(fetchQuote(symbolUpper), 4000, null),
@@ -241,6 +251,8 @@ export async function GET(request: NextRequest) {
       nextEarnings,
       rsRank,
       industryRanks,
+      industryRankUniverse,
+      dbProfileMetrics,
     };
     const ttl = marketOpen ? STOCK_API_TTL_OPEN_MS : STOCK_API_TTL_CLOSED_MS;
     const staleAt = Date.now() + ttl;

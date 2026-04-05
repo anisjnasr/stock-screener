@@ -44,6 +44,17 @@ export type StockData = {
     industry_rank_6m: number | null;
     industry_rank_12m: number | null;
   } | null;
+  industryRankUniverse?: {
+    industry_rank_1m: number;
+    industry_rank_3m: number;
+    industry_rank_6m: number;
+    industry_rank_12m: number;
+  } | null;
+  dbProfileMetrics?: {
+    marketCap: number | null;
+    avgVolume20d: number | null;
+    atrPct21d: number | null;
+  } | null;
 };
 
 const MAX_RETRIES = 3;
