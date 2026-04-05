@@ -14,10 +14,10 @@ import {
   defaultFlagListLabel,
 } from "@/lib/watchlist-storage";
 import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
-import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds, type SavedScreen, type ScreenerFolder, loadFolders, saveFolders, addFolder, updateFolder, deleteFolder, saveScreens, loadScreens } from "@/lib/screener-storage";
+import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds, type SavedScreen, type ScreenerFolder, loadFolders, addFolder, updateFolder, deleteFolder, saveScreens, loadScreens } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import ProfileIcon from "@/components/ProfileIcon";
-import type { CustomPage, LookbackUnit } from "@/lib/custom-pages-storage";
+import type { CustomPage } from "@/lib/custom-pages-storage";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
@@ -101,8 +101,9 @@ type WorkspaceHeaderProps = {
   newListDraft?: { id: string; name: string; nonce: number } | null;
   onNewListNameCommitted?: (id: string) => void;
   onNewListNameCancelled?: (id: string) => void;
-  customPages?: CustomPage[];
-  onCreateCustomPage?: (input: Omit<CustomPage, "id" | "createdAt">) => void;
+  insightPages?: CustomPage[];
+  activeInsightTab?: "new" | string;
+  onInsightTabChange?: (tab: "new" | string) => void;
   lastUpdated?: string | null;
   railWidthPx?: number;
   rowCountDisplay?: string;
@@ -270,8 +271,9 @@ function WorkspaceHeader({
   newListDraft = null,
   onNewListNameCommitted,
   onNewListNameCancelled,
-  customPages = [],
-  onCreateCustomPage,
+  insightPages = [],
+  activeInsightTab = "new",
+  onInsightTabChange,
   lastUpdated,
   railWidthPx = 0,
   rowCountDisplay,
@@ -283,14 +285,6 @@ function WorkspaceHeader({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [scanDDOpen, setScanDDOpen] = useState(false);
   const [listDDOpen, setListDDOpen] = useState(false);
-  const [showCustomPageModal, setShowCustomPageModal] = useState(false);
-  const [customPageName, setCustomPageName] = useState("");
-  const [customPageAiModel, setCustomPageAiModel] = useState<"auto" | "sonnet" | "opus">("auto");
-  const [customPageUseDatabase, setCustomPageUseDatabase] = useState(true);
-  const [customPageUseWeb, setCustomPageUseWeb] = useState(false);
-  const [customPageLookbackValue, setCustomPageLookbackValue] = useState("1");
-  const [customPageLookbackUnit, setCustomPageLookbackUnit] = useState<LookbackUnit>("years");
-  const [customPagePrompt, setCustomPagePrompt] = useState("");
   const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
@@ -653,43 +647,6 @@ function WorkspaceHeader({
                 {s.label}
               </button>
             ))}
-            {customPages.map((p) => {
-              const id = `custom-${p.id}` as WorkspaceSection;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onSectionChange(id)}
-                  className={`px-4 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== id ? "hover:bg-white/5" : ""}`}
-                  aria-current={section === id ? "page" : undefined}
-                  style={{
-                    background: section === id ? "rgba(255,255,255,0.06)" : undefined,
-                    borderBottom: section === id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
-                    borderTop: "2px solid transparent",
-                    borderLeft: "none",
-                    borderRight: "none",
-                    borderRadius: 0,
-                    color: section === id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-                  }}
-                  title={p.name}
-                >
-                  {p.name}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className="px-2.5 py-1 text-ws-title font-semibold rounded cursor-pointer ws-focus-ring"
-              style={{
-                color: "var(--ws-text)",
-                border: "1px solid var(--ws-border)",
-                background: "rgba(255,255,255,0.04)",
-              }}
-              onClick={() => setShowCustomPageModal(true)}
-              title="Create custom AI page"
-            >
-              +
-            </button>
           </nav>
         </div>
 
@@ -764,9 +721,20 @@ function WorkspaceHeader({
           </div>
         )}
 
-        {section.startsWith("custom-") && (
-          <div className="flex items-center flex-1 text-sm" style={{ color: "var(--ws-text-dim)" }}>
-            Custom prompt page
+        {section === "ai-insights" && (
+          <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
+            <Pill on={activeInsightTab === "new"} onClick={() => onInsightTabChange?.("new")}>
+              New Insight
+            </Pill>
+            {insightPages.map((p) => (
+              <Pill
+                key={p.id}
+                on={activeInsightTab === p.id}
+                onClick={() => onInsightTabChange?.(p.id)}
+              >
+                {p.name}
+              </Pill>
+            ))}
           </div>
         )}
 
@@ -1551,158 +1519,6 @@ function WorkspaceHeader({
         )}
 
       </div>
-      {showCustomPageModal && (
-        <div
-          className="fixed inset-0 z-[210] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)" }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowCustomPageModal(false);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="custom-page-modal-title"
-        >
-          <div
-            className="w-full max-w-xl rounded-lg p-4"
-            style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h2 id="custom-page-modal-title" className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>
-                New Custom Prompt Page
-              </h2>
-              <button
-                type="button"
-                className="text-sm px-2 py-0.5 rounded ws-focus-ring"
-                style={{ color: "var(--ws-text-dim)", border: "1px solid var(--ws-border)" }}
-                onClick={() => setShowCustomPageModal(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <label className="text-xs" style={{ color: "var(--ws-text-dim)" }}>
-                Name
-                <input
-                  value={customPageName}
-                  onChange={(e) => setCustomPageName(e.target.value)}
-                  className="mt-1 w-full rounded px-2 py-1 text-sm"
-                  style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                  placeholder="AI Thesis"
-                />
-              </label>
-              <label className="text-xs" style={{ color: "var(--ws-text-dim)" }}>
-                AI model default
-                <select
-                  value={customPageAiModel}
-                  onChange={(e) => setCustomPageAiModel(e.target.value as "auto" | "sonnet" | "opus")}
-                  className="mt-1 w-full rounded px-2 py-1 text-sm"
-                  style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                >
-                  <option value="auto">Recommended (Auto)</option>
-                  <option value="sonnet">Sonnet</option>
-                  <option value="opus">Opus</option>
-                </select>
-              </label>
-            </div>
-            <div className="flex items-center gap-3 mb-3 text-xs" style={{ color: "var(--ws-text-dim)" }}>
-              <label className="inline-flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={customPageUseDatabase}
-                  onChange={(e) => setCustomPageUseDatabase(e.target.checked)}
-                />
-                Database
-              </label>
-              <label className="inline-flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={customPageUseWeb}
-                  onChange={(e) => setCustomPageUseWeb(e.target.checked)}
-                />
-                Web
-              </label>
-              <label className="inline-flex items-center gap-1.5">
-                Lookback
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={customPageLookbackValue}
-                  onChange={(e) => setCustomPageLookbackValue(e.target.value)}
-                  className="rounded px-1.5 py-0.5 text-xs w-14"
-                  style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                  aria-label="Lookback value"
-                />
-                <select
-                  value={customPageLookbackUnit}
-                  onChange={(e) => setCustomPageLookbackUnit(e.target.value as LookbackUnit)}
-                  className="rounded px-1.5 py-0.5 text-xs"
-                  style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                >
-                  <option value="weeks">Weeks</option>
-                  <option value="months">Months</option>
-                  <option value="years">Years</option>
-                </select>
-              </label>
-            </div>
-            <label className="text-xs block mb-3" style={{ color: "var(--ws-text-dim)" }}>
-              Prompt template
-              <textarea
-                value={customPagePrompt}
-                onChange={(e) => setCustomPagePrompt(e.target.value)}
-                className="mt-1 w-full rounded px-2 py-1.5 text-sm min-h-28"
-                style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-                placeholder="Describe what analysis should be generated for each ticker."
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="px-2.5 py-1 text-xs rounded ws-focus-ring"
-                style={{ color: "var(--ws-text-dim)", border: "1px solid var(--ws-border)" }}
-                onClick={() => setShowCustomPageModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="px-2.5 py-1 text-xs rounded ws-focus-ring"
-                style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)" }}
-                onClick={() => {
-                  const name = customPageName.trim();
-                  const prompt = customPagePrompt.trim();
-                  if (!name || !prompt) return;
-                  const dataSources: ("database" | "web")[] = [];
-                  if (customPageUseDatabase) dataSources.push("database");
-                  if (customPageUseWeb) dataSources.push("web");
-                  const parsedLookback = Number(customPageLookbackValue);
-                  onCreateCustomPage?.({
-                    name,
-                    prompt,
-                    aiModel: customPageAiModel,
-                    dataSources: dataSources.length > 0 ? dataSources : ["database"],
-                    dataLookback:
-                      Number.isFinite(parsedLookback) && parsedLookback > 0
-                        ? { value: Math.max(1, Math.round(parsedLookback)), unit: customPageLookbackUnit }
-                        : null,
-                  });
-                  setShowCustomPageModal(false);
-                  setCustomPageName("");
-                  setCustomPagePrompt("");
-                  setCustomPageAiModel("auto");
-                  setCustomPageUseDatabase(true);
-                  setCustomPageUseWeb(false);
-                  setCustomPageLookbackValue("1");
-                  setCustomPageLookbackUnit("years");
-                }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 }

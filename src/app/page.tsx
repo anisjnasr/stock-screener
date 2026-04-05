@@ -39,8 +39,10 @@ import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { DEFAULT_LISTS_OPEN_ID, FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
   createCustomPage,
+  deleteCustomPage,
   loadCustomPages,
   type CustomPage,
+  updateCustomPage,
 } from "@/lib/custom-pages-storage";
 import {
   loadFlags,
@@ -67,6 +69,7 @@ const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false }
 const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
 const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
 const CustomPromptPage = dynamic(() => import("@/components/CustomPromptPage"), { ssr: false });
+const AIInsightFormPage = dynamic(() => import("@/components/AIInsightFormPage"), { ssr: false });
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -78,10 +81,6 @@ const DEFAULT_INDEX_WATCHLISTS = [
   { id: "index:nasdaq100", name: "Nasdaq 100" },
   { id: "index:sp500", name: "S&P 500" },
 ];
-
-function isCustomSection(section: WorkspaceSection): section is `custom-${string}` {
-  return section.startsWith("custom-");
-}
 
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
@@ -120,6 +119,9 @@ export default function Home() {
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const [customPages, setCustomPages] = useState<CustomPage[]>(() => loadCustomPages());
+  const [activeInsightTab, setActiveInsightTab] = useState<"new" | string>("new");
+  const [editingInsightId, setEditingInsightId] = useState<string | null>(null);
+  const [aiInsightSymbol, setAiInsightSymbol] = useState<string | null>(null);
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
   const [newListDraft, setNewListDraft] = useState<{ id: string; name: string; nonce: number } | null>(null);
   const [focusTickerTrigger, setFocusTickerTrigger] = useState(0);
@@ -127,6 +129,7 @@ export default function Home() {
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const secondaryPagesPrefetchedRef = useRef(false);
   const sectionHistoryRef = useRef<Record<string, string | null>>({});
+  const lastScanOrListSymbolRef = useRef<string | null>(null);
   const pendingAutoSelectRef = useRef(false);
   const prevSectionRef = useRef<WorkspaceSection | null>(null);
   const { cycleTheme } = useTheme();
@@ -143,11 +146,11 @@ export default function Home() {
     handleRightRailToggle,
   } = useLayoutPreferences();
 
-  const customSectionActive = isCustomSection(section);
-  const activeCustomPage = customSectionActive
-    ? customPages.find((p) => `custom-${p.id}` === section) ?? null
-    : null;
-  const chartHidden = section === "market" && marketSubTab === "monitor";
+  const aiInsightsActive = section === "ai-insights";
+  const activeCustomPage = activeInsightTab === "new"
+    ? null
+    : customPages.find((p) => p.id === activeInsightTab) ?? null;
+  const chartHidden = (section === "market" && marketSubTab === "monitor") || aiInsightsActive;
   const isSectorSection = section === "sectors-industries";
 
   const leftPanelMeasureRef = useRef<HTMLDivElement>(null);
@@ -224,12 +227,12 @@ export default function Home() {
       setRightRailHidden(true);
     } else if (section === "sectors-industries") {
       setRightRailHidden(true);
-    } else if (customSectionActive) {
+    } else if (aiInsightsActive) {
       setRightRailHidden(true);
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
     }
-  }, [customSectionActive, section, setRightRailHidden]);
+  }, [aiInsightsActive, section, setRightRailHidden]);
 
   useEffect(() => {
     if (section === "scans" && activeScanName) {
@@ -244,14 +247,21 @@ export default function Home() {
   }, [activeWatchlistId, section]);
 
   useEffect(() => {
-    if (customSectionActive && !activeCustomPage) {
-      setSection("market");
+    if ((section === "scans" || section === "lists") && symbol.trim()) {
+      lastScanOrListSymbolRef.current = symbol.toUpperCase();
     }
-  }, [activeCustomPage, customSectionActive]);
+  }, [section, symbol]);
+
+  useEffect(() => {
+    if (activeInsightTab === "new") return;
+    if (customPages.some((p) => p.id === activeInsightTab)) return;
+    setActiveInsightTab("new");
+    setEditingInsightId(null);
+  }, [activeInsightTab, customPages]);
 
   const { getCachedCandles, setCachedCandles, fetchCandlesFor } = useCandleCache();
-  const shouldLoadRightRailData = section === "scans" || section === "lists" || customSectionActive;
-  const rightRailSymbol = shouldLoadRightRailData ? symbol : "";
+  const shouldLoadRightRailData = section === "scans" || section === "lists" || aiInsightsActive;
+  const rightRailSymbol = aiInsightsActive ? (aiInsightSymbol ?? "") : (shouldLoadRightRailData ? symbol : "");
   const { data } = useStockData(rightRailSymbol);
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(rightRailSymbol);
   const { ownershipQuarters, fundCount } = useOwnership(rightRailSymbol);
@@ -325,9 +335,13 @@ export default function Home() {
 
   const handleSymbolSelect = useCallback((sym: string) => {
     if (!sym) return;
-    setSymbol(sym.toUpperCase());
+    const upper = sym.toUpperCase();
+    setSymbol(upper);
+    if (aiInsightsActive) {
+      setAiInsightSymbol(upper);
+    }
     setSearchValue("");
-  }, []);
+  }, [aiInsightsActive]);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
     const upper = symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0);
@@ -486,7 +500,13 @@ export default function Home() {
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
-    if (s) { setSymbol(s); setSearchValue(""); }
+    if (s) {
+      setSymbol(s);
+      if (aiInsightsActive) {
+        setAiInsightSymbol(s);
+      }
+      setSearchValue("");
+    }
   };
 
   const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
@@ -551,7 +571,7 @@ export default function Home() {
     <div
       ref={leftPanelMeasureRef}
       className={`h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] ${
-        section === "market" || section === "sectors-industries" ? "w-full" : "w-max"
+        section === "market" || section === "sectors-industries" || section === "ai-insights" ? "w-full" : "w-max"
       }`}
       style={{ background: "var(--ws-bg2)" }}
     >
@@ -671,10 +691,26 @@ export default function Home() {
             const restored = sectionHistoryRef.current.lists || activeWatchlistId || DEFAULT_LISTS_OPEN_ID;
             pendingAutoSelectRef.current = true;
             setActiveWatchlistId(restored);
+          } else if (s === "ai-insights") {
+            setEditingInsightId(null);
+            setActiveInsightTab("new");
+            const restoredSymbol = lastScanOrListSymbolRef.current;
+            if (restoredSymbol) {
+              setSymbol(restoredSymbol);
+              setAiInsightSymbol(restoredSymbol);
+            } else {
+              setAiInsightSymbol(null);
+            }
           }
         }}
         symbol={symbol}
-        onSymbolChange={setSymbol}
+        onSymbolChange={(next) => {
+          const upper = next.toUpperCase();
+          setSymbol(upper);
+          if (section === "ai-insights") {
+            setAiInsightSymbol(upper);
+          }
+        }}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         onSearchSubmit={handleSearchSubmit}
@@ -780,22 +816,70 @@ export default function Home() {
           setSection("lists");
           setNewListDraft({ id: newList.id, name: newList.name, nonce: Date.now() });
         }}
-        customPages={customPages}
-        onCreateCustomPage={(input) => {
-          const created = createCustomPage(input);
-          const updated = loadCustomPages();
-          setCustomPages(updated);
-          setSection(`custom-${created.id}`);
+        insightPages={customPages}
+        activeInsightTab={activeInsightTab}
+        onInsightTabChange={(tab) => {
+          setEditingInsightId(null);
+          if (tab === "new") {
+            setActiveInsightTab("new");
+            return;
+          }
+          if (!aiInsightSymbol) {
+            window.alert("Please enter a ticker in the search field before opening an insight page.");
+          }
+          setActiveInsightTab(tab);
         }}
       />
-      {customSectionActive && activeCustomPage ? (
+      {aiInsightsActive ? (
         <div className="flex-1 min-h-0">
-          <CustomPromptPage
-            page={activeCustomPage}
-            symbol={symbol}
-            companyName={data?.profile?.companyName ?? null}
-            onSymbolSubmit={setSymbol}
-          />
+          {activeInsightTab === "new" || (editingInsightId && activeInsightTab === editingInsightId) ? (
+            <AIInsightFormPage
+              mode={editingInsightId ? "edit" : "create"}
+              initialPage={editingInsightId ? activeCustomPage : null}
+              onCancelEdit={() => setEditingInsightId(null)}
+              onSubmit={(input) => {
+                if (editingInsightId && activeCustomPage) {
+                  updateCustomPage(activeCustomPage.id, input);
+                  setCustomPages(loadCustomPages());
+                  setEditingInsightId(null);
+                  return;
+                }
+                const created = createCustomPage(input);
+                setCustomPages(loadCustomPages());
+                setActiveInsightTab(created.id);
+              }}
+            />
+          ) : activeCustomPage ? (
+            <CustomPromptPage
+              page={activeCustomPage}
+              symbol={aiInsightSymbol ?? ""}
+              companyName={data?.profile?.companyName ?? null}
+              onSymbolSubmit={(nextSymbol) => {
+                const upper = nextSymbol.toUpperCase();
+                setSymbol(upper);
+                setAiInsightSymbol(upper);
+              }}
+              onEditPage={() => {
+                setEditingInsightId(activeCustomPage.id);
+              }}
+              onDeletePage={() => {
+                if (!window.confirm(`Delete insight "${activeCustomPage.name}"?`)) return;
+                deleteCustomPage(activeCustomPage.id);
+                setCustomPages(loadCustomPages());
+                setActiveInsightTab("new");
+                setEditingInsightId(null);
+              }}
+            />
+          ) : (
+            <AIInsightFormPage
+              mode="create"
+              onSubmit={(input) => {
+                const created = createCustomPage(input);
+                setCustomPages(loadCustomPages());
+                setActiveInsightTab(created.id);
+              }}
+            />
+          )}
         </div>
       ) : (
         <WorkspaceLayout
