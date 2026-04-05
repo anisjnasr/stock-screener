@@ -909,6 +909,16 @@ function WorkspaceHeader({
                     setScanDropFolderId(null);
                   }}
                 >
+                  {/* New Folder button */}
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1 text-xs transition-colors hover:bg-white/[0.06]"
+                    style={{ color: "var(--ws-text-vdim)" }}
+                    onClick={handleCreateFolder}
+                  >
+                    + New Folder
+                  </button>
+                  <div className="mx-2 mt-1 mb-0.5 h-px" style={{ background: "var(--ws-border)" }} />
                   {/* Folders */}
                   {folders.map((folder) => {
                     const items = folderedItems.get(folder.id) ?? [];
@@ -998,16 +1008,6 @@ function WorkspaceHeader({
                       aria-hidden
                     />
                   )}
-                  {/* New Folder button */}
-                  <div className="mx-2 mt-1 mb-0.5 h-px" style={{ background: "var(--ws-border)" }} />
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-1 text-xs transition-colors hover:bg-white/[0.06]"
-                    style={{ color: "var(--ws-text-vdim)" }}
-                    onClick={handleCreateFolder}
-                  >
-                    + New Folder
-                  </button>
                 </div>
                 );
               })()}
