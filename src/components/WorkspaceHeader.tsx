@@ -899,7 +899,7 @@ function WorkspaceHeader({
 
                 return (
                 <div
-                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[220px] max-h-[50vh] overflow-auto shadow-lg"
+                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[220px] max-h-[75vh] overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                   onDragOver={(e) => {
                     if (scanDragFromRef.current == null) return;
@@ -1136,7 +1136,7 @@ function WorkspaceHeader({
               </button>
               {listDDOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-[50vh] overflow-auto shadow-lg"
+                  className="absolute top-full left-0 mt-1 z-50 rounded py-1 min-w-[180px] max-h-[75vh] overflow-auto shadow-lg"
                   style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
                   onDragOver={(e) => {
                     if (listDragFromRef.current == null) return;
