@@ -11,7 +11,6 @@ import {
   CrosshairMode,
   UTCTimestamp,
   CandlestickSeries,
-  HistogramSeries,
   LineSeries,
 } from "lightweight-charts";
 import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
@@ -399,16 +398,21 @@ function StockChart({
 
   const sortedTimes = useMemo(() => seriesData.map((s) => Number(s.time)).sort((a, b) => a - b), [seriesData]);
 
-  const volumeData = useMemo(() => {
+  /** Volume as OHLC candles from 0 so Lightweight Charts can draw borders (histogram has no stroke). */
+  const volumeCandleData = useMemo(() => {
     if (chronological.length === 0) return [];
-    const upColor = settings.candleUpBodyColor;
-    const downColor = settings.candleDownBodyColor;
-    return chronological.map((d) => ({
-      time: dateToTime(d.date),
-      value: d.volume,
-      color: d.close >= d.open ? upColor : downColor,
-    }));
-  }, [chronological, settings]);
+    return chronological.map((d) => {
+      const time = dateToTime(d.date);
+      const v = d.volume;
+      if (v <= 0) {
+        return { time, open: 0, high: 0, low: 0, close: 0 };
+      }
+      if (d.close >= d.open) {
+        return { time, open: 0, high: v, low: 0, close: v };
+      }
+      return { time, open: v, high: v, low: 0, close: 0 };
+    });
+  }, [chronological]);
 
   const ema50Data = useMemo(() => {
     if (timeframe !== "daily") return [];
@@ -1065,17 +1069,23 @@ function StockChart({
     };
     chart.subscribeClick(onChartClick);
 
-    if (settings.showVolume && volumeData.length > 0) {
+    if (settings.showVolume && volumeCandleData.length > 0) {
       chart.addSeries(
-        HistogramSeries,
+        CandlestickSeries,
         {
           priceFormat: { type: "custom", minMove: 1, formatter: (v: number) => fmtVol(v) },
           priceScaleId: "",
           lastValueVisible: true,
           priceLineVisible: false,
+          upColor: settings.candleUpBodyColor,
+          downColor: settings.candleDownBodyColor,
+          borderVisible: true,
+          borderUpColor: settings.candleUpBorderColor,
+          borderDownColor: settings.candleDownBorderColor,
+          wickVisible: false,
         },
         1
-      ).setData(volumeData);
+      ).setData(volumeCandleData);
       try {
         const volScale = chart.priceScale("");
         if (volScale) {
@@ -1217,7 +1227,7 @@ function StockChart({
     timeframe,
     chronological,
     seriesData,
-    volumeData,
+    volumeCandleData,
     ema50Data,
     ema200Data,
     ema40Data,
