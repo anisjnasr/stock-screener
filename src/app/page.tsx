@@ -345,7 +345,9 @@ export default function Home() {
       if (flag) next[sym] = flag;
       else delete next[sym];
       saveFlags(next);
-      window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next }));
+      queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: next }));
+      });
       return next;
     });
   }, [symbol]);
@@ -533,10 +535,6 @@ export default function Home() {
     }},
     { key: "t", description: "Cycle theme", category: "general" as const, action: cycleTheme },
     { key: "?", shift: true, description: "Show shortcuts", category: "general" as const, action: () => setShortcutsOpen(true) },
-    { key: "1", description: "Market", category: "navigation" as const, action: () => setSection("market") },
-    { key: "2", description: "Sectors", category: "navigation" as const, action: () => setSection("sectors-industries") },
-    { key: "3", description: "Scans", category: "navigation" as const, action: () => setSection("scans") },
-    { key: "4", description: "Lists", category: "navigation" as const, action: () => setSection("lists") },
     { key: "d", description: "Daily chart", category: "chart" as const, action: () => setChartTimeframe("daily") },
     { key: "w", description: "Weekly chart", category: "chart" as const, action: () => setChartTimeframe("weekly") },
     { key: "m", description: "Monthly chart", category: "chart" as const, action: () => setChartTimeframe("monthly") },

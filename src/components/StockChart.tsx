@@ -1316,6 +1316,46 @@ function StockChart({
         return;
       }
 
+      if (onFlagChange && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setShowFlagPicker((v) => !v);
+        setShowWatchlistModal(false);
+        return;
+      }
+      if (onFlagChange && showFlagPicker) {
+        const key = e.code === "Numpad0" ? "0" : e.code === "Numpad1" ? "1" : e.code === "Numpad2" ? "2" : e.code === "Numpad3" ? "3" : e.code === "Numpad4" ? "4" : e.key;
+        if (key === "0") {
+          e.preventDefault();
+          onFlagChange(null);
+          setShowFlagPicker(false);
+          return;
+        }
+        if (key === "1") {
+          e.preventDefault();
+          onFlagChange("blue");
+          setShowFlagPicker(false);
+          return;
+        }
+        if (key === "2") {
+          e.preventDefault();
+          onFlagChange("yellow");
+          setShowFlagPicker(false);
+          return;
+        }
+        if (key === "3") {
+          e.preventDefault();
+          onFlagChange("red");
+          setShowFlagPicker(false);
+          return;
+        }
+        if (key === "4") {
+          e.preventDefault();
+          onFlagChange("green");
+          setShowFlagPicker(false);
+          return;
+        }
+      }
+
       if (selectedDrawingId && e.key === "Delete") {
         setDrawings((prev) => prev.filter((d) => d.id !== selectedDrawingId));
         setSelectedDrawingId(null);
@@ -1323,7 +1363,7 @@ function StockChart({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedDrawingId]);
+  }, [selectedDrawingId, onFlagChange, showFlagPicker]);
 
   const getHandlePoint = useCallback(
     (d: ChartDrawing, handle: DragHandle): { x: number; y: number } | null => {
@@ -1654,7 +1694,7 @@ function StockChart({
                 type="button"
                 onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistModal(false); }}
                 className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass} flex items-center gap-1`}
-                title="Flag stock"
+                title="Flag stock (Shift+F, then 0-4)"
               >
                 <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
@@ -1662,24 +1702,24 @@ function StockChart({
               </button>
               {showFlagPicker && (
                 <div className="absolute top-full left-0 mt-1 z-30 rounded border shadow-lg p-2 flex items-center gap-2 bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)]">
-                  {(["red", "yellow", "green", "blue"] as const).map((c) => (
+                  <button
+                    type="button"
+                    onClick={() => { onFlagChange(null); setShowFlagPicker(false); }}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-ws-caption text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
+                    title="No flag (0)"
+                  >
+                    ✕
+                  </button>
+                  {(["blue", "yellow", "red", "green"] as const).map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
                       className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
                       style={{ backgroundColor: { red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[c] }}
-                      title={c}
+                      title={c === "blue" ? "Blue (1)" : c === "yellow" ? "Yellow (2)" : c === "red" ? "Red (3)" : "Green (4)"}
                     />
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => { onFlagChange(null); setShowFlagPicker(false); }}
-                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-ws-caption text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
-                    title="No flag"
-                  >
-                    ✕
-                  </button>
                 </div>
               )}
             </div>
