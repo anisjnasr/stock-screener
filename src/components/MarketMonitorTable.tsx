@@ -8,6 +8,13 @@ type ApiResponse = {
   error?: string;
 };
 
+type RatioThresholds = {
+  ratio5dLow: number | null;
+  ratio5dHigh: number | null;
+  ratio10dLow: number | null;
+  ratio10dHigh: number | null;
+};
+
 function fmtInt(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "";
   return n.toLocaleString();
@@ -16,6 +23,44 @@ function fmtInt(n: number | null | undefined): string {
 function fmtRatio(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
   return n.toFixed(2);
+}
+
+function quantile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  const weight = idx - lo;
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * weight;
+}
+
+function computeRatioThresholds(rows: MarketMonitorRow[]): RatioThresholds {
+  const ratio5dVals = rows
+    .map((r) => r.ratio5d)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const ratio10dVals = rows
+    .map((r) => r.ratio10d)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+
+  return {
+    ratio5dLow: quantile(ratio5dVals, 0.1),
+    ratio5dHigh: quantile(ratio5dVals, 0.9),
+    ratio10dLow: quantile(ratio10dVals, 0.1),
+    ratio10dHigh: quantile(ratio10dVals, 0.9),
+  };
+}
+
+function getRatioExtremeCellClass(
+  value: number | null | undefined,
+  low: number | null,
+  high: number | null
+): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  if (low != null && value <= low) return "ws-mm-heat-red-very";
+  if (high != null && value >= high) return "ws-mm-heat-green-very";
+  return "";
 }
 
 function fmtPctCell(n: number | null | undefined): string {
@@ -64,6 +109,12 @@ export default function MarketMonitorTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
+  const [ratioThresholds, setRatioThresholds] = useState<RatioThresholds>({
+    ratio5dLow: null,
+    ratio5dHigh: null,
+    ratio10dLow: null,
+    ratio10dHigh: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +127,8 @@ export default function MarketMonitorTable() {
         } else {
           setError(null);
           const all = json.rows ?? [];
+          // Use all available historical rows returned by the API to define extremes.
+          setRatioThresholds(computeRatioThresholds(all));
           if (all.length > 0) {
             const latest = new Date(`${all[0].date}T00:00:00Z`);
             const cutoff = new Date(latest);
@@ -210,8 +263,12 @@ export default function MarketMonitorTable() {
                 >
                   {fmtInt(row.down4pct)}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums">{fmtRatio(row.ratio5d)}</td>
-                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums">{fmtRatio(row.ratio10d)}</td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
+                  {fmtRatio(row.ratio5d)}
+                </td>
+                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
+                  {fmtRatio(row.ratio10d)}
+                </td>
                 <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.up25pct_qtr)}</td>
                 <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.down25pct_qtr)}</td>
                 <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums border-l ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.up25pct_month)}</td>
