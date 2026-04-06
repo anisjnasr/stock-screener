@@ -7,6 +7,13 @@ import { updateCustomPage } from "@/lib/custom-pages-storage";
 type ModelChoice = "auto" | "sonnet" | "opus";
 type ModelUsed = "sonnet" | "opus";
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
+type SourceTelemetry = {
+  enabled?: boolean;
+  status?: "not_requested" | "skipped" | "fetched" | "unavailable";
+  reason?: string | null;
+  missingOrStale?: string[];
+  durationMs?: number | null;
+};
 
 type Props = {
   page: CustomPage;
@@ -27,56 +34,171 @@ function escapeHtml(input: string): string {
 }
 
 function inlineMarkdown(input: string): string {
-  return input
+  const withLinks = input.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label: string, href: string) => {
+    const safeHref = href.trim();
+    return `<a href="${safeHref}" target="_blank" rel="noreferrer noopener">${label}</a>`;
+  });
+  return withLinks
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function parseTableRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return null;
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return null;
+  const inner = trimmed.slice(1, -1);
+  const cells: string[] = [];
+  let current = "";
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    const next = inner[i + 1];
+    if (ch === "\\" && (next === "|" || next === "\\")) {
+      current += next;
+      i += 1;
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current.trim());
+  if (cells.length < 2) return null;
+  return cells;
+}
+
+function isTableSeparatorRow(cells: string[]): boolean {
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replaceAll(/\s+/g, "")));
+}
+
+type TableAlignment = "left" | "right" | "center" | null;
+
+function parseTableAlignments(cells: string[]): TableAlignment[] {
+  return cells.map((cell) => {
+    const marker = cell.replaceAll(/\s+/g, "");
+    if (/^:-{3,}:$/.test(marker)) return "center";
+    if (/^:-{3,}$/.test(marker)) return "left";
+    if (/^-{3,}:$/.test(marker)) return "right";
+    return null;
+  });
+}
+
+function cellAlignStyle(align: TableAlignment): string {
+  if (!align) return "";
+  return ` style="text-align: ${align};"`;
+}
+
+function renderTable(tableRows: string[][]): string[] {
+  if (tableRows.length < 2) return tableRows.map((row) => `<p>${inlineMarkdown(row.join(" | "))}</p>`);
+  const headerCells = tableRows[0] ?? [];
+  const separatorCells = tableRows[1] ?? [];
+  const hasSeparator = isTableSeparatorRow(separatorCells);
+  const alignments = hasSeparator ? parseTableAlignments(separatorCells) : [];
+  const bodyStart = hasSeparator ? 2 : 1;
+  const bodyRows = tableRows.slice(bodyStart);
+  if (headerCells.length === 0 || bodyRows.length === 0) {
+    return tableRows.map((row) => `<p>${inlineMarkdown(row.join(" | "))}</p>`);
+  }
+  const head = `<thead><tr>${headerCells
+    .map((cell, index) => `<th${cellAlignStyle(alignments[index] ?? null)}>${inlineMarkdown(cell)}</th>`)
+    .join("")}</tr></thead>`;
+  const body = `<tbody>${bodyRows
+    .map((row) => `<tr>${row
+      .map((cell, index) => `<td${cellAlignStyle(alignments[index] ?? null)}>${inlineMarkdown(cell)}</td>`)
+      .join("")}</tr>`)
+    .join("")}</tbody>`;
+  return [`<table>${head}${body}</table>`];
 }
 
 function markdownToHtml(markdown: string): string {
   const safe = escapeHtml(markdown || "");
   const lines = safe.split(/\r?\n/);
   const out: string[] = [];
-  let inList = false;
+  let inBulletList = false;
+  let inOrderedList = false;
+  let tableRows: string[][] = [];
+
+  const closeLists = () => {
+    if (inBulletList) {
+      out.push("</ul>");
+      inBulletList = false;
+    }
+    if (inOrderedList) {
+      out.push("</ol>");
+      inOrderedList = false;
+    }
+  };
+
+  const flushTable = () => {
+    if (tableRows.length === 0) return;
+    out.push(...renderTable(tableRows));
+    tableRows = [];
+  };
+
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (!line.trim()) {
-      if (inList) {
-        out.push("</ul>");
-        inList = false;
-      }
+      closeLists();
+      flushTable();
       continue;
     }
+    const tableRow = parseTableRow(line);
+    if (tableRow) {
+      closeLists();
+      tableRows.push(tableRow);
+      continue;
+    }
+    flushTable();
     if (line.startsWith("### ")) {
-      if (inList) { out.push("</ul>"); inList = false; }
+      closeLists();
       out.push(`<h3>${inlineMarkdown(line.slice(4))}</h3>`);
       continue;
     }
     if (line.startsWith("## ")) {
-      if (inList) { out.push("</ul>"); inList = false; }
+      closeLists();
       out.push(`<h2>${inlineMarkdown(line.slice(3))}</h2>`);
       continue;
     }
     if (line.startsWith("# ")) {
-      if (inList) { out.push("</ul>"); inList = false; }
+      closeLists();
       out.push(`<h1>${inlineMarkdown(line.slice(2))}</h1>`);
       continue;
     }
     if (line.startsWith("- ")) {
-      if (!inList) {
+      if (inOrderedList) {
+        out.push("</ol>");
+        inOrderedList = false;
+      }
+      if (!inBulletList) {
         out.push("<ul>");
-        inList = true;
+        inBulletList = true;
       }
       out.push(`<li>${inlineMarkdown(line.slice(2))}</li>`);
       continue;
     }
-    if (inList) {
-      out.push("</ul>");
-      inList = false;
+    const orderedMatch = line.match(/^\d+\.\s+(.+)$/);
+    if (orderedMatch) {
+      if (inBulletList) {
+        out.push("</ul>");
+        inBulletList = false;
+      }
+      if (!inOrderedList) {
+        out.push("<ol>");
+        inOrderedList = true;
+      }
+      out.push(`<li>${inlineMarkdown(orderedMatch[1])}</li>`);
+      continue;
     }
+    closeLists();
     out.push(`<p>${inlineMarkdown(line)}</p>`);
   }
-  if (inList) out.push("</ul>");
+  closeLists();
+  flushTable();
   return out.join("\n");
 }
 
@@ -98,6 +220,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
   const [responseText, setResponseText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourceTelemetry, setSourceTelemetry] = useState<SourceTelemetry | null>(null);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -165,6 +288,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
     setError(null);
     setResponseText("");
     setModelUsed(null);
+    setSourceTelemetry(null);
     try {
       const res = await fetch("/api/ai-completion", {
         method: "POST",
@@ -197,7 +321,13 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
           if (runId !== activeRunIdRef.current) return;
           const trimmed = line.trim();
           if (!trimmed) continue;
-          const evt = JSON.parse(trimmed) as { type: string; text?: string; modelUsed?: ModelUsed; error?: string };
+          const evt = JSON.parse(trimmed) as {
+            type: string;
+            text?: string;
+            modelUsed?: ModelUsed;
+            sourceTelemetry?: SourceTelemetry;
+            error?: string;
+          };
           if (evt.type === "meta" && evt.modelUsed) {
             setModelUsed(evt.modelUsed);
             // If this run used auto/recommended, lock in the chosen model for future runs.
@@ -205,6 +335,9 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
               updateCustomPage(page.id, { aiModel: evt.modelUsed });
               setModelChoice(evt.modelUsed);
             }
+          }
+          if (evt.type === "meta" && evt.sourceTelemetry) {
+            setSourceTelemetry(evt.sourceTelemetry);
           }
           if (evt.type === "delta" && evt.text) setResponseText((prev) => prev + evt.text);
           if (evt.type === "error") throw new Error(evt.error || "AI stream failed");
@@ -365,6 +498,31 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
         <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
           Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice === "auto" ? "Recommended (auto-selecting...)" : modelChoice}
         </span>
+        {!!sourceTelemetry?.enabled && (
+          <span
+            className="text-xs px-2 py-0.5 rounded"
+            style={{
+              background:
+                sourceTelemetry.status === "fetched"
+                  ? "rgba(61,220,132,0.16)"
+                  : sourceTelemetry.status === "skipped"
+                    ? "rgba(0,229,204,0.12)"
+                    : sourceTelemetry.status === "unavailable"
+                      ? "rgba(239,68,104,0.16)"
+                      : "var(--ws-bg3)",
+              color:
+                sourceTelemetry.status === "fetched"
+                  ? "var(--ws-green)"
+                  : sourceTelemetry.status === "unavailable"
+                    ? "var(--ws-red)"
+                    : "var(--ws-text)",
+            }}
+            title={sourceTelemetry.reason ?? undefined}
+          >
+            Web: {sourceTelemetry.status ?? "not_requested"}
+            {typeof sourceTelemetry.durationMs === "number" ? ` (${sourceTelemetry.durationMs}ms)` : ""}
+          </span>
+        )}
         <span className="text-xs" style={{ color: "var(--ws-text-dim)" }}>
           Sources: {page.dataSources.join(", ")} · Lookback {formatLookback(page.dataLookback)}
         </span>
@@ -384,7 +542,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
         )}
         {!!responseText && (
           <article
-            className="prose prose-invert max-w-none text-sm"
+            className="ai-markdown-output max-w-none text-sm"
             style={{ color: "var(--ws-text)" }}
             dangerouslySetInnerHTML={{ __html: html }}
           />

@@ -16,6 +16,17 @@ type ModelChoice = "auto" | "sonnet" | "opus";
 type ModelUsed = "sonnet" | "opus";
 type LookbackUnit = "weeks" | "months" | "years";
 type DataLookback = { value: number; unit: LookbackUnit } | null;
+type CoverageReport = {
+  needsWebFallback: boolean;
+  missingOrStale: string[];
+};
+type WebTelemetry = {
+  enabled: boolean;
+  status: "not_requested" | "skipped" | "fetched" | "unavailable";
+  reason: string | null;
+  missingOrStale: string[];
+  durationMs: number | null;
+};
 
 type ReqBody = {
   prompt?: string;
@@ -103,6 +114,148 @@ function buildDatabaseContext(symbol: string, lookback: DataLookback): Record<st
   return { asOfDate, company, snapshot, financials, ownership, bars };
 }
 
+function daysSinceDate(input: string): number | null {
+  const t = Date.parse(input);
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((Date.now() - t) / 86_400_000);
+}
+
+function assessDatabaseCoverage(database: Record<string, unknown> | undefined): CoverageReport {
+  if (!database) {
+    return { needsWebFallback: true, missingOrStale: ["database context unavailable"] };
+  }
+  const missingOrStale: string[] = [];
+  const company = (database.company as Record<string, unknown> | undefined) ?? undefined;
+  const financials = (database.financials as Record<string, unknown> | undefined) ?? undefined;
+  const hasCompanyInfo = Boolean(company?.name || company?.classification);
+  if (!hasCompanyInfo) missingOrStale.push("company profile");
+  if (!database.snapshot) missingOrStale.push("snapshot metrics");
+  if (!Array.isArray(database.bars) || database.bars.length === 0) missingOrStale.push("price/volume history");
+  const annual = Array.isArray(financials?.annual) ? financials.annual : [];
+  const quarterly = Array.isArray(financials?.quarterly) ? financials.quarterly : [];
+  if (annual.length === 0 && quarterly.length === 0) missingOrStale.push("financial statements");
+  if (!Array.isArray(database.ownership) || database.ownership.length === 0) missingOrStale.push("institutional ownership");
+  const asOfDate = String(database.asOfDate ?? "");
+  const ageDays = asOfDate ? daysSinceDate(asOfDate) : null;
+  if (ageDays != null && ageDays > 5) {
+    missingOrStale.push(`database snapshot stale (${ageDays} days old)`);
+  }
+  return { needsWebFallback: missingOrStale.length > 0, missingOrStale };
+}
+
+function pickFields<T extends Record<string, unknown>, K extends keyof T>(obj: T | null | undefined, keys: K[]): Partial<T> {
+  if (!obj) return {};
+  const out: Partial<T> = {};
+  for (const key of keys) {
+    const val = obj[key];
+    if (val !== undefined && val !== null) out[key] = val;
+  }
+  return out;
+}
+
+async function fetchWebFallbackContext(symbol: string): Promise<Record<string, unknown>> {
+  const YahooFinance = (await import("yahoo-finance2")).default as unknown as {
+    quote: (ticker: string) => Promise<unknown>;
+    quoteSummary: (ticker: string, opts: { modules: string[] }) => Promise<unknown>;
+  };
+  const safeCall = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await fn();
+    } catch {
+      return null;
+    }
+  };
+  const timeoutMs = 4500;
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("web fallback timed out")), timeoutMs);
+  });
+  const task = (async () => {
+    const [quoteRaw, summaryRaw] = await Promise.all([
+      safeCall(() => YahooFinance.quote(symbol)),
+      safeCall(() => YahooFinance.quoteSummary(symbol, {
+        modules: [
+          "summaryDetail",
+          "financialData",
+          "defaultKeyStatistics",
+          "calendarEvents",
+          "recommendationTrend",
+          "assetProfile",
+        ],
+      })),
+    ]);
+    const quote = pickFields(
+      (quoteRaw as Record<string, unknown> | null | undefined) ?? null,
+      [
+        "symbol",
+        "shortName",
+        "longName",
+        "currency",
+        "exchange",
+        "regularMarketPrice",
+        "regularMarketPreviousClose",
+        "regularMarketOpen",
+        "regularMarketDayHigh",
+        "regularMarketDayLow",
+        "regularMarketVolume",
+        "averageDailyVolume3Month",
+        "fiftyTwoWeekHigh",
+        "fiftyTwoWeekLow",
+        "marketCap",
+        "trailingPE",
+        "forwardPE",
+      ]
+    );
+    const summary = (summaryRaw as Record<string, unknown> | null | undefined) ?? null;
+    return {
+      provider: "yahoo-finance2",
+      fetchedAt: new Date().toISOString(),
+      quote,
+      summaryDetail: pickFields(
+        (summary?.summaryDetail as Record<string, unknown> | undefined) ?? undefined,
+        [
+          "trailingPE",
+          "forwardPE",
+          "beta",
+          "dividendYield",
+          "payoutRatio",
+          "priceToSalesTrailing12Months",
+          "enterpriseToEbitda",
+        ]
+      ),
+      financialData: pickFields(
+        (summary?.financialData as Record<string, unknown> | undefined) ?? undefined,
+        [
+          "totalRevenue",
+          "revenueGrowth",
+          "grossMargins",
+          "operatingMargins",
+          "profitMargins",
+          "returnOnEquity",
+          "freeCashflow",
+          "totalCash",
+          "totalDebt",
+        ]
+      ),
+      defaultKeyStatistics: pickFields(
+        (summary?.defaultKeyStatistics as Record<string, unknown> | undefined) ?? undefined,
+        ["enterpriseValue", "sharesOutstanding", "floatShares", "shortPercentOfFloat", "heldPercentInstitutions"]
+      ),
+      calendarEvents: pickFields(
+        (summary?.calendarEvents as Record<string, unknown> | undefined) ?? undefined,
+        ["earnings", "exDividendDate"]
+      ),
+      recommendationTrend: Array.isArray((summary?.recommendationTrend as Record<string, unknown> | undefined)?.trend)
+        ? ((summary?.recommendationTrend as { trend?: unknown[] }).trend ?? []).slice(0, 4)
+        : undefined,
+      assetProfile: pickFields(
+        (summary?.assetProfile as Record<string, unknown> | undefined) ?? undefined,
+        ["sector", "industry", "website", "longBusinessSummary"]
+      ),
+    };
+  })();
+  return Promise.race([task, timeout]);
+}
+
 export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -130,6 +283,7 @@ export async function POST(req: Request) {
     start(controller) {
       (async () => {
         try {
+          const runStartedAt = Date.now();
           let modelUsed: ModelUsed;
           if (requestedModel === "auto") {
             modelUsed = await classifyModel(anthropic, prompt);
@@ -141,19 +295,81 @@ export async function POST(req: Request) {
           controller.enqueue(jsonLine({ type: "meta", modelUsed }));
 
           const context: Record<string, unknown> = { symbol, dataSources, dataLookback };
+          const webTelemetry: WebTelemetry = {
+            enabled: dataSources.includes("web"),
+            status: dataSources.includes("web") ? "not_requested" : "not_requested",
+            reason: null,
+            missingOrStale: [],
+            durationMs: null,
+          };
+          let databaseContext: Record<string, unknown> | undefined;
           if (dataSources.includes("database")) {
-            context.database = buildDatabaseContext(symbol, dataLookback);
+            databaseContext = buildDatabaseContext(symbol, dataLookback);
+            context.database = databaseContext;
           }
           if (dataSources.includes("web")) {
-            context.web = { note: "Web source is enabled but currently limited to user-provided prompt context." };
+            const coverage = assessDatabaseCoverage(databaseContext);
+            const shouldFetchWeb = !dataSources.includes("database") || coverage.needsWebFallback;
+            webTelemetry.missingOrStale = coverage.missingOrStale;
+            if (shouldFetchWeb) {
+              const fallbackReason = dataSources.includes("database")
+                ? `Missing/stale DB fields: ${coverage.missingOrStale.join(", ")}`
+                : "Database source disabled";
+              const webFetchStartedAt = Date.now();
+              try {
+                context.web = {
+                  ...await fetchWebFallbackContext(symbol),
+                  fallbackReason,
+                };
+                webTelemetry.status = "fetched";
+                webTelemetry.reason = fallbackReason;
+                webTelemetry.durationMs = Date.now() - webFetchStartedAt;
+              } catch (error) {
+                context.web = {
+                  provider: "yahoo-finance2",
+                  status: "unavailable",
+                  error: error instanceof Error ? error.message : "web fetch failed",
+                  fallbackReason,
+                };
+                webTelemetry.status = "unavailable";
+                webTelemetry.reason = fallbackReason;
+                webTelemetry.durationMs = Date.now() - webFetchStartedAt;
+              }
+            } else {
+              context.web = {
+                provider: "none",
+                status: "skipped",
+                reason: "Database coverage sufficient; skipped web fetch for lower latency.",
+              };
+              webTelemetry.status = "skipped";
+              webTelemetry.reason = "Database coverage sufficient";
+            }
           }
+          controller.enqueue(jsonLine({ type: "meta", modelUsed, sourceTelemetry: webTelemetry }));
+          console.info(
+            "[ai-completion] source-resolution",
+            JSON.stringify({
+              symbol,
+              modelUsed,
+              dataSources,
+              webTelemetry,
+            })
+          );
 
           const system = [
             "You are an equity research assistant.",
             "Use provided context first. If context is missing, say so explicitly instead of fabricating values.",
+            "When both database and web contexts exist, prefer database values first and use web data only to fill missing or stale fields.",
+            "If web values are used, call out that source explicitly.",
             "Be concise, structured, and include key risks/assumptions.",
             "Follow the user's requested format and length exactly when specified.",
             "Default writing style when not specified: 1 short paragraph of 3-4 sentences.",
+            "Formatting contract by default: use markdown.",
+            "Use ## section headers for multi-part answers when helpful.",
+            "Use numbered lists for ordered reasons/steps and bullet lists for unordered points.",
+            "When comparing 2+ items or metrics, prefer a clean markdown table.",
+            "Whenever quoting figures or statistics, include a source link in markdown format like [Source](https://...).",
+            "End investment-style analyses with a bolded Key Risk line when relevant.",
             "Never repeat sentences, clauses, or phrases.",
             "Do not emit draft alternatives; provide one final answer only.",
             "Avoid filler intros/outros; use plain, direct language.",
@@ -184,6 +400,16 @@ export async function POST(req: Request) {
               controller.enqueue(jsonLine({ type: "delta", text: event.delta.text }));
             }
           }
+          console.info(
+            "[ai-completion] completed",
+            JSON.stringify({
+              symbol,
+              modelUsed,
+              elapsedMs: Date.now() - runStartedAt,
+              webStatus: webTelemetry.status,
+              webDurationMs: webTelemetry.durationMs,
+            })
+          );
           controller.enqueue(jsonLine({ type: "done" }));
           controller.close();
         } catch (error) {

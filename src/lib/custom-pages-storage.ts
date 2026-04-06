@@ -15,6 +15,32 @@ export type CustomPage = {
 export type LookbackUnit = "weeks" | "months" | "years";
 export type DataLookback = { value: number; unit: LookbackUnit } | null;
 
+export const DEFAULT_INSIGHT_PROMPT_TEMPLATE = [
+  "Use markdown formatting.",
+  "",
+  "## Thesis",
+  "Write a concise 2-4 sentence overview using the provided context.",
+  "",
+  "## Why It Matters",
+  "1. Driver one",
+  "2. Driver two",
+  "3. Driver three",
+  "",
+  "## Metrics Comparison",
+  "Use a markdown table only when comparing 2+ items or metrics.",
+  "| Metric | Company | Benchmark | Source |",
+  "|---|---:|---:|---|",
+  "| Example metric | value | value | [Source](https://...) |",
+  "",
+  "## Risks",
+  "- Risk one",
+  "- Risk two",
+  "",
+  "**Key Risk:** Add a one-line highest-impact risk when relevant.",
+  "",
+  "If any figure is quoted, include a source link in markdown.",
+].join("\n");
+
 function normalizeLookback(input: unknown): DataLookback {
   if (!input) return null;
   // Backward-compatible migration for legacy string storage.
@@ -40,7 +66,7 @@ function sanitizePage(input: Partial<CustomPage>): CustomPage {
     aiModel: input.aiModel === "opus" || input.aiModel === "auto" ? input.aiModel : "sonnet",
     dataSources: dataSources.length > 0 ? dataSources : ["database"],
     dataLookback: normalizeLookback(input.dataLookback),
-    prompt: typeof input.prompt === "string" ? input.prompt : "",
+    prompt: typeof input.prompt === "string" ? input.prompt : DEFAULT_INSIGHT_PROMPT_TEMPLATE,
     createdAt: typeof input.createdAt === "string" ? input.createdAt : new Date().toISOString(),
   };
 }

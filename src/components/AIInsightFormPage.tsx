@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CustomPage, LookbackUnit } from "@/lib/custom-pages-storage";
+import { DEFAULT_INSIGHT_PROMPT_TEMPLATE } from "@/lib/custom-pages-storage";
 
 type InsightInput = Omit<CustomPage, "id" | "createdAt">;
 
@@ -20,7 +21,7 @@ export default function AIInsightFormPage({ mode, initialPage, onSubmit, onCance
   const [useWeb, setUseWeb] = useState(false);
   const [lookbackValue, setLookbackValue] = useState("1");
   const [lookbackUnit, setLookbackUnit] = useState<LookbackUnit>("years");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(DEFAULT_INSIGHT_PROMPT_TEMPLATE);
 
   const title = useMemo(() => (mode === "edit" ? "Edit Insight" : "New Insight"), [mode]);
 
@@ -41,12 +42,12 @@ export default function AIInsightFormPage({ mode, initialPage, onSubmit, onCance
     setUseWeb(false);
     setLookbackValue("1");
     setLookbackUnit("years");
-    setPrompt("");
+    setPrompt(DEFAULT_INSIGHT_PROMPT_TEMPLATE);
   }, [initialPage, mode]);
 
   return (
-    <div className="h-full min-h-0 overflow-auto px-4 py-3" style={{ background: "var(--ws-bg2)" }}>
-      <div className="max-w-4xl mx-auto rounded p-4" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
+    <div className="h-full min-h-0 overflow-hidden px-4 py-3" style={{ background: "var(--ws-bg2)" }}>
+      <div className="h-full min-h-0 max-w-4xl mx-auto rounded p-4 flex flex-col" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>
             {title}
@@ -123,14 +124,14 @@ export default function AIInsightFormPage({ mode, initialPage, onSubmit, onCance
           </label>
         </div>
 
-        <label className="text-xs block mb-3" style={{ color: "var(--ws-text-dim)" }}>
+        <label className="text-xs block mb-3 flex-1 min-h-0" style={{ color: "var(--ws-text-dim)" }}>
           Prompt template
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            className="mt-1 w-full rounded px-2 py-1.5 text-sm min-h-28"
+            className="mt-1 w-full h-[calc(100%-1.25rem)] min-h-28 rounded px-2 py-1.5 text-sm resize-y"
             style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-            placeholder="Describe what analysis should be generated for each ticker."
+            placeholder="Use markdown sections, lists, tables (when useful), and source links for figures."
           />
         </label>
 

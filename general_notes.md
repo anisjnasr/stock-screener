@@ -81,3 +81,58 @@
 ### NEW FEATURES (big new development — clear thorough plan)
 - Custom Prompt Template Pages: Add plus button to header bar right of main sections to create new custom pages. Form fields: Page Name, AI Model (dropdown), Data Sources (Database/Web), Data Lookback (1yr/5yr/blank), Prompt. Prompt runs only when page opens using active symbol from main page. Page header shows symbol/company name. Include stock search field that re-runs prompt with new ticker on Enter.
 - AI Model Auto-Recommend Feature: When custom prompt is triggered, internal Sonnet prompt evaluates user's prompt. If it requires complex multi-step reasoning, nuanced judgment, or synthesis across many data points, recommend Opus. Otherwise default to Sonnet. Automatically execute user's prompt with recommended model.
+
+---
+
+## AI Prompt Formatting Best Practices (Default)
+
+Use this as the default output contract for all prompt pages:
+
+- Prefer markdown output for all responses.
+- Use `##` section headers for multi-part analysis.
+- Keep paragraphs short (2-4 sentences).
+- Use numbered lists for ordered points and bullet lists for unordered items.
+- Use markdown tables when comparing 2+ entities or metrics.
+- Add source links for any quoted figures: `[Source](https://...)`.
+- End investment-style responses with `**Key Risk:** <one line>`.
+
+### Short Answer Example
+
+```markdown
+## Thesis
+NVIDIA remains the category leader in AI accelerators, supported by strong demand from hyperscalers and sustained data-center capex. Current valuation implies continued high execution.
+
+## Risks
+- Margin compression if competition accelerates
+- Demand normalization if AI spend slows
+
+**Key Risk:** Multiple compression if growth decelerates faster than consensus.
+```
+
+### Deep Analysis Example
+
+```markdown
+## Thesis
+2-4 sentence overview grounded in provided context.
+
+## Why It Matters
+1. First major driver
+2. Second major driver
+3. Third major driver
+
+## Risks
+- Risk one
+- Risk two
+
+**Key Risk:** One-line highest-impact downside.
+```
+
+### Comparison Table Example
+
+```markdown
+## Metrics Comparison
+| Metric | Company | Sector | Source |
+|---|---:|---:|---|
+| Revenue Growth (YoY) | 65% | 12% | [Source](https://example.com/source) |
+| Gross Margin | 76% | 41% | [Source](https://example.com/source2) |
+```

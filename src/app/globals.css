@@ -212,3 +212,69 @@ body {
   color: var(--ws-heat-text-strong);
   font-weight: 700;
 }
+
+/* AI insight output typography */
+.ai-markdown-output {
+  line-height: 1.6;
+}
+.ai-markdown-output > * + * {
+  margin-top: 0.65rem;
+}
+.ai-markdown-output h1,
+.ai-markdown-output h2,
+.ai-markdown-output h3 {
+  color: var(--ws-text);
+  font-weight: 700;
+  line-height: 1.35;
+}
+.ai-markdown-output h1 {
+  font-size: 1rem;
+}
+.ai-markdown-output h2 {
+  font-size: 0.95rem;
+}
+.ai-markdown-output h3 {
+  font-size: 0.9rem;
+}
+.ai-markdown-output p {
+  color: var(--ws-text);
+}
+.ai-markdown-output ul,
+.ai-markdown-output ol {
+  margin: 0.35rem 0 0.6rem;
+  padding-left: 1.25rem;
+}
+.ai-markdown-output li + li {
+  margin-top: 0.25rem;
+}
+.ai-markdown-output table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  margin: 0.4rem 0 0.75rem;
+}
+.ai-markdown-output th,
+.ai-markdown-output td {
+  border: 1px solid var(--ws-border);
+  padding: 0.4rem 0.55rem;
+  white-space: nowrap;
+}
+.ai-markdown-output th {
+  background: var(--ws-bg3);
+  font-weight: 600;
+  text-align: left;
+}
+.ai-markdown-output code {
+  border: 1px solid var(--ws-border);
+  border-radius: 4px;
+  background: var(--ws-bg3);
+  padding: 0.05rem 0.3rem;
+  font-family: var(--ws-font-mono);
+  font-size: 0.9em;
+}
+.ai-markdown-output a {
+  color: var(--ws-cyan);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
