@@ -4,6 +4,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { loadPanelHeightPx, savePanelHeightPx } from "@/lib/watchlist-storage";
 import { cloudSyncSetting } from "@/lib/cloud-sync";
+import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
 
 const WATCHLIST_PANEL_USER_SET_KEY = "stock-research-watchlist-panel-user-set";
 const CHART_LEFT_KEY = "ws-chart-left-px";
@@ -13,7 +14,6 @@ const RIGHT_RAIL_HIDDEN_KEY = "ws-right-rail-hidden";
 
 const DEFAULT_CHART_LEFT = 480;
 const DEFAULT_CHART_LEFT_SECTORS = -1; // -1 means "compute dynamically"
-const DEFAULT_RAIL_WIDTH = 310;
 
 function loadNumber(key: string, fallback: number): number {
   if (typeof window === "undefined") return fallback;
@@ -58,7 +58,7 @@ export function useLayoutPreferences() {
   // New workspace layout dimensions
   const [chartLeftPx, setChartLeftPxState] = useState(DEFAULT_CHART_LEFT);
   const [chartLeftSectorsPx, setChartLeftSectorsPxState] = useState(DEFAULT_CHART_LEFT_SECTORS);
-  const [railWidthPx, setRailWidthPxState] = useState(DEFAULT_RAIL_WIDTH);
+  const [railWidthPx, setRailWidthPxState] = useState(DEFAULT_RAIL_WIDTH_PX);
   const [rightRailHidden, setRightRailHidden] = useState(false);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function useLayoutPreferences() {
       if (storedQuarterly !== null) setQuarterlyHidden(storedQuarterly === "true");
       setChartLeftPxState(loadNumber(CHART_LEFT_KEY, DEFAULT_CHART_LEFT));
       setChartLeftSectorsPxState(loadNumber(CHART_LEFT_SECTORS_KEY, DEFAULT_CHART_LEFT_SECTORS));
-      setRailWidthPxState(loadNumber(RAIL_WIDTH_KEY, DEFAULT_RAIL_WIDTH));
+      setRailWidthPxState(loadNumber(RAIL_WIDTH_KEY, DEFAULT_RAIL_WIDTH_PX));
       const storedRailHidden = localStorage.getItem(RIGHT_RAIL_HIDDEN_KEY);
       if (storedRailHidden !== null) setRightRailHidden(storedRailHidden === "true");
     } catch {
@@ -130,7 +130,9 @@ export function useLayoutPreferences() {
   }, []);
 
   const setRailWidthPx = useCallback((px: number) => {
-    const clamped = Math.max(200, Math.min(500, px));
+    const maxByViewport = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 500;
+    const minRailWidth = DEFAULT_RAIL_WIDTH_PX;
+    const clamped = Math.max(minRailWidth, Math.min(Math.max(minRailWidth, maxByViewport), px));
     setRailWidthPxState(clamped);
     saveNumber(RAIL_WIDTH_KEY, clamped);
     syncLayoutToCloud();

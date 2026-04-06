@@ -676,6 +676,7 @@ export default function WatchlistPanel({
   const [showTableMenu, setShowTableMenu] = useState(false);
   const [showColSetSubmenu, setShowColSetSubmenu] = useState(false);
   const [showColCustomizeSubmenu, setShowColCustomizeSubmenu] = useState(false);
+  const [colCustomizeSearch, setColCustomizeSearch] = useState("");
   const [showSaveSetPrompt, setShowSaveSetPrompt] = useState(false);
   const [saveSetName, setSaveSetName] = useState("");
   const tableMenuRef = useRef<HTMLDivElement>(null);
@@ -2494,6 +2495,15 @@ export default function WatchlistPanel({
     return hiddenColumns.size > 0 ? merged.filter((c) => !hiddenColumns.has(c)) : merged;
   }, [sidebarTab, selectedScreen, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
 
+  const customizeColumnsFiltered = useMemo(() => {
+    const q = colCustomizeSearch.trim().toLowerCase();
+    if (!q) return ALL_COLUMN_IDS;
+    return ALL_COLUMN_IDS.filter((col) => {
+      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+      return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
+    });
+  }, [colCustomizeSearch]);
+
   const handleSort = useCallback((col: TableColumnId) => {
     if (sortKey === col) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -4226,6 +4236,7 @@ export default function WatchlistPanel({
                         if (!next) {
                           setShowSaveSetPrompt(false);
                           setShowColCustomizeSubmenu(false);
+                          setColCustomizeSearch("");
                           setShowColSetSubmenu(false);
                         }
                         return next;
@@ -4342,7 +4353,23 @@ export default function WatchlistPanel({
                             className="absolute left-full top-0 z-50 rounded py-1 min-w-[180px] max-h-[400px] overflow-y-auto shadow-lg"
                             style={{ background: "var(--ws-bg3, #1e2128)", border: "1px solid var(--ws-border-hover, rgba(255,255,255,0.12))" }}
                           >
-                            {ALL_COLUMN_IDS.map((col) => {
+                            <div className="sticky top-0 px-2 py-1.5" style={{ background: "var(--ws-bg3, #1e2128)", borderBottom: "1px solid var(--ws-border, rgba(255,255,255,0.08))" }}>
+                              <input
+                                type="text"
+                                value={colCustomizeSearch}
+                                onChange={(e) => setColCustomizeSearch(e.target.value)}
+                                placeholder="Type to search..."
+                                className="w-full rounded px-2 py-1 text-xs"
+                                style={{ background: "var(--ws-bg, #0f0f0f)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                                aria-label="Search customizable columns"
+                              />
+                            </div>
+                            {customizeColumnsFiltered.length === 0 && (
+                              <div className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>
+                                No matching columns
+                              </div>
+                            )}
+                            {customizeColumnsFiltered.map((col) => {
                               const isOn = tableColumns.includes(col);
                               return (
                                 <label

@@ -17,7 +17,6 @@ import { FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import { loadFavoriteScreenIds, toggleFavoriteScreen, saveFavoriteScreenIds, type SavedScreen, type ScreenerFolder, loadFolders, addFolder, updateFolder, deleteFolder, saveScreens, loadScreens } from "@/lib/screener-storage";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import ProfileIcon from "@/components/ProfileIcon";
-import type { CustomPage } from "@/lib/custom-pages-storage";
 
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 
@@ -101,9 +100,6 @@ type WorkspaceHeaderProps = {
   newListDraft?: { id: string; name: string; nonce: number } | null;
   onNewListNameCommitted?: (id: string) => void;
   onNewListNameCancelled?: (id: string) => void;
-  insightPages?: CustomPage[];
-  activeInsightTab?: "new" | string;
-  onInsightTabChange?: (tab: "new" | string) => void;
   lastUpdated?: string | null;
   railWidthPx?: number;
   rowCountDisplay?: string;
@@ -112,24 +108,29 @@ type WorkspaceHeaderProps = {
 
 function MarketStatusClock() {
   const [open, setOpen] = useState(() => isUSMarketOpen());
-  const [now, setNow] = useState(() => new Date());
+  const [timeStr, setTimeStr] = useState("--:--");
 
   useEffect(() => {
+    const updateNow = () => {
+      const now = new Date();
+      setTimeStr(
+        now.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "America/New_York",
+        })
+      );
+    };
     const check = () => setOpen(isUSMarketOpen());
     const idOpen = setInterval(check, 30_000);
-    const idClock = setInterval(() => setNow(new Date()), 1000);
+    updateNow();
+    const idClock = setInterval(updateNow, 1000);
     return () => {
       clearInterval(idOpen);
       clearInterval(idClock);
     };
   }, []);
-
-  const timeStr = now.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "America/New_York",
-  });
   const dotColor = open ? "#22c55e" : "#ef4444";
 
   return (
@@ -271,9 +272,6 @@ function WorkspaceHeader({
   newListDraft = null,
   onNewListNameCommitted,
   onNewListNameCancelled,
-  insightPages = [],
-  activeInsightTab = "new",
-  onInsightTabChange,
   lastUpdated,
   railWidthPx = 0,
   rowCountDisplay,
@@ -530,7 +528,8 @@ function WorkspaceHeader({
     return () => window.removeEventListener("stock-flag-names-changed", fn);
   }, []);
 
-  const padR = railWidthPx > 0 ? railWidthPx + 14 : 12;
+  const sectionSupportsRail = section === "scans" || section === "lists";
+  const padR = sectionSupportsRail && railWidthPx > 0 ? railWidthPx + 14 : 12;
 
   return (
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
@@ -718,23 +717,6 @@ function WorkspaceHeader({
               </div>
             )}
             <div ref={section === "sectors-industries" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
-          </div>
-        )}
-
-        {section === "ai-insights" && (
-          <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
-            <Pill on={activeInsightTab === "new"} onClick={() => onInsightTabChange?.("new")}>
-              New Insight
-            </Pill>
-            {insightPages.map((p) => (
-              <Pill
-                key={p.id}
-                on={activeInsightTab === p.id}
-                onClick={() => onInsightTabChange?.(p.id)}
-              >
-                {p.name}
-              </Pill>
-            ))}
           </div>
         )}
 

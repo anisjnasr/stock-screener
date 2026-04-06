@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/refs */
 
 import { useRef, useCallback, useState, type ReactNode } from "react";
+import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
 
 type WorkspaceLayoutProps = {
   chartLeftPx: number;
@@ -18,12 +19,15 @@ type WorkspaceLayoutProps = {
 const HANDLE_PX = 8;
 const RIGHT_DIVIDER_PX = 2;
 const SLIDE_TRANSITION = "150ms cubic-bezier(0.16, 1, 0.3, 1)";
+const MIN_CENTER_WIDTH_PX = 420;
+const MIN_RAIL_WIDTH_PX = DEFAULT_RAIL_WIDTH_PX;
 type ActivePane = "left" | "center" | "right";
 
 export default function WorkspaceLayout({
   chartLeftPx,
   onChartLeftChange,
   railWidthPx,
+  onRailWidthChange,
   rightRailHidden,
   onToggleRightRail,
   leftPanel,
@@ -32,7 +36,9 @@ export default function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [draggingChart, setDraggingChart] = useState(false);
+  const [draggingRail, setDraggingRail] = useState(false);
   const [hoveringChartHandle, setHoveringChartHandle] = useState(false);
+  const [hoveringRailHandle, setHoveringRailHandle] = useState(false);
   const [activePane, setActivePane] = useState<ActivePane>("center");
 
   const containerWidth = () => containerRef.current?.clientWidth ?? 1200;
@@ -54,7 +60,7 @@ export default function WorkspaceLayout({
       const onMove = (ev: MouseEvent) => {
         const delta = ev.clientX - startX;
         const cw = containerWidth();
-        const maxLeft = cw - railTotal - HANDLE_PX;
+        const maxLeft = Math.max(0, cw - railTotal - HANDLE_PX - MIN_CENTER_WIDTH_PX);
         let next = startLeft + delta;
         next = Math.max(0, Math.min(next, maxLeft));
         onChartLeftChange(next);
@@ -83,13 +89,41 @@ export default function WorkspaceLayout({
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
       const cw = containerWidth();
-      const maxLeft = cw - railTotal - HANDLE_PX;
+      const maxLeft = Math.max(0, cw - railTotal - HANDLE_PX - MIN_CENTER_WIDTH_PX);
       const delta = e.key === "ArrowRight" ? 20 : -20;
       let next = chartLeftPx + delta;
       next = Math.max(0, Math.min(next, maxLeft));
       onChartLeftChange(next);
     },
     [chartLeftPx, onChartLeftChange, railTotal]
+  );
+
+  const startDragRailWidth = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = railWidthPx;
+      const onMove = (ev: MouseEvent) => {
+        const delta = startX - ev.clientX;
+        const cw = containerWidth();
+        const maxWidth = Math.max(MIN_RAIL_WIDTH_PX, Math.floor(cw / 2));
+        const next = Math.max(MIN_RAIL_WIDTH_PX, Math.min(maxWidth, startWidth + delta));
+        onRailWidthChange(next);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        setDraggingRail(false);
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      setDraggingRail(true);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [onRailWidthChange, railWidthPx]
   );
 
   return (
@@ -220,6 +254,35 @@ export default function WorkspaceLayout({
           willChange: "transform",
         }}
       >
+        {/* Right rail drag handle — mirrors chart-left handle visuals */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize right panel"
+          tabIndex={0}
+          className="absolute top-0 bottom-0 left-0 cursor-col-resize flex items-center justify-center transition-opacity"
+          style={{
+            width: HANDLE_PX,
+            zIndex: 22,
+            background: draggingRail || hoveringRailHandle ? "var(--ws-cyan)" : "var(--ws-border)",
+            opacity: draggingRail ? 0.8 : hoveringRailHandle ? 0.65 : 0.7,
+            transition: draggingRail ? "none" : `opacity ${SLIDE_TRANSITION}`,
+          }}
+          onMouseEnter={() => setHoveringRailHandle(true)}
+          onMouseLeave={() => setHoveringRailHandle(false)}
+          onMouseDown={startDragRailWidth}
+        >
+          <div className="flex flex-col items-center gap-[3px]">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="rounded-full"
+                style={{ width: 6, height: 3, background: "rgba(255,255,255,0.35)" }}
+              />
+            ))}
+          </div>
+        </div>
+
         {/* Right panel divider */}
         <div
           className="shrink-0"

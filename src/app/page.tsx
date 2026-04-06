@@ -36,6 +36,7 @@ class PanelErrorBoundary extends React.Component<
 }
 import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
+import { type InsightInput } from "@/components/AIInsightFormCard";
 import { DEFAULT_LISTS_OPEN_ID, FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
 import {
   createCustomPage,
@@ -53,6 +54,7 @@ import {
   type Watchlist,
 } from "@/lib/watchlist-storage";
 import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deleteScreen, loadFolders, type SavedScreen, type ScreenerFolder } from "@/lib/screener-storage";
+import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -68,8 +70,6 @@ const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { 
 const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
 const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
 const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
-const CustomPromptPage = dynamic(() => import("@/components/CustomPromptPage"), { ssr: false });
-const AIInsightFormPage = dynamic(() => import("@/components/AIInsightFormPage"), { ssr: false });
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -77,6 +77,9 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
 
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
+const RIGHT_DIVIDER_PX = 2;
+const CHART_HANDLE_PX = 8;
+const MIN_CENTER_WIDTH_PX = 420;
 const DEFAULT_INDEX_WATCHLISTS = [
   { id: "index:nasdaq100", name: "Nasdaq 100" },
   { id: "index:sp500", name: "S&P 500" },
@@ -130,9 +133,7 @@ export default function Home() {
   const [flags, setFlags] = useState<Record<string, StockFlag>>(() => loadFlags());
   const [watchlists, setWatchlists] = useState<Watchlist[]>(() => loadWatchlists());
   const [customPages, setCustomPages] = useState<CustomPage[]>(() => loadCustomPages());
-  const [activeInsightTab, setActiveInsightTab] = useState<"new" | string>("new");
-  const [editingInsightId, setEditingInsightId] = useState<string | null>(null);
-  const [aiInsightSymbol, setAiInsightSymbol] = useState<string | null>(null);
+  const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [dbHealthBanner, setDbHealthBanner] = useState<string | null>(null);
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
   const [newListDraft, setNewListDraft] = useState<{ id: string; name: string; nonce: number } | null>(null);
@@ -140,6 +141,8 @@ export default function Home() {
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const secondaryPagesPrefetchedRef = useRef(false);
+  const priorRailWidthBeforeInsightsRef = useRef<number | null>(null);
+  const railWidthPxRef = useRef(0);
   const sectionHistoryRef = useRef<Record<string, string | null>>({});
   const lastScanOrListSymbolRef = useRef<string | null>(null);
   const pendingAutoSelectRef = useRef(false);
@@ -157,13 +160,10 @@ export default function Home() {
     setRightRailHidden,
     handleRightRailToggle,
   } = useLayoutPreferences();
-
-  const aiInsightsActive = section === "ai-insights";
-  const activeCustomPage = activeInsightTab === "new"
-    ? null
-    : customPages.find((p) => p.id === activeInsightTab) ?? null;
-  const chartHidden = (section === "market" && marketSubTab === "monitor") || aiInsightsActive;
+  const chartHidden = section === "market" && marketSubTab === "monitor";
   const isSectorSection = section === "sectors-industries";
+  const railSupportedSection = section === "scans" || section === "lists";
+  const effectiveRightRailHidden = railSupportedSection ? rightRailHidden : true;
 
   const leftPanelMeasureRef = useRef<HTMLDivElement>(null);
   const sectionLayoutKeyRef = useRef<string>("");
@@ -174,11 +174,11 @@ export default function Home() {
     if (sectionLayoutKeyRef.current === key) return;
     sectionLayoutKeyRef.current = key;
 
-    const railGutter = (rightRailHidden ? 0 : railWidthPx + 2) + 32;
+    const railTotal = effectiveRightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
     const run = () => {
       const el = leftPanelMeasureRef.current;
       const cw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const maxLeft = Math.max(420, cw - railGutter - 80);
+      const maxLeft = Math.max(0, cw - railTotal - CHART_HANDLE_PX - MIN_CENTER_WIDTH_PX);
       let target = 520;
       if (el) {
         const w = Math.max(el.scrollWidth, el.getBoundingClientRect().width);
@@ -186,13 +186,15 @@ export default function Home() {
       }
       if (section === "market") {
         if (marketSubTab === "monitor") target = Math.max(target, 720);
-        target = Math.max(380, Math.min(maxLeft, target));
+        target = Math.min(maxLeft, Math.max(380, target));
         setChartLeftPx(target);
       } else if (section === "sectors-industries") {
-        target = Math.max(520, Math.min(maxLeft, Math.max(target, Math.round(cw * 0.44))));
+        target = Math.min(maxLeft, Math.max(520, Math.max(target, Math.round(cw * 0.44))));
         setChartLeftSectorsPx(target);
       } else {
-        target = Math.max(400, Math.min(maxLeft, target));
+        // Scans/lists table can report large intrinsic width; cap target to keep chart usable.
+        target = Math.min(target, Math.round(cw * 0.58));
+        target = Math.min(maxLeft, Math.max(260, target));
         setChartLeftPx(target);
       }
     };
@@ -203,7 +205,7 @@ export default function Home() {
     marketSubTab,
     sectorSubTab,
     chartHidden,
-    rightRailHidden,
+    effectiveRightRailHidden,
     railWidthPx,
     setChartLeftPx,
     setChartLeftSectorsPx,
@@ -214,6 +216,31 @@ export default function Home() {
         ? Math.round(Math.max(500, typeof window !== "undefined" ? window.innerWidth * 0.5 : 600))
         : chartLeftSectorsPx)
     : chartLeftPx;
+
+  useEffect(() => {
+    railWidthPxRef.current = railWidthPx;
+  }, [railWidthPx]);
+
+  const handleInsightsTabActiveChange = useCallback((active: boolean) => {
+    if (!railSupportedSection) return;
+    const maxByViewport = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 500;
+    if (active) {
+      if (priorRailWidthBeforeInsightsRef.current == null) {
+        priorRailWidthBeforeInsightsRef.current = railWidthPxRef.current;
+      }
+      const expanded = Math.min(maxByViewport, Math.max(railWidthPxRef.current, 465));
+      if (expanded !== railWidthPxRef.current) {
+        setRailWidthPx(expanded);
+      }
+      return;
+    }
+    if (priorRailWidthBeforeInsightsRef.current == null) return;
+    const restore = Math.max(DEFAULT_RAIL_WIDTH_PX, Math.min(maxByViewport, priorRailWidthBeforeInsightsRef.current));
+    priorRailWidthBeforeInsightsRef.current = null;
+    if (railWidthPxRef.current !== restore) {
+      setRailWidthPx(restore);
+    }
+  }, [railSupportedSection, setRailWidthPx]);
 
   const handleChartLeftChange = useCallback(
     (px: number) => {
@@ -239,12 +266,10 @@ export default function Home() {
       setRightRailHidden(true);
     } else if (section === "sectors-industries") {
       setRightRailHidden(true);
-    } else if (aiInsightsActive) {
-      setRightRailHidden(true);
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
     }
-  }, [aiInsightsActive, section, setRightRailHidden]);
+  }, [section, setRightRailHidden]);
 
   useEffect(() => {
     if (section === "scans" && activeScanName) {
@@ -265,15 +290,14 @@ export default function Home() {
   }, [section, symbol]);
 
   useEffect(() => {
-    if (activeInsightTab === "new") return;
-    if (customPages.some((p) => p.id === activeInsightTab)) return;
-    setActiveInsightTab("new");
-    setEditingInsightId(null);
-  }, [activeInsightTab, customPages]);
+    if (!selectedInsightId) return;
+    if (customPages.some((p) => p.id === selectedInsightId)) return;
+    setSelectedInsightId(null);
+  }, [customPages, selectedInsightId]);
 
   const { getCachedCandles, setCachedCandles, fetchCandlesFor } = useCandleCache();
-  const shouldLoadRightRailData = section === "scans" || section === "lists" || aiInsightsActive;
-  const rightRailSymbol = aiInsightsActive ? (aiInsightSymbol ?? "") : (shouldLoadRightRailData ? symbol : "");
+  const shouldLoadRightRailData = section === "scans" || section === "lists";
+  const rightRailSymbol = shouldLoadRightRailData ? symbol : "";
   const { data } = useStockData(rightRailSymbol);
   const { yearlyRows, quarterlyRows, sidebarLoading } = useFundamentals(rightRailSymbol);
   const { ownershipQuarters, fundCount } = useOwnership(rightRailSymbol);
@@ -350,11 +374,8 @@ export default function Home() {
     const upper = normalizeTicker(sym);
     if (!upper) return;
     setSymbol(upper);
-    if (aiInsightsActive) {
-      setAiInsightSymbol(upper);
-    }
     setSearchValue("");
-  }, [aiInsightsActive]);
+  }, []);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
     const upper = symbols.map((s) => normalizeTicker(s)).filter((s) => s.length > 0);
@@ -459,6 +480,28 @@ export default function Home() {
     [watchlists, symbol]
   );
 
+  const handleCreateInsight = useCallback((input: InsightInput) => {
+    const created = createCustomPage(input);
+    const refreshed = loadCustomPages();
+    setCustomPages(refreshed);
+    setSelectedInsightId(created.id);
+  }, []);
+
+  const handleUpdateInsight = useCallback((id: string, input: InsightInput) => {
+    updateCustomPage(id, input);
+    setCustomPages(loadCustomPages());
+    setSelectedInsightId(id);
+  }, []);
+
+  const handleDeleteInsight = useCallback((id: string) => {
+    deleteCustomPage(id);
+    const refreshed = loadCustomPages();
+    setCustomPages(refreshed);
+    if (selectedInsightId === id) {
+      setSelectedInsightId(null);
+    }
+  }, [selectedInsightId]);
+
   useEffect(() => {
     const onFlagsChanged = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -527,7 +570,6 @@ export default function Home() {
 
   useEffect(() => {
     if (chartLoading) return;
-    if (section === "ai-insights") return;
     if (Array.isArray(candles) && candles.length > 0) {
       setDbHealthBanner(null);
       return;
@@ -559,9 +601,6 @@ export default function Home() {
     const s = normalizeTicker(searchValue);
     if (s) {
       setSymbol(s);
-      if (aiInsightsActive) {
-        setAiInsightSymbol(s);
-      }
       setSearchValue("");
     }
   };
@@ -627,9 +666,7 @@ export default function Home() {
     <PanelErrorBoundary name="LeftPanel">
     <div
       ref={leftPanelMeasureRef}
-      className={`h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] ${
-        section === "market" || section === "sectors-industries" || section === "ai-insights" ? "w-full" : "w-max"
-      }`}
+      className="h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] w-full"
       style={{ background: "var(--ws-bg2)" }}
     >
       {section === "market" ? (
@@ -665,7 +702,7 @@ export default function Home() {
           sectionMode={section === "scans" ? "scans" : "lists"}
           headerActionsSlot={headerSlotEl}
           onRowCountChange={setTableRowCountDisplay}
-          rightRailHidden={rightRailHidden}
+          rightRailHidden={effectiveRightRailHidden}
           setRightRailHidden={setRightRailHidden}
         />
       )}
@@ -712,7 +749,7 @@ export default function Home() {
     <PanelErrorBoundary name="RightPanel">
     {section === "market" ? (
       <MarketBreadthRail selectedSymbol={symbol} />
-    ) : (
+    ) : railSupportedSection ? (
       <RightRail
         section={section}
         symbol={symbol}
@@ -727,7 +764,16 @@ export default function Home() {
         industryRankUniverse={data?.industryRankUniverse}
         dbProfileMetrics={data?.dbProfileMetrics}
         loading={sidebarLoading}
+        insightPages={customPages}
+        selectedInsightId={selectedInsightId}
+        onInsightSelect={setSelectedInsightId}
+        onInsightCreate={handleCreateInsight}
+        onInsightUpdate={handleUpdateInsight}
+        onInsightDelete={handleDeleteInsight}
+        onInsightsTabActiveChange={handleInsightsTabActiveChange}
       />
+    ) : (
+      <div className="h-full" />
     )}
     </PanelErrorBoundary>
   );
@@ -752,16 +798,6 @@ export default function Home() {
             const restored = sectionHistoryRef.current.lists || activeWatchlistId || DEFAULT_LISTS_OPEN_ID;
             pendingAutoSelectRef.current = true;
             setActiveWatchlistId(restored);
-          } else if (s === "ai-insights") {
-            setEditingInsightId(null);
-            setActiveInsightTab("new");
-            const restoredSymbol = lastScanOrListSymbolRef.current;
-            if (restoredSymbol) {
-              setSymbol(restoredSymbol);
-              setAiInsightSymbol(restoredSymbol);
-            } else {
-              setAiInsightSymbol(null);
-            }
           }
         }}
         symbol={symbol}
@@ -769,9 +805,6 @@ export default function Home() {
           const upper = normalizeTicker(next);
           if (!upper) return;
           setSymbol(upper);
-          if (section === "ai-insights") {
-            setAiInsightSymbol(upper);
-          }
         }}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
@@ -862,7 +895,7 @@ export default function Home() {
           setSection("lists");
         }}
         lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
-        railWidthPx={rightRailHidden ? 0 : railWidthPx}
+        railWidthPx={effectiveRightRailHidden ? 0 : railWidthPx}
         rowCountDisplay={tableRowCountDisplay}
         headerActionsSlotRef={setHeaderSlotEl}
         onNewList={() => {
@@ -878,19 +911,6 @@ export default function Home() {
           setSection("lists");
           setNewListDraft({ id: newList.id, name: newList.name, nonce: Date.now() });
         }}
-        insightPages={customPages}
-        activeInsightTab={activeInsightTab}
-        onInsightTabChange={(tab) => {
-          setEditingInsightId(null);
-          if (tab === "new") {
-            setActiveInsightTab("new");
-            return;
-          }
-          if (!aiInsightSymbol) {
-            window.alert("Please enter a ticker in the search field before opening an insight page.");
-          }
-          setActiveInsightTab(tab);
-        }}
       />
       {dbHealthBanner && (
         <div
@@ -905,71 +925,17 @@ export default function Home() {
           {dbHealthBanner}
         </div>
       )}
-      {aiInsightsActive ? (
-        <div className="flex-1 min-h-0">
-          {activeInsightTab === "new" || (editingInsightId && activeInsightTab === editingInsightId) ? (
-            <AIInsightFormPage
-              mode={editingInsightId ? "edit" : "create"}
-              initialPage={editingInsightId ? activeCustomPage : null}
-              onCancelEdit={() => setEditingInsightId(null)}
-              onSubmit={(input) => {
-                if (editingInsightId && activeCustomPage) {
-                  updateCustomPage(activeCustomPage.id, input);
-                  setCustomPages(loadCustomPages());
-                  setEditingInsightId(null);
-                  return;
-                }
-                const created = createCustomPage(input);
-                setCustomPages(loadCustomPages());
-                setActiveInsightTab(created.id);
-              }}
-            />
-          ) : activeCustomPage ? (
-            <CustomPromptPage
-              page={activeCustomPage}
-              symbol={aiInsightSymbol ?? ""}
-              companyName={data?.profile?.companyName ?? null}
-              onSymbolSubmit={(nextSymbol) => {
-                const upper = normalizeTicker(nextSymbol);
-                if (!upper) return;
-                setSymbol(upper);
-                setAiInsightSymbol(upper);
-              }}
-              onEditPage={() => {
-                setEditingInsightId(activeCustomPage.id);
-              }}
-              onDeletePage={() => {
-                if (!window.confirm(`Delete insight "${activeCustomPage.name}"?`)) return;
-                deleteCustomPage(activeCustomPage.id);
-                setCustomPages(loadCustomPages());
-                setActiveInsightTab("new");
-                setEditingInsightId(null);
-              }}
-            />
-          ) : (
-            <AIInsightFormPage
-              mode="create"
-              onSubmit={(input) => {
-                const created = createCustomPage(input);
-                setCustomPages(loadCustomPages());
-                setActiveInsightTab(created.id);
-              }}
-            />
-          )}
-        </div>
-      ) : (
-        <WorkspaceLayout
-          chartLeftPx={chartHidden ? 99999 : activeChartLeft}
-          onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
-          railWidthPx={railWidthPx}
-          onRailWidthChange={setRailWidthPx}
-          rightRailHidden={rightRailHidden}
-          onToggleRightRail={handleRightRailToggle}
-          leftPanel={leftPanel}
-          centerPanel={centerPanel}
-          rightPanel={rightPanel}
-        />
-      )}
+      <WorkspaceLayout
+        chartLeftPx={chartHidden ? 99999 : activeChartLeft}
+        onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
+        railWidthPx={railWidthPx}
+        onRailWidthChange={setRailWidthPx}
+        rightRailHidden={effectiveRightRailHidden}
+        onToggleRightRail={railSupportedSection ? handleRightRailToggle : undefined}
+        leftPanel={leftPanel}
+        centerPanel={centerPanel}
+        rightPanel={rightPanel}
+      />
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

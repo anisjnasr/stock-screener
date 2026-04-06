@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
 import { toTitleCase } from "@/lib/text-format";
+import type { CustomPage } from "@/lib/custom-pages-storage";
+import AIInsightFormCard, { type InsightInput } from "@/components/AIInsightFormCard";
+import CustomPromptPage from "@/components/CustomPromptPage";
 
 type YearlyRow = {
   year: string;
@@ -83,9 +86,16 @@ type RightRailProps = {
   industryRankUniverse?: IndustryRankUniverse;
   dbProfileMetrics?: DbProfileMetrics;
   loading?: boolean;
+  insightPages?: CustomPage[];
+  selectedInsightId?: string | null;
+  onInsightSelect?: (id: string | null) => void;
+  onInsightCreate?: (input: InsightInput) => void;
+  onInsightUpdate?: (id: string, input: InsightInput) => void;
+  onInsightDelete?: (id: string) => void;
+  onInsightsTabActiveChange?: (active: boolean) => void;
 };
 
-type RailTab = "profile" | "news";
+type RailTab = "profile" | "news" | "insights";
 
 function fmtMarketCapNoDollar(n: number): string {
   const abs = Math.abs(n);
@@ -144,6 +154,7 @@ function fmtDateToQuarter(dateStr: string): string {
 }
 
 export default function RightRail({
+  section,
   symbol,
   profile,
   nextEarnings,
@@ -155,10 +166,89 @@ export default function RightRail({
   industryRankUniverse,
   dbProfileMetrics,
   loading,
+  insightPages = [],
+  selectedInsightId = null,
+  onInsightSelect,
+  onInsightCreate,
+  onInsightUpdate,
+  onInsightDelete,
+  onInsightsTabActiveChange,
 }: RightRailProps) {
   const [railTab, setRailTab] = useState<RailTab>("profile");
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [finFreq, setFinFreq] = useState<"annual" | "quarterly">("annual");
+  const [insightMenuOpen, setInsightMenuOpen] = useState(false);
+  const [insightMenuIndex, setInsightMenuIndex] = useState(0);
+  const [insightFormMode, setInsightFormMode] = useState<"create" | "edit" | null>(null);
+  const insightMenuRef = useRef<HTMLDivElement>(null);
+  const selectedInsight = useMemo(
+    () => insightPages.find((p) => p.id === selectedInsightId) ?? null,
+    [insightPages, selectedInsightId]
+  );
+
+  useEffect(() => {
+    if (!selectedInsightId) return;
+    if (insightPages.some((p) => p.id === selectedInsightId)) return;
+    onInsightSelect?.(null);
+  }, [insightPages, onInsightSelect, selectedInsightId]);
+
+  useEffect(() => {
+    const onDocDown = (evt: MouseEvent) => {
+      if (!insightMenuRef.current) return;
+      if (insightMenuRef.current.contains(evt.target as Node)) return;
+      setInsightMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, []);
+
+  useEffect(() => {
+    onInsightsTabActiveChange?.(railTab === "insights");
+    return () => {
+      onInsightsTabActiveChange?.(false);
+    };
+  }, [onInsightsTabActiveChange, railTab]);
+
+  const openInsightMenu = () => {
+    const selectedIdx = selectedInsightId ? insightPages.findIndex((p) => p.id === selectedInsightId) : -1;
+    setInsightMenuIndex(selectedIdx >= 0 ? selectedIdx + 1 : 0);
+    setInsightMenuOpen(true);
+  };
+
+  useEffect(() => {
+    if (!insightMenuOpen) return;
+    const maxIndex = insightPages.length;
+    const onKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        setInsightMenuOpen(false);
+        return;
+      }
+      if (evt.key === "ArrowDown") {
+        evt.preventDefault();
+        setInsightMenuIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+        return;
+      }
+      if (evt.key === "ArrowUp") {
+        evt.preventDefault();
+        setInsightMenuIndex((prev) => (prev <= 0 ? maxIndex : prev - 1));
+        return;
+      }
+      if (evt.key !== "Enter") return;
+      evt.preventDefault();
+      if (insightMenuIndex === 0) {
+        setInsightMenuOpen(false);
+        setInsightFormMode("create");
+        return;
+      }
+      const picked = insightPages[insightMenuIndex - 1];
+      if (!picked) return;
+      onInsightSelect?.(picked.id);
+      setInsightMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [insightMenuIndex, insightMenuOpen, insightPages, onInsightSelect]);
 
   if (loading) {
     return (
@@ -202,13 +292,18 @@ export default function RightRail({
     return "var(--ws-text)";
   };
 
-  const tabLabels: Record<RailTab, string> = { profile: "Profile", news: "News" };
+  const tabLabels: Record<RailTab, string> = { profile: "Profile", news: "News", insights: "AI Insights" };
+
+  // Hard gate: this panel is only supported in Scans/Lists.
+  if (section !== "scans" && section !== "lists") {
+    return <div className="h-full" style={{ background: "var(--ws-bg2)" }} />;
+  }
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden" style={{ background: "var(--ws-bg2)" }}>
+    <div className="h-full min-h-0 overflow-hidden flex flex-col relative" style={{ background: "var(--ws-bg2)" }}>
       {/* Tab row at the very top */}
       <div className="flex items-center gap-1 px-3 py-1" role="tablist" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-        {(["profile", "news"] as RailTab[]).map((tab) => (
+        {(["profile", "news", "insights"] as RailTab[]).map((tab) => (
           <button key={tab} type="button" onClick={() => setRailTab(tab)}
             role="tab"
             aria-selected={railTab === tab}
@@ -239,8 +334,132 @@ export default function RightRail({
           </div>
           <NewsSidebar symbol={symbol} />
         </>
+      ) : railTab === "insights" ? (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--ws-border)" }}>
+            <div ref={insightMenuRef} className="relative min-w-0">
+              <button
+                type="button"
+                className="rounded px-2.5 py-1 text-xs font-semibold ws-focus-ring flex items-center gap-1.5"
+                style={{ border: "1px solid var(--ws-border)", color: "var(--ws-text)" }}
+                onClick={() => (insightMenuOpen ? setInsightMenuOpen(false) : openInsightMenu())}
+              >
+                <span className="truncate max-w-[190px]">
+                  {selectedInsight ? selectedInsight.name : "Select Insight"}
+                </span>
+                <span style={{ color: "var(--ws-text-dim)" }}>▾</span>
+              </button>
+              {insightMenuOpen && (
+                <div
+                  className="absolute left-0 top-full z-[160] mt-1 min-w-[220px] max-h-[55vh] overflow-auto rounded py-1 shadow-lg"
+                  style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/[0.06] flex items-center gap-2"
+                    style={{ color: "var(--ws-cyan)" }}
+                    onClick={() => {
+                      setInsightMenuOpen(false);
+                      setInsightFormMode("create");
+                    }}
+                    onMouseEnter={() => setInsightMenuIndex(0)}
+                  >
+                    <span className="shrink-0">{insightMenuIndex === 0 ? "▸" : " "}</span>
+                    <span>New Insight</span>
+                  </button>
+                  {insightPages.length > 0 && <div className="mx-2 my-1 h-px" style={{ background: "var(--ws-border)" }} />}
+                  {insightPages.map((p, index) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/[0.06] flex items-center gap-2"
+                      style={{ color: selectedInsightId === p.id ? "var(--ws-cyan)" : "var(--ws-text)" }}
+                      onClick={() => {
+                        onInsightSelect?.(p.id);
+                        setInsightMenuOpen(false);
+                      }}
+                      onMouseEnter={() => setInsightMenuIndex(index + 1)}
+                    >
+                      <span className="shrink-0">
+                        {selectedInsightId === p.id ? "✓" : insightMenuIndex === index + 1 ? "▸" : " "}
+                      </span>
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-xs font-semibold ws-focus-ring"
+                style={{ border: "1px solid var(--ws-border)", color: selectedInsight ? "var(--ws-text-dim)" : "var(--ws-text-vdim)" }}
+                onClick={() => selectedInsight && setInsightFormMode("edit")}
+                disabled={!selectedInsight}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-xs font-semibold ws-focus-ring"
+                style={{ border: "1px solid rgba(239,68,68,0.45)", color: selectedInsight ? "var(--ws-red)" : "var(--ws-text-vdim)" }}
+                onClick={() => {
+                  if (!selectedInsight) return;
+                  if (!window.confirm(`Delete insight "${selectedInsight.name}"?`)) return;
+                  onInsightDelete?.(selectedInsight.id);
+                }}
+                disabled={!selectedInsight}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {selectedInsight ? (
+              <CustomPromptPage
+                page={selectedInsight}
+                symbol={symbol}
+                companyName={profile?.companyName ?? null}
+                onSymbolSubmit={() => {}}
+                compact
+                hideSymbolSearch
+                hideTemplateActions
+              />
+            ) : (
+              <div className="h-full min-h-0 px-3 py-3">
+                <div className="rounded h-full min-h-[180px] p-3 text-sm" style={{ border: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
+                  <div style={{ color: "var(--ws-text-dim)" }}>
+                    Select an insight template from the dropdown to run it on the active ticker.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {insightFormMode && (
+            <div className="absolute inset-0 z-[170] flex items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.45)" }}>
+              <div className="w-full max-w-3xl h-[min(88vh,760px)] min-h-[420px]">
+                <AIInsightFormCard
+                  mode={insightFormMode}
+                  initialPage={insightFormMode === "edit" ? selectedInsight : null}
+                  onCancelEdit={() => setInsightFormMode(null)}
+                  onSubmit={(input) => {
+                    if (insightFormMode === "edit" && selectedInsight) {
+                      onInsightUpdate?.(selectedInsight.id, input);
+                      setInsightFormMode(null);
+                      return;
+                    }
+                    onInsightCreate?.(input);
+                    setInsightFormMode(null);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
-        <>
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           {/* Profile header */}
           <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
             <div className="flex items-baseline gap-2">
@@ -472,7 +691,7 @@ export default function RightRail({
           </div>
 
         </div>
-        </>
+      </div>
       )}
     </div>
   );

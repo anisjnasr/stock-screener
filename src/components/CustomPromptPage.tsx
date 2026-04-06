@@ -22,6 +22,9 @@ type Props = {
   onSymbolSubmit: (symbol: string) => void;
   onEditPage?: () => void;
   onDeletePage?: () => void;
+  compact?: boolean;
+  hideSymbolSearch?: boolean;
+  hideTemplateActions?: boolean;
 };
 
 function escapeHtml(input: string): string {
@@ -213,7 +216,17 @@ function formatLookback(lookback: CustomPage["dataLookback"]): string {
   return `${lookback.value} ${unit}`;
 }
 
-export default function CustomPromptPage({ page, symbol, companyName, onSymbolSubmit, onEditPage, onDeletePage }: Props) {
+export default function CustomPromptPage({
+  page,
+  symbol,
+  companyName,
+  onSymbolSubmit,
+  onEditPage,
+  onDeletePage,
+  compact = false,
+  hideSymbolSearch = false,
+  hideTemplateActions = false,
+}: Props) {
   const [querySymbol, setQuerySymbol] = useState(symbol.toUpperCase());
   const [modelChoice, setModelChoice] = useState<ModelChoice>(page.aiModel);
   const [modelUsed, setModelUsed] = useState<ModelUsed | null>(null);
@@ -243,6 +256,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
   }, []);
 
   useEffect(() => {
+    if (hideSymbolSearch) return;
     const q = querySymbol.trim();
     if (!q || q.length < 1) {
       setSuggestions([]);
@@ -275,7 +289,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
       window.clearTimeout(id);
       controller.abort();
     };
-  }, [querySymbol]);
+  }, [hideSymbolSearch, querySymbol]);
 
   const runPrompt = useCallback(async (targetSymbol: string) => {
     if (!targetSymbol.trim()) return;
@@ -372,7 +386,10 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
   const html = useMemo(() => markdownToHtml(responseText), [responseText]);
 
   return (
-    <div className="h-full min-h-0 overflow-auto px-4 py-3" style={{ background: "var(--ws-bg2)" }}>
+    <div
+      className={compact ? "h-full min-h-0 overflow-auto px-2 py-2 ai-insight-compact" : "h-full min-h-0 overflow-auto px-4 py-3"}
+      style={{ background: "var(--ws-bg2)" }}
+    >
       <div className="flex items-center gap-3 flex-wrap mb-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>
@@ -380,121 +397,125 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
           </div>
           <div className="text-xs" style={{ color: "var(--ws-text-dim)" }}>{page.name}</div>
         </div>
-        <form
-          className="flex items-center gap-2 ml-auto"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmitOrRun(querySymbol);
-          }}
-        >
-          <div className="relative">
-            <input
-              value={querySymbol}
-              onChange={(e) => setQuerySymbol(e.target.value.toUpperCase())}
-              onFocus={() => {
-                if (suggestions.length > 0) setSuggestionsOpen(true);
-              }}
-              onBlur={() => {
-                window.setTimeout(() => setSuggestionsOpen(false), 120);
-              }}
-              onKeyDown={(e) => {
-                if (!suggestionsOpen || suggestions.length === 0) return;
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setHighlightedIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
-                } else if (e.key === "Enter" && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-                  e.preventDefault();
-                  const picked = suggestions[highlightedIndex].symbol.toUpperCase();
-                  setQuerySymbol(picked);
-                  handleSubmitOrRun(picked);
-                } else if (e.key === "Escape") {
-                  setSuggestionsOpen(false);
-                }
-              }}
-              className="rounded px-2 py-1 text-sm min-w-[170px]"
+        {!hideSymbolSearch && (
+          <form
+            className="flex items-center gap-2 ml-auto"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSubmitOrRun(querySymbol);
+            }}
+          >
+            <div className="relative">
+              <input
+                value={querySymbol}
+                onChange={(e) => setQuerySymbol(e.target.value.toUpperCase())}
+                onFocus={() => {
+                  if (suggestions.length > 0) setSuggestionsOpen(true);
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => setSuggestionsOpen(false), 120);
+                }}
+                onKeyDown={(e) => {
+                  if (!suggestionsOpen || suggestions.length === 0) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+                  } else if (e.key === "Enter" && highlightedIndex >= 0 && suggestions[highlightedIndex]) {
+                    e.preventDefault();
+                    const picked = suggestions[highlightedIndex].symbol.toUpperCase();
+                    setQuerySymbol(picked);
+                    handleSubmitOrRun(picked);
+                  } else if (e.key === "Escape") {
+                    setSuggestionsOpen(false);
+                  }
+                }}
+                className="rounded px-2 py-1 text-sm min-w-[170px]"
+                style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
+                placeholder="Ticker"
+                aria-label="Ticker"
+              />
+              {suggestionsOpen && (
+                <ul
+                  className="absolute left-0 top-full z-[120] mt-1 max-h-[50vh] w-[25rem] max-w-[min(90vw,25rem)] overflow-auto rounded py-1 shadow-lg"
+                  style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
+                  role="listbox"
+                >
+                  {suggestionsLoading ? (
+                    <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
+                  ) : suggestions.length === 0 ? (
+                    <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>No matches</li>
+                  ) : (
+                    suggestions.map((s, i) => (
+                      <li
+                        key={`${s.symbol}-${i}`}
+                        role="option"
+                        aria-selected={i === highlightedIndex}
+                        className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
+                        style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const picked = s.symbol.toUpperCase();
+                          setQuerySymbol(picked);
+                          handleSubmitOrRun(picked);
+                        }}
+                      >
+                        <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
+                          {s.symbol}
+                        </span>
+                        {s.name && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </div>
+            <select
+              value={modelChoice}
+              onChange={(e) => setModelChoice(e.target.value as ModelChoice)}
+              className="rounded px-2 py-1 text-xs"
               style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-              placeholder="Ticker"
-              aria-label="Ticker"
-            />
-            {suggestionsOpen && (
-              <ul
-                className="absolute left-0 top-full z-[120] mt-1 max-h-[50vh] w-[25rem] max-w-[min(90vw,25rem)] overflow-auto rounded py-1 shadow-lg"
-                style={{ background: "var(--ws-bg2)", border: "1px solid var(--ws-border-hover)" }}
-                role="listbox"
-              >
-                {suggestionsLoading ? (
-                  <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>Searching…</li>
-                ) : suggestions.length === 0 ? (
-                  <li className="px-3 py-2 text-xs" style={{ color: "var(--ws-text-dim)" }}>No matches</li>
-                ) : (
-                  suggestions.map((s, i) => (
-                    <li
-                      key={`${s.symbol}-${i}`}
-                      role="option"
-                      aria-selected={i === highlightedIndex}
-                      className="cursor-pointer px-3 py-1.5 text-xs flex items-center gap-3"
-                      style={{ background: i === highlightedIndex ? "var(--ws-bg3)" : "transparent" }}
-                      onMouseEnter={() => setHighlightedIndex(i)}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const picked = s.symbol.toUpperCase();
-                        setQuerySymbol(picked);
-                        handleSubmitOrRun(picked);
-                      }}
-                    >
-                      <span className="font-medium font-mono shrink-0 min-w-[60px]" style={{ color: "var(--ws-text)" }}>
-                        {s.symbol}
-                      </span>
-                      {s.name && <span style={{ color: "var(--ws-text-dim)" }}>{s.name}</span>}
-                    </li>
-                  ))
-                )}
-              </ul>
-            )}
+              aria-label="Model override"
+            >
+              <option value="auto">Recommended (Auto)</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="opus">Opus</option>
+            </select>
+            <button
+              type="submit"
+              className="rounded px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)" }}
+            >
+              Run
+            </button>
+          </form>
+        )}
+        {!hideTemplateActions && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded px-2.5 py-1 text-xs font-semibold ws-focus-ring"
+              style={{ border: "1px solid var(--ws-border)", color: "var(--ws-text-dim)" }}
+              onClick={onEditPage}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              className="rounded px-2.5 py-1 text-xs font-semibold ws-focus-ring"
+              style={{ border: "1px solid rgba(239,68,68,0.45)", color: "var(--ws-red)" }}
+              onClick={onDeletePage}
+            >
+              Delete
+            </button>
           </div>
-          <select
-            value={modelChoice}
-            onChange={(e) => setModelChoice(e.target.value as ModelChoice)}
-            className="rounded px-2 py-1 text-xs"
-            style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
-            aria-label="Model override"
-          >
-            <option value="auto">Recommended (Auto)</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-          </select>
-          <button
-            type="submit"
-            className="rounded px-2.5 py-1 text-xs font-semibold"
-            style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)" }}
-          >
-            Run
-          </button>
-        </form>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded px-2.5 py-1 text-xs font-semibold ws-focus-ring"
-            style={{ border: "1px solid var(--ws-border)", color: "var(--ws-text-dim)" }}
-            onClick={onEditPage}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="rounded px-2.5 py-1 text-xs font-semibold ws-focus-ring"
-            style={{ border: "1px solid rgba(239,68,68,0.45)", color: "var(--ws-red)" }}
-            onClick={onDeletePage}
-          >
-            Delete
-          </button>
-        </div>
+        )}
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
           Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice === "auto" ? "Recommended (auto-selecting...)" : modelChoice}
         </span>
@@ -523,7 +544,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
             {typeof sourceTelemetry.durationMs === "number" ? ` (${sourceTelemetry.durationMs}ms)` : ""}
           </span>
         )}
-        <span className="text-xs" style={{ color: "var(--ws-text-dim)" }}>
+        <span className="text-xs min-w-0" style={{ color: "var(--ws-text-dim)" }}>
           Sources: {page.dataSources.join(", ")} · Lookback {formatLookback(page.dataLookback)}
         </span>
       </div>
@@ -537,7 +558,7 @@ export default function CustomPromptPage({ page, symbol, companyName, onSymbolSu
         )}
         {!loading && !error && !responseText && (
           <div className="text-sm" style={{ color: "var(--ws-text-dim)" }}>
-            {symbol.trim() ? "No response yet. Click Run to generate analysis." : "Enter a ticker in the search field to start AI analysis."}
+            {symbol.trim() ? "No response yet. Click Run to generate analysis." : "Select a ticker to start AI analysis."}
           </div>
         )}
         {!!responseText && (
