@@ -100,30 +100,39 @@ export async function POST(request: NextRequest) {
     ).join("\n");
     const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // Two-step: download ZIP to disk, then extract with bsdtar (from
-    // libarchive-tools) which handles ZIP64 reliably — Alpine's unzip
-    // silently corrupts files >4 GB. Disk budget on 10 GB:
-    //   1. Delete old DB + caches → ~0 GB used
-    //   2. Download ZIP → ~2.2 GB
-    //   3. Extract directly to disk → peak ~7.2 GB (ZIP + extracted DB)
-    //   4. Delete ZIP → ~5 GB final
+    // Two-step sync with rollback protection:
+    //   1) Download artifact zip
+    //   2) Extract to temp and stage DB
+    //   3) Validate staged DB header + integrity + core table sanity
+    //   4) Atomically move staged DB into place
+    //   5) Validate live DB; rollback from backup if validation fails
+    //   6) Prune old backups
     const script = [
-      `set -e`,
+      `set -eu`,
       `echo "[sync] Tool check:"`,
       `echo "  curl: $(which curl 2>&1 || echo NOT FOUND)"`,
       `echo "  bsdtar: $(which bsdtar 2>&1 || echo NOT FOUND)"`,
       `echo "  unzip: $(which unzip 2>&1 || echo NOT FOUND)"`,
-      `echo "[sync] $(date -u) Downloading ${artifact.name}..."`,
-      `rm -f "${DB_PATH}"`,
+      `echo "[sync] $(date -u) Starting sync for ${artifact.name}..."`,
+      `BACKUP_DIR="${DATA_DIR}/backups"`,
+      `mkdir -p "$BACKUP_DIR"`,
+      `TS=$(date -u +%Y%m%d-%H%M%S)`,
+      `OLD_DB_BACKUP=""`,
+      `if [ -f "${DB_PATH}" ]; then`,
+      `  OLD_DB_BACKUP="$BACKUP_DIR/screener.db.before-sync.$TS"`,
+      `  cp -f "${DB_PATH}" "$OLD_DB_BACKUP"`,
+      `  echo "[sync] Backup created: $OLD_DB_BACKUP"`,
+      `fi`,
       `rm -f "${tmpZip}"`,
+      `rm -f "${DB_PATH}-wal"`,
+      `rm -f "${DB_PATH}-shm"`,
       cacheRm,
-      `echo "[sync] Old DB removed. Downloading ZIP..."`,
+      `echo "[sync] Downloading artifact ZIP..."`,
       `curl -fSL --max-time 900 \\`,
       `  -H "Authorization: token $SYNC_TOKEN" \\`,
       `  -o "${tmpZip}" "$SYNC_URL"`,
       `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
       `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB"`,
-      // Use bsdtar if available (handles ZIP64), fallback to unzip
       `EXTRACT_TMP="${DATA_DIR}/.extract-tmp"`,
       `rm -rf "$EXTRACT_TMP"`,
       `mkdir -p "$EXTRACT_TMP"`,
@@ -138,23 +147,53 @@ export async function POST(request: NextRequest) {
       `# GitHub artifacts may nest under data/ — find the actual .db file`,
       `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
       `if [ -n "$FOUND_DB" ]; then`,
-      `  mv "$FOUND_DB" "${DB_PATH}"`,
-      `  echo "[sync] Moved $FOUND_DB -> ${DB_PATH}"`,
+      `  STAGED_DB="${DATA_DIR}/screener.db.staged.$TS"`,
+      `  mv "$FOUND_DB" "$STAGED_DB"`,
+      `  echo "[sync] Staged DB: $STAGED_DB"`,
       `else`,
       `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
       `  ls -laR "$EXTRACT_TMP"`,
       `  exit 1`,
       `fi`,
       `rm -rf "$EXTRACT_TMP"`,
-      `SIZE=$(du -m "${DB_PATH}" | cut -f1)`,
-      `echo "[sync] $(date -u) Extracted. DB: \${SIZE}MB"`,
-      `HEADER=$(head -c 15 "${DB_PATH}")`,
+      `rm -f "${tmpZip}"`,
+      `SIZE=$(du -m "$STAGED_DB" | cut -f1)`,
+      `echo "[sync] $(date -u) Extracted staged DB: \${SIZE}MB"`,
+      `HEADER=$(head -c 15 "$STAGED_DB")`,
       `if [ "$HEADER" = "SQLite format 3" ]; then`,
-      `  echo "[sync] SQLite header OK"`,
+      `  echo "[sync] Staged SQLite header OK"`,
       `else`,
-      `  echo "[sync] ERROR: SQLite header invalid — file is corrupt"`,
+      `  echo "[sync] ERROR: Staged SQLite header invalid — file is corrupt"`,
       `  exit 1`,
       `fi`,
+      `validate_db () {`,
+      `  DB_TO_CHECK="$1" node -e 'const Database=require("better-sqlite3"); const p=process.env.DB_TO_CHECK; const db=new Database(p,{readonly:true}); const ic=db.prepare("PRAGMA integrity_check").all(); const first=ic[0] && ic[0][Object.keys(ic[0])[0]]; if(first!=="ok"){console.error("integrity_check failed:", first); process.exit(1);} const c=db.prepare("SELECT COUNT(*) c FROM companies").get().c; const d=db.prepare("SELECT MAX(date) d FROM daily_bars").get().d; if(!c||!d){console.error("sanity check failed:", c, d); process.exit(1);} console.log("integrity ok; companies=" + c + "; latestDailyBars=" + d); db.close();'`,
+      `}`,
+      `echo "[sync] Validating staged DB..."`,
+      `validate_db "$STAGED_DB"`,
+      `echo "[sync] Swapping staged DB into place..."`,
+      `mv -f "$STAGED_DB" "${DB_PATH}"`,
+      `rm -f "${DB_PATH}-wal"`,
+      `rm -f "${DB_PATH}-shm"`,
+      `echo "[sync] Validating live DB after swap..."`,
+      `if validate_db "${DB_PATH}"; then`,
+      `  echo "[sync] Live DB validation passed."`,
+      `else`,
+      `  echo "[sync] Live DB validation failed after swap."`,
+      `  if [ -n "$OLD_DB_BACKUP" ] && [ -f "$OLD_DB_BACKUP" ]; then`,
+      `    echo "[sync] Rolling back from backup: $OLD_DB_BACKUP"`,
+      `    cp -f "$OLD_DB_BACKUP" "${DB_PATH}"`,
+      `    rm -f "${DB_PATH}-wal"`,
+      `    rm -f "${DB_PATH}-shm"`,
+      `    validate_db "${DB_PATH}" || true`,
+      `  fi`,
+      `  exit 1`,
+      `fi`,
+      `PRUNE_LIST=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>3' || true)`,
+      `if [ -n "$PRUNE_LIST" ]; then`,
+      `  echo "$PRUNE_LIST" | while IFS= read -r old; do rm -f "$old"; done`,
+      `fi`,
+      `echo "[sync] Backup retention complete (keeping latest 3)."`,
     ].join("\n");
 
     const scriptPath = join(DATA_DIR, ".sync-download.sh");
@@ -230,7 +269,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       message:
-        "DB sync started in background. Downloads ZIP then extracts via unzip. Check Render logs for [sync-db] progress.",
+        "DB sync started in background with staged validation and rollback protection. Check Render logs for [sync-db] progress.",
       artifact: artifact.name,
       artifactCreated: artifact.created_at,
       artifactSizeMb: sizeMb,

@@ -86,6 +86,12 @@ function normalizeTicker(input: string): string {
   return input.trim().toUpperCase();
 }
 
+type HealthSnapshot = {
+  status?: string;
+  latestScreenerDate?: string | null;
+  dbError?: string | null;
+};
+
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [section, setSection] = useState<WorkspaceSection>("market");
@@ -127,6 +133,7 @@ export default function Home() {
   const [activeInsightTab, setActiveInsightTab] = useState<"new" | string>("new");
   const [editingInsightId, setEditingInsightId] = useState<string | null>(null);
   const [aiInsightSymbol, setAiInsightSymbol] = useState<string | null>(null);
+  const [dbHealthBanner, setDbHealthBanner] = useState<string | null>(null);
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
   const [newListDraft, setNewListDraft] = useState<{ id: string; name: string; nonce: number } | null>(null);
   const [focusTickerTrigger, setFocusTickerTrigger] = useState(0);
@@ -518,6 +525,36 @@ export default function Home() {
     return () => { cancelled = true; controller.abort(); };
   }, [symbol, chartTimeframe, chartReloadNonce, fetchCandlesFor, getCachedCandles]);
 
+  useEffect(() => {
+    if (chartLoading) return;
+    if (section === "ai-insights") return;
+    if (Array.isArray(candles) && candles.length > 0) {
+      setDbHealthBanner(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/health", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((health: HealthSnapshot) => {
+        if (cancelled) return;
+        const degraded = health?.status === "degraded" || !health?.latestScreenerDate;
+        if (!degraded) {
+          setDbHealthBanner(null);
+          return;
+        }
+        const detail = health?.dbError ? ` (${health.dbError})` : "";
+        setDbHealthBanner(`Database on server is unhealthy. Chart data may be unavailable${detail}.`);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDbHealthBanner("Unable to verify server database health. Chart data may be unavailable.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [candles, chartLoading, section]);
+
   const handleSearchSubmit = () => {
     const s = normalizeTicker(searchValue);
     if (s) {
@@ -855,6 +892,19 @@ export default function Home() {
           setActiveInsightTab(tab);
         }}
       />
+      {dbHealthBanner && (
+        <div
+          className="px-3 py-1.5 text-xs"
+          style={{
+            background: "rgba(239,68,68,0.12)",
+            borderTop: "1px solid rgba(239,68,68,0.35)",
+            borderBottom: "1px solid rgba(239,68,68,0.35)",
+            color: "var(--ws-red)",
+          }}
+        >
+          {dbHealthBanner}
+        </div>
+      )}
       {aiInsightsActive ? (
         <div className="flex-1 min-h-0">
           {activeInsightTab === "new" || (editingInsightId && activeInsightTab === editingInsightId) ? (
