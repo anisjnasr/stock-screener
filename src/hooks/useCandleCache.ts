@@ -21,7 +21,7 @@ const CANDLE_CACHE_TTL_MS = 5 * 60 * 1000;
 const CANDLE_CACHE_MAX_ENTRIES = 100;
 
 function candlesCacheKey(symbol: string, timeframe: ChartTimeframe): string {
-  return `${symbol.toUpperCase()}:${timeframe}`;
+  return `${symbol.trim().toUpperCase()}:${timeframe}`;
 }
 
 export function useCandleCache() {
@@ -61,8 +61,9 @@ export function useCandleCache() {
       tf: ChartTimeframe,
       opts?: { signal?: AbortSignal }
     ): Promise<Candle[] | null> => {
-      const key = candlesCacheKey(sym, tf);
-      const cached = getCachedCandles(sym, tf);
+      const normalizedSymbol = sym.trim().toUpperCase();
+      const key = candlesCacheKey(normalizedSymbol, tf);
+      const cached = getCachedCandles(normalizedSymbol, tf);
       if (cached) return cached;
       if (!opts?.signal) {
         const inFlight = inFlightRef.current.get(key);
@@ -76,7 +77,7 @@ export function useCandleCache() {
           from.setFullYear(from.getFullYear() - 20);
           const fromStr = from.toISOString().slice(0, 10);
           const toStr = to.toISOString().slice(0, 10);
-          endpoint = `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`;
+          endpoint = `/api/candles?symbol=${encodeURIComponent(normalizedSymbol)}&from=${fromStr}&to=${toStr}&interval=${tf}`;
           const res = await fetch(endpoint, { signal: opts?.signal });
           if (!res.ok) {
             let body = "";
@@ -87,6 +88,7 @@ export function useCandleCache() {
             }
             console.warn("[candles] non-ok response", {
               symbol: sym,
+              normalizedSymbol,
               timeframe: tf,
               status: res.status,
               endpoint,
@@ -98,18 +100,20 @@ export function useCandleCache() {
           if (!Array.isArray(d)) {
             console.warn("[candles] unexpected payload", {
               symbol: sym,
+              normalizedSymbol,
               timeframe: tf,
               endpoint,
               payloadType: typeof d,
             });
             return null;
           }
-          setCachedCandles(sym, tf, d);
+          setCachedCandles(normalizedSymbol, tf, d);
           return d;
         } catch (error) {
           if (opts?.signal?.aborted) return null;
           console.warn("[candles] fetch failed", {
             symbol: sym,
+            normalizedSymbol,
             timeframe: tf,
             endpoint,
             error: error instanceof Error ? error.message : String(error),

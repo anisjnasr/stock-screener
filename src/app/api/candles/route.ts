@@ -75,7 +75,7 @@ function aggregateCandles(daily: Candle[], interval: "weekly" | "monthly"): Cand
 }
 
 export async function GET(request: NextRequest) {
-  const symbol = (request.nextUrl.searchParams.get("symbol") || "SPY").toUpperCase();
+  const symbol = (request.nextUrl.searchParams.get("symbol") || "SPY").trim().toUpperCase();
   const interval = request.nextUrl.searchParams.get("interval") || "daily";
   try {
     const latest = getLatestScreenerDate();

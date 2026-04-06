@@ -82,6 +82,10 @@ const DEFAULT_INDEX_WATCHLISTS = [
   { id: "index:sp500", name: "S&P 500" },
 ];
 
+function normalizeTicker(input: string): string {
+  return input.trim().toUpperCase();
+}
+
 export default function Home() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [section, setSection] = useState<WorkspaceSection>("market");
@@ -249,7 +253,7 @@ export default function Home() {
 
   useEffect(() => {
     if ((section === "scans" || section === "lists") && symbol.trim()) {
-      lastScanOrListSymbolRef.current = symbol.toUpperCase();
+      lastScanOrListSymbolRef.current = normalizeTicker(symbol);
     }
   }, [section, symbol]);
 
@@ -336,7 +340,8 @@ export default function Home() {
 
   const handleSymbolSelect = useCallback((sym: string) => {
     if (!sym) return;
-    const upper = sym.toUpperCase();
+    const upper = normalizeTicker(sym);
+    if (!upper) return;
     setSymbol(upper);
     if (aiInsightsActive) {
       setAiInsightSymbol(upper);
@@ -345,7 +350,7 @@ export default function Home() {
   }, [aiInsightsActive]);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
-    const upper = symbols.map((s) => s.toUpperCase()).filter((s) => s.length > 0);
+    const upper = symbols.map((s) => normalizeTicker(s)).filter((s) => s.length > 0);
     setScanSymbols(upper);
     if (pendingAutoSelectRef.current && upper.length > 0) {
       pendingAutoSelectRef.current = false;
@@ -514,7 +519,7 @@ export default function Home() {
   }, [symbol, chartTimeframe, chartReloadNonce, fetchCandlesFor, getCachedCandles]);
 
   const handleSearchSubmit = () => {
-    const s = searchValue.trim().toUpperCase();
+    const s = normalizeTicker(searchValue);
     if (s) {
       setSymbol(s);
       if (aiInsightsActive) {
@@ -524,13 +529,13 @@ export default function Home() {
     }
   };
 
-  const currentStockFlag = flags[symbol.toUpperCase()] ?? null;
+  const currentStockFlag = flags[normalizeTicker(symbol)] ?? null;
   const chartWatchlists = useMemo(() => [
     { id: FULL_UNIVERSE_ID, name: "Full Universe" },
     ...DEFAULT_INDEX_WATCHLISTS,
     ...watchlists.map((l) => ({ id: l.id, name: l.name })),
   ], [watchlists]);
-  const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === symbol.toUpperCase()), [scanSymbols, symbol]);
+  const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === normalizeTicker(symbol)), [scanSymbols, symbol]);
 
   useEffect(() => {
     if (scanIndex < 0) return;
@@ -548,7 +553,7 @@ export default function Home() {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
       if (scanSymbols.length === 0) return;
-      const idx = scanSymbols.findIndex((s) => s === symbol.toUpperCase());
+      const idx = scanSymbols.findIndex((s) => s === normalizeTicker(symbol));
       if (idx < 0) return;
       const nextIdx = e.key === "ArrowDown" ? Math.min(scanSymbols.length - 1, idx + 1) : Math.max(0, idx - 1);
       if (nextIdx === idx) return;
@@ -724,7 +729,8 @@ export default function Home() {
         }}
         symbol={symbol}
         onSymbolChange={(next) => {
-          const upper = next.toUpperCase();
+          const upper = normalizeTicker(next);
+          if (!upper) return;
           setSymbol(upper);
           if (section === "ai-insights") {
             setAiInsightSymbol(upper);
@@ -874,7 +880,8 @@ export default function Home() {
               symbol={aiInsightSymbol ?? ""}
               companyName={data?.profile?.companyName ?? null}
               onSymbolSubmit={(nextSymbol) => {
-                const upper = nextSymbol.toUpperCase();
+                const upper = normalizeTicker(nextSymbol);
+                if (!upper) return;
                 setSymbol(upper);
                 setAiInsightSymbol(upper);
               }}
