@@ -69,21 +69,51 @@ export function useCandleCache() {
         if (inFlight) return inFlight;
       }
       const run = async (): Promise<Candle[] | null> => {
+        let endpoint = "";
         try {
           const to = new Date();
           const from = new Date();
           from.setFullYear(from.getFullYear() - 20);
           const fromStr = from.toISOString().slice(0, 10);
           const toStr = to.toISOString().slice(0, 10);
-          const res = await fetch(
-            `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`,
-            { signal: opts?.signal }
-          );
+          endpoint = `/api/candles?symbol=${encodeURIComponent(sym)}&from=${fromStr}&to=${toStr}&interval=${tf}`;
+          const res = await fetch(endpoint, { signal: opts?.signal });
+          if (!res.ok) {
+            let body = "";
+            try {
+              body = (await res.text()).slice(0, 240);
+            } catch {
+              body = "";
+            }
+            console.warn("[candles] non-ok response", {
+              symbol: sym,
+              timeframe: tf,
+              status: res.status,
+              endpoint,
+              body,
+            });
+            return null;
+          }
           const d = await res.json();
-          if (!Array.isArray(d)) return null;
+          if (!Array.isArray(d)) {
+            console.warn("[candles] unexpected payload", {
+              symbol: sym,
+              timeframe: tf,
+              endpoint,
+              payloadType: typeof d,
+            });
+            return null;
+          }
           setCachedCandles(sym, tf, d);
           return d;
-        } catch {
+        } catch (error) {
+          if (opts?.signal?.aborted) return null;
+          console.warn("[candles] fetch failed", {
+            symbol: sym,
+            timeframe: tf,
+            endpoint,
+            error: error instanceof Error ? error.message : String(error),
+          });
           return null;
         } finally {
           if (!opts?.signal) inFlightRef.current.delete(key);

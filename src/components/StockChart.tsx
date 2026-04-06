@@ -37,6 +37,7 @@ type StockChartProps = {
   symbol: string;
   data: Candle[] | null;
   loading?: boolean;
+  onRetryLoad?: () => void;
   timeframe?: ChartTimeframe;
   onTimeframeChange?: (tf: ChartTimeframe) => void;
   onVisibleDateRangeChange?: (range: { from: string; to: string } | null) => void;
@@ -308,6 +309,7 @@ function StockChart({
   symbol,
   data,
   loading,
+  onRetryLoad,
   timeframe = "daily",
   onTimeframeChange,
   onVisibleDateRangeChange,
@@ -1756,7 +1758,19 @@ function StockChart({
         </div>
       ) : !data || data.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-zinc-500 dark:text-[var(--ws-text-dim)]">No chart data</p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-zinc-500 dark:text-[var(--ws-text-dim)]">No chart data</p>
+            {onRetryLoad && (
+              <button
+                type="button"
+                className="px-2.5 py-1 text-xs rounded ws-focus-ring"
+                style={{ background: "var(--ws-cyan)", color: "var(--ws-bg)" }}
+                onClick={onRetryLoad}
+              >
+                Retry
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div ref={chartAreaRef} className="absolute inset-0">

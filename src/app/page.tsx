@@ -88,6 +88,7 @@ export default function Home() {
   const [searchValue, setSearchValue] = useState("");
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [chartLoading, setChartLoading] = useState(true);
+  const [chartReloadNonce, setChartReloadNonce] = useState(0);
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("daily");
   const [scanSymbols, setScanSymbols] = useState<string[]>([]);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -493,10 +494,24 @@ export default function Home() {
     }
     setChartLoading(true);
     fetchCandlesFor(symbol, chartTimeframe, { signal: controller.signal })
-      .then((rows) => { if (!cancelled && !controller.signal.aborted) setCandles(rows); })
+      .then(async (rows) => {
+        if (cancelled || controller.signal.aborted) return;
+        if (Array.isArray(rows)) {
+          setCandles(rows);
+          return;
+        }
+        // One retry without abort-signal coupling to recover from transient fetch failures.
+        const retryRows = await fetchCandlesFor(symbol, chartTimeframe);
+        if (cancelled || controller.signal.aborted) return;
+        if (Array.isArray(retryRows)) {
+          setCandles(retryRows);
+          return;
+        }
+        setCandles([]);
+      })
       .finally(() => { if (!cancelled && !controller.signal.aborted) setChartLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [symbol, chartTimeframe, fetchCandlesFor, getCachedCandles]);
+  }, [symbol, chartTimeframe, chartReloadNonce, fetchCandlesFor, getCachedCandles]);
 
   const handleSearchSubmit = () => {
     const s = searchValue.trim().toUpperCase();
@@ -624,6 +639,10 @@ export default function Home() {
           symbol={symbol}
           data={candles}
           loading={chartLoading}
+          onRetryLoad={() => {
+            setChartLoading(true);
+            setChartReloadNonce((n) => n + 1);
+          }}
           timeframe={chartTimeframe}
           onTimeframeChange={setChartTimeframe}
           onVisibleDateRangeChange={section === "market" ? setVisibleDateRange : undefined}
