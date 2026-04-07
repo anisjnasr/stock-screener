@@ -275,6 +275,26 @@ jobs:
           console.log('Upload-ready DB:', sizeMB, 'MB | journal_mode: delete (standalone)');
           "
 
+      - name: Generate DB manifest
+        run: |
+          node -e "
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const p = 'data/screener.db';
+          const bytes = fs.statSync(p).size;
+          const hash = crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          const out = {
+            runId: process.env.GITHUB_RUN_ID,
+            mode: 'daily',
+            dbBytes: bytes,
+            dbSizeMb: Math.ceil(bytes / 1024 / 1024),
+            sha256: hash,
+            generatedAt: new Date().toISOString()
+          };
+          fs.writeFileSync('data/screener-db-manifest.json', JSON.stringify(out, null, 2));
+          console.log('Manifest generated:', out);
+          "
+
       # Save updated DB to cache
       - name: Save DB to cache
         uses: actions/cache/save@v4
@@ -288,7 +308,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screener-db-${{ github.run_id }}
-          path: data/screener.db
+          path: |
+            data/screener.db
+            data/screener-db-manifest.json
+          retention-days: 3
+          compression-level: 1
+
+      - name: Upload DB manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screener-db-manifest-${{ github.run_id }}
+          path: data/screener-db-manifest.json
           retention-days: 3
           compression-level: 1
 
@@ -304,6 +334,23 @@ jobs:
           if [ -z "$RENDER_APP_URL" ] || [ -z "$ADMIN_SECRET" ]; then
             echo "Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET not configured"
             exit 0
+          fi
+          echo "Running Render preflight check..."
+          PREFLIGHT_STATUS=$(curl -s -o /tmp/sync-preflight.json -w "%{http_code}" \
+            --max-time 120 \
+            -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=daily&preflight=true" \
+            -H "Authorization: Bearer ${ADMIN_SECRET}" \
+            -H "Content-Type: application/json")
+          echo "Preflight status: $PREFLIGHT_STATUS"
+          cat /tmp/sync-preflight.json
+          if [ "$PREFLIGHT_STATUS" -lt 200 ] || [ "$PREFLIGHT_STATUS" -ge 300 ]; then
+            echo "::error::Render preflight failed with status $PREFLIGHT_STATUS"
+            exit 1
+          fi
+          ENOUGH=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-preflight.json','utf8')); process.stdout.write(String(Boolean(d.snapshot && d.snapshot.enoughSpace)));")
+          if [ "$ENOUGH" != "true" ]; then
+            echo "::error::Render preflight reports insufficient disk for safe sync. Increase persistent disk or perform controlled maintenance recovery."
+            exit 1
           fi
           echo "Triggering blocking DB sync on Render..."
           STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \

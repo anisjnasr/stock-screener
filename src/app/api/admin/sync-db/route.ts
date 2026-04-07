@@ -8,7 +8,7 @@ import {
   mkdirSync,
 } from "fs";
 import { join } from "path";
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 import Database from "better-sqlite3";
 import { resetDbConnection } from "@/lib/screener-db-native";
 import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
@@ -33,6 +33,16 @@ type Artifact = {
 };
 
 type ArtifactMode = "daily" | "ownership";
+type ManifestArtifactMode = "daily" | "ownership";
+
+type SyncManifest = {
+  runId: string;
+  mode: ManifestArtifactMode;
+  dbBytes: number;
+  dbSizeMb: number;
+  sha256: string;
+  generatedAt: string;
+};
 
 function log(msg: string) {
   console.log(`[sync-db] ${msg}`);
@@ -50,6 +60,186 @@ function getRepoSlug(): string {
 function artifactRegex(mode: ArtifactMode): RegExp {
   if (mode === "ownership") return /^screener-db-ownership-\d+$/;
   return /^screener-db-\d+$/;
+}
+
+function manifestArtifactRegex(mode: ArtifactMode): RegExp {
+  if (mode === "ownership") return /^screener-db-ownership-manifest-\d+$/;
+  return /^screener-db-manifest-\d+$/;
+}
+
+function extractRunIdFromArtifactName(name: string, mode: ArtifactMode): string | null {
+  const dailyMatch = /^screener-db-(\d+)$/.exec(name);
+  if (mode === "daily") return dailyMatch?.[1] ?? null;
+  const ownershipMatch = /^screener-db-ownership-(\d+)$/.exec(name);
+  return ownershipMatch?.[1] ?? null;
+}
+
+function safeFileBytes(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+function dirBytes(path: string): number {
+  try {
+    const st = statSync(path);
+    if (!st.isDirectory()) return st.size;
+    let total = 0;
+    const entries = readdirSync(path, { withFileTypes: true });
+    for (const e of entries) {
+      const p = join(path, e.name);
+      if (e.isDirectory()) total += dirBytes(p);
+      else if (e.isFile()) total += safeFileBytes(p);
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+function freeBytesForPath(path: string): number | null {
+  try {
+    const out = execSync(`df -Pk "${path}"`, { encoding: "utf8" }).trim();
+    const line = out.split("\n")[1];
+    if (!line) return null;
+    const cols = line.trim().split(/\s+/);
+    const availableKb = Number(cols[3]);
+    if (!Number.isFinite(availableKb)) return null;
+    return availableKb * 1024;
+  } catch {
+    return null;
+  }
+}
+
+function bytesToMb(bytes: number): number {
+  return Math.ceil(bytes / (1024 * 1024));
+}
+
+async function downloadManifest(
+  artifact: Artifact,
+  expectedRunId: string,
+  mode: ArtifactMode,
+  githubToken: string
+): Promise<SyncManifest> {
+  const res = await fetch(artifact.archive_download_url, {
+    headers: {
+      Authorization: `token ${githubToken}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed downloading manifest artifact: HTTP ${res.status}`);
+  }
+
+  const zipPath = join(DATA_DIR, `.manifest-${Date.now()}.zip`);
+  const listPath = join(DATA_DIR, `.manifest-list-${Date.now()}.txt`);
+  try {
+    const buf = Buffer.from(await res.arrayBuffer());
+    writeFileSync(zipPath, buf);
+    const listOut = execSync(`bsdtar -tf "${zipPath}"`, {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    writeFileSync(listPath, listOut);
+    const manifestEntry = listOut
+      .split("\n")
+      .map((s) => s.trim())
+      .find((s) => s.endsWith("screener-db-manifest.json"));
+    if (!manifestEntry) {
+      throw new Error("Manifest artifact missing screener-db-manifest.json");
+    }
+    const manifestRaw = execSync(`bsdtar -xOf "${zipPath}" "${manifestEntry}"`, {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    const manifest = JSON.parse(manifestRaw) as Partial<SyncManifest>;
+    if (!manifest || typeof manifest.dbBytes !== "number" || !manifest.runId) {
+      throw new Error("Manifest JSON missing required fields");
+    }
+    if (manifest.runId !== expectedRunId) {
+      throw new Error(
+        `Manifest run id mismatch (expected ${expectedRunId}, got ${manifest.runId})`
+      );
+    }
+    if (manifest.mode !== mode) {
+      throw new Error(
+        `Manifest mode mismatch (expected ${mode}, got ${String(manifest.mode)})`
+      );
+    }
+    return manifest as SyncManifest;
+  } finally {
+    try {
+      unlinkSync(zipPath);
+    } catch {
+      // ignore
+    }
+    try {
+      unlinkSync(listPath);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function preflightSnapshot(expectedDbBytes: number, artifactZipBytes: number) {
+  const dataFreeBytes = freeBytesForPath(DATA_DIR);
+  const tmpFreeBytes = freeBytesForPath("/tmp");
+  const liveDbBytes = safeFileBytes(DB_PATH);
+  const extractTmpBytes = dirBytes(join(DATA_DIR, ".extract-tmp"));
+  let stagedBytes = 0;
+  let backupsBytes = 0;
+  try {
+    for (const name of readdirSync(DATA_DIR)) {
+      if (name.startsWith("screener.db.staged.")) {
+        stagedBytes += safeFileBytes(join(DATA_DIR, name));
+      }
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const backupsDir = join(DATA_DIR, "backups");
+    for (const name of readdirSync(backupsDir)) {
+      if (name.startsWith("screener.db.before-sync.")) {
+        backupsBytes += safeFileBytes(join(backupsDir, name));
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const marginBytes = 512 * 1024 * 1024;
+  const requiredBytes = liveDbBytes + expectedDbBytes + marginBytes;
+  const enoughSpace =
+    dataFreeBytes != null ? dataFreeBytes >= requiredBytes : false;
+
+  return {
+    enoughSpace,
+    dataDir: DATA_DIR,
+    dbPath: DB_PATH,
+    dataFreeBytes,
+    dataFreeMb: dataFreeBytes != null ? bytesToMb(dataFreeBytes) : null,
+    tmpFreeBytes,
+    tmpFreeMb: tmpFreeBytes != null ? bytesToMb(tmpFreeBytes) : null,
+    liveDbBytes,
+    liveDbMb: bytesToMb(liveDbBytes),
+    expectedDbBytes,
+    expectedDbMb: bytesToMb(expectedDbBytes),
+    artifactZipBytes,
+    artifactZipMb: bytesToMb(artifactZipBytes),
+    requiredBytes,
+    requiredMb: bytesToMb(requiredBytes),
+    marginBytes,
+    marginMb: bytesToMb(marginBytes),
+    existingStagedBytes: stagedBytes,
+    existingStagedMb: bytesToMb(stagedBytes),
+    existingBackupsBytes: backupsBytes,
+    existingBackupsMb: bytesToMb(backupsBytes),
+    extractTmpBytes,
+    extractTmpMb: bytesToMb(extractTmpBytes),
+  };
 }
 
 function preflightCleanupDataDir(): void {
@@ -101,8 +291,8 @@ function preflightCleanupDataDir(): void {
 /**
  * Trigger-based DB sync. GH Actions calls this with a small request (no body);
  * the endpoint looks up the latest artifact from the GitHub API, then spawns a
- * background shell process that streams the ZIP through bsdtar and writes only
- * screener.db to a staged file (low peak disk usage).
+ * background shell process that extracts to a temp dir, validates staged DB,
+ * and atomically swaps with rollback protection.
  *
  * Requirements on the Docker image: curl, libarchive-tools (bsdtar).
  * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with repo scope).
@@ -169,7 +359,90 @@ export async function POST(request: NextRequest) {
     }
 
     const sizeMb = Math.round(artifact.size_in_bytes / 1024 / 1024);
-    const artifactSizeMb = Math.ceil(artifact.size_in_bytes / 1024 / 1024);
+    const runId = extractRunIdFromArtifactName(artifact.name, mode);
+    if (!runId) {
+      return NextResponse.json(
+        {
+          error: `Could not parse run id from artifact name: ${artifact.name}`,
+          mode,
+          repo: repoSlug,
+        },
+        { status: 500 }
+      );
+    }
+    const manifestMatcher = manifestArtifactRegex(mode);
+    const manifestArtifact = (listData.artifacts ?? [])
+      .filter((a) => !a.expired && manifestMatcher.test(a.name))
+      .find((a) => a.name.endsWith(`-${runId}`));
+    if (!manifestArtifact) {
+      return NextResponse.json(
+        {
+          error:
+            `Missing manifest artifact for run ${runId}. ` +
+            "Ensure workflow uploads screener-db-manifest artifact.",
+          mode,
+          repo: repoSlug,
+          artifact: artifact.name,
+        },
+        { status: 500 }
+      );
+    }
+    const manifest = await downloadManifest(
+      manifestArtifact,
+      runId,
+      mode,
+      githubToken
+    );
+    if (!Number.isFinite(manifest.dbBytes) || manifest.dbBytes <= 0) {
+      return NextResponse.json(
+        {
+          error: "Invalid manifest dbBytes",
+          mode,
+          repo: repoSlug,
+          artifact: artifact.name,
+          manifestArtifact: manifestArtifact.name,
+        },
+        { status: 500 }
+      );
+    }
+    const preflightOnly =
+      request.nextUrl.searchParams.get("preflight") === "true";
+    const snapshot = preflightSnapshot(manifest.dbBytes, artifact.size_in_bytes);
+    if (preflightOnly) {
+      return NextResponse.json({
+        ok: snapshot.enoughSpace,
+        mode,
+        wait: waitForCompletion,
+        preflight: true,
+        repo: repoSlug,
+        artifact: artifact.name,
+        artifactCreated: artifact.created_at,
+        manifestArtifact: manifestArtifact.name,
+        manifest,
+        snapshot,
+      });
+    }
+    if (!snapshot.enoughSpace) {
+      return NextResponse.json(
+        {
+          ok: false,
+          mode,
+          wait: waitForCompletion,
+          preflight: true,
+          status: "insufficient_space",
+          repo: repoSlug,
+          artifact: artifact.name,
+          artifactCreated: artifact.created_at,
+          manifestArtifact: manifestArtifact.name,
+          manifest,
+          snapshot,
+          error:
+            "Insufficient disk space for safe staged sync. " +
+            "No database mutation was performed.",
+        },
+        { status: 507 }
+      );
+    }
     log(
       `Found artifact: ${artifact.name} (${sizeMb}MB, created ${artifact.created_at})`
     );
@@ -178,12 +451,12 @@ export async function POST(request: NextRequest) {
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
 
-    // Adaptive sync flow:
+    // Safe sync flow:
     //   1) Stream artifact ZIP to extract temp (no ZIP file written)
     //   2) Stage screener.db from extracted contents
     //   3) Validate staged DB header + integrity + core table sanity
-    //   4) If low space, delete live DB first (no rollback path)
-    //   5) Swap staged DB into place and validate
+    //   4) Swap staged DB into place with rollback backup
+    //   5) Validate live DB
     const script = [
       `set -eu`,
       `echo "[sync] Tool check:"`,
@@ -200,25 +473,12 @@ export async function POST(request: NextRequest) {
       `TS=$(date -u +%Y%m%d-%H%M%S)`,
       `STAGED_DB="${DATA_DIR}/screener.db.staged.$TS"`,
       `OLD_DB_BACKUP=""`,
-      `SKIP_BACKUP=0`,
       `rm -f "${DB_PATH}-wal"`,
       `rm -f "${DB_PATH}-shm"`,
       cacheRm,
-      `FREE_MB=$(df -Pm "${DATA_DIR}" | awk 'NR==2 {print $4}')`,
-      `REQUIRED_MB=$(( ${artifactSizeMb} + 256 ))`,
-      `echo "[sync] Free disk: \${FREE_MB}MB; required for safe swap: \${REQUIRED_MB}MB"`,
-      `if [ "$FREE_MB" -lt "$REQUIRED_MB" ]; then`,
-      `  echo "[sync] WARNING: Low disk detected. Will skip rollback backup and remove live DB before staging."`,
-      `  SKIP_BACKUP=1`,
-      `fi`,
       `PRUNE_LIST_PRE=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>1' || true)`,
       `if [ -n "$PRUNE_LIST_PRE" ]; then`,
       `  echo "$PRUNE_LIST_PRE" | while IFS= read -r old; do rm -f "$old"; done`,
-      `fi`,
-      `if [ "$SKIP_BACKUP" = "1" ]; then`,
-      `  rm -f "${DB_PATH}"`,
-      `  rm -f "${DB_PATH}-wal"`,
-      `  rm -f "${DB_PATH}-shm"`,
       `fi`,
       `EXTRACT_TMP="${DATA_DIR}/.extract-tmp"`,
       `rm -rf "$EXTRACT_TMP"`,
@@ -253,9 +513,7 @@ export async function POST(request: NextRequest) {
       `echo "[sync] Validating staged DB..."`,
       `validate_db "$STAGED_DB"`,
       `echo "[sync] Swapping staged DB into place..."`,
-      `if [ "$SKIP_BACKUP" = "1" ]; then`,
-      `  echo "[sync] Low-space mode active: skipping rollback backup."`,
-      `elif [ -f "${DB_PATH}" ]; then`,
+      `if [ -f "${DB_PATH}" ]; then`,
       `  OLD_DB_BACKUP="$BACKUP_DIR/screener.db.before-sync.$TS"`,
       `  mv -f "${DB_PATH}" "$OLD_DB_BACKUP"`,
       `  echo "[sync] Existing DB moved to backup: $OLD_DB_BACKUP"`,
@@ -325,6 +583,7 @@ export async function POST(request: NextRequest) {
           mode,
           wait: true,
           repo: repoSlug,
+          preflight: snapshot,
           status: "completed",
           artifact: artifact.name,
           artifactCreated: artifact.created_at,
@@ -415,6 +674,7 @@ export async function POST(request: NextRequest) {
       mode,
       wait: false,
       repo: repoSlug,
+      preflight: snapshot,
       status: "started",
       message:
         "DB sync started in background with staged validation and rollback protection. Check Render logs for [sync-db] progress.",
