@@ -13,7 +13,7 @@ import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
 
 const DATA_DIR = getDataDir();
 const DB_PATH = getScreenerDbPath();
-const GITHUB_REPO = "anisjnasr/stock-screener";
+const DEFAULT_GITHUB_REPO = "anisjnasr/stock-screener";
 
 const STALE_CACHES = [
   "market-monitor-cache.json",
@@ -30,8 +30,24 @@ type Artifact = {
   size_in_bytes: number;
 };
 
+type ArtifactMode = "daily" | "ownership";
+
 function log(msg: string) {
   console.log(`[sync-db] ${msg}`);
+}
+
+function getRepoSlug(): string {
+  const direct = process.env.GITHUB_REPO?.trim();
+  if (direct) return direct;
+  const owner = process.env.GITHUB_OWNER?.trim();
+  const name = process.env.GITHUB_REPO_NAME?.trim();
+  if (owner && name) return `${owner}/${name}`;
+  return process.env.GITHUB_REPOSITORY?.trim() || DEFAULT_GITHUB_REPO;
+}
+
+function artifactRegex(mode: ArtifactMode): RegExp {
+  if (mode === "ownership") return /^screener-db-ownership-\d+$/;
+  return /^screener-db-\d+$/;
 }
 
 /**
@@ -61,9 +77,13 @@ export async function POST(request: NextRequest) {
   mkdirSync(DATA_DIR, { recursive: true });
 
   try {
+    const modeRaw = request.nextUrl.searchParams.get("artifact") ?? "daily";
+    const mode: ArtifactMode = modeRaw === "ownership" ? "ownership" : "daily";
+    const waitForCompletion = request.nextUrl.searchParams.get("wait") === "true";
+    const repoSlug = getRepoSlug();
     log("Fetching artifact list from GitHub...");
     const listRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts?per_page=20`,
+      `https://api.github.com/repos/${repoSlug}/actions/artifacts?per_page=50`,
       {
         headers: {
           Authorization: `token ${githubToken}`,
@@ -80,12 +100,21 @@ export async function POST(request: NextRequest) {
     }
 
     const listData = (await listRes.json()) as { artifacts: Artifact[] };
-    const artifact = listData.artifacts?.find(
-      (a) => a.name.startsWith("screener-db-") && !a.expired
-    );
+    const matcher = artifactRegex(mode);
+    const candidates = (listData.artifacts ?? [])
+      .filter((a) => !a.expired && matcher.test(a.name))
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    const artifact = candidates[0];
     if (!artifact) {
       return NextResponse.json(
-        { error: "No unexpired screener-db artifact found" },
+        {
+          error: `No unexpired artifact found for mode=${mode}`,
+          mode,
+          repo: repoSlug,
+        },
         { status: 404 }
       );
     }
@@ -202,74 +231,132 @@ export async function POST(request: NextRequest) {
     writeFileSync(scriptPath, script, { mode: 0o755 });
 
     resetDbConnection();
-    log("DB connection closed before sync. Starting background download...");
-    exec(
-      `/bin/sh "${scriptPath}"`,
-      {
-        timeout: 960_000,
-        maxBuffer: 10 * 1024 * 1024,
-        env: {
-          ...process.env,
-          SYNC_TOKEN: githubToken,
-          SYNC_URL: artifact.archive_download_url,
-        },
+    const execOptions = {
+      timeout: 960_000,
+      maxBuffer: 10 * 1024 * 1024,
+      env: {
+        ...process.env,
+        SYNC_TOKEN: githubToken,
+        SYNC_URL: artifact.archive_download_url,
       },
-      (error: Error | null, stdout: string, stderr: string) => {
+    };
+
+    if (waitForCompletion) {
+      log("DB connection closed before sync. Starting blocking sync...");
+      try {
+        const { stdout, stderr } = await new Promise<{
+          stdout: string;
+          stderr: string;
+        }>((resolve, reject) => {
+          exec(`/bin/sh "${scriptPath}"`, execOptions, (error, out, err) => {
+            if (error) reject(new Error(`${error.message}\n${err || out || ""}`));
+            else resolve({ stdout: out, stderr: err });
+          });
+        });
         if (stdout) {
-          for (const line of stdout.split("\n").filter(Boolean)) {
-            log(line);
-          }
+          for (const line of stdout.split("\n").filter(Boolean)) log(line);
         }
         if (stderr) {
-          for (const line of stderr.split("\n").filter(Boolean)) {
-            log(`stderr: ${line}`);
-          }
+          for (const line of stderr.split("\n").filter(Boolean)) log(`stderr: ${line}`);
         }
-        if (error) {
-          log(`Background sync FAILED: ${error.message}`);
-        } else {
-          try {
-            const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
-            log(`Background sync complete. DB: ${size}MB`);
-          } catch {
-            log("Background sync callback: DB file not found after script");
-          }
-          resetDbConnection();
-          log("DB connection reset — next query will open fresh connection");
-          try {
-            const testDb = new Database(DB_PATH);
-            // Detailed integrity check (first 20 issues)
-            const ic = testDb
-              .prepare("PRAGMA integrity_check(20)")
-              .all() as Array<Record<string, string>>;
-            const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
-            if (firstResult === "ok") {
-              log("DB integrity_check: ok");
-            } else {
-              log(`DB integrity_check FAILED (${ic.length} issues):`);
-              for (const row of ic.slice(0, 10)) {
-                log(`  ${Object.values(row)[0]}`);
-              }
-            }
-            const row = testDb.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number };
-            const dateRow = testDb.prepare("SELECT MAX(date) AS d FROM daily_bars").get() as { d: string };
-            log(`DB verification: ${row.c} companies, latest daily_bars date: ${dateRow.d}`);
-            testDb.close();
-          } catch (verifyErr: unknown) {
-            const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
-            log(`DB verification FAILED: ${msg}`);
-          }
-        }
+        resetDbConnection();
+        const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
+        return NextResponse.json({
+          ok: true,
+          mode,
+          wait: true,
+          repo: repoSlug,
+          status: "completed",
+          artifact: artifact.name,
+          artifactCreated: artifact.created_at,
+          artifactSizeMb: sizeMb,
+          dbSizeMb: size,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log(`Blocking sync FAILED: ${message}`);
+        return NextResponse.json(
+          {
+            ok: false,
+            mode,
+            wait: true,
+            repo: repoSlug,
+            status: "failed",
+            artifact: artifact.name,
+            artifactCreated: artifact.created_at,
+            error: message,
+          },
+          { status: 500 }
+        );
+      } finally {
         try {
           unlinkSync(scriptPath);
         } catch {
           /* best effort */
         }
       }
-    );
+    }
+
+    log("DB connection closed before sync. Starting background download...");
+    exec(`/bin/sh "${scriptPath}"`, execOptions, (error: Error | null, stdout: string, stderr: string) => {
+      if (stdout) {
+        for (const line of stdout.split("\n").filter(Boolean)) {
+          log(line);
+        }
+      }
+      if (stderr) {
+        for (const line of stderr.split("\n").filter(Boolean)) {
+          log(`stderr: ${line}`);
+        }
+      }
+      if (error) {
+        log(`Background sync FAILED: ${error.message}`);
+      } else {
+        try {
+          const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
+          log(`Background sync complete. DB: ${size}MB`);
+        } catch {
+          log("Background sync callback: DB file not found after script");
+        }
+        resetDbConnection();
+        log("DB connection reset — next query will open fresh connection");
+        try {
+          const testDb = new Database(DB_PATH);
+          // Detailed integrity check (first 20 issues)
+          const ic = testDb
+            .prepare("PRAGMA integrity_check(20)")
+            .all() as Array<Record<string, string>>;
+          const firstResult = ic[0]?.[Object.keys(ic[0])[0]] ?? "unknown";
+          if (firstResult === "ok") {
+            log("DB integrity_check: ok");
+          } else {
+            log(`DB integrity_check FAILED (${ic.length} issues):`);
+            for (const row of ic.slice(0, 10)) {
+              log(`  ${Object.values(row)[0]}`);
+            }
+          }
+          const row = testDb.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number };
+          const dateRow = testDb.prepare("SELECT MAX(date) AS d FROM daily_bars").get() as { d: string };
+          log(`DB verification: ${row.c} companies, latest daily_bars date: ${dateRow.d}`);
+          testDb.close();
+        } catch (verifyErr: unknown) {
+          const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+          log(`DB verification FAILED: ${msg}`);
+        }
+      }
+      try {
+        unlinkSync(scriptPath);
+      } catch {
+        /* best effort */
+      }
+    });
 
     return NextResponse.json({
       ok: true,
+      mode,
+      wait: false,
+      repo: repoSlug,
+      status: "started",
       message:
         "DB sync started in background with staged validation and rollback protection. Check Render logs for [sync-db] progress.",
       artifact: artifact.name,

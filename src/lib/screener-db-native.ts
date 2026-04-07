@@ -718,6 +718,33 @@ export function getLatestScreenerDate(): string | null {
   return getLatestReliableScreenerDateFromDb(db);
 }
 
+export type LatestScreenerDates = {
+  reliableDate: string | null;
+  rawDate: string | null;
+  source: "quote_daily_reliability";
+};
+
+export function getLatestScreenerDates(): LatestScreenerDates {
+  const db = getDb();
+  if (!db) {
+    return {
+      reliableDate: null,
+      rawDate: null,
+      source: "quote_daily_reliability",
+    };
+  }
+  const reliableDate = getLatestReliableScreenerDateFromDb(db);
+  const rawRow = db
+    .prepare("SELECT MAX(date) AS d FROM daily_bars")
+    .get() as { d: string | null } | undefined;
+  const rawDate = rawRow?.d != null ? String(rawRow.d) : null;
+  return {
+    reliableDate,
+    rawDate,
+    source: "quote_daily_reliability",
+  };
+}
+
 export type IndustryRankUniverseCounts = {
   industry_rank_1m: number;
   industry_rank_3m: number;

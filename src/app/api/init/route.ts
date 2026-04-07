@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getLatestScreenerDate,
+  getLatestScreenerDates,
   getScreenerSnapshot,
   getCompanyClassification,
   getDailyBars,
@@ -68,7 +69,8 @@ export async function GET(request: NextRequest) {
   };
   const symbol = (request.nextUrl.searchParams.get("symbol") || "SPY").toUpperCase();
   try {
-    const latestScreenerDate = getLatestScreenerDate();
+    const latestDates = getLatestScreenerDates();
+    const latestScreenerDate = latestDates.reliableDate ?? getLatestScreenerDate();
 
     const bars = latestScreenerDate ? getDailyBars(symbol, latestScreenerDate, 2500) : [];
     const candles: Candle[] = bars
@@ -176,6 +178,8 @@ export async function GET(request: NextRequest) {
 
     const payload = {
       latestScreenerDate,
+      latestScreenerDateRaw: latestDates.rawDate,
+      latestScreenerDateSource: latestDates.source,
       stock: {
         quote: quoteWithFallback,
         profile: mergedProfile,

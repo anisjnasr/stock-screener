@@ -111,7 +111,6 @@ jobs:
 
       # Sync refreshed DB to Render persistent disk
       - name: Sync DB to Render
-        continue-on-error: true
         env:
           RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
@@ -120,18 +119,19 @@ jobs:
             echo "Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET not configured"
             exit 0
           fi
-          echo "Triggering DB sync on Render..."
+          echo "Triggering blocking DB sync on Render..."
           STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
-            --max-time 600 \
-            -X POST "${RENDER_APP_URL}/api/admin/sync-db" \
+            --max-time 900 \
+            -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=ownership&wait=true" \
             -H "Authorization: Bearer ${ADMIN_SECRET}" \
             -H "Content-Type: application/json")
           echo "Response status: $STATUS"
           cat /tmp/sync-response.json
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
-            echo "DB sync successful"
+            echo "DB sync completed successfully"
           else
-            echo "::warning::DB sync returned status $STATUS (non-fatal)"
+            echo "::error::DB sync failed with status $STATUS"
+            exit 1
           fi
 
       - name: Send completion email via Formspree

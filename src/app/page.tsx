@@ -89,6 +89,24 @@ function normalizeTicker(input: string): string {
   return input.trim().toUpperCase();
 }
 
+function formatHeaderDate(raw: string): string | null {
+  if (!raw) return null;
+  const dt = new Date(raw.length === 10 ? `${raw}T00:00:00Z` : raw);
+  if (Number.isNaN(dt.getTime())) return null;
+  const day = dt.getUTCDate();
+  const suffix = [11, 12, 13].includes(day)
+    ? "th"
+    : day % 10 === 1
+      ? "st"
+      : day % 10 === 2
+        ? "nd"
+        : day % 10 === 3
+          ? "rd"
+          : "th";
+  const month = dt.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
+  return `${day}${suffix} ${month} ${dt.getUTCFullYear()}`;
+}
+
 type HealthSnapshot = {
   status?: string;
   latestScreenerDate?: string | null;
@@ -117,8 +135,8 @@ export default function Home() {
 
   // Scans contextual state
   const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
-  const [screens, setScreens] = useState<SavedScreen[]>([]);
-  const [scanFolders, setScanFolders] = useState<ScreenerFolder[]>([]);
+  const [screens, setScreens] = useState<SavedScreen[]>(() => loadScreens());
+  const [scanFolders, setScanFolders] = useState<ScreenerFolder[]>(() => loadFolders());
   const [activeScanName, setActiveScanName] = useState("");
   const [openToScreenerTrigger, setOpenToScreenerTrigger] = useState<{ name: string; nonce: number } | null>(null);
 
@@ -319,15 +337,16 @@ export default function Home() {
     fetch(`/api/init?symbol=${encodeURIComponent(DEFAULT_SYMBOL)}`)
       .then((r) => r.json())
       .then((d) => {
-        const raw = d.latestScreenerDate;
-        if (raw) {
-          const dt = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw);
-          if (!isNaN(dt.getTime())) {
-            const day = dt.getDate();
-            const suffix = [11, 12, 13].includes(day) ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
-            const month = dt.toLocaleDateString("en-US", { month: "long" });
-            setLastUpdated(`${day}${suffix} ${month} ${dt.getFullYear()}`);
+        const reliableLabel = formatHeaderDate(String(d.latestScreenerDate ?? ""));
+        const rawLabel = formatHeaderDate(String(d.latestScreenerDateRaw ?? ""));
+        if (reliableLabel) {
+          if (rawLabel && rawLabel !== reliableLabel) {
+            setLastUpdated(`Reliable through ${reliableLabel} (raw ${rawLabel})`);
+          } else {
+            setLastUpdated(`Reliable through ${reliableLabel}`);
           }
+        } else if (rawLabel) {
+          setLastUpdated(`Raw through ${rawLabel}`);
         }
         if (d.candles && Array.isArray(d.candles) && d.candles.length > 0) {
           setCachedCandles(DEFAULT_SYMBOL, "daily", d.candles);
@@ -516,6 +535,27 @@ export default function Home() {
       const detail = (e as CustomEvent<SavedScreen[]>).detail;
       if (Array.isArray(detail)) setScreens(detail);
     };
+    const onFoldersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<ScreenerFolder[]>).detail;
+      if (Array.isArray(detail)) setScanFolders(detail);
+    };
+    const onProfileChanged = () => {
+      const nextScreens = loadScreens();
+      const nextFolders = loadFolders();
+      const nextWatchlists = loadWatchlists();
+      setScreens(nextScreens);
+      setScanFolders(nextFolders);
+      setWatchlists(nextWatchlists);
+      if (nextScreens.length === 0) {
+        setActiveScanName("");
+        return;
+      }
+      setActiveScanName((prev) =>
+        nextScreens.some((screen) => screen.name === prev)
+          ? prev
+          : nextScreens[0]?.name ?? ""
+      );
+    };
     const onCustomPagesChanged = (e: Event) => {
       const detail = (e as CustomEvent<CustomPage[]>).detail;
       if (Array.isArray(detail)) setCustomPages(detail);
@@ -527,19 +567,31 @@ export default function Home() {
     const onHydrationFallback = () => {
       setSyncNotice("Kept local scans/folders because cloud data was empty. Your local organization was preserved.");
     };
+    const onCloudPolicyWarning = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string" && detail.trim()) {
+        setSyncNotice(detail);
+      }
+    };
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
     window.addEventListener("stock-screens-changed", onScreensChanged);
+    window.addEventListener("stock-screener-folders-changed", onFoldersChanged);
     window.addEventListener("stock-custom-pages-changed", onCustomPagesChanged);
     window.addEventListener("stock-active-scan", onActiveScan);
     window.addEventListener("stock-hydration-fallback", onHydrationFallback);
+    window.addEventListener("stock-cloud-policy-warning", onCloudPolicyWarning);
+    window.addEventListener("profile-changed", onProfileChanged);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
       window.removeEventListener("stock-screens-changed", onScreensChanged);
+      window.removeEventListener("stock-screener-folders-changed", onFoldersChanged);
       window.removeEventListener("stock-custom-pages-changed", onCustomPagesChanged);
       window.removeEventListener("stock-active-scan", onActiveScan);
       window.removeEventListener("stock-hydration-fallback", onHydrationFallback);
+      window.removeEventListener("stock-cloud-policy-warning", onCloudPolicyWarning);
+      window.removeEventListener("profile-changed", onProfileChanged);
     };
   }, []);
 
@@ -906,7 +958,7 @@ export default function Home() {
           setActiveWatchlistId(newList.id);
           setSection("lists");
         }}
-        lastUpdated={lastUpdated ? `Updated ${lastUpdated}` : null}
+        lastUpdated={lastUpdated}
         railWidthPx={effectiveRightRailHidden ? 0 : railWidthPx}
         rowCountDisplay={tableRowCountDisplay}
         headerActionsSlotRef={setHeaderSlotEl}
