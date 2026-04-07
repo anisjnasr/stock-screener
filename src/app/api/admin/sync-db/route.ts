@@ -53,8 +53,8 @@ function artifactRegex(mode: ArtifactMode): RegExp {
 /**
  * Trigger-based DB sync. GH Actions calls this with a small request (no body);
  * the endpoint looks up the latest artifact from the GitHub API, then spawns a
- * background shell process: curl downloads the ZIP to disk, then unzip -p
- * extracts screener.db. Requires ~7 GB peak disk (ZIP + extracted DB).
+ * background shell process that streams the ZIP through bsdtar and writes only
+ * screener.db to a staged file (low peak disk usage).
  *
  * Requirements on the Docker image: curl, libarchive-tools (bsdtar).
  * Requirements on Render env: ADMIN_SECRET, GITHUB_TOKEN (PAT with repo scope).
@@ -127,66 +127,47 @@ export async function POST(request: NextRequest) {
     const cacheRm = STALE_CACHES.map(
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
-    const tmpZip = join(DATA_DIR, "artifact.zip");
 
-    // Two-step sync with rollback protection:
-    //   1) Download artifact zip
-    //   2) Extract to temp and stage DB
-    //   3) Validate staged DB header + integrity + core table sanity
-    //   4) Atomically move staged DB into place
-    //   5) Validate live DB; rollback from backup if validation fails
-    //   6) Prune old backups
+    // Low-disk sync flow:
+    //   1) Stream artifact ZIP -> staged DB (no ZIP/temp extract on disk)
+    //   2) Validate staged DB header + integrity + core table sanity
+    //   3) Move current DB aside via rename (no copy), swap staged DB in
+    //   4) Validate live DB; rollback from moved backup if validation fails
+    //   5) Prune old backups
     const script = [
       `set -eu`,
       `echo "[sync] Tool check:"`,
       `echo "  curl: $(which curl 2>&1 || echo NOT FOUND)"`,
       `echo "  bsdtar: $(which bsdtar 2>&1 || echo NOT FOUND)"`,
-      `echo "  unzip: $(which unzip 2>&1 || echo NOT FOUND)"`,
       `echo "[sync] $(date -u) Starting sync for ${artifact.name}..."`,
+      `if ! command -v bsdtar >/dev/null 2>&1; then`,
+      `  echo "[sync] ERROR: bsdtar is required for low-disk artifact extraction"`,
+      `  exit 1`,
+      `fi`,
       `BACKUP_DIR="${DATA_DIR}/backups"`,
       `mkdir -p "$BACKUP_DIR"`,
       `rm -f "${DATA_DIR}"/screener.db.staged.* "${DATA_DIR}"/screener.db.staged.*-wal "${DATA_DIR}"/screener.db.staged.*-shm || true`,
       `TS=$(date -u +%Y%m%d-%H%M%S)`,
+      `STAGED_DB="${DATA_DIR}/screener.db.staged.$TS"`,
       `OLD_DB_BACKUP=""`,
-      `if [ -f "${DB_PATH}" ]; then`,
-      `  OLD_DB_BACKUP="$BACKUP_DIR/screener.db.before-sync.$TS"`,
-      `  cp -f "${DB_PATH}" "$OLD_DB_BACKUP"`,
-      `  echo "[sync] Backup created: $OLD_DB_BACKUP"`,
-      `fi`,
-      `rm -f "${tmpZip}"`,
       `rm -f "${DB_PATH}-wal"`,
       `rm -f "${DB_PATH}-shm"`,
       cacheRm,
-      `echo "[sync] Downloading artifact ZIP..."`,
-      `curl -fSL --max-time 900 \\`,
-      `  -H "Authorization: token $SYNC_TOKEN" \\`,
-      `  -o "${tmpZip}" "$SYNC_URL"`,
-      `ZIP_SIZE=$(du -m "${tmpZip}" | cut -f1)`,
-      `echo "[sync] $(date -u) ZIP downloaded: \${ZIP_SIZE}MB"`,
-      `EXTRACT_TMP="${DATA_DIR}/.extract-tmp"`,
-      `rm -rf "$EXTRACT_TMP"`,
-      `mkdir -p "$EXTRACT_TMP"`,
-      `if command -v bsdtar >/dev/null 2>&1; then`,
-      `  echo "[sync] Extracting with bsdtar..."`,
-      `  bsdtar xf "${tmpZip}" -C "$EXTRACT_TMP"`,
-      `else`,
-      `  echo "[sync] bsdtar not found, trying unzip..."`,
-      `  unzip -o "${tmpZip}" -d "$EXTRACT_TMP"`,
+      `PRUNE_LIST_PRE=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>1' || true)`,
+      `if [ -n "$PRUNE_LIST_PRE" ]; then`,
+      `  echo "$PRUNE_LIST_PRE" | while IFS= read -r old; do rm -f "$old"; done`,
       `fi`,
-      `rm -f "${tmpZip}"`,
-      `# GitHub artifacts may nest under data/ — find the actual .db file`,
-      `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
-      `if [ -n "$FOUND_DB" ]; then`,
-      `  STAGED_DB="${DATA_DIR}/screener.db.staged.$TS"`,
-      `  mv "$FOUND_DB" "$STAGED_DB"`,
-      `  echo "[sync] Staged DB: $STAGED_DB"`,
-      `else`,
-      `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
-      `  ls -laR "$EXTRACT_TMP"`,
+      `echo "[sync] Streaming artifact ZIP and extracting screener.db to staged file..."`,
+      `if ! curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xOf - --wildcards '*/screener.db' > "$STAGED_DB"; then`,
+      `  echo "[sync] Primary extraction pattern failed; retrying root path..."`,
+      `  rm -f "$STAGED_DB"`,
+      `  curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xOf - 'screener.db' > "$STAGED_DB"`,
+      `fi`,
+      `if [ ! -s "$STAGED_DB" ]; then`,
+      `  echo "[sync] ERROR: staged DB is empty after extraction"`,
       `  exit 1`,
       `fi`,
-      `rm -rf "$EXTRACT_TMP"`,
-      `rm -f "${tmpZip}"`,
+      `echo "[sync] Staged DB extracted: $STAGED_DB"`,
       `SIZE=$(du -m "$STAGED_DB" | cut -f1)`,
       `echo "[sync] $(date -u) Extracted staged DB: \${SIZE}MB"`,
       `HEADER=$(head -c 15 "$STAGED_DB")`,
@@ -202,6 +183,11 @@ export async function POST(request: NextRequest) {
       `echo "[sync] Validating staged DB..."`,
       `validate_db "$STAGED_DB"`,
       `echo "[sync] Swapping staged DB into place..."`,
+      `if [ -f "${DB_PATH}" ]; then`,
+      `  OLD_DB_BACKUP="$BACKUP_DIR/screener.db.before-sync.$TS"`,
+      `  mv -f "${DB_PATH}" "$OLD_DB_BACKUP"`,
+      `  echo "[sync] Existing DB moved to backup: $OLD_DB_BACKUP"`,
+      `fi`,
       `mv -f "$STAGED_DB" "${DB_PATH}"`,
       `rm -f "${DB_PATH}-wal"`,
       `rm -f "${DB_PATH}-shm"`,
@@ -212,7 +198,8 @@ export async function POST(request: NextRequest) {
       `  echo "[sync] Live DB validation failed after swap."`,
       `  if [ -n "$OLD_DB_BACKUP" ] && [ -f "$OLD_DB_BACKUP" ]; then`,
       `    echo "[sync] Rolling back from backup: $OLD_DB_BACKUP"`,
-      `    cp -f "$OLD_DB_BACKUP" "${DB_PATH}"`,
+      `    rm -f "${DB_PATH}"`,
+      `    mv -f "$OLD_DB_BACKUP" "${DB_PATH}"`,
       `    rm -f "${DB_PATH}-wal"`,
       `    rm -f "${DB_PATH}-shm"`,
       `    validate_db "${DB_PATH}" || true`,
