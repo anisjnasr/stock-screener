@@ -140,6 +140,7 @@ export default function Home() {
   const [focusTickerTrigger, setFocusTickerTrigger] = useState(0);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const secondaryPagesPrefetchedRef = useRef(false);
   const priorRailWidthBeforeInsightsRef = useRef<number | null>(null);
   const railWidthPxRef = useRef(0);
@@ -523,19 +524,30 @@ export default function Home() {
       const detail = (e as CustomEvent<{ name?: string }>).detail;
       if (detail && typeof detail.name === "string") setActiveScanName(detail.name);
     };
+    const onHydrationFallback = () => {
+      setSyncNotice("Kept local scans/folders because cloud data was empty. Your local organization was preserved.");
+    };
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
     window.addEventListener("stock-screens-changed", onScreensChanged);
     window.addEventListener("stock-custom-pages-changed", onCustomPagesChanged);
     window.addEventListener("stock-active-scan", onActiveScan);
+    window.addEventListener("stock-hydration-fallback", onHydrationFallback);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
       window.removeEventListener("stock-screens-changed", onScreensChanged);
       window.removeEventListener("stock-custom-pages-changed", onCustomPagesChanged);
       window.removeEventListener("stock-active-scan", onActiveScan);
+      window.removeEventListener("stock-hydration-fallback", onHydrationFallback);
     };
   }, []);
+
+  useEffect(() => {
+    if (!syncNotice) return;
+    const t = window.setTimeout(() => setSyncNotice(null), 7000);
+    return () => window.clearTimeout(t);
+  }, [syncNotice]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -936,6 +948,19 @@ export default function Home() {
         centerPanel={centerPanel}
         rightPanel={rightPanel}
       />
+      {syncNotice && (
+        <div
+          className="fixed right-4 bottom-4 z-[12000] max-w-[420px] rounded-lg px-3 py-2 text-xs shadow-xl"
+          style={{
+            background: "rgba(0,229,204,0.12)",
+            border: "1px solid rgba(0,229,204,0.4)",
+            color: "var(--ws-text)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          {syncNotice}
+        </div>
+      )}
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

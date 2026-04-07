@@ -150,6 +150,20 @@ function mergeWatchlistFoldersForHydration(cloud: WatchlistFolder[], local: Watc
   return [...cloud, ...extra];
 }
 
+function mergeScreensForHydration(cloud: SavedScreen[], local: SavedScreen[]): SavedScreen[] {
+  if (cloud.length === 0 && local.length > 0) return local.map((s) => ({ ...s }));
+  const seen = new Set(cloud.map((s) => s.id));
+  const extra = local.filter((s) => !seen.has(s.id));
+  return [...cloud, ...extra];
+}
+
+function mergeScreenFoldersForHydration(cloud: ScreenerFolder[], local: ScreenerFolder[]): ScreenerFolder[] {
+  if (cloud.length === 0 && local.length > 0) return [...local];
+  const seen = new Set(cloud.map((f) => f.id));
+  const extra = local.filter((f) => !seen.has(f.id));
+  return [...cloud, ...extra];
+}
+
 export type ProfileData = {
   watchlists: Watchlist[];
   watchlistFolders: WatchlistFolder[];
@@ -244,8 +258,16 @@ export function hydrateLocalStorage(data: ProfileData): void {
 
   const localWl = loadWatchlists();
   const localFolders = loadWatchlistFolders();
+  const localScreens = loadLocalArray<SavedScreen>(s, "stock-research-screener-screens");
+  const localScreenFolders = loadLocalArray<ScreenerFolder>(s, "stock-research-screener-folders");
+  const localFavoriteScreens = loadLocalArray<string>(s, "stock-research-favorite-screen-ids");
   const mergedWl = mergeWatchlistsForHydration(data.watchlists, localWl);
   const mergedFolders = mergeWatchlistFoldersForHydration(data.watchlistFolders, localFolders);
+  const mergedScreens = mergeScreensForHydration(data.screens, localScreens);
+  const mergedScreenFolders = mergeScreenFoldersForHydration(data.screenFolders, localScreenFolders);
+  const preservedLocalScreens = data.screens.length === 0 && localScreens.length > 0;
+  const preservedLocalScreenFolders = data.screenFolders.length === 0 && localScreenFolders.length > 0;
+  const preservedLocalFavoriteScreens = data.screens.length === 0 && localFavoriteScreens.length > 0;
 
   s.setItem("stock-research-watchlists", JSON.stringify(mergedWl));
   s.setItem("stock-research-watchlist-folders", JSON.stringify(mergedFolders));
@@ -258,9 +280,22 @@ export function hydrateLocalStorage(data: ProfileData): void {
     Object.keys(data.flags).length === 0 && Object.keys(localFlags).length > 0 ? localFlags : data.flags;
   s.setItem("stock-research-stock-flags", JSON.stringify(mergedFlags));
 
-  s.setItem("stock-research-screener-screens", JSON.stringify(data.screens));
-  s.setItem("stock-research-screener-folders", JSON.stringify(data.screenFolders));
-  s.setItem("stock-research-favorite-screen-ids", JSON.stringify(data.favoriteScreenIds));
+  s.setItem("stock-research-screener-screens", JSON.stringify(mergedScreens));
+  s.setItem("stock-research-screener-folders", JSON.stringify(mergedScreenFolders));
+  const mergedFavoriteScreens =
+    data.screens.length === 0 && localFavoriteScreens.length > 0 ? localFavoriteScreens : data.favoriteScreenIds;
+  s.setItem("stock-research-favorite-screen-ids", JSON.stringify(mergedFavoriteScreens));
+  if (preservedLocalScreens || preservedLocalScreenFolders || preservedLocalFavoriteScreens) {
+    warnOnceLocalScanHydrationFallback({
+      preservedLocalScreens,
+      preservedLocalScreenFolders,
+      preservedLocalFavoriteScreens,
+      cloudScreens: data.screens.length,
+      localScreens: localScreens.length,
+      cloudScreenFolders: data.screenFolders.length,
+      localScreenFolders: localScreenFolders.length,
+    });
+  }
 
   const st = data.settings;
   if (st.theme !== undefined) s.setItem("stock-research-theme", JSON.stringify(st.theme));
@@ -351,6 +386,44 @@ export function pushLocalStorageToCloud(): void {
 
 function tryParse(raw: string): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
+}
+
+function loadLocalArray<T>(storage: Storage, key: string): T[] {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+const HYDRATION_FALLBACK_WARN_KEY = "stock-research-hydration-scan-fallback-warned";
+
+function warnOnceLocalScanHydrationFallback(details: {
+  preservedLocalScreens: boolean;
+  preservedLocalScreenFolders: boolean;
+  preservedLocalFavoriteScreens: boolean;
+  cloudScreens: number;
+  localScreens: number;
+  cloudScreenFolders: number;
+  localScreenFolders: number;
+}): void {
+  try {
+    if (sessionStorage.getItem(HYDRATION_FALLBACK_WARN_KEY) === "1") return;
+    sessionStorage.setItem(HYDRATION_FALLBACK_WARN_KEY, "1");
+  } catch {
+    // Ignore storage access failures; still log once per call-site execution.
+  }
+  console.warn("[profile-storage] Preserved local scan data during hydration because cloud scans/folders were empty or incomplete.", details);
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stock-hydration-fallback", { detail: details }));
+    }
+  } catch {
+    // Ignore event dispatch errors.
+  }
 }
 
 // Re-export types used by consumers
