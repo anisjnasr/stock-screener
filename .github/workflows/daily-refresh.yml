@@ -277,18 +277,17 @@ jobs:
 
       - name: Generate DB manifest
         run: |
+          export DB_SHA256=$(sha256sum data/screener.db | awk '{print $1}')
+          export DB_BYTES=$(stat -c%s data/screener.db)
           node -e "
           const fs = require('fs');
-          const crypto = require('crypto');
-          const p = 'data/screener.db';
-          const bytes = fs.statSync(p).size;
-          const hash = crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          const bytes = Number(process.env.DB_BYTES);
           const out = {
             runId: process.env.GITHUB_RUN_ID,
             mode: 'daily',
             dbBytes: bytes,
             dbSizeMb: Math.ceil(bytes / 1024 / 1024),
-            sha256: hash,
+            sha256: process.env.DB_SHA256,
             generatedAt: new Date().toISOString()
           };
           fs.writeFileSync('data/screener-db-manifest.json', JSON.stringify(out, null, 2));
