@@ -169,6 +169,7 @@ export async function POST(request: NextRequest) {
     }
 
     const sizeMb = Math.round(artifact.size_in_bytes / 1024 / 1024);
+    const artifactSizeMb = Math.ceil(artifact.size_in_bytes / 1024 / 1024);
     log(
       `Found artifact: ${artifact.name} (${sizeMb}MB, created ${artifact.created_at})`
     );
@@ -177,12 +178,12 @@ export async function POST(request: NextRequest) {
       (c) => `rm -f "${join(DATA_DIR, c)}"`
     ).join("\n");
 
-    // Low-disk sync flow:
-    //   1) Stream artifact ZIP -> staged DB (no ZIP/temp extract on disk)
-    //   2) Validate staged DB header + integrity + core table sanity
-    //   3) Move current DB aside via rename (no copy), swap staged DB in
-    //   4) Validate live DB; rollback from moved backup if validation fails
-    //   5) Prune old backups
+    // Adaptive sync flow:
+    //   1) Stream artifact ZIP to extract temp (no ZIP file written)
+    //   2) Stage screener.db from extracted contents
+    //   3) Validate staged DB header + integrity + core table sanity
+    //   4) If low space, delete live DB first (no rollback path)
+    //   5) Swap staged DB into place and validate
     const script = [
       `set -eu`,
       `echo "[sync] Tool check:"`,
@@ -199,19 +200,39 @@ export async function POST(request: NextRequest) {
       `TS=$(date -u +%Y%m%d-%H%M%S)`,
       `STAGED_DB="${DATA_DIR}/screener.db.staged.$TS"`,
       `OLD_DB_BACKUP=""`,
+      `SKIP_BACKUP=0`,
       `rm -f "${DB_PATH}-wal"`,
       `rm -f "${DB_PATH}-shm"`,
       cacheRm,
+      `FREE_MB=$(df -Pm "${DATA_DIR}" | awk 'NR==2 {print $4}')`,
+      `REQUIRED_MB=$(( ${artifactSizeMb} + 256 ))`,
+      `echo "[sync] Free disk: \${FREE_MB}MB; required for safe swap: \${REQUIRED_MB}MB"`,
+      `if [ "$FREE_MB" -lt "$REQUIRED_MB" ]; then`,
+      `  echo "[sync] WARNING: Low disk detected. Will skip rollback backup and remove live DB before staging."`,
+      `  SKIP_BACKUP=1`,
+      `fi`,
       `PRUNE_LIST_PRE=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>1' || true)`,
       `if [ -n "$PRUNE_LIST_PRE" ]; then`,
       `  echo "$PRUNE_LIST_PRE" | while IFS= read -r old; do rm -f "$old"; done`,
       `fi`,
-      `echo "[sync] Streaming artifact ZIP and extracting screener.db to staged file..."`,
-      `if ! curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xOf - --wildcards '*/screener.db' > "$STAGED_DB"; then`,
-      `  echo "[sync] Primary extraction pattern failed; retrying root path..."`,
-      `  rm -f "$STAGED_DB"`,
-      `  curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xOf - 'screener.db' > "$STAGED_DB"`,
+      `if [ "$SKIP_BACKUP" = "1" ]; then`,
+      `  rm -f "${DB_PATH}"`,
+      `  rm -f "${DB_PATH}-wal"`,
+      `  rm -f "${DB_PATH}-shm"`,
       `fi`,
+      `EXTRACT_TMP="${DATA_DIR}/.extract-tmp"`,
+      `rm -rf "$EXTRACT_TMP"`,
+      `mkdir -p "$EXTRACT_TMP"`,
+      `echo "[sync] Streaming artifact ZIP and extracting archive..."`,
+      `curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xf - -C "$EXTRACT_TMP"`,
+      `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
+      `if [ -z "$FOUND_DB" ]; then`,
+      `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
+      `  ls -laR "$EXTRACT_TMP"`,
+      `  exit 1`,
+      `fi`,
+      `mv "$FOUND_DB" "$STAGED_DB"`,
+      `rm -rf "$EXTRACT_TMP"`,
       `if [ ! -s "$STAGED_DB" ]; then`,
       `  echo "[sync] ERROR: staged DB is empty after extraction"`,
       `  exit 1`,
@@ -232,7 +253,9 @@ export async function POST(request: NextRequest) {
       `echo "[sync] Validating staged DB..."`,
       `validate_db "$STAGED_DB"`,
       `echo "[sync] Swapping staged DB into place..."`,
-      `if [ -f "${DB_PATH}" ]; then`,
+      `if [ "$SKIP_BACKUP" = "1" ]; then`,
+      `  echo "[sync] Low-space mode active: skipping rollback backup."`,
+      `elif [ -f "${DB_PATH}" ]; then`,
       `  OLD_DB_BACKUP="$BACKUP_DIR/screener.db.before-sync.$TS"`,
       `  mv -f "${DB_PATH}" "$OLD_DB_BACKUP"`,
       `  echo "[sync] Existing DB moved to backup: $OLD_DB_BACKUP"`,
