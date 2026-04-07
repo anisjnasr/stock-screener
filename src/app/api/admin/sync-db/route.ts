@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
   unlinkSync,
@@ -50,6 +52,52 @@ function artifactRegex(mode: ArtifactMode): RegExp {
   return /^screener-db-\d+$/;
 }
 
+function preflightCleanupDataDir(): void {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+  } catch {
+    // ignore
+  }
+
+  const safeRemove = (p: string) => {
+    try {
+      rmSync(p, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  };
+
+  safeRemove(join(DATA_DIR, ".extract-tmp"));
+  safeRemove(join(DATA_DIR, "artifact.zip"));
+
+  for (const cacheFile of STALE_CACHES) {
+    safeRemove(join(DATA_DIR, cacheFile));
+  }
+
+  try {
+    const entries = readdirSync(DATA_DIR);
+    for (const name of entries) {
+      if (name.startsWith("screener.db.staged.")) {
+        safeRemove(join(DATA_DIR, name));
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const backupsDir = join(DATA_DIR, "backups");
+  try {
+    const backupFiles = readdirSync(backupsDir)
+      .filter((name) => name.startsWith("screener.db.before-sync."))
+      .sort((a, b) => b.localeCompare(a));
+    for (const old of backupFiles.slice(1)) {
+      safeRemove(join(backupsDir, old));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Trigger-based DB sync. GH Actions calls this with a small request (no body);
  * the endpoint looks up the latest artifact from the GitHub API, then spawns a
@@ -75,6 +123,7 @@ export async function POST(request: NextRequest) {
   }
 
   mkdirSync(DATA_DIR, { recursive: true });
+  preflightCleanupDataDir();
 
   try {
     const modeRaw = request.nextUrl.searchParams.get("artifact") ?? "daily";
@@ -207,11 +256,11 @@ export async function POST(request: NextRequest) {
       `  exit 1`,
       `fi`,
       `rm -f "${DATA_DIR}"/screener.db.staged.* "${DATA_DIR}"/screener.db.staged.*-wal "${DATA_DIR}"/screener.db.staged.*-shm || true`,
-      `PRUNE_LIST=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>3' || true)`,
+      `PRUNE_LIST=$(ls -1t "$BACKUP_DIR"/screener.db.before-sync.* 2>/dev/null | awk 'NR>1' || true)`,
       `if [ -n "$PRUNE_LIST" ]; then`,
       `  echo "$PRUNE_LIST" | while IFS= read -r old; do rm -f "$old"; done`,
       `fi`,
-      `echo "[sync] Backup retention complete (keeping latest 3)."`,
+      `echo "[sync] Backup retention complete (keeping latest 1)."`,
     ].join("\n");
 
     const scriptPath = join(DATA_DIR, ".sync-download.sh");
