@@ -1,42 +1,69 @@
-# Render DB Sync Controlled Recovery
+# Render DB Sync Operations
 
-Use this runbook only when `/api/admin/sync-db?preflight=true` reports
-insufficient disk for a safe staged swap.
+Use this runbook for day-to-day GitHub->Render DB sync and for failure triage.
 
-## 1) Confirm preflight failure
+## Normal flow (async trigger + polling)
 
-Run from GitHub Actions (already wired in workflow) or manually:
+1. **Preflight check**
+   - `POST /api/admin/sync-db?artifact=daily&preflight=true`
+   - `POST /api/admin/sync-db?artifact=ownership&preflight=true`
+2. **Async start**
+   - `POST /api/admin/sync-db?artifact=daily&wait=false`
+3. **Status polling**
+   - `GET /api/admin/sync-db`
+   - poll until `status.state` is `completed` or `failed`
 
-- `POST /api/admin/sync-db?artifact=daily&preflight=true`
-- `POST /api/admin/sync-db?artifact=ownership&preflight=true`
+GitHub workflows already implement this sequence.
 
-Confirm:
+## Status payload fields
 
-- `snapshot.enoughSpace` is `false`
-- `snapshot.dataFreeMb` is lower than `snapshot.requiredMb`
+`GET /api/admin/sync-db` returns:
 
-## 2) Preferred fix: increase persistent disk
+- `status.state`: `idle | running | completed | failed`
+- `status.mode`: `daily | ownership`
+- `status.artifact`
+- `status.runId`
+- `status.startedAt`
+- `status.completedAt`
+- `status.error`
+- `status.dbSizeMb`
+- `status.preflightSnapshot`
+- `status.manifest`
 
-In Render service settings, increase persistent disk size so preflight can pass
-without risky mutation paths.
+## Expected timings
 
-Target baseline:
+- Preflight: ~1-3s
+- Async trigger call: ~1-5s
+- Full sync (4-5GB DB): typically 10-25 minutes depending on Render IO and load
 
-- `requiredMb + 1024` free space after startup.
+## Failure triage
 
-## 3) One-time controlled maintenance (if disk cannot be resized immediately)
+1. **Preflight fails with insufficient space**
+   - Check:
+     - `status.preflightSnapshot.dataFreeMb`
+     - `status.preflightSnapshot.requiredMb`
+   - Action:
+     - increase persistent disk, or
+     - perform maintenance cleanup under `/app/data` and retry.
 
-1. Put service in maintenance window (pause external traffic).
+2. **Status reaches failed**
+   - Inspect `status.error`.
+   - Check Render logs for `[sync-db]`.
+   - Confirm artifact/manifest match the same run id.
+
+3. **Polling timeout (no terminal status)**
+   - Check if Render restarted mid-sync.
+   - Re-query `GET /api/admin/sync-db`; if still `running` for long periods, inspect logs and retrigger.
+
+## Controlled maintenance path (only if needed)
+
+1. Put service in maintenance window.
 2. Remove stale files under `/app/data`:
    - `.extract-tmp`
    - `screener.db.staged.*`
    - old backups except latest one
-3. Re-run preflight endpoint.
-4. If preflight passes, run:
-   - `POST /api/admin/sync-db?artifact=daily&wait=true`
-5. Restart service after completion.
-6. Validate:
+3. Re-run preflight.
+4. Trigger async sync and poll status to terminal state.
+5. Validate:
    - `/api/health`
    - `/api/init?symbol=SPY`
-
-If preflight still fails after cleanup, do not run sync. Resize disk first.

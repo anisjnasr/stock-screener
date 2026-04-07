@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -15,6 +16,7 @@ import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
 
 const DATA_DIR = getDataDir();
 const DB_PATH = getScreenerDbPath();
+const SYNC_STATUS_PATH = join(DATA_DIR, "sync-status.json");
 const DEFAULT_GITHUB_REPO = "anisjnasr/stock-screener";
 
 const STALE_CACHES = [
@@ -44,6 +46,25 @@ type SyncManifest = {
   generatedAt: string;
 };
 
+type SyncState = "idle" | "running" | "completed" | "failed";
+
+type SyncStatusRecord = {
+  state: SyncState;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  mode: ArtifactMode | null;
+  artifact: string | null;
+  runId: string | null;
+  manifestArtifact: string | null;
+  repo: string | null;
+  wait: boolean | null;
+  preflightSnapshot: Record<string, unknown> | null;
+  manifest: SyncManifest | null;
+  dbSizeMb: number | null;
+  error: string | null;
+};
+
 function log(msg: string) {
   console.log(`[sync-db] ${msg}`);
 }
@@ -60,6 +81,59 @@ function getRepoSlug(): string {
 function artifactRegex(mode: ArtifactMode): RegExp {
   if (mode === "ownership") return /^screener-db-ownership-\d+$/;
   return /^screener-db-\d+$/;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function defaultSyncStatus(): SyncStatusRecord {
+  return {
+    state: "idle",
+    updatedAt: nowIso(),
+    startedAt: null,
+    completedAt: null,
+    mode: null,
+    artifact: null,
+    runId: null,
+    manifestArtifact: null,
+    repo: null,
+    wait: null,
+    preflightSnapshot: null,
+    manifest: null,
+    dbSizeMb: null,
+    error: null,
+  };
+}
+
+function readSyncStatus(): SyncStatusRecord {
+  try {
+    const raw = readFileSync(SYNC_STATUS_PATH, "utf8");
+    const parsed = JSON.parse(raw) as Partial<SyncStatusRecord>;
+    return {
+      ...defaultSyncStatus(),
+      ...parsed,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : nowIso(),
+    };
+  } catch {
+    return defaultSyncStatus();
+  }
+}
+
+function writeSyncStatus(next: SyncStatusRecord): void {
+  mkdirSync(DATA_DIR, { recursive: true });
+  writeFileSync(SYNC_STATUS_PATH, JSON.stringify(next, null, 2));
+}
+
+function setSyncStatus(patch: Partial<SyncStatusRecord>): SyncStatusRecord {
+  const prev = readSyncStatus();
+  const next: SyncStatusRecord = {
+    ...prev,
+    ...patch,
+    updatedAt: nowIso(),
+  };
+  writeSyncStatus(next);
+  return next;
 }
 
 function manifestArtifactRegex(mode: ArtifactMode): RegExp {
@@ -446,6 +520,21 @@ export async function POST(request: NextRequest) {
     log(
       `Found artifact: ${artifact.name} (${sizeMb}MB, created ${artifact.created_at})`
     );
+    const runningStatus = setSyncStatus({
+      state: "running",
+      startedAt: nowIso(),
+      completedAt: null,
+      mode,
+      artifact: artifact.name,
+      runId,
+      manifestArtifact: manifestArtifact.name,
+      repo: repoSlug,
+      wait: waitForCompletion,
+      preflightSnapshot: snapshot as unknown as Record<string, unknown>,
+      manifest,
+      dbSizeMb: null,
+      error: null,
+    });
 
     const cacheRm = STALE_CACHES.map(
       (c) => `rm -f "${join(DATA_DIR, c)}"`
@@ -578,6 +667,13 @@ export async function POST(request: NextRequest) {
         }
         resetDbConnection();
         const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
+        setSyncStatus({
+          ...runningStatus,
+          state: "completed",
+          completedAt: nowIso(),
+          dbSizeMb: size,
+          error: null,
+        });
         return NextResponse.json({
           ok: true,
           mode,
@@ -593,6 +689,12 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log(`Blocking sync FAILED: ${message}`);
+        setSyncStatus({
+          ...runningStatus,
+          state: "failed",
+          completedAt: nowIso(),
+          error: message,
+        });
         return NextResponse.json(
           {
             ok: false,
@@ -629,13 +731,27 @@ export async function POST(request: NextRequest) {
       }
       if (error) {
         log(`Background sync FAILED: ${error.message}`);
+        setSyncStatus({
+          ...runningStatus,
+          state: "failed",
+          completedAt: nowIso(),
+          error: error.message,
+        });
       } else {
+        let size: number | null = null;
         try {
-          const size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
+          size = Math.round(statSync(DB_PATH).size / 1024 / 1024);
           log(`Background sync complete. DB: ${size}MB`);
         } catch {
           log("Background sync callback: DB file not found after script");
         }
+        setSyncStatus({
+          ...runningStatus,
+          state: "completed",
+          completedAt: nowIso(),
+          dbSizeMb: size,
+          error: null,
+        });
         resetDbConnection();
         log("DB connection reset — next query will open fresh connection");
         try {
@@ -687,4 +803,16 @@ export async function POST(request: NextRequest) {
     log(`Sync failed: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function GET(request: NextRequest) {
+  const adminSecret = process.env.ADMIN_SECRET;
+  const auth = request.headers.get("authorization");
+  if (!adminSecret || auth !== `Bearer ${adminSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return NextResponse.json({
+    ok: true,
+    status: readSyncStatus(),
+  });
 }

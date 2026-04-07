@@ -351,20 +351,52 @@ jobs:
             echo "::error::Render preflight reports insufficient disk for safe sync. Increase persistent disk or perform controlled maintenance recovery."
             exit 1
           fi
-          echo "Triggering blocking DB sync on Render..."
-          STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
-            --max-time 900 \
-            -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=daily&wait=true" \
+          echo "Triggering async DB sync on Render..."
+          STATUS=$(curl -s -o /tmp/sync-trigger.json -w "%{http_code}" \
+            --max-time 120 \
+            -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=daily&wait=false" \
             -H "Authorization: Bearer ${ADMIN_SECRET}" \
             -H "Content-Type: application/json")
-          echo "Response status: $STATUS"
-          cat /tmp/sync-response.json
+          echo "Trigger response status: $STATUS"
+          cat /tmp/sync-trigger.json
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
-            echo "DB sync completed successfully on Render"
+            echo "DB sync started; polling status..."
           else
-            echo "::error::DB sync failed with status $STATUS"
+            echo "::error::DB sync trigger failed with status $STATUS"
             exit 1
           fi
+          MAX_POLLS=80
+          SLEEP_SEC=30
+          for i in $(seq 1 $MAX_POLLS); do
+            STATUS_CODE=$(curl -s -o /tmp/sync-status.json -w "%{http_code}" \
+              --max-time 60 \
+              -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
+              -H "Authorization: Bearer ${ADMIN_SECRET}" \
+              -H "Content-Type: application/json")
+            if [ "$STATUS_CODE" -lt 200 ] || [ "$STATUS_CODE" -ge 300 ]; then
+              echo "::error::Status polling failed with HTTP $STATUS_CODE"
+              cat /tmp/sync-status.json || true
+              exit 1
+            fi
+            STATE=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
+            ARTIFACT=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.artifact ? d.status.artifact : ''));")
+            echo "Poll $i/$MAX_POLLS: state=$STATE artifact=$ARTIFACT"
+            if [ "$STATE" = "completed" ]; then
+              echo "DB sync completed successfully on Render"
+              break
+            fi
+            if [ "$STATE" = "failed" ]; then
+              echo "::error::DB sync failed on Render"
+              cat /tmp/sync-status.json
+              exit 1
+            fi
+            if [ "$i" -eq "$MAX_POLLS" ]; then
+              echo "::error::DB sync polling timed out after $MAX_POLLS attempts"
+              cat /tmp/sync-status.json
+              exit 1
+            fi
+            sleep "$SLEEP_SEC"
+          done
 
       - name: Send completion email via Formspree
         if: ${{ always() }}
