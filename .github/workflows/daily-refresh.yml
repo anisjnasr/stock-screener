@@ -334,6 +334,64 @@ jobs:
             echo "Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET not configured"
             exit 0
           fi
+          poll_sync_status() {
+            local label="$1"
+            local max_polls="$2"
+            local sleep_sec="$3"
+            local consec_fails=0
+            local max_consec_fails=20
+            for i in $(seq 1 "$max_polls"); do
+              STATUS_CODE=$(curl -s -o /tmp/sync-status.json -w "%{http_code}" \
+                --max-time 120 \
+                -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
+                -H "Authorization: Bearer ${ADMIN_SECRET}" \
+                -H "Content-Type: application/json" || echo "000")
+              if [ "$STATUS_CODE" -lt 200 ] || [ "$STATUS_CODE" -ge 300 ]; then
+                consec_fails=$((consec_fails + 1))
+                echo "::warning::${label} poll $i failed with HTTP $STATUS_CODE (consecutive=$consec_fails)"
+                if [ "$consec_fails" -ge "$max_consec_fails" ]; then
+                  echo "::error::${label} polling failed $consec_fails times in a row"
+                  cat /tmp/sync-status.json || true
+                  return 1
+                fi
+                sleep "$sleep_sec"
+                continue
+              fi
+              consec_fails=0
+              STATE=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
+              ARTIFACT=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.artifact ? d.status.artifact : ''));")
+              UPDATED=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.updatedAt ? d.status.updatedAt : ''));")
+              echo "${label} poll $i/$max_polls: state=$STATE artifact=$ARTIFACT updatedAt=$UPDATED"
+              if [ "$STATE" = "completed" ]; then
+                return 0
+              fi
+              if [ "$STATE" = "failed" ]; then
+                echo "::error::DB sync failed on Render"
+                cat /tmp/sync-status.json
+                return 1
+              fi
+              if [ "$i" -eq "$max_polls" ]; then
+                echo "::error::${label} polling timed out after $max_polls attempts"
+                cat /tmp/sync-status.json
+                return 1
+              fi
+              sleep "$sleep_sec"
+            done
+          }
+
+          EXISTING_STATUS=$(curl -s -o /tmp/sync-existing.json -w "%{http_code}" \
+            --max-time 60 \
+            -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
+            -H "Authorization: Bearer ${ADMIN_SECRET}" \
+            -H "Content-Type: application/json" || echo "000")
+          if [ "$EXISTING_STATUS" -ge 200 ] && [ "$EXISTING_STATUS" -lt 300 ]; then
+            EXISTING_STATE=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-existing.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
+            if [ "$EXISTING_STATE" = "running" ]; then
+              echo "::warning::Existing Render sync is already running; waiting for it to finish before triggering a new one."
+              poll_sync_status "existing-sync" 140 30 || exit 1
+              echo "Existing sync finished; continuing with preflight."
+            fi
+          fi
           echo "Running Render preflight check..."
           PREFLIGHT_STATUS=$(curl -s -o /tmp/sync-preflight.json -w "%{http_code}" \
             --max-time 120 \
@@ -365,47 +423,8 @@ jobs:
             echo "::error::DB sync trigger failed with status $STATUS"
             exit 1
           fi
-          MAX_POLLS=140
-          SLEEP_SEC=30
-          CONSEC_FAILS=0
-          MAX_CONSEC_FAILS=20
-          for i in $(seq 1 $MAX_POLLS); do
-            STATUS_CODE=$(curl -s -o /tmp/sync-status.json -w "%{http_code}" \
-              --max-time 120 \
-              -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
-              -H "Authorization: Bearer ${ADMIN_SECRET}" \
-              -H "Content-Type: application/json" || echo "000")
-            if [ "$STATUS_CODE" -lt 200 ] || [ "$STATUS_CODE" -ge 300 ]; then
-              CONSEC_FAILS=$((CONSEC_FAILS + 1))
-              echo "::warning::Status polling attempt $i failed with HTTP $STATUS_CODE (consecutive=$CONSEC_FAILS)"
-              if [ "$CONSEC_FAILS" -ge "$MAX_CONSEC_FAILS" ]; then
-                echo "::error::Status polling failed $CONSEC_FAILS times in a row"
-                cat /tmp/sync-status.json || true
-                exit 1
-              fi
-              sleep "$SLEEP_SEC"
-              continue
-            fi
-            CONSEC_FAILS=0
-            STATE=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
-            ARTIFACT=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.artifact ? d.status.artifact : ''));")
-            echo "Poll $i/$MAX_POLLS: state=$STATE artifact=$ARTIFACT"
-            if [ "$STATE" = "completed" ]; then
-              echo "DB sync completed successfully on Render"
-              break
-            fi
-            if [ "$STATE" = "failed" ]; then
-              echo "::error::DB sync failed on Render"
-              cat /tmp/sync-status.json
-              exit 1
-            fi
-            if [ "$i" -eq "$MAX_POLLS" ]; then
-              echo "::error::DB sync polling timed out after $MAX_POLLS attempts"
-              cat /tmp/sync-status.json
-              exit 1
-            fi
-            sleep "$SLEEP_SEC"
-          done
+          poll_sync_status "new-sync" 140 30 || exit 1
+          echo "DB sync completed successfully on Render"
 
       - name: Send completion email via Formspree
         if: ${{ always() }}

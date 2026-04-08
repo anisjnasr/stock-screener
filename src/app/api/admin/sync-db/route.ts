@@ -87,6 +87,14 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function isStaleRunningStatus(status: SyncStatusRecord): boolean {
+  if (status.state !== "running") return false;
+  const updated = Date.parse(status.updatedAt);
+  if (!Number.isFinite(updated)) return false;
+  const STALE_MS = 2 * 60 * 60 * 1000;
+  return Date.now() - updated > STALE_MS;
+}
+
 function defaultSyncStatus(): SyncStatusRecord {
   return {
     state: "idle",
@@ -393,6 +401,28 @@ export async function POST(request: NextRequest) {
     const modeRaw = request.nextUrl.searchParams.get("artifact") ?? "daily";
     const mode: ArtifactMode = modeRaw === "ownership" ? "ownership" : "daily";
     const waitForCompletion = request.nextUrl.searchParams.get("wait") === "true";
+    const existingStatus = readSyncStatus();
+    if (existingStatus.state === "running") {
+      if (isStaleRunningStatus(existingStatus)) {
+        setSyncStatus({
+          state: "failed",
+          completedAt: nowIso(),
+          error: "Marked stale running sync as failed before starting new sync.",
+        });
+      } else {
+        return NextResponse.json(
+          {
+            ok: false,
+            mode,
+            wait: waitForCompletion,
+            status: "already-running",
+            message: "A sync is already running. Poll GET /api/admin/sync-db until it completes.",
+            running: existingStatus,
+          },
+          { status: 409 }
+        );
+      }
+    }
     const repoSlug = getRepoSlug();
     log("Fetching artifact list from GitHub...");
     const listRes = await fetch(
