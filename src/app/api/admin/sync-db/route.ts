@@ -573,7 +573,7 @@ export async function POST(request: NextRequest) {
       `rm -rf "$EXTRACT_TMP"`,
       `mkdir -p "$EXTRACT_TMP"`,
       `echo "[sync] Streaming artifact ZIP and extracting archive..."`,
-      `curl -fSL --max-time 900 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xf - -C "$EXTRACT_TMP"`,
+      `curl -fsSL --max-time 1800 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xf - -C "$EXTRACT_TMP"`,
       `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
       `if [ -z "$FOUND_DB" ]; then`,
       `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
@@ -638,8 +638,8 @@ export async function POST(request: NextRequest) {
 
     resetDbConnection();
     const execOptions = {
-      timeout: 960_000,
-      maxBuffer: 10 * 1024 * 1024,
+      timeout: 3_600_000,
+      maxBuffer: 20 * 1024 * 1024,
       env: {
         ...process.env,
         SYNC_TOKEN: githubToken,
