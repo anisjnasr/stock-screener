@@ -368,10 +368,10 @@ jobs:
           MAX_POLLS=140
           SLEEP_SEC=30
           CONSEC_FAILS=0
-          MAX_CONSEC_FAILS=8
+          MAX_CONSEC_FAILS=20
           for i in $(seq 1 $MAX_POLLS); do
             STATUS_CODE=$(curl -s -o /tmp/sync-status.json -w "%{http_code}" \
-              --max-time 20 \
+              --max-time 120 \
               -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
               -H "Authorization: Bearer ${ADMIN_SECRET}" \
               -H "Content-Type: application/json" || echo "000")

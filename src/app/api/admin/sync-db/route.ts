@@ -718,7 +718,16 @@ export async function POST(request: NextRequest) {
     }
 
     log("DB connection closed before sync. Starting background download...");
+    const heartbeat = setInterval(() => {
+      try {
+        setSyncStatus({ state: "running" });
+      } catch {
+        // Best-effort heartbeat only.
+      }
+    }, 30_000);
+
     exec(`/bin/sh "${scriptPath}"`, execOptions, (error: Error | null, stdout: string, stderr: string) => {
+      clearInterval(heartbeat);
       if (stdout) {
         for (const line of stdout.split("\n").filter(Boolean)) {
           log(line);
