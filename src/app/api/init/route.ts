@@ -168,7 +168,6 @@ export async function GET(request: NextRequest) {
 
     const rsRank = dbRow
       ? {
-          rs_pct_1w: dbRow.rs_pct_1w ?? null,
           rs_pct_1m: dbRow.rs_pct_1m ?? null,
           rs_pct_3m: dbRow.rs_pct_3m ?? null,
           rs_pct_6m: dbRow.rs_pct_6m ?? null,

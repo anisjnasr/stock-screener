@@ -743,6 +743,15 @@ export default function Home() {
           onSymbolSelect={handleSymbolSelect}
           onDrillDown={(kind, value) => {
             pendingAutoSelectRef.current = true;
+            const nextCollectionId =
+              kind === "sector"
+                ? `sector:${value}`
+                : kind === "industry"
+                  ? `industry:${value}`
+                  : kind === "theme"
+                    ? `theme-etf:${value}`
+                    : `index:${value}`;
+            setActiveWatchlistId(nextCollectionId);
             setOpenToCollectionTrigger({ kind, value, nonce: Date.now() } as typeof openToCollectionTrigger);
             setSection("lists");
           }}

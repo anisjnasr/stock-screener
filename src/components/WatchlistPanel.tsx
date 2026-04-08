@@ -149,17 +149,27 @@ const RELATED_LIST_ID = "__related__";
 const INDEX_LIST_PREFIX = "index:";
 const SECTOR_LIST_PREFIX = "sector:";
 const INDUSTRY_LIST_PREFIX = "industry:";
+const INDUSTRY_RANKINGS_LIST_ID = "__industries_rankings__";
 const THEME_ETF_PREFIX = "theme-etf:";
 const THEMATIC_ETFS_ALL_ID = "__theme-etfs-all__";
 const THEMATIC_INDUSTRIES_FOLDER_ID = "thematic-industries";
 
 const FLAG_LIST_PREFIX = "__flag_";
-const FLAG_COLORS = ["red", "yellow", "green", "blue"] as const;
+const FLAG_SORT_KEY = "__flag_sort__";
+const FLAG_COLORS = ["red", "yellow", "green", "blue", "purple"] as const;
+const FLAG_SORT_WEIGHT: Record<StockFlag, number> = {
+  green: 5,
+  red: 4,
+  yellow: 3,
+  purple: 2,
+  blue: 1,
+};
 const FLAG_HEX: Record<string, string> = {
   red: "#EF4468",
   yellow: "#F5A524",
   green: "#3DDC84",
   blue: "#5C9EF5",
+  purple: "#A855F7",
 };
 
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
@@ -336,7 +346,6 @@ function isSignedMetricColumn(col: TableColumnId): boolean {
   const key = String(col);
   return (
     key === "changePct" ||
-    key === "off52wHighPct" ||
     key.startsWith("priceChange") ||
     key.startsWith("epsGrowth") ||
     key.startsWith("avgEpsGrowth") ||
@@ -728,6 +737,8 @@ export default function WatchlistPanel({
   const [dragOverRoot, setDragOverRoot] = useState(false);
   const [draggedWatchlistId, setDraggedWatchlistId] = useState<string | null>(null);
   const [dragOverWatchlistFolderId, setDragOverWatchlistFolderId] = useState<string | null>(null);
+  const [dragOverWatchlistId, setDragOverWatchlistId] = useState<string | null>(null);
+  const [dragOverScreenId, setDragOverScreenId] = useState<string | null>(null);
   const [editingWatchlistNameId, setEditingWatchlistNameId] = useState<string | null>(null);
   const [editingWatchlistNameValue, setEditingWatchlistNameValue] = useState("");
   const [stockDragOverListId, setStockDragOverListId] = useState<string | null>(null);
@@ -911,15 +922,36 @@ export default function WatchlistPanel({
       const detail = (e as CustomEvent<SavedScreen[]>).detail;
       if (Array.isArray(detail)) setScreens(detail);
     };
+    const onScreenerFoldersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<ScreenerFolder[]>).detail;
+      if (Array.isArray(detail)) setFolders(detail);
+    };
+    const onWatchlistFoldersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<WatchlistFolder[]>).detail;
+      if (Array.isArray(detail)) setListFolders(detail);
+    };
+    const onProfileChanged = () => {
+      setLists(loadWatchlists());
+      setListFolders(loadWatchlistFolders());
+      setScreens(loadScreens());
+      setFolders(loadFolders());
+      setFlags(loadFlags());
+    };
     window.addEventListener("stock-flags-changed", onFlagsChanged);
     window.addEventListener("stock-watchlists-changed", onWatchlistsChanged);
     window.addEventListener("stock-flag-names-changed", onFlagNamesChanged);
     window.addEventListener("stock-screens-changed", onScreensChanged);
+    window.addEventListener("stock-screener-folders-changed", onScreenerFoldersChanged);
+    window.addEventListener("stock-watchlist-folders-changed", onWatchlistFoldersChanged);
+    window.addEventListener("profile-changed", onProfileChanged);
     return () => {
       window.removeEventListener("stock-flags-changed", onFlagsChanged);
       window.removeEventListener("stock-watchlists-changed", onWatchlistsChanged);
       window.removeEventListener("stock-flag-names-changed", onFlagNamesChanged);
       window.removeEventListener("stock-screens-changed", onScreensChanged);
+      window.removeEventListener("stock-screener-folders-changed", onScreenerFoldersChanged);
+      window.removeEventListener("stock-watchlist-folders-changed", onWatchlistFoldersChanged);
+      window.removeEventListener("profile-changed", onProfileChanged);
     };
   }, []);
 
@@ -1023,9 +1055,21 @@ export default function WatchlistPanel({
       const isFullUniverse = activeWatchlistIdSync === FULL_UNIVERSE_ID;
       const isFlagWatchlist = activeWatchlistIdSync.startsWith(FLAG_LIST_PREFIX);
       const isIndexWatchlist = activeWatchlistIdSync.startsWith(INDEX_LIST_PREFIX);
-      if (!isFullUniverse && !isFlagWatchlist && !isIndexWatchlist && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
-      setSidebarTab("watchlists");
-      if (isFlagWatchlist || isIndexWatchlist) {
+      const isSectorCollection = activeWatchlistIdSync.startsWith(SECTOR_LIST_PREFIX);
+      const isIndustryCollection = activeWatchlistIdSync.startsWith(INDUSTRY_LIST_PREFIX);
+      const isThemeCollection = activeWatchlistIdSync.startsWith(THEME_ETF_PREFIX);
+      const isSpecialCollection =
+        isFlagWatchlist ||
+        isIndexWatchlist ||
+        isSectorCollection ||
+        isIndustryCollection ||
+        isThemeCollection ||
+        activeWatchlistIdSync === THEMATIC_ETFS_ALL_ID ||
+        activeWatchlistIdSync === INDUSTRY_RANKINGS_LIST_ID ||
+        activeWatchlistIdSync === RELATED_LIST_ID;
+      if (!isFullUniverse && !isSpecialCollection && !lists.some((l) => l.id === activeWatchlistIdSync)) return;
+      if (sectionMode !== "scans") setSidebarTab("watchlists");
+      if (isSpecialCollection) {
         setActiveListIdState(null);
         setSelectedCollectionId(activeWatchlistIdSync);
         if (isIndexWatchlist) {
@@ -1045,13 +1089,19 @@ export default function WatchlistPanel({
     if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
     else if (activeListId && activeListId !== FULL_UNIVERSE_ID && !lists.find((l) => l.id === activeListId))
       setActiveListId(lists[0]?.id ?? null);
-  }, [lists, activeListId, activeWatchlistIdSync, setActiveListId]);
+  }, [lists, activeListId, activeWatchlistIdSync, setActiveListId, sectionMode]);
 
   useEffect(() => {
     if (sidebarTab !== "watchlists" || !selectedCollectionId) return;
     if (
       selectedCollectionId.startsWith(INDEX_LIST_PREFIX) ||
-      selectedCollectionId.startsWith(FLAG_LIST_PREFIX)
+      selectedCollectionId.startsWith(FLAG_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(SECTOR_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(INDUSTRY_LIST_PREFIX) ||
+      selectedCollectionId.startsWith(THEME_ETF_PREFIX) ||
+      selectedCollectionId === THEMATIC_ETFS_ALL_ID ||
+      selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID ||
+      selectedCollectionId === RELATED_LIST_ID
     ) {
       emitActiveWatchlistRef.current?.(selectedCollectionId);
     }
@@ -1297,6 +1347,14 @@ export default function WatchlistPanel({
         screen: null,
       };
     }
+    if (selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID) {
+      return {
+        symbols: [],
+        title: "Industries",
+        fromScreener: false,
+        screen: null,
+      };
+    }
     if (selectedCollectionId?.startsWith(FLAG_LIST_PREFIX)) {
       const color = selectedCollectionId.slice(FLAG_LIST_PREFIX.length, -2);
       const flaggedSymbols = Object.entries(flags).filter(([, f]) => f === color).map(([s]) => s);
@@ -1418,6 +1476,11 @@ export default function WatchlistPanel({
       selectedCollectionId === THEMATIC_ETFS_ALL_ID
     ) {
       setSortKey("marketCap");
+      setSortDir("desc");
+      return;
+    }
+    if (selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID) {
+      setSortKey("industryRank12m");
       setSortDir("desc");
     }
   }, [selectedCollectionId]);
@@ -1590,6 +1653,47 @@ export default function WatchlistPanel({
     [mapItemToRow, mapScreenerRowToWatchlistRow]
   );
 
+  const fetchIndustryRankingsRows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/industry-rankings");
+      if (!res.ok) throw new Error("Failed to load industry rankings");
+      const data = (await res.json()) as {
+        rows?: Array<{
+          industry: string;
+          industry_rank_1m: number | null;
+          industry_rank_3m: number | null;
+          industry_rank_6m: number | null;
+          industry_rank_12m: number | null;
+          price_change_1m_pct: number | null;
+          price_change_3m_pct: number | null;
+          price_change_6m_pct: number | null;
+          price_change_12m_pct: number | null;
+        }>;
+      };
+      const rowsIn = Array.isArray(data.rows) ? data.rows : [];
+      const mapped: WatchlistRow[] = rowsIn.map((r) => ({
+        symbol: String(r.industry ?? ""),
+        name: String(r.industry ?? ""),
+        industry: String(r.industry ?? ""),
+        sector: "NA",
+        industryRank1m: typeof r.industry_rank_1m === "number" ? r.industry_rank_1m : null,
+        industryRank3m: typeof r.industry_rank_3m === "number" ? r.industry_rank_3m : null,
+        industryRank6m: typeof r.industry_rank_6m === "number" ? r.industry_rank_6m : null,
+        industryRank12m: typeof r.industry_rank_12m === "number" ? r.industry_rank_12m : null,
+        priceChange1mPct: typeof r.price_change_1m_pct === "number" ? r.price_change_1m_pct : null,
+        priceChange3mPct: typeof r.price_change_3m_pct === "number" ? r.price_change_3m_pct : null,
+        priceChange6mPct: typeof r.price_change_6m_pct === "number" ? r.price_change_6m_pct : null,
+        priceChange12mPct: typeof r.price_change_12m_pct === "number" ? r.price_change_12m_pct : null,
+      }));
+      setRows(mapped);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const resolveRuntimeFilters = useCallback((filters: ScreenerFilters): ScreenerFilters => {
     const next: ScreenerFilters = { ...filters };
     const fromModeRaw = String(next[IPO_FROM_MODE_KEY] ?? "date") as IpoFromMode;
@@ -1609,6 +1713,12 @@ export default function WatchlistPanel({
     else delete next.ipo_date_from;
     if (resolvedTo) next.ipo_date_to = resolvedTo;
     else delete next.ipo_date_to;
+    for (const key of ["off_52w_high_pct_min", "off_52w_high_pct_max"] as const) {
+      const v = next[key];
+      if (v === undefined || v === "") continue;
+      const n = typeof v === "number" ? v : Number(String(v));
+      if (Number.isFinite(n)) next[key] = Math.max(0, n);
+    }
     return next;
   }, []);
 
@@ -1750,6 +1860,10 @@ export default function WatchlistPanel({
       fetchScreenerResults(tableSource.screen);
       return;
     }
+    if (sidebarTab === "watchlists" && selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID) {
+      fetchIndustryRankingsRows();
+      return;
+    }
     if (sidebarTab === "watchlists" && activeListId === FULL_UNIVERSE_ID) {
       fetchFullUniverse();
       return;
@@ -1758,7 +1872,7 @@ export default function WatchlistPanel({
     } else {
       setRows([]);
     }
-  }, [isMinimized, sidebarTab, activeListId, tableSource.fromScreener, tableSource.screen, tableSource.symbols, tableSourceScreenId, tableSourceScreenType, tableSourceSymbolsKey, fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse]);
+  }, [isMinimized, sidebarTab, activeListId, selectedCollectionId, tableSource.fromScreener, tableSource.screen, tableSource.symbols, tableSourceScreenId, tableSourceScreenType, tableSourceSymbolsKey, fetchRowsForSymbols, fetchScreenerResults, fetchFullUniverse, fetchIndustryRankingsRows]);
 
   // Popup: search autocomplete when add popup is open
   useEffect(() => {
@@ -2234,6 +2348,8 @@ export default function WatchlistPanel({
           if ((fromVal != null && fromVal !== "") || (toVal != null && toVal !== "") || hasMode) filled++;
         } else if (field.type === "universeSelect") {
           if (newScreenForm.universe && newScreenForm.universe !== "all") filled++;
+        } else if (field.type === "checkbox") {
+          if (filters[field.filterKey] === "1") filled++;
         }
       }
       const total = cat.fields.filter((f) => f.type !== "sectionHeading").length;
@@ -2442,6 +2558,16 @@ export default function WatchlistPanel({
     if (!sortKey) return source;
     const copy = [...source];
     copy.sort((a, b) => {
+      if (sortKey === FLAG_SORT_KEY) {
+        const aFlag = flags[a.symbol] ?? null;
+        const bFlag = flags[b.symbol] ?? null;
+        const aWeight = aFlag ? FLAG_SORT_WEIGHT[aFlag] : 0;
+        const bWeight = bFlag ? FLAG_SORT_WEIGHT[bFlag] : 0;
+        if (aWeight !== bWeight) {
+          return sortDir === "asc" ? aWeight - bWeight : bWeight - aWeight;
+        }
+        return a.symbol.localeCompare(b.symbol);
+      }
       const aVal = getRowValue(a, sortKey);
       const bVal = getRowValue(b, sortKey);
       if (typeof aVal === "number" && typeof bVal === "number") {
@@ -2453,7 +2579,7 @@ export default function WatchlistPanel({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [topBottomFilteredRows, sortKey, sortDir]);
+  }, [topBottomFilteredRows, sortKey, sortDir, flags]);
 
   useEffect(() => {
     onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
@@ -2474,7 +2600,19 @@ export default function WatchlistPanel({
   const tableColumns = useMemo((): TableColumnId[] => {
     const alwaysFirst = ["ticker", "lastPrice"];
     let base: TableColumnId[];
-    if (sidebarTab === "screener" && selectedScreen) {
+    if (sidebarTab === "watchlists" && selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID) {
+      base = [
+        "ticker",
+        "industryRank1m",
+        "industryRank3m",
+        "industryRank6m",
+        "industryRank12m",
+        "priceChange1mPct",
+        "priceChange3mPct",
+        "priceChange6mPct",
+        "priceChange12mPct",
+      ];
+    } else if (sidebarTab === "screener" && selectedScreen) {
       if (selectedScreen.type === "script" && scriptColumns.length > 0) {
         const rest = scriptColumns.filter((c) => c !== "ticker" && c !== "lastPrice");
         base = [...alwaysFirst, ...rest];
@@ -2493,7 +2631,7 @@ export default function WatchlistPanel({
     const extras = addedColumns.filter((c) => !baseSet.has(c)) as TableColumnId[];
     const merged = [...base, ...extras];
     return hiddenColumns.size > 0 ? merged.filter((c) => !hiddenColumns.has(c)) : merged;
-  }, [sidebarTab, selectedScreen, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
+  }, [sidebarTab, selectedCollectionId, selectedScreen, scriptColumns, visibleColumns, hiddenColumns, addedColumns]);
 
   const customizeColumnsFiltered = useMemo(() => {
     const q = colCustomizeSearch.trim().toLowerCase();
@@ -3027,7 +3165,7 @@ export default function WatchlistPanel({
                       e.preventDefault();
                       const id = e.dataTransfer.getData("screenId");
                       if (id) { moveScreenToFolder(id, null); setScreens(loadScreens()); }
-                      setDraggedScreenId(null); setDragOverRoot(false);
+                      setDraggedScreenId(null); setDragOverScreenId(null); setDragOverRoot(false);
                     }}
                   >
                     Drop here to move to root
@@ -3037,13 +3175,15 @@ export default function WatchlistPanel({
                 {rootScreens.map((s) => (
                   <li
                     key={s.id}
-                    className="screener-item flex items-center gap-0 min-w-0 group"
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    className={`screener-item flex items-center gap-0 min-w-0 group ${dragOverScreenId === s.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (draggedScreenId) setDragOverScreenId(s.id); }}
+                    onDragLeave={() => setDragOverScreenId((cur) => (cur === s.id ? null : cur))}
                     onDrop={(e) => {
                       e.preventDefault();
                       const id = e.dataTransfer.getData("screenId");
                       if (id && id !== s.id) reorderScreenBefore(id, s.id);
                       setDraggedScreenId(null);
+                      setDragOverScreenId(null);
                       setDragOverFolderId(null);
                       setDragOverRoot(false);
                     }}
@@ -3051,7 +3191,7 @@ export default function WatchlistPanel({
                     <div
                       draggable
                       onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }}
-                      onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }}
+                      onDragEnd={() => { setDraggedScreenId(null); setDragOverScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }}
                       className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}
                     >
                       <button
@@ -3098,7 +3238,7 @@ export default function WatchlistPanel({
                           e.preventDefault();
                           const id = e.dataTransfer.getData("screenId");
                           if (id) { moveScreenToFolder(id, f.id); setScreens(loadScreens()); }
-                          setDraggedScreenId(null); setDragOverFolderId(null);
+                          setDraggedScreenId(null); setDragOverScreenId(null); setDragOverFolderId(null);
                         }}
                       >
                         <button type="button" onClick={() => toggleFolderExpanded(f.id)} className="shrink-0 p-1 rounded text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label={isExpanded ? "Collapse" : "Expand"}>
@@ -3112,18 +3252,20 @@ export default function WatchlistPanel({
                           {folderScreens.map((s) => (
                             <li
                               key={s.id}
-                              className="screener-item flex items-center gap-0 min-w-0 group"
-                              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                              className={`screener-item flex items-center gap-0 min-w-0 group ${dragOverScreenId === s.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (draggedScreenId) setDragOverScreenId(s.id); }}
+                              onDragLeave={() => setDragOverScreenId((cur) => (cur === s.id ? null : cur))}
                               onDrop={(e) => {
                                 e.preventDefault();
                                 const id = e.dataTransfer.getData("screenId");
                                 if (id && id !== s.id) reorderScreenBefore(id, s.id);
                                 setDraggedScreenId(null);
+                                setDragOverScreenId(null);
                                 setDragOverFolderId(null);
                                 setDragOverRoot(false);
                               }}
                             >
-                              <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
+                              <div draggable onDragStart={(e) => { e.dataTransfer.setData("screenId", s.id); e.dataTransfer.effectAllowed = "move"; setDraggedScreenId(s.id); }} onDragEnd={() => { setDraggedScreenId(null); setDragOverScreenId(null); setDragOverFolderId(null); setDragOverRoot(false); }} className={`screener-row flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedScreenId === s.id ? "opacity-50" : ""}`}>
                                 <button type="button" onClick={() => setSelectedScreenId(s.id)} className={`flex-1 min-w-0 text-left px-2 py-1.5 text-sm flex items-center gap-1 rounded-r ${selectedScreenId === s.id ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
                                   <span
                                     className="shrink-0 text-zinc-400 dark:text-zinc-500"
@@ -3192,16 +3334,21 @@ export default function WatchlistPanel({
                       {rootWatchlists.map((l) => (
                         <li
                           key={l.id}
-                          className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                          className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id || dragOverWatchlistId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
                           onDragOver={(e) => {
                             e.preventDefault();
                             e.dataTransfer.dropEffect = "move";
                             const hasStock = e.dataTransfer.types.includes("stocksymbol");
                             if (hasStock) setStockDragOverListId(l.id);
-                            const hasWatchlist = e.dataTransfer.types.includes("watchlistid");
-                            if (hasWatchlist) setDragOverWatchlistFolderId(null);
+                            if (draggedWatchlistId) {
+                              setDragOverWatchlistId(l.id);
+                              setDragOverWatchlistFolderId(null);
+                            }
                           }}
-                          onDragLeave={() => setStockDragOverListId((cur) => (cur === l.id ? null : cur))}
+                          onDragLeave={() => {
+                            setStockDragOverListId((cur) => (cur === l.id ? null : cur));
+                            setDragOverWatchlistId((cur) => (cur === l.id ? null : cur));
+                          }}
                           onDrop={(e) => {
                             e.preventDefault();
                             const sym = e.dataTransfer.getData("stockSymbol");
@@ -3211,12 +3358,13 @@ export default function WatchlistPanel({
                             setStockDragOverListId(null);
                             setDraggedWatchlistId(null);
                             setDragOverWatchlistFolderId(null);
+                            setDragOverWatchlistId(null);
                           }}
                         >
                           <div
                             draggable
                             onDragStart={(e) => { e.dataTransfer.setData("watchlistId", l.id); e.dataTransfer.effectAllowed = "move"; setDraggedWatchlistId(l.id); }}
-                            onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); }}
+                            onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); setDragOverWatchlistId(null); }}
                             className={`flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedWatchlistId === l.id ? "opacity-50" : ""}`}
                           >
                             <button
@@ -3296,7 +3444,7 @@ export default function WatchlistPanel({
                         onDragOver={(e) => {
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
-                          if (e.dataTransfer.types.includes("watchlistid")) setDragOverWatchlistFolderId(folder.id);
+                          if (draggedWatchlistId) setDragOverWatchlistFolderId(folder.id);
                         }}
                         onDragLeave={() => setDragOverWatchlistFolderId((cur) => (cur === folder.id ? null : cur))}
                         onDrop={(e) => {
@@ -3305,7 +3453,7 @@ export default function WatchlistPanel({
                           if (wlId) moveWatchlistToFolder(wlId, folder.id);
                           const sym = e.dataTransfer.getData("stockSymbol");
                           if (sym) { /* stock drop on folder header: ignore */ }
-                          setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null);
+                          setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); setDragOverWatchlistId(null);
                         }}
                       >
                         <button type="button" onClick={() => { toggleListFolderExpanded(folder.id); setSelectedCollectionId(folder.id); setActiveListId(null); }} className="flex-1 px-2 py-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-left">
@@ -3319,13 +3467,20 @@ export default function WatchlistPanel({
                           {folderLists.map((l) => (
                             <li
                               key={l.id}
-                              className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
+                              className={`flex items-center gap-0 min-w-0 group ${stockDragOverListId === l.id || dragOverWatchlistId === l.id ? "ring-1 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded" : ""}`}
                               onDragOver={(e) => {
                                 e.preventDefault();
                                 e.dataTransfer.dropEffect = "move";
                                 if (e.dataTransfer.types.includes("stocksymbol")) setStockDragOverListId(l.id);
+                                if (draggedWatchlistId) {
+                                  setDragOverWatchlistId(l.id);
+                                  setDragOverWatchlistFolderId(null);
+                                }
                               }}
-                              onDragLeave={() => setStockDragOverListId((cur) => (cur === l.id ? null : cur))}
+                              onDragLeave={() => {
+                                setStockDragOverListId((cur) => (cur === l.id ? null : cur));
+                                setDragOverWatchlistId((cur) => (cur === l.id ? null : cur));
+                              }}
                               onDrop={(e) => {
                                 e.preventDefault();
                                 const sym = e.dataTransfer.getData("stockSymbol");
@@ -3335,12 +3490,13 @@ export default function WatchlistPanel({
                                 setStockDragOverListId(null);
                                 setDraggedWatchlistId(null);
                                 setDragOverWatchlistFolderId(null);
+                                setDragOverWatchlistId(null);
                               }}
                             >
                               <div
                                 draggable
                                 onDragStart={(e) => { e.dataTransfer.setData("watchlistId", l.id); e.dataTransfer.effectAllowed = "move"; setDraggedWatchlistId(l.id); }}
-                                onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); }}
+                                onDragEnd={() => { setDraggedWatchlistId(null); setDragOverWatchlistFolderId(null); setDragOverWatchlistId(null); }}
                                 className={`flex-1 flex items-center gap-0 min-w-0 rounded cursor-grab active:cursor-grabbing ${draggedWatchlistId === l.id ? "opacity-50" : ""}`}
                               >
                                 <button
@@ -3430,6 +3586,12 @@ export default function WatchlistPanel({
                   </button>
                   {expandedListFolderIds.has("industries") && (
                     <ul className="pl-4">
+                      <li>
+                        <button type="button" onClick={() => { setSelectedCollectionId(INDUSTRY_RANKINGS_LIST_ID); setActiveListId(null); }} className={`w-full min-w-0 text-left px-3 py-2 text-sm flex items-center gap-1 rounded-r ${selectedCollectionId === INDUSTRY_RANKINGS_LIST_ID ? "border-l-2 border-l-[var(--ws-cyan)] bg-zinc-100 dark:bg-zinc-800/70 font-medium text-zinc-900 dark:text-zinc-100" : "border-l-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+                          <span className="shrink-0 text-zinc-400 dark:text-zinc-500">-</span>
+                          <span className="truncate min-w-0">Industries</span>
+                        </button>
+                      </li>
                       {sortedIndustryNames.map((name) => {
                         const id = `${INDUSTRY_LIST_PREFIX}${name}`;
                         return (
@@ -3945,7 +4107,22 @@ export default function WatchlistPanel({
                                                 : String(newScreenForm.filters[field.minKey] ?? "")
                                           }
                                           onChange={(e) => {
-                                            const v = field.type === "numeric" ? parseNumberInput(e.target.value, false) : (isPct ? parseNumberInput(e.target.value, true) : (e.target.value.trim() ? e.target.value : undefined));
+                                            let v =
+                                              field.type === "numeric"
+                                                ? parseNumberInput(e.target.value, false)
+                                                : isPct
+                                                  ? parseNumberInput(e.target.value, true)
+                                                  : e.target.value.trim()
+                                                    ? e.target.value
+                                                    : undefined;
+                                            if (
+                                              isPct &&
+                                              field.key === "off_52w_high_pct" &&
+                                              typeof v === "number" &&
+                                              Number.isFinite(v)
+                                            ) {
+                                              v = Math.max(0, v);
+                                            }
                                             setNewScreenFilter(field.minKey!, v);
                                           }}
                                           placeholder={isPct ? "Min %" : "Min"}
@@ -3963,7 +4140,22 @@ export default function WatchlistPanel({
                                                 : String(newScreenForm.filters[field.maxKey] ?? "")
                                           }
                                           onChange={(e) => {
-                                            const v = field.type === "numeric" ? parseNumberInput(e.target.value, false) : (isPct ? parseNumberInput(e.target.value, true) : (e.target.value.trim() ? e.target.value : undefined));
+                                            let v =
+                                              field.type === "numeric"
+                                                ? parseNumberInput(e.target.value, false)
+                                                : isPct
+                                                  ? parseNumberInput(e.target.value, true)
+                                                  : e.target.value.trim()
+                                                    ? e.target.value
+                                                    : undefined;
+                                            if (
+                                              isPct &&
+                                              field.key === "off_52w_high_pct" &&
+                                              typeof v === "number" &&
+                                              Number.isFinite(v)
+                                            ) {
+                                              v = Math.max(0, v);
+                                            }
                                             setNewScreenFilter(field.maxKey!, v);
                                           }}
                                           placeholder={isPct ? "Max %" : "Max"}
@@ -4047,6 +4239,22 @@ export default function WatchlistPanel({
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                       ))}
                                     </select>
+                                  </div>
+                                );
+                              }
+                              if (field.type === "checkbox") {
+                                return (
+                                  <div key={field.key} className="flex items-center gap-2">
+                                    <span className="text-xs text-zinc-500 dark:text-zinc-400 w-36 shrink-0">{field.label}</span>
+                                    <input
+                                      type="checkbox"
+                                      checked={newScreenForm.filters[field.filterKey] === "1"}
+                                      onChange={(e) =>
+                                        setNewScreenFilter(field.filterKey, e.target.checked ? "1" : undefined)
+                                      }
+                                      className="accent-teal-600 cursor-pointer"
+                                      aria-label={field.label}
+                                    />
                                   </div>
                                 );
                               }
@@ -4635,7 +4843,22 @@ export default function WatchlistPanel({
                 <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3, #1c1c1c)", borderBottom: "1px solid var(--ws-border)" }}>
                   <tr>
                     <th className="w-9 min-w-[2.25rem] py-1.5 pl-3 pr-1 text-left text-xs font-medium" style={{ color: "var(--ws-text-dim)" }}>
-                      Flag
+                      <button
+                        type="button"
+                        onClick={() => handleSort(FLAG_SORT_KEY)}
+                        className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-100"
+                        title={sortKey === FLAG_SORT_KEY ? (sortDir === "asc" ? "Sort descending" : "Sort ascending") : "Sort by flag"}
+                        aria-label="Sort by flag"
+                      >
+                        <span>Flag</span>
+                        {sortKey === FLAG_SORT_KEY ? (
+                          sortDir === "asc" ? (
+                            <span aria-hidden>▲</span>
+                          ) : (
+                            <span aria-hidden>▼</span>
+                          )
+                        ) : null}
+                      </button>
                     </th>
                     {tableColumns.map((col, colIndex) => {
                       const isScriptCol = scriptColumnSet.has(col as string);
@@ -4861,7 +5084,7 @@ export default function WatchlistPanel({
                                     title="No flag"
                                     aria-label={`Remove flag from ${row.symbol}`}
                                   />
-                                  {(["red", "yellow", "green", "blue"] as const).map((c) => (
+                                  {(["red", "yellow", "green", "blue", "purple"] as const).map((c) => (
                                     <button
                                       key={c}
                                       type="button"
@@ -4887,11 +5110,13 @@ export default function WatchlistPanel({
                             const cellClass =
                               col === "ticker"
                                 ? "py-1.5 px-2 font-medium font-mono text-zinc-900 dark:text-zinc-100"
-                                : isSignedMetric && numVal != null
-                                  ? `py-1.5 px-2 tabular-nums text-right ${numVal >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`
-                                  : isNumeric
-                                    ? "py-1.5 px-2 tabular-nums text-zinc-900 dark:text-zinc-100 text-right"
-                                    : "py-1.5 px-2 text-zinc-900 dark:text-zinc-100 whitespace-nowrap truncate";
+                                : col === "off52wHighPct" && numVal != null
+                                  ? "py-1.5 px-2 tabular-nums text-right text-red-600 dark:text-red-400"
+                                  : isSignedMetric && numVal != null
+                                    ? `py-1.5 px-2 tabular-nums text-right ${numVal >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`
+                                    : isNumeric
+                                      ? "py-1.5 px-2 tabular-nums text-zinc-900 dark:text-zinc-100 text-right"
+                                      : "py-1.5 px-2 text-zinc-900 dark:text-zinc-100 whitespace-nowrap truncate";
                             const content =
                               col === "ticker" && onSymbolSelect ? (
                                 <button

@@ -1,7 +1,7 @@
 /**
  * Watchlist and stock flags persisted in localStorage.
  * Lists: id -> { name, symbolIds }
- * Flags: symbol -> 'red' | 'yellow' | 'green' | 'blue' (global across lists)
+ * Flags: symbol -> 'red' | 'yellow' | 'green' | 'blue' | 'purple' (global across lists)
  *
  * Each save also fire-and-forgets a sync to Supabase when a profile is active.
  */
@@ -9,6 +9,8 @@
 import { cloudSyncWatchlists, cloudSyncFlags, cloudSyncSetting } from "./cloud-sync";
 
 const STORAGE_KEY_LISTS = "stock-research-watchlists";
+const WATCHLISTS_CHANGED_EVENT = "stock-watchlists-changed";
+const WATCHLIST_FOLDERS_CHANGED_EVENT = "stock-watchlist-folders-changed";
 
 /** Postgres/Supabase `uuid` columns reject legacy `wl-*` and other non-UUID ids. */
 const UUID_RE =
@@ -33,7 +35,7 @@ export type Watchlist = {
   folderId?: string;
 };
 
-export type StockFlag = "red" | "yellow" | "green" | "blue";
+export type StockFlag = "red" | "yellow" | "green" | "blue" | "purple";
 
 export type WatchlistFolder = {
   id: string;
@@ -129,7 +131,7 @@ export function saveWatchlists(lists: Watchlist[]): void {
   }
   queueMicrotask(() => {
     try {
-      window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: lists }));
+      window.dispatchEvent(new CustomEvent(WATCHLISTS_CHANGED_EVENT, { detail: lists }));
     } catch {
       /* ignore */
     }
@@ -162,6 +164,13 @@ export function saveWatchlistFolders(folders: WatchlistFolder[]): void {
   } catch {
     /* ignore */
   }
+  queueMicrotask(() => {
+    try {
+      window.dispatchEvent(new CustomEvent(WATCHLIST_FOLDERS_CHANGED_EVENT, { detail: folders }));
+    } catch {
+      /* ignore */
+    }
+  });
   cloudSyncWatchlists(loadWatchlists(), folders, loadFavoriteWatchlistIds());
 }
 

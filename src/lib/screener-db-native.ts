@@ -117,8 +117,19 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
   if (num(filters.volume_max) != null) { conditions.push(" AND q.volume <= ?"); params.push(num(filters.volume_max)); }
   if (num(filters.avg_volume_30d_min) != null) { conditions.push(" AND q.avg_volume_30d_shares >= ?"); params.push(num(filters.avg_volume_30d_min)); }
   if (num(filters.high_52w_min) != null) { conditions.push(" AND q.high_52w >= ?"); params.push(num(filters.high_52w_min)); }
-  if (num(filters.off_52w_high_pct_min) != null) { conditions.push(" AND q.off_52w_high_pct >= ?"); params.push(num(filters.off_52w_high_pct_min)); }
-  if (num(filters.off_52w_high_pct_max) != null) { conditions.push(" AND q.off_52w_high_pct <= ?"); params.push(num(filters.off_52w_high_pct_max)); }
+  {
+    const rawMin = num(filters.off_52w_high_pct_min);
+    const rawMax = num(filters.off_52w_high_pct_max);
+    const offMin = rawMin != null ? Math.max(0, rawMin) : null;
+    const offMax = rawMax != null ? Math.max(0, rawMax) : null;
+    if (offMin != null) { conditions.push(" AND q.off_52w_high_pct >= ?"); params.push(offMin); }
+    if (offMax != null) { conditions.push(" AND q.off_52w_high_pct <= ?"); params.push(offMax); }
+  }
+  if (str(filters.new_52w_high) === "1") {
+    conditions.push(
+      " AND q.high_52w IS NOT NULL AND q.last_price IS NOT NULL AND q.last_price + 1e-9 >= q.high_52w"
+    );
+  }
   if (num(filters.atr_pct_21d_min) != null) { conditions.push(" AND q.atr_pct_21d >= ?"); params.push(num(filters.atr_pct_21d_min)); }
   if (num(filters.atr_pct_21d_max) != null) { conditions.push(" AND q.atr_pct_21d <= ?"); params.push(num(filters.atr_pct_21d_max)); }
 
@@ -788,6 +799,26 @@ export function getIndustryRankUniverseCounts(date?: string): {
       industry_rank_12m: Number(row.c12m ?? 0),
     },
   };
+}
+
+export function getAllIndustryNames(): string[] {
+  const db = getDb();
+  if (!db) return [];
+  const rows = db
+    .prepare(
+      `
+      SELECT DISTINCT TRIM(industry) AS industry
+      FROM companies
+      WHERE industry IS NOT NULL
+        AND TRIM(industry) <> ''
+        AND COALESCE(is_etf, 0) = 0
+      ORDER BY industry
+      `
+    )
+    .all() as Array<{ industry?: string | null }>;
+  return rows
+    .map((r) => (typeof r.industry === "string" ? r.industry.trim() : ""))
+    .filter((v) => v.length > 0);
 }
 
 export type StockProfileDbMetrics = {

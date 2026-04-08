@@ -45,7 +45,6 @@ type ProfileData = {
 } | null;
 
 type RsRank = {
-  rs_pct_1w: number | null;
   rs_pct_1m: number | null;
   rs_pct_3m: number | null;
   rs_pct_6m: number | null;
@@ -270,7 +269,9 @@ export default function RightRail({
   const desc = safe(profile?.description);
   const truncatedDesc = desc.length > 150 ? desc.slice(0, 150) + "…" : desc;
 
-  const capValue = dbProfileMetrics?.marketCap ?? null;
+  const capValue =
+    dbProfileMetrics?.marketCap ??
+    (typeof profile?.mktCap === "number" && Number.isFinite(profile.mktCap) ? profile.mktCap : null);
   const marketCapLabel =
     capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtMarketCapNoDollar(capValue) : "—";
   const avgVol20dLabel =
@@ -522,56 +523,39 @@ export default function RightRail({
 
           <div className="px-3 py-2 space-y-2.5">
 
-          {/* RS RANK */}
-          {rsRank && (
+          {(rsRank || industryRanks) && (
             <div>
-              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
-                RS Rank
-              </div>
               <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    {["1W", "1M", "3M", "6M", "12M"].map((p) => (
-                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text)" }}>{p}</th>
+                    <th className="py-0.5 font-medium text-left" style={{ color: "var(--ws-text)" }} />
+                    {["1M", "3M", "6M", "12M"].map((p) => (
+                      <th key={p} className="py-0.5 font-medium text-center" style={{ color: "var(--ws-text)" }}>{p}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    {[rsRank.rs_pct_1w, rsRank.rs_pct_1m, rsRank.rs_pct_3m, rsRank.rs_pct_6m, rsRank.rs_pct_12m].map((v, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums"
-                        style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}>
+                    <td className="py-1 text-left font-medium" style={{ color: "var(--ws-text-dim)" }}>Stock RS</td>
+                    {[rsRank?.rs_pct_1m ?? null, rsRank?.rs_pct_3m ?? null, rsRank?.rs_pct_6m ?? null, rsRank?.rs_pct_12m ?? null].map((v, i) => (
+                      <td
+                        key={`rs-${i}`}
+                        className="py-1 text-center font-mono font-semibold tabular-nums"
+                        style={{ color: v != null ? (v >= 80 ? "var(--ws-green)" : v <= 30 ? "var(--ws-red)" : "var(--ws-text)") : "var(--ws-text-vdim)" }}
+                      >
                         {v != null ? v.toFixed(0) : "—"}
                       </td>
                     ))}
                   </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {industryRanks && (
-            <div>
-              <div className="text-xs font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
-                Industry Leaderboard Rank (1 = best)
-              </div>
-              <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                    {["1M", "3M", "6M", "12M"].map((p) => (
-                      <th key={p} className="py-1 font-medium text-center" style={{ color: "var(--ws-text)" }}>{p}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
                   <tr>
+                    <td className="py-1 text-left font-medium" style={{ color: "var(--ws-text-dim)" }}>Industry Rank</td>
                     {[
-                      { rank: industryRanks.industry_rank_1m, total: industryRankUniverse?.industry_rank_1m ?? null },
-                      { rank: industryRanks.industry_rank_3m, total: industryRankUniverse?.industry_rank_3m ?? null },
-                      { rank: industryRanks.industry_rank_6m, total: industryRankUniverse?.industry_rank_6m ?? null },
-                      { rank: industryRanks.industry_rank_12m, total: industryRankUniverse?.industry_rank_12m ?? null },
+                      { rank: industryRanks?.industry_rank_1m ?? null, total: industryRankUniverse?.industry_rank_1m ?? null },
+                      { rank: industryRanks?.industry_rank_3m ?? null, total: industryRankUniverse?.industry_rank_3m ?? null },
+                      { rank: industryRanks?.industry_rank_6m ?? null, total: industryRankUniverse?.industry_rank_6m ?? null },
+                      { rank: industryRanks?.industry_rank_12m ?? null, total: industryRankUniverse?.industry_rank_12m ?? null },
                     ].map((item, i) => (
-                      <td key={i} className="py-1.5 text-center font-mono font-semibold tabular-nums" style={{ color: getIndustryRankColor(item.rank, item.total) }}>
+                      <td key={`ind-${i}`} className="py-1 text-center font-mono font-semibold tabular-nums" style={{ color: getIndustryRankColor(item.rank, item.total) }}>
                         {item.rank != null ? String(Math.round(item.rank)) : "—"}
                       </td>
                     ))}
@@ -591,8 +575,11 @@ export default function RightRail({
                 {(["annual", "quarterly"] as const).map((v) => (
                   <button key={v} type="button" onClick={() => setFinFreq(v)}
                     aria-pressed={finFreq === v}
-                    className={`px-2 py-0.5 text-xs rounded transition-colors capitalize ws-focus-ring ${finFreq !== v ? "hover:bg-white/[0.06]" : ""}`}
-                    style={{ background: finFreq === v ? "var(--ws-bg3)" : undefined, color: "var(--ws-text)" }}>
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors capitalize ws-focus-ring font-semibold border ${
+                      finFreq === v
+                        ? "border-[var(--ws-cyan)] bg-[rgba(0,229,204,0.12)] text-[var(--ws-cyan)] shadow-[inset_0_0_0_1px_rgba(0,229,204,0.15)]"
+                        : "border-transparent text-[var(--ws-text-dim)] hover:bg-white/[0.06] hover:text-[var(--ws-text)]"
+                    }`}>
                     {v}
                   </button>
                 ))}

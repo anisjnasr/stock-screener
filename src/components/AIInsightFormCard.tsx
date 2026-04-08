@@ -122,6 +122,10 @@ export default function AIInsightFormCard({ mode, initialPage, onSubmit, onCance
           </select>
         </label>
       </div>
+      <p className="text-[11px] leading-snug mb-3" style={{ color: "var(--ws-text-vdim)" }}>
+        When Database is on, lookback sets how much <strong style={{ color: "var(--ws-text-dim)" }}>daily bar history</strong> is loaded for the symbol before the prompt runs
+        (weeks × 5, months × 21, years × 252 trading days, capped by the server). Use a longer window when the model needs older context.
+      </p>
 
       <label className="text-xs block mb-3 flex-1 min-h-0" style={{ color: "var(--ws-text-dim)" }}>
         Prompt template

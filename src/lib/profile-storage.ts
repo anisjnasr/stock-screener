@@ -175,6 +175,25 @@ export type ProfileData = {
   settings: Record<string, unknown>;
 };
 
+function reportCloudPolicyIssue(
+  profile: string,
+  table: string,
+  error: { message?: string; code?: string } | null | undefined
+): void {
+  if (!error) return;
+  const message = error.message ?? "unknown error";
+  const code = error.code ? ` (${error.code})` : "";
+  const detail = `Cloud sync policy issue on ${table} for profile ${profile}${code}: ${message}`;
+  console.warn("[profile-storage]", detail);
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stock-cloud-policy-warning", { detail }));
+    }
+  } catch {
+    // Ignore event dispatch failures.
+  }
+}
+
 export async function pullProfileData(): Promise<ProfileData | null> {
   const pid = profileId();
   const sb = getSupabase();
@@ -188,6 +207,12 @@ export async function pullProfileData(): Promise<ProfileData | null> {
     sb.from("stock_flags").select("*").eq("profile_id", pid),
     sb.from("user_settings").select("*").eq("profile_id", pid),
   ]);
+  reportCloudPolicyIssue(pid, "watchlists", wlRes.error);
+  reportCloudPolicyIssue(pid, "watchlist_folders", wfRes.error);
+  reportCloudPolicyIssue(pid, "saved_screens", scRes.error);
+  reportCloudPolicyIssue(pid, "screen_folders", sfRes.error);
+  reportCloudPolicyIssue(pid, "stock_flags", flRes.error);
+  reportCloudPolicyIssue(pid, "user_settings", stRes.error);
 
   const watchlistFolders: WatchlistFolder[] = (wfRes.data ?? []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
@@ -316,6 +341,16 @@ export function hydrateLocalStorage(data: ProfileData): void {
     if (lp.rightRailHidden !== undefined) s.setItem("ws-right-rail-hidden", String(lp.rightRailHidden));
     if (lp.leftSidebarHidden !== undefined) s.setItem("stock-research-left-sidebar-hidden", String(lp.leftSidebarHidden));
     if (lp.quarterlyHidden !== undefined) s.setItem("stock-research-quarterly-hidden", String(lp.quarterlyHidden));
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: mergedWl }));
+    window.dispatchEvent(new CustomEvent("stock-watchlist-folders-changed", { detail: mergedFolders }));
+    window.dispatchEvent(new CustomEvent("stock-flags-changed", { detail: mergedFlags }));
+    window.dispatchEvent(new CustomEvent("stock-screens-changed", { detail: mergedScreens }));
+    window.dispatchEvent(new CustomEvent("stock-screener-folders-changed", { detail: mergedScreenFolders }));
+  } catch {
+    // Ignore event dispatch errors.
   }
 }
 

@@ -25,6 +25,7 @@ const FLAG_COLORS: Record<StockFlag, string> = {
   yellow: "#F5A524",
   green: "#3DDC84",
   blue: "#5C9EF5",
+  purple: "#A855F7",
 };
 
 export type MarketSubTab = "indices" | "monitor";
@@ -36,7 +37,28 @@ const SECTOR_TF_LABELS: Record<SectorTimeframe, string> = {
 };
 
 const FLAG_ORDER_KEY = "stock-research-flag-order";
-const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "yellow", "red", "green"];
+const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "purple", "yellow", "red", "green"];
+
+function coerceFlagOrder(parsed: unknown): StockFlag[] {
+  const allowed = new Set<StockFlag>(["red", "yellow", "green", "blue", "purple"]);
+  if (!Array.isArray(parsed)) return [...DEFAULT_FLAG_ORDER];
+  const fromStorage: StockFlag[] = [];
+  for (const x of parsed) {
+    if (allowed.has(x as StockFlag) && !fromStorage.includes(x as StockFlag)) fromStorage.push(x as StockFlag);
+  }
+  if (fromStorage.length === 4 && !fromStorage.includes("purple")) {
+    const withPurple = [...fromStorage];
+    const bi = withPurple.indexOf("blue");
+    if (bi >= 0) withPurple.splice(bi + 1, 0, "purple");
+    else withPurple.unshift("purple");
+    return withPurple;
+  }
+  const out = [...fromStorage];
+  for (const c of DEFAULT_FLAG_ORDER) {
+    if (!out.includes(c)) out.push(c);
+  }
+  return out;
+}
 
 function reorderByInsertBefore<T>(list: T[], from: number, insertBefore: number): T[] {
   const n = list.length;
@@ -288,8 +310,16 @@ function WorkspaceHeader({
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renamingFolderName, setRenamingFolderName] = useState("");
 
-  const folders = useMemo(() => scanFoldersProp ?? loadFolders(), [scanFoldersProp]);
-  const screensList = useMemo(() => screensProp ?? loadScreens(), [screensProp]);
+  const folders = useMemo(() => {
+    if (Array.isArray(scanFoldersProp) && scanFoldersProp.length > 0) return scanFoldersProp;
+    const local = loadFolders();
+    return Array.isArray(scanFoldersProp) && local.length === 0 ? scanFoldersProp : local;
+  }, [scanFoldersProp]);
+  const screensList = useMemo(() => {
+    if (Array.isArray(screensProp) && screensProp.length > 0) return screensProp;
+    const local = loadScreens();
+    return Array.isArray(screensProp) && local.length === 0 ? screensProp : local;
+  }, [screensProp]);
 
   const folderMap = useMemo(() => {
     const m = new Map<string, ScreenerFolder>();
@@ -371,10 +401,7 @@ function WorkspaceHeader({
     if (typeof window === "undefined") return DEFAULT_FLAG_ORDER;
     try {
       const raw = localStorage.getItem(FLAG_ORDER_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StockFlag[];
-        if (Array.isArray(parsed) && parsed.length === 4) return parsed;
-      }
+      if (raw) return coerceFlagOrder(JSON.parse(raw));
     } catch {}
     return DEFAULT_FLAG_ORDER;
   });
@@ -535,7 +562,7 @@ function WorkspaceHeader({
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
       {/* ===== ROW 1 — Main Header ===== */}
       <div
-        className="relative flex items-center h-[50px] gap-3 min-w-0"
+        className="relative flex flex-wrap lg:flex-nowrap items-center min-h-[50px] gap-2 md:gap-3 min-w-0 py-1 lg:py-0 lg:h-[50px]"
         style={{ paddingLeft: 12, paddingRight: 12 }}
       >
         <Image
@@ -543,10 +570,10 @@ function WorkspaceHeader({
           alt="Stock Stalker"
           width={300}
           height={40}
-          className="h-10 w-auto shrink-0 opacity-90"
+          className="h-8 w-auto sm:h-10 shrink-0 opacity-90 max-w-[min(48vw,200px)]"
         />
 
-        <div ref={searchContainerRef} className="relative shrink-0 w-48 min-[900px]:w-56">
+        <div ref={searchContainerRef} className="relative shrink-0 w-36 min-[480px]:w-44 min-[900px]:w-56">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -624,14 +651,14 @@ function WorkspaceHeader({
           )}
         </div>
 
-        <div className="flex-1 flex items-center justify-center min-w-0">
-          <nav className="flex items-center gap-1 flex-wrap justify-center">
+        <div className="flex-1 flex items-center justify-center min-w-0 basis-full lg:basis-auto order-last lg:order-none">
+          <nav className="flex items-center gap-0.5 sm:gap-1 flex-wrap justify-center max-w-full">
             {WORKSPACE_SECTIONS.map((s) => (
               <button
                 key={s.id}
                 type="button"
                 onClick={() => onSectionChange(s.id)}
-                className={`px-4 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring ${section !== s.id ? "hover:bg-white/5" : ""}`}
+                className={`px-2 sm:px-3 md:px-4 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${section !== s.id ? "hover:bg-white/5" : ""}`}
                 aria-current={section === s.id ? "page" : undefined}
                 style={{
                   background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
@@ -649,10 +676,10 @@ function WorkspaceHeader({
           </nav>
         </div>
 
-        <div className="ml-auto flex items-center gap-3 shrink-0 z-10">
+        <div className="ml-auto flex items-center gap-2 md:gap-3 shrink-0 z-10 order-2 lg:order-none">
           <MarketStatusClock />
           {lastUpdated && (
-            <span className="shrink-0 text-ws-label tabular-nums" style={{ color: "rgba(201,209,217,0.45)" }}>
+            <span className="shrink-0 text-ws-label tabular-nums max-md:hidden" style={{ color: "rgba(201,209,217,0.45)" }}>
               {lastUpdated}
             </span>
           )}
@@ -876,7 +903,7 @@ function WorkspaceHeader({
                     return (
                       <div key={folder.id}>
                         <div
-                          className="group/fd flex items-center gap-1 px-2 py-1 text-xs font-semibold cursor-pointer transition-colors mx-1 rounded"
+                          className="group/fd flex items-center gap-1.5 px-2 py-1 text-xs font-semibold cursor-pointer transition-colors mx-1 rounded"
                           style={{
                             color: "var(--ws-text-dim)",
                             background:
@@ -890,8 +917,6 @@ function WorkspaceHeader({
                             paddingLeft:
                               scanDropMode === "folder" && scanDropFolderId === folder.id ? 12 : 8,
                           }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                           onClick={() => setCollapsedFolders((prev) => {
                             const next = new Set(prev);
                             if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
@@ -917,7 +942,10 @@ function WorkspaceHeader({
                             scanDragFromRef.current = null;
                           }}
                         >
-                          <span style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.15s", display: "inline-block" }}>▾</span>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-80" aria-hidden>
+                            <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h2.379a1.5 1.5 0 0 1 1.06.44l.72.72H12.5A1.5 1.5 0 0 1 14 4.62v7.88a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12.5v-9Z" />
+                          </svg>
+                          <span style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.15s", display: "inline-block", fontSize: 10 }} aria-hidden>▾</span>
                           {renamingFolderId === folder.id ? (
                             <input
                               className="flex-1 bg-transparent border-b text-xs"

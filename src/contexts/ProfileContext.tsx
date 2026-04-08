@@ -50,7 +50,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setProfile(stored);
       pullProfileData()
         .then((data) => {
-          if (data) hydrateLocalStorage(data);
+          if (data) {
+            hydrateLocalStorage(data);
+            window.dispatchEvent(new CustomEvent("profile-changed"));
+          }
         })
         .catch(() => {})
         .finally(() => setLoading(false));

@@ -41,6 +41,10 @@ const MIN_COVERAGE_PCT = Number(process.env.DAILY_REFRESH_MIN_COVERAGE_PCT ?? 80
 const COVERAGE_LOOKBACK_DATES = Number(process.env.DAILY_REFRESH_COVERAGE_LOOKBACK_DATES ?? 10);
 const COMPANY_REFERENCE_ENRICH_LIMIT = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_LIMIT ?? 200);
 const COMPANY_REFERENCE_DELAY_MS = Number(process.env.DAILY_REFRESH_COMPANY_REFERENCE_DELAY_MS ?? 80);
+const IPO_DISCOVERY_LOOKBACK_DAYS = Number(process.env.DAILY_REFRESH_IPO_LOOKBACK_DAYS ?? 14);
+const IPO_DISCOVERY_MAX_PAGES = Number(process.env.DAILY_REFRESH_IPO_MAX_PAGES ?? 30);
+const IPO_DISCOVERY_DELAY_MS = Number(process.env.DAILY_REFRESH_IPO_DELAY_MS ?? 150);
+const REFRESH_OWNERSHIP_FOR_NEW_IPOS = String(process.env.DAILY_REFRESH_IPO_OWNERSHIP ?? "1") !== "0";
 const REFRESH_INDEX_CONSTITUENTS = String(process.env.DAILY_REFRESH_INDEX_CONSTITUENTS ?? "1") !== "0";
 const REFRESH_THEMATIC_ETF_CONSTITUENTS =
   String(process.env.DAILY_REFRESH_THEMATIC_ETF_CONSTITUENTS ?? "1") !== "0";
@@ -119,6 +123,56 @@ async function fetchTickerReference(symbol) {
   return data?.results ?? null;
 }
 
+async function fetchIpoCandidates(fromDate, toDate) {
+  const rows = [];
+  let cursor = null;
+  for (let page = 0; page < IPO_DISCOVERY_MAX_PAGES; page++) {
+    const params = {
+      market: "stocks",
+      active: "true",
+      type: "CS",
+      sort: "ticker",
+      order: "asc",
+      limit: "1000",
+      "list_date.gte": fromDate,
+      "list_date.lte": toDate,
+    };
+    if (cursor) params.cursor = cursor;
+    const res = await fetchWithRetry(url("/v3/reference/tickers", params));
+    if (!res || !res.ok) break;
+    const json = await res.json();
+    const items = Array.isArray(json?.results) ? json.results : [];
+    for (const item of items) {
+      const ticker = typeof item?.ticker === "string" ? item.ticker.toUpperCase() : "";
+      if (!ticker || !/^[A-Z.\-]{1,10}$/.test(ticker)) continue;
+      rows.push({
+        symbol: ticker,
+        name: item?.name ?? null,
+        exchange: item?.primary_exchange ?? null,
+        industry: item?.sic_description ?? null,
+        sector: null,
+        ipoDate: item?.list_date ?? null,
+        sharesOutstanding:
+          item?.share_class_shares_outstanding != null
+            ? Number(item.share_class_shares_outstanding)
+            : item?.weighted_shares_outstanding != null
+              ? Number(item.weighted_shares_outstanding)
+              : null,
+      });
+    }
+    if (!json?.next_url) break;
+    try {
+      const parsed = new URL(String(json.next_url));
+      cursor = parsed.searchParams.get("cursor");
+      if (!cursor) break;
+    } catch {
+      break;
+    }
+    await sleep(IPO_DISCOVERY_DELAY_MS);
+  }
+  return rows;
+}
+
 function computeEMA(bars, key = "close", period) {
   const k = 2 / (period + 1);
   const out = [];
@@ -167,9 +221,9 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function runScript(relativeScriptPath) {
+function runScript(relativeScriptPath, args = []) {
   const scriptPath = join(root, relativeScriptPath);
-  const result = spawnSync(process.execPath, [scriptPath], {
+  const result = spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: root,
     stdio: "inherit",
     env: process.env,
@@ -200,10 +254,87 @@ async function main() {
     CREATE INDEX IF NOT EXISTS idx_daily_bars_symbol_date ON daily_bars(symbol, date);
     CREATE INDEX IF NOT EXISTS idx_quote_daily_date_symbol ON quote_daily(date, symbol);
     CREATE INDEX IF NOT EXISTS idx_indicators_daily_date_symbol ON indicators_daily(date, symbol);
+    CREATE TABLE IF NOT EXISTS ipo_discovery_log (
+      run_date TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      status TEXT NOT NULL,
+      message TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (run_date, symbol)
+    );
+    CREATE TABLE IF NOT EXISTS ipo_ingest_state (
+      symbol TEXT PRIMARY KEY,
+      first_seen_date TEXT,
+      last_seen_date TEXT,
+      last_ingested_at TEXT,
+      status TEXT,
+      last_error TEXT,
+      updated_at TEXT
+    );
   `);
 
-  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => String(r.symbol));
-  symbols = Array.from(new Set([...symbols.map((s) => s.toUpperCase()), ...REQUIRED_ETF_SYMBOLS]));
+  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => String(r.symbol).toUpperCase());
+  const existingSymbols = new Set(symbols);
+  const nowIso = new Date().toISOString();
+  const today = nowIso.slice(0, 10);
+  const lookbackAnchor = new Date();
+  lookbackAnchor.setUTCDate(lookbackAnchor.getUTCDate() - Math.max(1, IPO_DISCOVERY_LOOKBACK_DAYS));
+  const ipoFromDate = lookbackAnchor.toISOString().slice(0, 10);
+  const ipoCandidates = await fetchIpoCandidates(ipoFromDate, today);
+  const newIpoCandidates = ipoCandidates.filter((r) => !existingSymbols.has(r.symbol));
+
+  if (newIpoCandidates.length > 0) {
+    console.log(`Discovered ${newIpoCandidates.length} IPO candidate(s) between ${ipoFromDate} and ${today}.`);
+    const upsertCompany = db.prepare(`
+      INSERT INTO companies (symbol, name, exchange, industry, sector, ipo_date, is_adr, shares_outstanding, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(symbol) DO UPDATE SET
+        name = COALESCE(excluded.name, companies.name),
+        exchange = COALESCE(excluded.exchange, companies.exchange),
+        industry = COALESCE(excluded.industry, companies.industry),
+        sector = COALESCE(excluded.sector, companies.sector),
+        ipo_date = COALESCE(excluded.ipo_date, companies.ipo_date),
+        shares_outstanding = COALESCE(excluded.shares_outstanding, companies.shares_outstanding),
+        updated_at = excluded.updated_at
+    `);
+    const logDiscovery = db.prepare(`
+      INSERT OR REPLACE INTO ipo_discovery_log (run_date, symbol, status, message, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const upsertState = db.prepare(`
+      INSERT INTO ipo_ingest_state (symbol, first_seen_date, last_seen_date, last_ingested_at, status, last_error, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(symbol) DO UPDATE SET
+        last_seen_date = excluded.last_seen_date,
+        status = excluded.status,
+        last_error = excluded.last_error,
+        updated_at = excluded.updated_at
+    `);
+    const ingestTx = db.transaction((rows) => {
+      for (const row of rows) {
+        upsertCompany.run(
+          row.symbol,
+          row.name ?? null,
+          row.exchange ?? null,
+          row.industry ?? null,
+          row.sector ?? null,
+          row.ipoDate ?? null,
+          row.sharesOutstanding != null && Number.isFinite(row.sharesOutstanding) && row.sharesOutstanding > 0
+            ? row.sharesOutstanding
+            : null,
+          nowIso
+        );
+        logDiscovery.run(today, row.symbol, "discovered", `list_date=${row.ipoDate ?? "unknown"}`, nowIso);
+        upsertState.run(row.symbol, today, today, null, "discovered", null, nowIso);
+      }
+    });
+    ingestTx(newIpoCandidates);
+    symbols = symbols.concat(newIpoCandidates.map((r) => r.symbol));
+  } else {
+    console.log(`No new IPO candidates found between ${ipoFromDate} and ${today}.`);
+  }
+
+  symbols = Array.from(new Set([...symbols, ...REQUIRED_ETF_SYMBOLS]));
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
@@ -751,6 +882,25 @@ async function main() {
   });
   ranksTx();
 
+  if (newIpoCandidates.length > 0) {
+    const hasBarsStmt = db.prepare("SELECT COUNT(1) AS c FROM daily_bars WHERE symbol = ? AND date = ?");
+    const hasIndicatorStmt = db.prepare("SELECT COUNT(1) AS c FROM indicators_daily WHERE symbol = ? AND date = ?");
+    const markState = db.prepare(`
+      UPDATE ipo_ingest_state
+      SET last_ingested_at = ?, status = ?, last_error = ?, updated_at = ?
+      WHERE symbol = ?
+    `);
+    for (const row of newIpoCandidates) {
+      const hasBars = Number(hasBarsStmt.get(row.symbol, latestDate)?.c ?? 0) > 0;
+      const hasIndicators = Number(hasIndicatorStmt.get(row.symbol, latestDate)?.c ?? 0) > 0;
+      if (hasBars && hasIndicators) {
+        markState.run(nowIso, "ingested", null, nowIso, row.symbol);
+      } else {
+        markState.run(nowIso, "partial", `bars=${hasBars ? 1 : 0},indicators=${hasIndicators ? 1 : 0}`, nowIso, row.symbol);
+      }
+    }
+  }
+
   // Strict freshness guard: daily refresh should keep these tables on the same selected latestDate.
   const latestQuoteDateRow = db.prepare("SELECT MAX(date) AS d FROM quote_daily").get();
   const latestIndicatorsDateRow = db.prepare("SELECT MAX(date) AS d FROM indicators_daily").get();
@@ -808,6 +958,17 @@ async function main() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`Warning: sector/industry ETF constituents refresh failed (${msg}). Keeping existing files.`);
+    }
+  }
+
+  if (REFRESH_OWNERSHIP_FOR_NEW_IPOS && newIpoCandidates.length > 0) {
+    try {
+      const symbolsArg = newIpoCandidates.map((r) => r.symbol).join(",");
+      console.log(`Refreshing ownership for ${newIpoCandidates.length} newly discovered IPO symbol(s)...`);
+      runScript("scripts/refresh-ownership.mjs", ["--symbols", symbolsArg, "--latest-only"]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: IPO ownership refresh failed (${msg}).`);
     }
   }
 

@@ -14,6 +14,17 @@ import {
   LineSeries,
 } from "lightweight-charts";
 import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
+import type { StockFlag } from "@/lib/watchlist-storage";
+
+const CHART_FLAG_HEX: Record<StockFlag, string> = {
+  red: "#EF4468",
+  yellow: "#F5A524",
+  green: "#3DDC84",
+  blue: "#5C9EF5",
+  purple: "#A855F7",
+};
+
+const FLAG_PICKER_ORDER: StockFlag[] = ["blue", "purple", "yellow", "red", "green"];
 
 /** Inset from chart right for price scale (see rightPriceScale minimumWidth). */
 const CHART_PRICE_SCALE_GUTTER_PX = 88;
@@ -47,8 +58,8 @@ type StockChartProps = {
   onToggleCrosshairSync?: () => void;
   showGlobalControls?: boolean;
   chartInstanceId?: string;
-  stockFlag?: "red" | "yellow" | "green" | "blue" | null;
-  onFlagChange?: (flag: "red" | "yellow" | "green" | "blue" | null) => void;
+  stockFlag?: StockFlag | null;
+  onFlagChange?: (flag: StockFlag | null) => void;
   watchlistPickerLists?: Array<{ id: string; name: string; hasSymbol: boolean }>;
   onWatchlistMembershipSave?: (changes: { id: string; add: boolean }[]) => void;
 };
@@ -157,8 +168,8 @@ function formatMeasureLabel(
 ): string {
   const stats = getMeasureStats(d, barIndexByTime);
   const pct = `${stats.pricePct >= 0 ? "+" : ""}${stats.pricePct.toFixed(2)}%`;
-  const usd = `$ ${stats.priceDelta >= 0 ? "+" : ""}${stats.priceDelta.toFixed(2)}`;
-  return `${pct}  |  ${usd}  |  ${stats.barsDiff} bars  |  ${stats.daysDiff} days`;
+  const chg = `${stats.priceDelta >= 0 ? "+" : ""}${stats.priceDelta.toFixed(2)}`;
+  return `${pct}  ${chg}\n${stats.barsDiff} bars  ·  ${stats.daysDiff} days`;
 }
 
 function getMeasureStats(
@@ -1330,12 +1341,32 @@ function StockChart({
 
       if (onFlagChange && e.shiftKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        setShowFlagPicker((v) => !v);
+        if (showFlagPicker) {
+          onFlagChange(null);
+          setShowFlagPicker(false);
+          setShowWatchlistModal(false);
+          return;
+        }
+        setShowFlagPicker(true);
         setShowWatchlistModal(false);
         return;
       }
       if (onFlagChange && showFlagPicker) {
-        const key = e.code === "Numpad0" ? "0" : e.code === "Numpad1" ? "1" : e.code === "Numpad2" ? "2" : e.code === "Numpad3" ? "3" : e.code === "Numpad4" ? "4" : e.key;
+        const numpadDigit =
+          e.code === "Numpad0"
+            ? "0"
+            : e.code === "Numpad1"
+              ? "1"
+              : e.code === "Numpad2"
+                ? "2"
+                : e.code === "Numpad3"
+                  ? "3"
+                  : e.code === "Numpad4"
+                    ? "4"
+                    : e.code === "Numpad5"
+                      ? "5"
+                      : null;
+        const key = numpadDigit ?? e.key;
         if (key === "0") {
           e.preventDefault();
           onFlagChange(null);
@@ -1350,17 +1381,23 @@ function StockChart({
         }
         if (key === "2") {
           e.preventDefault();
-          onFlagChange("yellow");
+          onFlagChange("purple");
           setShowFlagPicker(false);
           return;
         }
         if (key === "3") {
           e.preventDefault();
-          onFlagChange("red");
+          onFlagChange("yellow");
           setShowFlagPicker(false);
           return;
         }
         if (key === "4") {
+          e.preventDefault();
+          onFlagChange("red");
+          setShowFlagPicker(false);
+          return;
+        }
+        if (key === "5") {
           e.preventDefault();
           onFlagChange("green");
           setShowFlagPicker(false);
@@ -1706,9 +1743,9 @@ function StockChart({
                 type="button"
                 onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistModal(false); }}
                 className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass} flex items-center gap-1`}
-                title="Flag stock (Shift+F, then 0-4)"
+                title="Flag (Shift+F opens; Shift+F again clears. Keys 0–5 when open)"
               >
-                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} stroke={stockFlag ? ({ red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[stockFlag]) : "currentColor"} strokeWidth="0.5" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 16 16" fill={stockFlag ? CHART_FLAG_HEX[stockFlag] : "currentColor"} stroke={stockFlag ? CHART_FLAG_HEX[stockFlag] : "currentColor"} strokeWidth="0.5" aria-hidden>
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
                 </svg>
               </button>
@@ -1722,14 +1759,14 @@ function StockChart({
                   >
                     ✕
                   </button>
-                  {(["blue", "yellow", "red", "green"] as const).map((c) => (
+                  {FLAG_PICKER_ORDER.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
                       className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
-                      style={{ backgroundColor: { red: "#EF4468", yellow: "#F5A524", green: "#3DDC84", blue: "#5C9EF5" }[c] }}
-                      title={c === "blue" ? "Blue (1)" : c === "yellow" ? "Yellow (2)" : c === "red" ? "Red (3)" : "Green (4)"}
+                      style={{ backgroundColor: CHART_FLAG_HEX[c], borderColor: CHART_FLAG_HEX[c] }}
+                      title={`${c.charAt(0).toUpperCase() + c.slice(1)} (${FLAG_PICKER_ORDER.indexOf(c) + 1})`}
                     />
                   ))}
                 </div>
@@ -1775,7 +1812,30 @@ function StockChart({
       ) : (
         <div ref={chartAreaRef} className="absolute inset-0">
           {/* Canvas first (opaque); watermark must sit above it or it is never visible */}
-          <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
+          <div
+            ref={containerRef}
+            className="absolute inset-0 w-full h-full z-0"
+            onContextMenu={(ev) => {
+              if (pendingMeasureDrawingId != null) {
+                ev.preventDefault();
+                const id = pendingMeasureDrawingId;
+                setDrawings((prev) => prev.filter((d) => !(d.id === id && d.kind === "measure")));
+                setPendingMeasureDrawingId(null);
+                setPendingMeasureStart(null);
+                pendingMeasureStartRef.current = null;
+                pendingMeasureDrawingIdRef.current = null;
+                setPendingMeasureCursorPoint(null);
+                return;
+              }
+              if (pendingTrendDrawingId != null && pendingTrendStart != null) {
+                ev.preventDefault();
+                const id = pendingTrendDrawingId;
+                setDrawings((prev) => prev.filter((d) => !(d.id === id && d.kind === "trend")));
+                setPendingTrendDrawingId(null);
+                setPendingTrendStart(null);
+              }
+            }}
+          />
           {!chartNarrow && (
             <div
               className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center overflow-hidden"
@@ -1857,7 +1917,7 @@ function StockChart({
           {measureLabels.map((m) => (
             <div
               key={m.id}
-              className="absolute z-15 pointer-events-none rounded px-1.5 py-0.5 text-[13px] font-medium leading-tight whitespace-nowrap"
+              className="absolute z-15 pointer-events-none rounded px-1.5 py-0.5 text-[13px] font-medium leading-tight flex flex-col gap-0.5"
               style={{
                 left: `${m.point!.x + 8}px`,
                 top: `${m.point!.y - 10}px`,
@@ -1866,17 +1926,17 @@ function StockChart({
                 border: `1px solid ${m.color}55`,
               }}
             >
-              <span style={{ color: m.stats.pricePct >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
-                {m.stats.pricePct >= 0 ? "+" : ""}{m.stats.pricePct.toFixed(2)}%
-              </span>
-              {"  |  "}
-              <span style={{ color: m.stats.priceDelta >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
-                $ {m.stats.priceDelta >= 0 ? "+" : ""}{m.stats.priceDelta.toFixed(2)}
-              </span>
-              {"  |  "}
-              <span>{m.stats.barsDiff} bars</span>
-              {"  |  "}
-              <span>{m.stats.daysDiff} days</span>
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <span style={{ color: m.stats.pricePct >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
+                  {m.stats.pricePct >= 0 ? "+" : ""}{m.stats.pricePct.toFixed(2)}%
+                </span>
+                <span style={{ color: m.stats.priceDelta >= 0 ? "var(--ws-green, #22c55e)" : "var(--ws-red, #ef4444)" }}>
+                  {m.stats.priceDelta >= 0 ? "+" : ""}{m.stats.priceDelta.toFixed(2)}
+                </span>
+              </div>
+              <div className="text-[12px] opacity-90 whitespace-nowrap" style={{ color: isLightBackground ? "#444" : "var(--ws-text-dim, #a1a1aa)" }}>
+                {m.stats.barsDiff} bars · {m.stats.daysDiff} days
+              </div>
             </div>
           ))}
           {selectedHandles.map((h) => (

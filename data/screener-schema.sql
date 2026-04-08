@@ -93,6 +93,29 @@ CREATE TABLE IF NOT EXISTS ownership (
 );
 CREATE INDEX IF NOT EXISTS idx_ownership_symbol ON ownership (symbol);
 
+-- 5b. ipo discovery state/logging — refreshed during daily refresh
+CREATE TABLE IF NOT EXISTS ipo_discovery_log (
+  run_date TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  status TEXT NOT NULL,
+  message TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (run_date, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_ipo_discovery_log_symbol ON ipo_discovery_log (symbol, run_date);
+
+CREATE TABLE IF NOT EXISTS ipo_ingest_state (
+  symbol TEXT PRIMARY KEY,
+  first_seen_date TEXT,
+  last_seen_date TEXT,
+  last_ingested_at TEXT,
+  status TEXT,
+  last_error TEXT,
+  updated_at TEXT,
+  FOREIGN KEY (symbol) REFERENCES companies(symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_ipo_ingest_state_status ON ipo_ingest_state (status, updated_at);
+
 -- 6. indicators_daily — refresh daily (derived from daily_bars)
 CREATE TABLE IF NOT EXISTS indicators_daily (
   symbol TEXT NOT NULL,

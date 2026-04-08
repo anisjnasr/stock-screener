@@ -7,6 +7,8 @@ import { cloudSyncScreens } from "./cloud-sync";
 
 const STORAGE_KEY_SCREENS = "stock-research-screener-screens";
 const STORAGE_KEY_FOLDERS = "stock-research-screener-folders";
+const SCREENS_CHANGED_EVENT = "stock-screens-changed";
+const FOLDERS_CHANGED_EVENT = "stock-screener-folders-changed";
 
 export type ScreenerFilters = Record<string, string | number | undefined>;
 
@@ -61,7 +63,7 @@ export function saveScreens(screens: SavedScreen[]): void {
   }
   queueMicrotask(() => {
     try {
-      window.dispatchEvent(new CustomEvent("stock-screens-changed", { detail: screens }));
+      window.dispatchEvent(new CustomEvent(SCREENS_CHANGED_EVENT, { detail: screens }));
     } catch {
       /* ignore */
     }
@@ -122,6 +124,13 @@ export function saveFolders(folders: ScreenerFolder[]): void {
   } catch {
     /* ignore */
   }
+  queueMicrotask(() => {
+    try {
+      window.dispatchEvent(new CustomEvent(FOLDERS_CHANGED_EVENT, { detail: folders }));
+    } catch {
+      /* ignore */
+    }
+  });
   cloudSyncScreens(loadScreens(), folders, loadFavoriteScreenIds());
 }
 

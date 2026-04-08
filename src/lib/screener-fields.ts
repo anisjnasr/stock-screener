@@ -9,6 +9,7 @@ export type FilterField =
   | { key: string; label: string; type: "pct"; minKey?: string; maxKey?: string; placeholder?: string }
   | { key: string; label: string; type: "percentile"; minKey?: string; maxKey?: string; placeholder?: string }
   | { key: string; label: string; type: "categorical"; options: { value: string; label: string }[] }
+  | { key: string; label: string; type: "checkbox"; filterKey: string }
   | { key: string; label: string; type: "text"; placeholder?: string }
   | { key: string; label: string; type: "pctOperatorRow"; minKey: string; maxKey: string }
   | {
@@ -198,10 +199,16 @@ export const SCREENER_FILTER_CATEGORIES: FilterCategory[] = [
       { key: "high_52w", label: "52 Week High", type: "numeric", minKey: "high_52w_min", maxKey: undefined, format: "number" },
       {
         key: "off_52w_high_pct",
-        label: "Off 52W High % (signed: − below high, + above)",
+        label: "Off 52W High %",
         type: "pct",
         minKey: "off_52w_high_pct_min",
         maxKey: "off_52w_high_pct_max",
+      },
+      {
+        key: "new_52w_high_chk",
+        label: "New 52W High",
+        type: "checkbox",
+        filterKey: "new_52w_high",
       },
       { key: "atr_pct_21d_row", label: "ATR % (21d)", type: "pctOperatorRow", minKey: "atr_pct_21d_min", maxKey: "atr_pct_21d_max" },
       { key: "pct_from_ema_20", label: "% distance vs EMA 20", type: "pct", minKey: "pct_from_ema_20_min", maxKey: "pct_from_ema_20_max" },

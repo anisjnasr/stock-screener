@@ -32,7 +32,6 @@ export type StockData = {
   };
   nextEarnings?: string;
   rsRank?: {
-    rs_pct_1w: number | null;
     rs_pct_1m: number | null;
     rs_pct_3m: number | null;
     rs_pct_6m: number | null;
