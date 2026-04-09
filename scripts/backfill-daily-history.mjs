@@ -85,6 +85,11 @@ async function main() {
   const SQL = await initSqlJs();
   const buf = readFileSync(DB_PATH);
   const db = new SQL.Database(buf);
+  const dailyBarsInfo = db.exec("PRAGMA table_info(daily_bars)");
+  const dailyBarsCols = new Set((dailyBarsInfo[0]?.values ?? []).map((r) => r[1]));
+  if (!dailyBarsCols.has("dollar_volume")) {
+    db.run("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  }
 
   const symbolRows = db.exec("SELECT symbol FROM companies ORDER BY symbol");
   let symbols = symbolRows.length && symbolRows[0].values ? symbolRows[0].values.map((r) => r[0]) : [];
@@ -105,7 +110,7 @@ async function main() {
   const toStr = toDate.toISOString().slice(0, 10);
 
   const insertBar = db.prepare(
-    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume, dollar_volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
 
   console.log(`Backfilling daily_bars from ${fromStr} to ${toStr} for ${symbols.length} symbols...`);
@@ -118,7 +123,11 @@ async function main() {
         console.log(`  ${sym}: no bars returned`);
       } else {
         for (const b of bars) {
-          insertBar.bind([sym, b.date, b.open, b.high, b.low, b.close, b.volume]);
+          const dollarVolume =
+            b.high != null && b.low != null && b.close != null && b.volume != null
+              ? ((b.high + b.low + b.close) / 3) * b.volume
+              : null;
+          insertBar.bind([sym, b.date, b.open, b.high, b.low, b.close, b.volume, dollarVolume]);
           insertBar.step();
           insertBar.reset();
         }

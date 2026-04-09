@@ -42,16 +42,26 @@ export async function POST(request: NextRequest) {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA synchronous = NORMAL");
     db.exec("PRAGMA foreign_keys = OFF");
+    const dailyBarsCols = new Set(
+      (db.prepare("PRAGMA table_info(daily_bars)").all() as Array<{ name: string }>).map((r) => r.name)
+    );
+    if (!dailyBarsCols.has("dollar_volume")) {
+      db.exec("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+    }
 
     const stmt = db.prepare(
-      `INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume, dollar_volume)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     db.exec("BEGIN");
     try {
       for (const b of bars) {
-        stmt.run(b.symbol, b.date, b.open, b.high, b.low, b.close, b.volume);
+        const dollarVolume =
+          b.high != null && b.low != null && b.close != null && b.volume != null
+            ? ((b.high + b.low + b.close) / 3) * b.volume
+            : null;
+        stmt.run(b.symbol, b.date, b.open, b.high, b.low, b.close, b.volume, dollarVolume);
         inserted++;
       }
       db.exec("COMMIT");

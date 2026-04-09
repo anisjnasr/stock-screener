@@ -55,12 +55,13 @@ CREATE TABLE IF NOT EXISTS daily_bars (
   low REAL,
   close REAL,
   volume INTEGER,
+  dollar_volume REAL,
   PRIMARY KEY (symbol, date),
   FOREIGN KEY (symbol) REFERENCES companies(symbol)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_bars_symbol_date ON daily_bars (symbol, date);
 CREATE INDEX IF NOT EXISTS idx_daily_bars_date ON daily_bars (date);
-CREATE INDEX IF NOT EXISTS idx_daily_bars_covering ON daily_bars (symbol, date, close, high, low, volume, open);
+CREATE INDEX IF NOT EXISTS idx_daily_bars_covering ON daily_bars (symbol, date, close, high, low, volume, dollar_volume, open);
 
 -- 4. financials (quarterly + annual) — refresh quarterly
 CREATE TABLE IF NOT EXISTS financials (
@@ -71,6 +72,8 @@ CREATE TABLE IF NOT EXISTS financials (
   eps_growth_yoy REAL,
   sales REAL,
   sales_growth_yoy REAL,
+  fiscal_period TEXT,
+  fiscal_year INTEGER,
   updated_at TEXT,
   PRIMARY KEY (symbol, period_type, period_end),
   FOREIGN KEY (symbol) REFERENCES companies(symbol)
@@ -127,6 +130,8 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
   price_change_12m_pct REAL,
   avg_volume_1w REAL,
   avg_volume_1m REAL,
+  avg_dollar_volume_1m REAL,
+  avg_dollar_volume_3m REAL,
   atr_14 REAL,
   atr_pct_14 REAL,
   atr_21 REAL,

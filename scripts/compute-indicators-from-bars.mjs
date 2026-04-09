@@ -12,15 +12,10 @@
 
 import initSqlJs from "sql.js";
 import { readFileSync, existsSync, openSync, writeSync, closeSync, statSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { createRequire } from "module";
+import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
 
 const require = createRequire(import.meta.url);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const DATA_DIR = join(root, "data");
-const DB_PATH = join(DATA_DIR, "screener.db");
 
 const USE_NATIVE_IF_LARGER_BYTES = 1.5e9;
 
@@ -91,6 +86,10 @@ async function runNativeCompute(LIMIT, YEARS) {
   const Database = require("better-sqlite3");
   const db = new Database(DB_PATH);
   db.pragma("foreign_keys = OFF");
+  const dailyBarsCols0 = new Set(db.prepare("PRAGMA table_info(daily_bars)").all().map((r) => r.name));
+  if (!dailyBarsCols0.has("dollar_volume")) {
+    db.exec("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  }
   const toDate = new Date();
   const fromDate = new Date(toDate);
   fromDate.setUTCFullYear(fromDate.getUTCFullYear() - YEARS);
@@ -106,7 +105,7 @@ async function runNativeCompute(LIMIT, YEARS) {
 
   const indInfo0 = db.prepare("PRAGMA table_info(indicators_daily)").all();
   const indCols0 = new Set(indInfo0.map((r) => r.name));
-  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60"]) {
+  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60", "avg_dollar_volume_1m", "avg_dollar_volume_3m"]) {
     if (!indCols0.has(col)) db.exec("ALTER TABLE indicators_daily ADD COLUMN " + col + " REAL");
   }
 
@@ -115,10 +114,10 @@ async function runNativeCompute(LIMIT, YEARS) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const upsertInd = db.prepare(`
-    INSERT OR REPLACE INTO indicators_daily (symbol, date, price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct, avg_volume_1w, avg_volume_1m, atr_14, atr_pct_14, atr_21, atr_pct_21, ema_20, ema_50, ema_100, ema_200, ema_200_lag_20, ema_200_lag_30, ema_200_lag_60, above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200, ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct, rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m, industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m, sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO indicators_daily (symbol, date, price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct, avg_volume_1w, avg_volume_1m, avg_dollar_volume_1m, avg_dollar_volume_3m, atr_14, atr_pct_14, atr_21, atr_pct_21, ema_20, ema_50, ema_100, ema_200, ema_200_lag_20, ema_200_lag_30, ema_200_lag_60, above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200, ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct, rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m, industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m, sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const getBars = db.prepare("SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date");
+  const getBars = db.prepare("SELECT date, open, high, low, close, volume, dollar_volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date");
   const getQuote = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
   const getCompany = db.prepare("SELECT industry, sector FROM companies WHERE symbol = ?");
   const pctFrom = (close, ema) => (ema ? ((close - ema) / ema) * 100 : null);
@@ -129,7 +128,17 @@ async function runNativeCompute(LIMIT, YEARS) {
   console.log("\n1. Computing quote_daily + indicators_daily from daily_bars...");
   for (let s = 0; s < symbols.length; s++) {
     const sym = symbols[s];
-    const bars = getBars.all(sym, fromStr, toStr).map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
+    const bars = getBars
+      .all(sym, fromStr, toStr)
+      .map((r) => ({
+        date: r.date,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        volume: r.volume,
+        dollarVolume: r.dollar_volume,
+      }));
     if (bars.length < 22) continue;
     const company = getCompany.get(sym);
     const industry = company?.industry ?? null;
@@ -179,6 +188,28 @@ async function runNativeCompute(LIMIT, YEARS) {
       const vol1m = slice.slice(-21).map((b) => b.volume);
       const avgVol1w = vol1w.length ? vol1w.reduce((a, b) => a + b, 0) / vol1w.length : null;
       const avgVol1m = vol1m.length ? vol1m.reduce((a, b) => a + b, 0) / vol1m.length : null;
+      const dol1m = slice
+        .slice(-21)
+        .map((b) =>
+          b.dollarVolume != null
+            ? b.dollarVolume
+            : b.high != null && b.low != null && b.close != null && b.volume != null
+              ? ((b.high + b.low + b.close) / 3) * b.volume
+              : null
+        )
+        .filter((v) => v != null && Number.isFinite(v));
+      const dol3m = slice
+        .slice(-63)
+        .map((b) =>
+          b.dollarVolume != null
+            ? b.dollarVolume
+            : b.high != null && b.low != null && b.close != null && b.volume != null
+              ? ((b.high + b.low + b.close) / 3) * b.volume
+              : null
+        )
+        .filter((v) => v != null && Number.isFinite(v));
+      const avgDollarVol1m = dol1m.length ? dol1m.reduce((a, b) => a + b, 0) / dol1m.length : null;
+      const avgDollarVol3m = dol3m.length ? dol3m.reduce((a, b) => a + b, 0) / dol3m.length : null;
       const atr14Arr = computeATR(slice, 14);
       const atr14 = atr14Arr[atr14Arr.length - 1];
       const atrPct14 = lastBar.close && atr14 ? (atr14 / lastBar.close) * 100 : null;
@@ -200,7 +231,7 @@ async function runNativeCompute(LIMIT, YEARS) {
       const rs6m = rs(ch6m, spyRet6m);
       const rs12m = rs(ch12m, spyRet12m);
       upsertInd.run(
-        sym, date, ch1w, ch1m, ch3m, ch6m, ch12m, avgVol1w, avgVol1m, atr14, atrPct14, atr21, atrPct21,
+        sym, date, ch1w, ch1m, ch3m, ch6m, ch12m, avgVol1w, avgVol1m, avgDollarVol1m, avgDollarVol3m, atr14, atrPct14, atr21, atrPct21,
         ema20, ema50, ema100, ema200, ema200Lag20, ema200Lag30, ema200Lag60,
         lastBar.close > ema20 ? 1 : 0, pctFrom(lastBar.close, ema20), lastBar.close > ema50 ? 1 : 0, pctFrom(lastBar.close, ema50), lastBar.close > ema100 ? 1 : 0, pctFrom(lastBar.close, ema100), lastBar.close > ema200 ? 1 : 0, pctFrom(lastBar.close, ema200),
         ema20 > ema50 ? 1 : 0, spread(ema20, ema50), ema50 > ema100 ? 1 : 0, spread(ema50, ema100), ema50 > ema200 ? 1 : 0, spread(ema50, ema200), ema100 > ema200 ? 1 : 0, spread(ema100, ema200),
@@ -366,10 +397,15 @@ async function main() {
   const SQL = await initSqlJs();
   const buf = readFileSync(DB_PATH);
   const db = new SQL.Database(buf);
+  const dailyBarsInfoSqljs = db.exec("PRAGMA table_info(daily_bars)");
+  const dailyBarsColNamesSqljs = new Set((dailyBarsInfoSqljs[0]?.values ?? []).map((r) => r[1]));
+  if (!dailyBarsColNamesSqljs.has("dollar_volume")) {
+    db.run("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  }
 
   const indInfoSqljs = db.exec("PRAGMA table_info(indicators_daily)");
   const indColNamesSqljs = new Set((indInfoSqljs[0]?.values ?? []).map((r) => r[1]));
-  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60"]) {
+  for (const col of ["ema_200_lag_20", "ema_200_lag_30", "ema_200_lag_60", "avg_dollar_volume_1m", "avg_dollar_volume_3m"]) {
     if (!indColNamesSqljs.has(col)) db.run("ALTER TABLE indicators_daily ADD COLUMN " + col + " REAL");
   }
 
@@ -395,7 +431,7 @@ async function main() {
     INSERT OR REPLACE INTO indicators_daily (
       symbol, date,
       price_change_1w_pct, price_change_1m_pct, price_change_3m_pct, price_change_6m_pct, price_change_12m_pct,
-      avg_volume_1w, avg_volume_1m,
+      avg_volume_1w, avg_volume_1m, avg_dollar_volume_1m, avg_dollar_volume_3m,
       atr_14, atr_pct_14, atr_21, atr_pct_21,
       ema_20, ema_50, ema_100, ema_200,
       ema_200_lag_20, ema_200_lag_30, ema_200_lag_60,
@@ -404,12 +440,12 @@ async function main() {
       rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m,
       industry_rank_1m, industry_rank_3m, industry_rank_6m, industry_rank_12m,
       sector_rank_1m, sector_rank_3m, sector_rank_6m, sector_rank_12m
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getQuote = db.prepare("SELECT market_cap, last_price, volume FROM quote_daily WHERE symbol = ? AND date = ?");
   const getBars = db.prepare(
-    "SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date"
+    "SELECT date, open, high, low, close, volume, dollar_volume FROM daily_bars WHERE symbol = ? AND date >= ? AND date <= ? ORDER BY date"
   );
   const companyStmt = db.prepare("SELECT industry, sector FROM companies WHERE symbol = ?");
 
@@ -429,7 +465,15 @@ async function main() {
     const bars = [];
     while (getBars.step()) {
       const r = getBars.get();
-      bars.push({ date: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] });
+      bars.push({
+        date: r[0],
+        open: r[1],
+        high: r[2],
+        low: r[3],
+        close: r[4],
+        volume: r[5],
+        dollarVolume: r[6],
+      });
     }
     getBars.reset();
     if (bars.length < 22) continue;
@@ -517,6 +561,28 @@ async function main() {
       const vol1m = slice.slice(-21).map((b) => b.volume);
       const avgVol1w = vol1w.length ? vol1w.reduce((a, b) => a + b, 0) / vol1w.length : null;
       const avgVol1m = vol1m.length ? vol1m.reduce((a, b) => a + b, 0) / vol1m.length : null;
+      const dol1m = slice
+        .slice(-21)
+        .map((b) =>
+          b.dollarVolume != null
+            ? b.dollarVolume
+            : b.high != null && b.low != null && b.close != null && b.volume != null
+              ? ((b.high + b.low + b.close) / 3) * b.volume
+              : null
+        )
+        .filter((v) => v != null && Number.isFinite(v));
+      const dol3m = slice
+        .slice(-63)
+        .map((b) =>
+          b.dollarVolume != null
+            ? b.dollarVolume
+            : b.high != null && b.low != null && b.close != null && b.volume != null
+              ? ((b.high + b.low + b.close) / 3) * b.volume
+              : null
+        )
+        .filter((v) => v != null && Number.isFinite(v));
+      const avgDollarVol1m = dol1m.length ? dol1m.reduce((a, b) => a + b, 0) / dol1m.length : null;
+      const avgDollarVol3m = dol3m.length ? dol3m.reduce((a, b) => a + b, 0) / dol3m.length : null;
 
       const atr14Arr = computeATR(slice, 14);
       const atr14 = atr14Arr[atr14Arr.length - 1];
@@ -552,6 +618,8 @@ async function main() {
         ch12m,
         avgVol1w,
         avgVol1m,
+        avgDollarVol1m,
+        avgDollarVol3m,
         atr14,
         atrPct14,
         atr21,

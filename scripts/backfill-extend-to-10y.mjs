@@ -88,6 +88,10 @@ async function main() {
   console.log("Opening DB (on-disk, better-sqlite3)...");
   const db = new Database(DB_PATH);
   db.pragma("foreign_keys = OFF");
+  const dailyBarsCols = new Set(db.prepare("PRAGMA table_info(daily_bars)").all().map((r) => r.name));
+  if (!dailyBarsCols.has("dollar_volume")) {
+    db.exec("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  }
 
   let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
   if (!symbols.length) {
@@ -114,14 +118,18 @@ async function main() {
   console.log("Then backfill quote_daily and run indicators for full 10 years.\n");
 
   const insertBar = db.prepare(
-    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume, dollar_volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
 
   console.log("1. Fetching SPY for extension range...");
   const spyBars = await fetchDailyBars("SPY", fromStr, toStrExtension);
   const insertMany = db.transaction((bars, sym) => {
     for (const b of bars) {
-      insertBar.run(sym, b.date, b.open, b.high, b.low, b.close, b.volume);
+      const dollarVolume =
+        b.high != null && b.low != null && b.close != null && b.volume != null
+          ? ((b.high + b.low + b.close) / 3) * b.volume
+          : null;
+      insertBar.run(sym, b.date, b.open, b.high, b.low, b.close, b.volume, dollarVolume);
     }
   });
   insertMany(spyBars, "SPY");

@@ -313,8 +313,13 @@ async function main() {
     low REAL,
     close REAL,
     volume INTEGER,
+    dollar_volume REAL,
     PRIMARY KEY (symbol, date)
   )`);
+  const dailyBarsCols = new Set(db.prepare("PRAGMA table_info(daily_bars)").all().map((r) => r.name));
+  if (!dailyBarsCols.has("dollar_volume")) {
+    db.exec("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const tenYearsAgo = new Date();
@@ -422,12 +427,16 @@ async function main() {
   /* ── Phase 3: Fetch and insert ─────────────────────────────────────── */
 
   const insertBar = db.prepare(
-    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume, dollar_volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
 
   const insertMany = db.transaction((bars, sym) => {
     for (const b of bars) {
-      insertBar.run(sym, b.date, b.open, b.high, b.low, b.close, b.volume);
+      const dollarVolume =
+        b.high != null && b.low != null && b.close != null && b.volume != null
+          ? ((b.high + b.low + b.close) / 3) * b.volume
+          : null;
+      insertBar.run(sym, b.date, b.open, b.high, b.low, b.close, b.volume, dollarVolume);
     }
   });
 

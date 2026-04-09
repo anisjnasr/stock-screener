@@ -16,6 +16,7 @@ import initSqlJs from "sql.js";
 import { readFileSync, existsSync, openSync, writeSync, closeSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { computeAnnualYoYGrowth, computeQuarterlyYoYGrowth } from "./_financial-growth.mjs";
 
 /** Write sql.js DB to file in chunks to avoid Buffer size limit (~2.15 GB). */
 function writeDatabaseChunked(db, filePath) {
@@ -126,15 +127,15 @@ async function fetchIncomeStatement(symbol, timeframe) {
   const results = data.results ?? [];
   return results.map((row) => ({
     period_end: row.period_end ?? "",
+    fiscal_period: row.fiscal_period ?? null,
+    fiscal_year:
+      row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+        ? Number(row.fiscal_year)
+        : null,
     revenue: row.revenue,
     net_income: row.consolidated_net_income_loss,
     eps: row.diluted_earnings_per_share ?? row.basic_earnings_per_share,
   }));
-}
-
-function computeGrowth(current, prior) {
-  if (prior == null || prior === 0) return null;
-  return ((current - prior) / Math.abs(prior)) * 100;
 }
 
 function ensureSharesOutstandingColumn(db) {
@@ -143,6 +144,24 @@ function ensureSharesOutstandingColumn(db) {
     const cols = info[0]?.values?.map((r) => r[1]) ?? [];
     if (cols.includes("shares_outstanding")) return;
     db.run("ALTER TABLE companies ADD COLUMN shares_outstanding REAL");
+  } catch (_) {}
+}
+
+function ensureDailyBarsDollarVolumeColumn(db) {
+  try {
+    const info = db.exec("PRAGMA table_info(daily_bars)");
+    const cols = info[0]?.values?.map((r) => r[1]) ?? [];
+    if (cols.includes("dollar_volume")) return;
+    db.run("ALTER TABLE daily_bars ADD COLUMN dollar_volume REAL");
+  } catch (_) {}
+}
+
+function ensureFinancialsFiscalColumns(db) {
+  try {
+    const info = db.exec("PRAGMA table_info(financials)");
+    const cols = info[0]?.values?.map((r) => r[1]) ?? [];
+    if (!cols.includes("fiscal_period")) db.run("ALTER TABLE financials ADD COLUMN fiscal_period TEXT");
+    if (!cols.includes("fiscal_year")) db.run("ALTER TABLE financials ADD COLUMN fiscal_year INTEGER");
   } catch (_) {}
 }
 
@@ -157,6 +176,8 @@ async function main() {
   const db = new SQL.Database(buf);
 
   ensureSharesOutstandingColumn(db);
+  ensureDailyBarsDollarVolumeColumn(db);
+  ensureFinancialsFiscalColumns(db);
 
   const symbolSql = ETF_ONLY
     ? "SELECT symbol FROM companies WHERE is_etf = 1 ORDER BY symbol"
@@ -194,14 +215,18 @@ async function main() {
 
   console.log("\n1. Backfilling daily_bars (" + fromStr + " to " + toStr + ")...");
   const insertBar = db.prepare(
-    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO daily_bars (symbol, date, open, high, low, close, volume, dollar_volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
   for (let i = 0; i < symbolsToProcess.length; i++) {
     const sym = symbolsToProcess[i];
     try {
       const bars = await fetchDailyBars(sym, fromStr, toStr);
       for (const b of bars) {
-        insertBar.bind([sym, b.date, b.open, b.high, b.low, b.close, b.volume]);
+        const dollarVolume =
+          b.high != null && b.low != null && b.close != null && b.volume != null
+            ? ((b.high + b.low + b.close) / 3) * b.volume
+            : null;
+        insertBar.bind([sym, b.date, b.open, b.high, b.low, b.close, b.volume, dollarVolume]);
         insertBar.step();
         insertBar.reset();
       }
@@ -232,8 +257,8 @@ async function main() {
   console.log("\n2. Backfilling financials (quarterly + annual)...");
   const now = new Date().toISOString();
   const upsertFin = db.prepare(`
-    INSERT OR REPLACE INTO financials (symbol, period_type, period_end, eps, eps_growth_yoy, sales, sales_growth_yoy, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO financials (symbol, period_type, period_end, eps, eps_growth_yoy, sales, sales_growth_yoy, fiscal_period, fiscal_year, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const cutoffDate = new Date(toDate);
   cutoffDate.setUTCFullYear(cutoffDate.getUTCFullYear() - YEARS);
@@ -250,14 +275,21 @@ async function main() {
         const row = annual[j];
         if (row.period_end < financialsCutoff) continue;
         const prev = annual[j + 1];
+        const { epsGrowth, salesGrowth } = computeAnnualYoYGrowth(row, prev);
+        const annualFiscalYear =
+          row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+            ? Number(row.fiscal_year)
+            : null;
         upsertFin.bind([
           sym,
           "annual",
           row.period_end,
           row.eps ?? null,
-          prev != null ? computeGrowth(row.eps, prev.eps) : null,
+          epsGrowth,
           row.revenue ?? null,
-          prev != null ? computeGrowth(row.revenue, prev.revenue) : null,
+          salesGrowth,
+          null,
+          annualFiscalYear,
           now,
         ]);
         upsertFin.step();
@@ -266,15 +298,23 @@ async function main() {
       for (let j = 0; j < quarterly.length; j++) {
         const row = quarterly[j];
         if (row.period_end < financialsCutoff) continue;
-        const prev = quarterly[j + 1];
+        const { epsGrowth, salesGrowth } = computeQuarterlyYoYGrowth(row, quarterly);
+        const qFiscalYear =
+          row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+            ? Number(row.fiscal_year)
+            : null;
+        const qFiscalPeriod =
+          typeof row.fiscal_period === "string" && row.fiscal_period.trim() ? row.fiscal_period.trim() : null;
         upsertFin.bind([
           sym,
           "quarterly",
           row.period_end,
           row.eps ?? null,
-          prev != null ? computeGrowth(row.eps, prev.eps) : null,
+          epsGrowth,
           row.revenue ?? null,
-          prev != null ? computeGrowth(row.revenue, prev.revenue) : null,
+          salesGrowth,
+          qFiscalPeriod,
+          qFiscalYear,
           now,
         ]);
         upsertFin.step();

@@ -9,6 +9,10 @@ import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
+import {
+  computeAnnualYoYGrowth,
+  computeQuarterlyYoYGrowth,
+} from "./_financial-growth.mjs";
 
 const USING_CUSTOM_DB = Boolean(process.env.SCREENER_DB_PATH);
 
@@ -52,15 +56,15 @@ async function fetchIncomeStatement(symbol, timeframe) {
   const results = data.results ?? [];
   return results.map((row) => ({
     period_end: row.period_end ?? "",
+    fiscal_period: row.fiscal_period ?? null,
+    fiscal_year:
+      row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+        ? Number(row.fiscal_year)
+        : null,
     revenue: row.revenue,
     net_income: row.consolidated_net_income_loss,
     eps: row.diluted_earnings_per_share ?? row.basic_earnings_per_share,
   }));
-}
-
-function computeGrowth(current, prior) {
-  if (prior == null || prior === 0) return null;
-  return ((current - prior) / Math.abs(prior)) * 100;
 }
 
 function sleep(ms) {
@@ -81,6 +85,10 @@ async function main() {
   db.pragma("foreign_keys = OFF");
   db.pragma("busy_timeout = 10000");
 
+  const finCols = new Set(db.prepare("PRAGMA table_info(financials)").all().map((r) => r.name));
+  if (!finCols.has("fiscal_period")) db.exec("ALTER TABLE financials ADD COLUMN fiscal_period TEXT");
+  if (!finCols.has("fiscal_year")) db.exec("ALTER TABLE financials ADD COLUMN fiscal_year INTEGER");
+
   let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
   if (LIMIT != null && LIMIT > 0) {
     symbols = symbols.slice(0, LIMIT);
@@ -89,8 +97,8 @@ async function main() {
 
   const now = new Date().toISOString();
   const upsert = db.prepare(`
-    INSERT OR REPLACE INTO financials (symbol, period_type, period_end, eps, eps_growth_yoy, sales, sales_growth_yoy, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO financials (symbol, period_type, period_end, eps, eps_growth_yoy, sales, sales_growth_yoy, fiscal_period, fiscal_year, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (let i = 0; i < symbols.length; i++) {
@@ -104,8 +112,11 @@ async function main() {
       for (let j = 0; j < annual.length; j++) {
         const row = annual[j];
         const prev = annual[j + 1];
-        const epsGrowth = prev != null ? computeGrowth(row.eps, prev.eps) : null;
-        const salesGrowth = prev != null ? computeGrowth(row.revenue, prev.revenue) : null;
+        const { epsGrowth, salesGrowth } = computeAnnualYoYGrowth(row, prev);
+        const annualFiscalYear =
+          row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+            ? Number(row.fiscal_year)
+            : null;
         upsert.run(
           sym,
           "annual",
@@ -114,14 +125,20 @@ async function main() {
           epsGrowth,
           row.revenue ?? null,
           salesGrowth,
+          null,
+          annualFiscalYear,
           now
         );
       }
       for (let j = 0; j < quarterly.length; j++) {
         const row = quarterly[j];
-        const prev = quarterly[j + 1];
-        const epsGrowth = prev != null ? computeGrowth(row.eps, prev.eps) : null;
-        const salesGrowth = prev != null ? computeGrowth(row.revenue, prev.revenue) : null;
+        const { epsGrowth, salesGrowth } = computeQuarterlyYoYGrowth(row, quarterly);
+        const qFiscalYear =
+          row.fiscal_year != null && Number.isFinite(Number(row.fiscal_year))
+            ? Number(row.fiscal_year)
+            : null;
+        const qFiscalPeriod =
+          typeof row.fiscal_period === "string" && row.fiscal_period.trim() ? row.fiscal_period.trim() : null;
         upsert.run(
           sym,
           "quarterly",
@@ -130,6 +147,8 @@ async function main() {
           epsGrowth,
           row.revenue ?? null,
           salesGrowth,
+          qFiscalPeriod,
+          qFiscalYear,
           now
         );
       }
