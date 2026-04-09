@@ -123,8 +123,9 @@ export default function AIInsightFormCard({ mode, initialPage, onSubmit, onCance
         </label>
       </div>
       <p className="text-[11px] leading-snug mb-3" style={{ color: "var(--ws-text-vdim)" }}>
-        When Database is on, lookback sets how much <strong style={{ color: "var(--ws-text-dim)" }}>daily bar history</strong> is loaded for the symbol before the prompt runs
-        (weeks × 5, months × 21, years × 252 trading days, capped by the server). Use a longer window when the model needs older context.
+        <strong style={{ color: "var(--ws-text-dim)" }}>Database</strong> is always used first when enabled (bars, fundamentals, ownership).{" "}
+        <strong style={{ color: "var(--ws-text-dim)" }}>Web</strong> adds a Yahoo Finance snapshot when both are on, or enables Claude&apos;s web search when Web-only.
+        Lookback sets the <strong style={{ color: "var(--ws-text-dim)" }}>calendar window from today (UTC)</strong>: bar depth scales with weeks/months/years, and financial rows are filtered to that window; ask for earnings/events in-window explicitly if you need it.
       </p>
 
       <label className="text-xs block mb-3 flex-1 min-h-0" style={{ color: "var(--ws-text-dim)" }}>

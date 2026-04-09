@@ -234,6 +234,7 @@ export default function CustomPromptPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceTelemetry, setSourceTelemetry] = useState<SourceTelemetry | null>(null);
+  const [preflightWarning, setPreflightWarning] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -303,6 +304,7 @@ export default function CustomPromptPage({
     setResponseText("");
     setModelUsed(null);
     setSourceTelemetry(null);
+    setPreflightWarning(null);
     try {
       const res = await fetch("/api/ai-completion", {
         method: "POST",
@@ -341,7 +343,12 @@ export default function CustomPromptPage({
             modelUsed?: ModelUsed;
             sourceTelemetry?: SourceTelemetry;
             error?: string;
+            message?: string;
+            code?: string;
           };
+          if (evt.type === "warning" && evt.message) {
+            setPreflightWarning(evt.message);
+          }
           if (evt.type === "meta" && evt.modelUsed) {
             setModelUsed(evt.modelUsed);
             // If this run used auto/recommended, lock in the chosen model for future runs.
@@ -550,6 +557,13 @@ export default function CustomPromptPage({
       </div>
 
       <div className="rounded p-3 min-h-[240px]" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
+        {preflightWarning && (
+          <div
+            className="text-sm mb-3 rounded px-2 py-2"
+            style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", color: "var(--ws-text)" }}
+            dangerouslySetInnerHTML={{ __html: `<p>${inlineMarkdown(preflightWarning)}</p>` }}
+          />
+        )}
         {loading && (
           <div className="text-sm mb-3" style={{ color: "var(--ws-text-dim)" }}>Generating…</div>
         )}

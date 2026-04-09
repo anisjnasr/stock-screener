@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import {
+  getCompanyCalendarFields,
   getCompanyClassification,
   getCompanyName,
   getDailyBars,
@@ -77,6 +78,58 @@ function chooseBarsLimit(lookback: DataLookback): number {
   return Math.round(bars);
 }
 
+/** Oldest calendar date (UTC) included in the user's lookback window (inclusive). */
+function lookbackToCutoffIso(lookback: DataLookback): string | null {
+  if (!lookback) return null;
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (lookback.unit === "weeks") d.setUTCDate(d.getUTCDate() - 7 * lookback.value);
+  else if (lookback.unit === "months") d.setUTCMonth(d.getUTCMonth() - lookback.value);
+  else d.setUTCFullYear(d.getUTCFullYear() - lookback.value);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildLookbackWindowInstructions(lookback: DataLookback): string {
+  if (!lookback) {
+    return "No explicit lookback was set; use loaded bar depth as the practical history. If the user asks for events in a specific recent window, say when nothing in context falls in that window.";
+  }
+  const unit =
+    lookback.unit === "weeks"
+      ? lookback.value === 1
+        ? "week"
+        : "weeks"
+      : lookback.unit === "months"
+        ? lookback.value === 1
+          ? "month"
+          : "months"
+        : lookback.value === 1
+          ? "year"
+          : "years";
+  return `The user's lookback is approximately the last ${lookback.value} ${unit} from today (UTC). Only treat fundamentals, earnings dates, and commentary as "in window" when their dates fall on or after lookback.cutoffDate. If the prompt asks for earnings or events in that window and none appear in context, state clearly that none were found in the database for that period.`;
+}
+
+function filterFinancialRowsByCutoff<T extends { period_end: string }>(rows: T[], cutoff: string | null): T[] {
+  if (!cutoff || rows.length === 0) return rows;
+  return rows.filter((r) => String(r.period_end) >= cutoff);
+}
+
+async function promptLikelyNeedsWebOnlySources(anthropic: Anthropic, prompt: string): Promise<boolean> {
+  const resp = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 5,
+    temperature: 0,
+    system:
+      "Answer with exactly YES or NO. Does the prompt require breaking news, press releases, social/real-time web sentiment, or other information that is NOT covered by a typical local stock database (OHLC bars, fundamentals, ownership, company profile)?",
+    messages: [{ role: "user", content: prompt.slice(0, 8000) }],
+  });
+  const text = resp.content
+    .map((c) => ("text" in c ? c.text : ""))
+    .join("")
+    .trim()
+    .toUpperCase();
+  return text.startsWith("YES");
+}
+
 function jsonLine(obj: unknown): Uint8Array {
   return new TextEncoder().encode(`${JSON.stringify(obj)}\n`);
 }
@@ -100,18 +153,47 @@ async function classifyModel(anthropic: Anthropic, prompt: string): Promise<Mode
 
 function buildDatabaseContext(symbol: string, lookback: DataLookback): Record<string, unknown> {
   const asOfDate = getLatestScreenerDate() ?? "";
+  const cutoff = lookbackToCutoffIso(lookback);
   const snapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1 }).rows[0] ?? null;
+  const calendar = getCompanyCalendarFields(symbol);
   const company = {
     name: getCompanyName(symbol),
     classification: getCompanyClassification(symbol),
+    calendar,
   };
+  const annualRaw = getFinancialsNative(symbol, "annual", 16);
+  const quarterlyRaw = getFinancialsNative(symbol, "quarterly", 24);
   const financials = {
-    annual: getFinancialsNative(symbol, "annual", 8),
-    quarterly: getFinancialsNative(symbol, "quarterly", 8),
+    annual: filterFinancialRowsByCutoff(annualRaw, cutoff),
+    quarterly: filterFinancialRowsByCutoff(quarterlyRaw, cutoff),
+    filterNote:
+      cutoff != null
+        ? `Financial statement rows are filtered to period_end >= ${cutoff} (user lookback window).`
+        : null,
   };
   const ownership = getOwnershipNative(symbol, 8);
   const bars = asOfDate ? getDailyBars(symbol, asOfDate, chooseBarsLimit(lookback)) : [];
-  return { asOfDate, company, snapshot, financials, ownership, bars };
+  let calendarNote: string | null = null;
+  if (cutoff && calendar?.nextEarningsAt) {
+    const inWindow = calendar.nextEarningsAt >= cutoff;
+    calendarNote = inWindow
+      ? `next_earnings_at (${calendar.nextEarningsAt}) is on or after lookback cutoff ${cutoff}.`
+      : `next_earnings_at (${calendar.nextEarningsAt}) is before lookback cutoff ${cutoff} — not in the requested window for "recent" earnings.`;
+  }
+  return {
+    asOfDate,
+    lookback: {
+      setting: lookback,
+      cutoffDate: cutoff,
+      instructions: buildLookbackWindowInstructions(lookback),
+      calendarNote,
+    },
+    company,
+    snapshot,
+    financials,
+    ownership,
+    bars,
+  };
 }
 
 function daysSinceDate(input: string): number | null {
@@ -153,7 +235,7 @@ function pickFields<T extends Record<string, unknown>, K extends keyof T>(obj: T
   return out;
 }
 
-async function fetchWebFallbackContext(symbol: string): Promise<Record<string, unknown>> {
+async function fetchWebFallbackContext(symbol: string, lookback: DataLookback): Promise<Record<string, unknown>> {
   const YahooFinance = (await import("yahoo-finance2")).default as unknown as {
     quote: (ticker: string) => Promise<unknown>;
     quoteSummary: (ticker: string, opts: { modules: string[] }) => Promise<unknown>;
@@ -206,9 +288,17 @@ async function fetchWebFallbackContext(symbol: string): Promise<Record<string, u
       ]
     );
     const summary = (summaryRaw as Record<string, unknown> | null | undefined) ?? null;
+    const cutoff = lookbackToCutoffIso(lookback);
     return {
       provider: "yahoo-finance2",
       fetchedAt: new Date().toISOString(),
+      lookback: {
+        cutoffDate: cutoff,
+        note:
+          cutoff != null
+            ? `Interpret Yahoo calendar/earnings timestamps against the user's window: in-window only if the event date is on or after ${cutoff} (UTC date). If nothing falls in-window, say so.`
+            : "No explicit lookback; use fetched timestamps as hints only.",
+      },
       quote,
       summaryDetail: pickFields(
         (summary?.summaryDetail as Record<string, unknown> | undefined) ?? undefined,
@@ -294,57 +384,76 @@ export async function POST(req: Request) {
           const modelName = modelUsed === "opus" ? "claude-opus-4-20250514" : "claude-sonnet-4-20250514";
           controller.enqueue(jsonLine({ type: "meta", modelUsed }));
 
+          const hasDb = dataSources.includes("database");
+          const hasWeb = dataSources.includes("web");
+
+          if (hasDb && !hasWeb) {
+            const needsWeb = await promptLikelyNeedsWebOnlySources(anthropic, prompt);
+            if (needsWeb) {
+              controller.enqueue(
+                jsonLine({
+                  type: "warning",
+                  code: "web_recommended",
+                  message:
+                    "This prompt likely needs current web or news sources, but only **Database** is enabled. Enable **Web** in the insight data sources, or rephrase to use only fields present in the database context below.",
+                })
+              );
+            }
+          }
+
           const context: Record<string, unknown> = { symbol, dataSources, dataLookback };
           const webTelemetry: WebTelemetry = {
-            enabled: dataSources.includes("web"),
-            status: dataSources.includes("web") ? "not_requested" : "not_requested",
+            enabled: hasWeb,
+            status: "not_requested",
             reason: null,
             missingOrStale: [],
             durationMs: null,
           };
+
           let databaseContext: Record<string, unknown> | undefined;
-          if (dataSources.includes("database")) {
+          if (hasDb) {
             databaseContext = buildDatabaseContext(symbol, dataLookback);
             context.database = databaseContext;
           }
-          if (dataSources.includes("web")) {
-            const coverage = assessDatabaseCoverage(databaseContext);
-            const shouldFetchWeb = !dataSources.includes("database") || coverage.needsWebFallback;
-            webTelemetry.missingOrStale = coverage.missingOrStale;
-            if (shouldFetchWeb) {
-              const fallbackReason = dataSources.includes("database")
-                ? `Missing/stale DB fields: ${coverage.missingOrStale.join(", ")}`
-                : "Database source disabled";
-              const webFetchStartedAt = Date.now();
-              try {
-                context.web = {
-                  ...await fetchWebFallbackContext(symbol),
-                  fallbackReason,
-                };
-                webTelemetry.status = "fetched";
-                webTelemetry.reason = fallbackReason;
-                webTelemetry.durationMs = Date.now() - webFetchStartedAt;
-              } catch (error) {
-                context.web = {
-                  provider: "yahoo-finance2",
-                  status: "unavailable",
-                  error: error instanceof Error ? error.message : "web fetch failed",
-                  fallbackReason,
-                };
-                webTelemetry.status = "unavailable";
-                webTelemetry.reason = fallbackReason;
-                webTelemetry.durationMs = Date.now() - webFetchStartedAt;
-              }
-            } else {
+
+          const coverage = assessDatabaseCoverage(hasDb ? databaseContext : undefined);
+          if (hasDb) webTelemetry.missingOrStale = coverage.missingOrStale;
+
+          if (hasWeb && hasDb) {
+            const supplementReason =
+              coverage.missingOrStale.length > 0
+                ? `Yahoo supplement for DB gaps/staleness: ${coverage.missingOrStale.join(", ")}`
+                : "Yahoo market snapshot to complement database (database is authoritative for overlapping fields).";
+            const webFetchStartedAt = Date.now();
+            try {
               context.web = {
-                provider: "none",
-                status: "skipped",
-                reason: "Database coverage sufficient; skipped web fetch for lower latency.",
+                ...(await fetchWebFallbackContext(symbol, dataLookback)),
+                sourceRole: "supplement_after_database",
+                fallbackReason: supplementReason,
               };
-              webTelemetry.status = "skipped";
-              webTelemetry.reason = "Database coverage sufficient";
+              webTelemetry.status = "fetched";
+              webTelemetry.reason = supplementReason;
+              webTelemetry.durationMs = Date.now() - webFetchStartedAt;
+            } catch (error) {
+              context.web = {
+                provider: "yahoo-finance2",
+                status: "unavailable",
+                error: error instanceof Error ? error.message : "web fetch failed",
+                fallbackReason: supplementReason,
+              };
+              webTelemetry.status = "unavailable";
+              webTelemetry.reason = supplementReason;
+              webTelemetry.durationMs = Date.now() - webFetchStartedAt;
             }
+          } else if (hasWeb && !hasDb) {
+            context.web = {
+              mode: "anthropic_web_search",
+              note: "Database is disabled. Use the web_search tool to retrieve timely public information. If nothing relevant is found for the user's lookback window, say so.",
+            };
+            webTelemetry.status = "fetched";
+            webTelemetry.reason = "Claude web_search tool (database off)";
           }
+
           controller.enqueue(jsonLine({ type: "meta", modelUsed, sourceTelemetry: webTelemetry }));
           console.info(
             "[ai-completion] source-resolution",
@@ -359,7 +468,8 @@ export async function POST(req: Request) {
           const system = [
             "You are an equity research assistant.",
             "Use provided context first. If context is missing, say so explicitly instead of fabricating values.",
-            "When both database and web contexts exist, prefer database values first and use web data only to fill missing or stale fields.",
+            "Respect context.database.lookback: only treat fundamentals and events as “in window” when their dates are on or after lookback.cutoffDate when a cutoff is present.",
+            "When both database and supplemental web (Yahoo) contexts exist, treat database as authoritative for overlapping numeric/historical fields; use web to fill gaps or fresher market-facing fields and label the web source.",
             "If web values are used, call out that source explicitly.",
             "Be concise, structured, and include key risks/assumptions.",
             "Follow the user's requested format and length exactly when specified.",
@@ -387,17 +497,40 @@ export async function POST(req: Request) {
             prompt,
           ].filter(Boolean).join("\n");
 
-          const msgStream = anthropic.messages.stream({
+          const streamBase = {
             model: modelName,
-            max_tokens: 2200,
+            max_tokens: 2800,
             temperature: 0.2,
             system,
-            messages: [{ role: "user", content: user }],
-          });
+            messages: [{ role: "user" as const, content: user }],
+          };
 
-          for await (const event of msgStream) {
-            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-              controller.enqueue(jsonLine({ type: "delta", text: event.delta.text }));
+          if (hasWeb && !hasDb) {
+            try {
+              const msgStream = anthropic.messages.stream({
+                ...streamBase,
+                tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 10 }],
+                tool_choice: { type: "auto" },
+              });
+              for await (const event of msgStream) {
+                if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                  controller.enqueue(jsonLine({ type: "delta", text: event.delta.text }));
+                }
+              }
+            } catch {
+              const msgStream = anthropic.messages.stream(streamBase);
+              for await (const event of msgStream) {
+                if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                  controller.enqueue(jsonLine({ type: "delta", text: event.delta.text }));
+                }
+              }
+            }
+          } else {
+            const msgStream = anthropic.messages.stream(streamBase);
+            for await (const event of msgStream) {
+              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                controller.enqueue(jsonLine({ type: "delta", text: event.delta.text }));
+              }
             }
           }
           console.info(

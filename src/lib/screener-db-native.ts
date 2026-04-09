@@ -950,6 +950,27 @@ export function getCompanyName(symbol: string): string | null {
   return row?.name ? String(row.name).trim() : null;
 }
 
+/** Calendar fields for AI insights lookback (next earnings date, IPO). */
+export function getCompanyCalendarFields(symbol: string): {
+  nextEarningsAt: string | null;
+  ipoDate: string | null;
+} | null {
+  const db = getDb();
+  if (!db) return null;
+  const row = db
+    .prepare("SELECT next_earnings_at, ipo_date FROM companies WHERE symbol = ? LIMIT 1")
+    .get(String(symbol).toUpperCase()) as
+    | { next_earnings_at?: string | null; ipo_date?: string | null }
+    | undefined;
+  if (!row) return null;
+  const ne = row.next_earnings_at != null ? String(row.next_earnings_at).trim() : "";
+  const ipo = row.ipo_date != null ? String(row.ipo_date).trim() : "";
+  return {
+    nextEarningsAt: ne.length >= 10 ? ne.slice(0, 10) : ne.length > 0 ? ne : null,
+    ipoDate: ipo.length >= 10 ? ipo.slice(0, 10) : ipo.length > 0 ? ipo : null,
+  };
+}
+
 export function getCompanyClassification(symbol: string): {
   sector?: string;
   industry?: string;
