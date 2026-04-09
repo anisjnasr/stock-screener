@@ -65,20 +65,28 @@ const SNAPSHOT_STRING: Record<string, string> = {
   INDUSTRY: "industry",
 };
 
-/** RS(months) — allowed 1, 3, 6, 12 per SSL §3.3 */
-const RS_MONTH_TO_FIELD: Record<number, string> = {
+/**
+ * RS(period) → precomputed RS vs SPY percentile (0–100) columns.
+ * Period codes: 0 = 1 week; 1, 3, 6, 12 = calendar months (matches snapshot / screener data).
+ */
+const RS_PERIOD_TO_FIELD: Record<number, string> = {
+  0: "rs_pct_1w",
   1: "rs_pct_1m",
   3: "rs_pct_3m",
   6: "rs_pct_6m",
   12: "rs_pct_12m",
 };
 
-const INDRANK_MONTH_TO_FIELD: Record<number, string> = {
+/** IndRank(period) → industry leaderboard rank (1 = best). Only monthly horizons exist in data. */
+const INDRANK_PERIOD_TO_FIELD: Record<number, string> = {
   1: "industry_rank_1m",
   3: "industry_rank_3m",
   6: "industry_rank_6m",
   12: "industry_rank_12m",
 };
+
+const RS_ALLOWED_PERIODS = new Set(Object.keys(RS_PERIOD_TO_FIELD).map(Number));
+const INDRANK_ALLOWED_PERIODS = new Set(Object.keys(INDRANK_PERIOD_TO_FIELD).map(Number));
 
 const MAX_LOOKBACK = 500;
 
@@ -256,28 +264,48 @@ function computeAdv(bars: Bar[], centerIdx: number): number | null {
   return sum / period;
 }
 
+/** Whole-number period only (e.g. RS(3), RS(0); not RS(2.5)). */
+function evalDiscretePeriodArg(
+  arg: AstNode,
+  ctx: EvalContext,
+  barIdx: number,
+  allowed: ReadonlySet<number>
+): number | null {
+  const raw = toNumber(evalScalarAt(arg, ctx, barIdx));
+  if (raw === null || !Number.isFinite(raw)) return null;
+  const n = Math.round(raw);
+  if (Math.abs(raw - n) > 1e-9) return null;
+  if (!allowed.has(n)) return null;
+  return n;
+}
+
+function snapshotNumericField(ctx: EvalContext, field: string): number | null {
+  if (!ctx.snapshot) return null;
+  const v = ctx.snapshot[field];
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  return v;
+}
+
 function evalCallAt(node: AstNode & { kind: "call" }, ctx: EvalContext, barIdx: number): EvalValue {
   const name = node.name;
   const args = node.args;
 
-  if (name === "RS" && ctx.snapshot) {
+  if (name === "RS") {
     if (args.length < 1) return null;
-    const m = toNumber(evalScalarAt(args[0]!, ctx, barIdx));
-    if (m === null || !Number.isInteger(m)) return null;
-    const field = RS_MONTH_TO_FIELD[m];
+    const period = evalDiscretePeriodArg(args[0]!, ctx, barIdx, RS_ALLOWED_PERIODS);
+    if (period === null) return null;
+    const field = RS_PERIOD_TO_FIELD[period];
     if (!field) return null;
-    const v = ctx.snapshot[field];
-    return typeof v === "number" ? v : null;
+    return snapshotNumericField(ctx, field);
   }
 
-  if ((name === "INDRANK" || name === "INDRS") && ctx.snapshot) {
+  if (name === "INDRANK" || name === "INDRS" || name === "INDUSTRYRANK") {
     if (args.length < 1) return null;
-    const m = toNumber(evalScalarAt(args[0]!, ctx, barIdx));
-    if (m === null || !Number.isInteger(m)) return null;
-    const field = INDRANK_MONTH_TO_FIELD[m];
+    const period = evalDiscretePeriodArg(args[0]!, ctx, barIdx, INDRANK_ALLOWED_PERIODS);
+    if (period === null) return null;
+    const field = INDRANK_PERIOD_TO_FIELD[period];
     if (!field) return null;
-    const v = ctx.snapshot[field];
-    return typeof v === "number" ? v : null;
+    return snapshotNumericField(ctx, field);
   }
 
   if (name === "REF" && args.length >= 2) {

@@ -35,6 +35,7 @@ const BUILTIN_FUNCTIONS = new Set([
   "RS",
   "INDRANK",
   "INDRS",
+  "INDUSTRYRANK",
   "CROSS",
   "CROSSBELOW",
   "BARSSINCE",

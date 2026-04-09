@@ -42,8 +42,9 @@ export default function SSLHelp({ onClose }: SSLHelpProps) {
             </p>
             <div className="p-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs">
               <strong>Snapshot data:</strong> Scans use stored daily bars and the screener snapshot (not live intraday).{" "}
-              <code className="font-mono">C</code> is the latest stored close. <code className="font-mono">RS(1|3|6|12)</code> and{" "}
-              <code className="font-mono">IndRank(1|3|6|12)</code> read precomputed fields.
+              <code className="font-mono">C</code> is the latest stored close. <code className="font-mono">RS(0|1|3|6|12)</code>{" "}
+              (0 = 1-week RS percentile, 1–12 = month horizons) and <code className="font-mono">IndRank(1|3|6|12)</code> (alias{" "}
+              <code className="font-mono">IndustryRank</code>) read precomputed snapshot fields.
             </div>
           </section>
 

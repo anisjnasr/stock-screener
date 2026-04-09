@@ -39,6 +39,7 @@ export const SSL_RESERVED_IDENTIFIERS = new Set(
     "RS",
     "INDRANK",
     "INDRS",
+    "INDUSTRYRANK",
     "EPS_GROWTH_QOQ",
     "EPS_GROWTH_YOY",
     "REV_GROWTH_QOQ",
