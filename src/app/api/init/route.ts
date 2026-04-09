@@ -5,6 +5,8 @@ import {
   getScreenerSnapshot,
   getCompanyClassification,
   getDailyBars,
+  getIndustryRankUniverseCounts,
+  getStockProfileDbMetrics,
 } from "@/lib/screener-db-native";
 import { getStockRecord } from "@/lib/stocks-db";
 import { fetchQuote, fetchProfile } from "@/lib/massive";
@@ -82,6 +84,8 @@ export async function GET(request: NextRequest) {
     const companyClass = getCompanyClassification(symbol);
     const dbSnapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1 });
     const dbRow = dbSnapshot.rows[0] ?? null;
+    const industryRankUniverse = getIndustryRankUniverseCounts(dbSnapshot.date ?? undefined).counts;
+    const dbProfileMetrics = getStockProfileDbMetrics(symbol, dbSnapshot.date ?? undefined).metrics;
 
     const [quote, profile, nextEarnings] = await Promise.all([
       withTimeout(fetchQuote(symbol), 3000, null),
@@ -175,6 +179,15 @@ export async function GET(request: NextRequest) {
         }
       : null;
 
+    const industryRanks = dbRow
+      ? {
+          industry_rank_1m: dbRow.industry_rank_1m ?? null,
+          industry_rank_3m: dbRow.industry_rank_3m ?? null,
+          industry_rank_6m: dbRow.industry_rank_6m ?? null,
+          industry_rank_12m: dbRow.industry_rank_12m ?? null,
+        }
+      : null;
+
     const payload = {
       latestScreenerDate,
       latestScreenerDateRaw: latestDates.rawDate,
@@ -184,6 +197,9 @@ export async function GET(request: NextRequest) {
         profile: mergedProfile,
         nextEarnings,
         rsRank,
+        industryRanks,
+        industryRankUniverse,
+        dbProfileMetrics,
       },
       candles,
     };

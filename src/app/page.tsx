@@ -50,6 +50,9 @@ import {
   saveFlags,
   loadWatchlists,
   saveWatchlists,
+  loadListHeaderOrder,
+  saveListHeaderOrder,
+  mergeListHeaderOrder,
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
@@ -153,7 +156,11 @@ export default function Home() {
   const [customPages, setCustomPages] = useState<CustomPage[]>(() => loadCustomPages());
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [dbHealthBanner, setDbHealthBanner] = useState<string | null>(null);
-  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(DEFAULT_LISTS_OPEN_ID);
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(() => {
+    const w = loadWatchlists();
+    return w[0]?.id ?? DEFAULT_LISTS_OPEN_ID;
+  });
+  const [headerListOrder, setHeaderListOrder] = useState<string[]>(() => loadListHeaderOrder());
   const [newListDraft, setNewListDraft] = useState<{ id: string; name: string; nonce: number } | null>(null);
   const [focusTickerTrigger, setFocusTickerTrigger] = useState(0);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
@@ -449,12 +456,14 @@ export default function Home() {
   }, []);
 
   const handleReorderLists = useCallback((ids: string[]) => {
+    saveListHeaderOrder(ids);
+    setHeaderListOrder(ids);
     const current = loadWatchlists();
     const byId = new Map(current.map((w) => [w.id, w]));
     const reordered: Watchlist[] = [];
     const used = new Set<string>();
     for (const id of ids) {
-      if (id === FULL_UNIVERSE_ID) continue;
+      if (id === FULL_UNIVERSE_ID || id.startsWith("index:")) continue;
       const w = byId.get(id);
       if (w) {
         reordered.push(w);
@@ -465,6 +474,8 @@ export default function Home() {
       if (!used.has(w.id)) reordered.push(w);
     }
     saveWatchlists(reordered);
+    setWatchlists(reordered);
+    window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: reordered }));
   }, []);
 
   const handleWatchlistMembershipSave = useCallback(
@@ -670,11 +681,17 @@ export default function Home() {
   };
 
   const currentStockFlag = flags[normalizeTicker(symbol)] ?? null;
-  const chartWatchlists = useMemo(() => [
-    { id: FULL_UNIVERSE_ID, name: "Full Universe" },
-    ...DEFAULT_INDEX_WATCHLISTS,
-    ...watchlists.map((l) => ({ id: l.id, name: l.name })),
-  ], [watchlists]);
+  const chartWatchlists = useMemo(() => {
+    const builtIn: { id: string; name: string }[] = [
+      { id: FULL_UNIVERSE_ID, name: "Full Universe" },
+      ...DEFAULT_INDEX_WATCHLISTS,
+    ];
+    const custom = watchlists.map((l) => ({ id: l.id, name: l.name }));
+    const canonicalIds = [...builtIn.map((b) => b.id), ...custom.map((c) => c.id)];
+    const nameById = new Map<string, string>([...builtIn, ...custom].map((x) => [x.id, x.name]));
+    const mergedIds = mergeListHeaderOrder(headerListOrder, canonicalIds);
+    return mergedIds.map((id) => ({ id, name: nameById.get(id) ?? id }));
+  }, [watchlists, headerListOrder]);
   const scanIndex = useMemo(() => scanSymbols.findIndex((s) => s === normalizeTicker(symbol)), [scanSymbols, symbol]);
 
   useEffect(() => {
@@ -868,7 +885,8 @@ export default function Home() {
               setOpenToScreenerTrigger({ name: restored, nonce: Date.now() });
             }
           } else if (s === "lists") {
-            const restored = sectionHistoryRef.current.lists || activeWatchlistId || DEFAULT_LISTS_OPEN_ID;
+            const defaultListId = watchlists[0]?.id ?? DEFAULT_LISTS_OPEN_ID;
+            const restored = sectionHistoryRef.current.lists ?? defaultListId;
             pendingAutoSelectRef.current = true;
             setActiveWatchlistId(restored);
           }

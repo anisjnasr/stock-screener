@@ -596,6 +596,8 @@ export type FinancialLineNative = {
   eps_growth_yoy: number | null;
   sales: number | null;
   sales_growth_yoy: number | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
 };
 
 function getLatestReliableScreenerDateFromDb(db: BetterSqlite3Database): string | null {
@@ -914,13 +916,13 @@ export function getFinancialsNative(
   const rows = db
     .prepare(
       `
-      SELECT period_end, period_type, eps, eps_growth_yoy, sales, sales_growth_yoy
+      SELECT period_end, period_type, eps, eps_growth_yoy, sales, sales_growth_yoy, fiscal_period, fiscal_year
       FROM financials
       WHERE symbol = ?
         AND period_type = ?
       ORDER BY period_end DESC
       LIMIT ?
-      `
+    `
     )
     .all(String(symbol).toUpperCase(), periodType, safeLimit) as Array<{
     period_end: string;
@@ -929,6 +931,8 @@ export function getFinancialsNative(
     eps_growth_yoy: number | null;
     sales: number | null;
     sales_growth_yoy: number | null;
+    fiscal_period: string | null;
+    fiscal_year: number | null;
   }>;
 
   return rows.map((r) => ({
@@ -938,6 +942,8 @@ export function getFinancialsNative(
     eps_growth_yoy: r.eps_growth_yoy != null ? Number(r.eps_growth_yoy) : null,
     sales: r.sales != null ? Number(r.sales) : null,
     sales_growth_yoy: r.sales_growth_yoy != null ? Number(r.sales_growth_yoy) : null,
+    fiscal_period: r.fiscal_period != null ? String(r.fiscal_period) : null,
+    fiscal_year: r.fiscal_year != null && Number.isFinite(Number(r.fiscal_year)) ? Number(r.fiscal_year) : null,
   }));
 }
 

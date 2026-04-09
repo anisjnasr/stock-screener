@@ -1141,9 +1141,8 @@ function WorkspaceHeader({
                           />
                         )}
                       <div
-                        draggable={isDeletable}
+                        draggable
                         onDragStart={() => {
-                          if (!isDeletable) return;
                           setDragListIdx(idx);
                           listDragFromRef.current = idx;
                           setListDropHoverIdx(idx);

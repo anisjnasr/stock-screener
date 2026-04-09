@@ -61,6 +61,8 @@ import { formatDisplayDate } from "@/lib/date-format";
 import { toTitleCase } from "@/lib/text-format";
 import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
+import { FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
+import { computeFlagStripPosition } from "@/lib/flag-picker-position";
 import NinoScriptEditor from "@/components/NinoScriptEditor";
 import NinoScriptHelp from "@/components/NinoScriptHelp";
 
@@ -163,13 +165,6 @@ const FLAG_SORT_WEIGHT: Record<StockFlag, number> = {
   yellow: 3,
   purple: 2,
   blue: 1,
-};
-const FLAG_HEX: Record<string, string> = {
-  red: "#EF4468",
-  yellow: "#F5A524",
-  green: "#3DDC84",
-  blue: "#5C9EF5",
-  purple: "#A855F7",
 };
 
 const WATCHLIST_QUOTES_BATCH_SIZE = 50;
@@ -700,6 +695,8 @@ export default function WatchlistPanel({
   const [colDropIndex, setColDropIndex] = useState<number | null>(null);
   const [showAddToListMenu, setShowAddToListMenu] = useState(false);
   const [flagPickerSymbol, setFlagPickerSymbol] = useState<string | null>(null);
+  const [flagPickerRect, setFlagPickerRect] = useState<DOMRect | null>(null);
+  const flagAnchorRef = useRef<HTMLButtonElement | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"watchlists" | "screener">("watchlists");
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [predefinedListSymbols, setPredefinedListSymbols] = useState<Record<string, string[]>>({});
@@ -1895,11 +1892,30 @@ export default function WatchlistPanel({
     const onMouseDown = (e: MouseEvent) => {
       if (addToListMenuRef.current && !addToListMenuRef.current.contains(e.target as Node))
         setShowAddToListMenu(false);
-      if (flagPickerSymbol != null && !(e.target as HTMLElement).closest("[data-flag-picker]"))
+      if (flagPickerSymbol != null && !(e.target as HTMLElement).closest("[data-flag-picker]")) {
         setFlagPickerSymbol(null);
+        setFlagPickerRect(null);
+      }
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [flagPickerSymbol]);
+
+  useLayoutEffect(() => {
+    if (!flagPickerSymbol) {
+      setFlagPickerRect(null);
+      return;
+    }
+    const el = flagAnchorRef.current;
+    if (!el) return;
+    const sync = () => setFlagPickerRect(el.getBoundingClientRect());
+    sync();
+    window.addEventListener("scroll", sync, true);
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync, true);
+      window.removeEventListener("resize", sync);
+    };
   }, [flagPickerSymbol]);
 
   const addList = useCallback(() => {
@@ -5055,7 +5071,12 @@ export default function WatchlistPanel({
                             <div className="relative inline-block">
                               <button
                                 type="button"
-                                onClick={() => setFlagPickerSymbol(pickerOpen ? null : row.symbol)}
+                                ref={pickerOpen ? flagAnchorRef : undefined}
+                                onClick={() =>
+                                  pickerOpen
+                                    ? setFlagPickerSymbol(null)
+                                    : setFlagPickerSymbol(row.symbol)
+                                }
                                 className="p-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
                                 title="Set flag"
                                 aria-label={`Flag ${row.symbol}`}
@@ -5072,34 +5093,6 @@ export default function WatchlistPanel({
                                   </svg>
                                 )}
                               </button>
-                              {pickerOpen && (
-                                <div className="absolute left-0 top-full z-20 mt-0.5 flex gap-0.5 p-1 rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setFlag(row.symbol, null);
-                                      setFlagPickerSymbol(null);
-                                    }}
-                                    className={`w-5 h-5 rounded border-2 border-zinc-400 dark:border-zinc-500 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 ${flag === null ? "ring-2 ring-offset-1 ring-zinc-500" : ""}`}
-                                    title="No flag"
-                                    aria-label={`Remove flag from ${row.symbol}`}
-                                  />
-                                  {(["red", "yellow", "green", "blue", "purple"] as const).map((c) => (
-                                    <button
-                                      key={c}
-                                      type="button"
-                                      onClick={() => {
-                                        setFlag(row.symbol, flag === c ? null : c);
-                                        setFlagPickerSymbol(null);
-                                      }}
-                                      className="w-5 h-5 rounded border-2 hover:opacity-90"
-                                      style={{ backgroundColor: FLAG_HEX[c], borderColor: FLAG_HEX[c] }}
-                                      title={`Flag ${c}`}
-                                      aria-label={`Flag ${row.symbol} ${c}`}
-                                    />
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </td>
                           {tableColumns.map((col, colIndex) => {
@@ -5302,6 +5295,46 @@ export default function WatchlistPanel({
           </div>
         </div>
       )}
+
+      {flagPickerSymbol &&
+        flagPickerRect &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            data-flag-picker
+            className="fixed z-[10000] flex gap-0.5 p-1 rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg whitespace-nowrap"
+            style={computeFlagStripPosition(flagPickerRect)}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setFlag(flagPickerSymbol, null);
+                setFlagPickerSymbol(null);
+              }}
+              className={`w-5 h-5 rounded border-2 border-zinc-400 dark:border-zinc-500 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 ${
+                (flags[flagPickerSymbol] ?? null) === null ? "ring-2 ring-offset-1 ring-zinc-500" : ""
+              }`}
+              title="No flag"
+              aria-label={`Remove flag from ${flagPickerSymbol}`}
+            />
+            {FLAG_PICKER_ORDER.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  const cur = flags[flagPickerSymbol] ?? null;
+                  setFlag(flagPickerSymbol, cur === c ? null : c);
+                  setFlagPickerSymbol(null);
+                }}
+                className="w-5 h-5 rounded border-2 hover:opacity-90"
+                style={{ backgroundColor: FLAG_HEX[c], borderColor: FLAG_HEX[c] }}
+                title={`Flag ${c}`}
+                aria-label={`Flag ${flagPickerSymbol} ${c}`}
+              />
+            ))}
+          </div>,
+          document.body
+        )}
 
       {/* Column filter popover */}
       {filterPopoverCol && (

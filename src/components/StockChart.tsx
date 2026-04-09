@@ -4,7 +4,8 @@
  * Stock chart using TradingView Lightweight Charts
  * (https://www.tradingview.com/lightweight-charts/)
  */
-import { memo, useEffect, useRef, useMemo, useState, useCallback } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   createChart,
   ColorType,
@@ -15,16 +16,8 @@ import {
 } from "lightweight-charts";
 import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChartSettings, type ChartSettings, type ChartSeriesType } from "@/lib/chart-settings";
 import type { StockFlag } from "@/lib/watchlist-storage";
-
-const CHART_FLAG_HEX: Record<StockFlag, string> = {
-  red: "#EF4468",
-  yellow: "#F5A524",
-  green: "#3DDC84",
-  blue: "#5C9EF5",
-  purple: "#A855F7",
-};
-
-const FLAG_PICKER_ORDER: StockFlag[] = ["blue", "purple", "yellow", "red", "green"];
+import { FLAG_HEX as CHART_FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
+import { computeFlagStripPosition } from "@/lib/flag-picker-position";
 
 /** Inset from chart right for price scale (see rightPriceScale minimumWidth). */
 const CHART_PRICE_SCALE_GUTTER_PX = 88;
@@ -365,6 +358,8 @@ function StockChart({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapToOhlc, setSnapToOhlc] = useState(false);
   const [showFlagPicker, setShowFlagPicker] = useState(false);
+  const [chartFlagAnchorRect, setChartFlagAnchorRect] = useState<DOMRect | null>(null);
+  const chartFlagBtnRef = useRef<HTMLButtonElement | null>(null);
   const [showWatchlistModal, setShowWatchlistModal] = useState(false);
   const [wlDraft, setWlDraft] = useState<Record<string, boolean>>({});
   const [pendingTrendDrawingId, setPendingTrendDrawingId] = useState<string | null>(null);
@@ -1534,6 +1529,35 @@ function StockChart({
     setWlDraft(d);
   }, [showWatchlistModal, watchlistPickerLists]);
 
+  useLayoutEffect(() => {
+    if (!showFlagPicker) {
+      setChartFlagAnchorRect(null);
+      return;
+    }
+    const el = chartFlagBtnRef.current;
+    if (!el) return;
+    const sync = () => setChartFlagAnchorRect(el.getBoundingClientRect());
+    sync();
+    window.addEventListener("scroll", sync, true);
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync, true);
+      window.removeEventListener("resize", sync);
+    };
+  }, [showFlagPicker]);
+
+  useEffect(() => {
+    if (!showFlagPicker) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("[data-chart-flag-picker]")) return;
+      if (chartFlagBtnRef.current?.contains(t as Node)) return;
+      setShowFlagPicker(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showFlagPicker]);
+
   const selectedHandles = useMemo(() => {
     if (!selectedDrawing) return [];
     if (selectedDrawing.kind === "ray") {
@@ -1740,6 +1764,7 @@ function StockChart({
           {onFlagChange && (
             <div className="relative">
               <button
+                ref={chartFlagBtnRef}
                 type="button"
                 onClick={() => { setShowFlagPicker((v) => !v); setShowWatchlistModal(false); }}
                 className={`px-1.5 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass} flex items-center gap-1`}
@@ -1749,28 +1774,6 @@ function StockChart({
                   <path d="M3 1v14M3 1h9l-2.5 4L12 9H3" />
                 </svg>
               </button>
-              {showFlagPicker && (
-                <div className="absolute top-full left-0 mt-1 z-30 rounded border shadow-lg p-2 flex items-center gap-2 bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)]">
-                  <button
-                    type="button"
-                    onClick={() => { onFlagChange(null); setShowFlagPicker(false); }}
-                    className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-ws-caption text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
-                    title="No flag (0)"
-                  >
-                    ✕
-                  </button>
-                  {FLAG_PICKER_ORDER.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => { onFlagChange(c); setShowFlagPicker(false); }}
-                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
-                      style={{ backgroundColor: CHART_FLAG_HEX[c], borderColor: CHART_FLAG_HEX[c] }}
-                      title={`${c.charAt(0).toUpperCase() + c.slice(1)} (${FLAG_PICKER_ORDER.indexOf(c) + 1})`}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
           )}
           {onWatchlistMembershipSave && watchlistPickerLists != null && (
@@ -2478,6 +2481,43 @@ function StockChart({
         </div>
       </div>
     )}
+    {showFlagPicker &&
+      onFlagChange &&
+      chartFlagAnchorRect &&
+      typeof document !== "undefined" &&
+      createPortal(
+        <div
+          data-chart-flag-picker
+          className="fixed z-[10000] rounded border shadow-lg p-2 flex items-center gap-2 bg-white dark:bg-[var(--ws-bg3)] border-zinc-200 dark:border-[var(--ws-border)] whitespace-nowrap"
+          style={computeFlagStripPosition(chartFlagAnchorRect)}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onFlagChange(null);
+              setShowFlagPicker(false);
+            }}
+            className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 bg-zinc-600 flex items-center justify-center text-ws-caption text-zinc-300 ${!stockFlag ? "border-white" : "border-transparent"}`}
+            title="No flag (0)"
+          >
+            ✕
+          </button>
+          {FLAG_PICKER_ORDER.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                onFlagChange(c);
+                setShowFlagPicker(false);
+              }}
+              className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${stockFlag === c ? "border-white" : "border-transparent"}`}
+              style={{ backgroundColor: CHART_FLAG_HEX[c], borderColor: CHART_FLAG_HEX[c] }}
+              title={`${c.charAt(0).toUpperCase() + c.slice(1)} (${FLAG_PICKER_ORDER.indexOf(c) + 1})`}
+            />
+          ))}
+        </div>,
+        document.body
+      )}
     </>
   );
 }

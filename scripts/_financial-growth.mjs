@@ -19,7 +19,10 @@ export function parsePeriodEndYear(periodEnd) {
 export function normalizeFiscalPeriod(value) {
   if (typeof value !== "string") return null;
   const v = value.trim().toUpperCase();
-  return v.length > 0 ? v : null;
+  if (!v.length) return null;
+  const m = /^Q?([1-4])$/.exec(v);
+  if (m) return `Q${m[1]}`;
+  return v;
 }
 
 /**
@@ -35,38 +38,60 @@ export function getQuarterlyYoYPrior(currentRow, allRows) {
 
   if (period && year != null) {
     const prior = allRows.find((r) => {
+      if (r.period_end === currentRow.period_end) return false;
       const rPeriod = normalizeFiscalPeriod(r.fiscal_period);
       const rYear =
         r.fiscal_year != null && Number.isFinite(Number(r.fiscal_year))
           ? Number(r.fiscal_year)
           : parsePeriodEndYear(r.period_end);
-      return r !== currentRow && rPeriod === period && rYear === year - 1;
+      return rPeriod === period && rYear === year - 1;
     });
     if (prior) return prior;
   }
 
-  if (year == null) return null;
-  const targetYear = year - 1;
+  const calYear = parsePeriodEndYear(currentRow.period_end);
+  if (calYear == null) return null;
+  const targetCalYear = calYear - 1;
   const targetMonthDay =
     typeof currentRow.period_end === "string" && currentRow.period_end.length >= 10
       ? currentRow.period_end.slice(5, 10)
       : null;
-  const candidates = allRows.filter((r) => parsePeriodEndYear(r.period_end) === targetYear);
+  const candidates = allRows.filter(
+    (r) => r.period_end !== currentRow.period_end && parsePeriodEndYear(r.period_end) === targetCalYear
+  );
   if (candidates.length === 0) return null;
   if (targetMonthDay) {
-    const exact = candidates.find(
+    const exactMd = candidates.find(
       (r) => typeof r.period_end === "string" && r.period_end.slice(5, 10) === targetMonthDay
     );
-    if (exact) return exact;
+    if (exactMd) return exactMd;
   }
-  const currentTs = Date.parse(currentRow.period_end);
-  if (!Number.isFinite(currentTs)) return candidates[0];
-  const nearest = [...candidates].sort((a, b) => {
-    const da = Math.abs(Date.parse(a.period_end) - currentTs);
-    const db = Math.abs(Date.parse(b.period_end) - currentTs);
-    return da - db;
-  });
-  return nearest[0] ?? null;
+  const anchorIso = isoDateMinusOneYear(currentRow.period_end.slice(0, 10));
+  if (!anchorIso) return null;
+  const anchorTs = Date.parse(`${anchorIso}T12:00:00.000Z`);
+  if (!Number.isFinite(anchorTs)) return null;
+  let best = null;
+  let bestDelta = Infinity;
+  for (const r of candidates) {
+    const t = Date.parse(`${String(r.period_end).slice(0, 10)}T12:00:00.000Z`);
+    if (!Number.isFinite(t)) continue;
+    const delta = Math.abs(t - anchorTs);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = r;
+    }
+  }
+  const fourteenDaysMs = 14 * 86400000;
+  if (best && bestDelta <= fourteenDaysMs) return best;
+  return null;
+}
+
+function isoDateMinusOneYear(isoDate) {
+  if (typeof isoDate !== "string" || isoDate.length < 10) return null;
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCFullYear(d.getUTCFullYear() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 export function computeQuarterlyYoYGrowth(currentRow, allRows) {

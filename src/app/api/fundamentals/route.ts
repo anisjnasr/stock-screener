@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchIncomeStatement } from "@/lib/massive";
 import { getFinancialsNative, getLatestScreenerDate } from "@/lib/screener-db-native";
+import { recalculateQuarterlyYoYForSeries } from "@/lib/quarterly-yoy";
 
 type IncomeStatementLine = {
   date: string;
@@ -19,6 +20,8 @@ type FundamentalsCacheEntry = {
 };
 
 const FUNDAMENTALS_TTL_MS = 5 * 60 * 1000;
+/** Bump when YoY / payload shape changes so in-process cache is not reused across logic updates. */
+const FUNDAMENTALS_CACHE_LOGIC_REV = "yoyv2";
 
 function getFundamentalsCache(): Map<string, FundamentalsCacheEntry> {
   const g = globalThis as typeof globalThis & {
@@ -43,7 +46,7 @@ export async function GET(request: NextRequest) {
   const periodType = period === "annual" ? "annual" : "quarterly";
   try {
     const latest = getLatestScreenerDate() ?? "none";
-    const cacheKey = `${symbolUpper}:${periodType}:${latest}`;
+    const cacheKey = `${symbolUpper}:${periodType}:${latest}:${FUNDAMENTALS_CACHE_LOGIC_REV}`;
     const cache = getFundamentalsCache();
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -54,7 +57,8 @@ export async function GET(request: NextRequest) {
     // DB-first: financials are already persisted locally by refresh scripts.
     const dbRows = getFinancialsNative(symbolUpper, periodType, 40);
     if (dbRows.length > 0) {
-      const data: IncomeStatementLine[] = dbRows.map((row) => ({
+      const rowsForApi = recalculateQuarterlyYoYForSeries(dbRows);
+      const data: IncomeStatementLine[] = rowsForApi.map((row) => ({
         date: row.period_end,
         calendarYear: row.period_end.slice(0, 4),
         period: row.period_type === "annual" ? "FY" : quarterFromDate(row.period_end),
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest) {
       }));
       cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
       return NextResponse.json(data, {
-        headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+        headers: { "Cache-Control": "private, no-store, must-revalidate" },
       });
     }
 
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await fetchIncomeStatement(symbolUpper, period);
     cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+      headers: { "Cache-Control": "private, no-store, must-revalidate" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "API error";

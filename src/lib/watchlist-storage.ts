@@ -713,6 +713,51 @@ export function saveColumnSets(sets: ColumnSet[]): void {
 }
 
 const STORAGE_KEY_FAV_LISTS = "stock-research-favorite-watchlist-ids";
+const STORAGE_KEY_LIST_HEADER_ORDER = "stock-research-watchlist-header-order";
+
+/** Persisted order of header dropdown list ids (includes Full Universe and index lists). */
+export function loadListHeaderOrder(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LIST_HEADER_ORDER);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id: unknown) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveListHeaderOrder(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LIST_HEADER_ORDER, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Merge saved order with the current canonical id list (new lists append; removed ids dropped).
+ */
+export function mergeListHeaderOrder(saved: string[], canonicalIds: string[]): string[] {
+  const canonSet = new Set(canonicalIds);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of saved) {
+    if (canonSet.has(id) && !seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of canonicalIds) {
+    if (!seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return out;
+}
 
 export function loadFavoriteWatchlistIds(): string[] {
   if (typeof window === "undefined") return [];

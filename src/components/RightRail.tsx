@@ -595,9 +595,13 @@ export default function RightRail({
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
                   <th className="py-1 text-left font-medium" style={{ color: "var(--ws-text)" }}>Period</th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Rev</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>Rev %</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>
+                    {finFreq === "quarterly" ? "Rev % (YoY)" : "Rev %"}
+                  </th>
                   <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>EPS</th>
-                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>EPS %</th>
+                  <th className="py-1 text-right font-medium" style={{ color: "var(--ws-text)" }}>
+                    {finFreq === "quarterly" ? "EPS % (YoY)" : "EPS %"}
+                  </th>
                 </tr>
               </thead>
               <tbody>

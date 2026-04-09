@@ -49,7 +49,9 @@ export function useFundamentals(symbol: string) {
     setSidebarLoading(true);
     setQuarterlyLoading(true);
 
-    const annualPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=annual`)
+    const annualPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=annual`, {
+      cache: "no-store",
+    })
       .then((r) => r.json().then((d) => (Array.isArray(d) ? d : [])))
       .then((fund) => {
         if (!cancelled) setAnnualFundamentals(fund);
@@ -58,7 +60,9 @@ export function useFundamentals(symbol: string) {
         if (!cancelled) setAnnualFundamentals([]);
       });
 
-    const quarterPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=quarter`)
+    const quarterPromise = fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}&period=quarter`, {
+      cache: "no-store",
+    })
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled) setQuarterlyFundamentals(Array.isArray(d) ? d : []);
@@ -125,18 +129,15 @@ export function useFundamentals(symbol: string) {
     const sorted = withPeriod
       .filter((r) => r.period)
       .sort((a, b) => (b.date || b.period).localeCompare(a.date || a.period));
-    return sorted.map((row, i) => {
-      const prev = sorted[i + 1];
-      const epsGrowth = row.epsGrowth ??
-        (row.eps != null && prev?.eps != null && prev.eps !== 0
-          ? ((row.eps - prev.eps) / Math.abs(prev.eps)) * 100
-          : null);
-      const salesGrowth = row.salesGrowth ??
-        (row.sales != null && prev?.sales != null && prev.sales !== 0
-          ? ((row.sales - prev.sales) / Math.abs(prev.sales)) * 100
-          : null);
-      return { period: row.period, date: row.date, eps: row.eps, epsGrowth, sales: row.sales, salesGrowth };
-    });
+    // Rev % / EPS %: use DB YoY only (api/fundamentals maps eps_growth_yoy / sales_growth_yoy). No QoQ fallback.
+    return sorted.map((row) => ({
+      period: row.period,
+      date: row.date,
+      eps: row.eps,
+      epsGrowth: row.epsGrowth,
+      sales: row.sales,
+      salesGrowth: row.salesGrowth,
+    }));
   }, [quarterlyFundamentals]);
 
   return { yearlyRows, quarterlyRows, sidebarLoading, quarterlyLoading };
