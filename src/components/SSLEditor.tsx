@@ -1,12 +1,12 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { tokenize, tokenClass } from "@/lib/nino-script-tokens";
-import { parseScript, ParseError } from "@/lib/nino-script/parser";
+import { tokenize, tokenClass } from "@/lib/ssl/tokens";
+import { parseScript, ParseError } from "@/lib/ssl/parser";
 
 export type ValidationStatus = { status: "ok" | "invalid" | "empty"; error?: string };
 
-type NinoScriptEditorProps = {
+type SSLEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -15,14 +15,14 @@ type NinoScriptEditorProps = {
   onValidation?: (status: ValidationStatus) => void;
 };
 
-export default function NinoScriptEditor({
+export default function SSLEditor({
   value,
   onChange,
-  placeholder = "e.g. P > 10 and MA(C, 50) > 500000",
+  placeholder = 'e.g. C > 10 AND MA(V, 20) >= 500000 AND RS(12) >= 90;',
   className = "",
   minHeight = "200px",
   onValidation,
-}: NinoScriptEditorProps) {
+}: SSLEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [validation, setValidation] = useState<ValidationStatus>({ status: "empty" });
@@ -90,7 +90,6 @@ export default function NinoScriptEditor({
             {t.value}
           </span>
         ))}
-        {/* Invisible trailing glyph so the highlight and caret stay perfectly aligned */}
         <span className="opacity-0">.</span>
         {lineIndex < lines.length - 1 ? "\n" : null}
       </div>
@@ -100,7 +99,6 @@ export default function NinoScriptEditor({
   return (
     <div className={`flex flex-col ${className}`}>
       <div className="relative rounded-t border border-zinc-300 dark:border-zinc-600 overflow-hidden bg-white dark:bg-zinc-900 flex-1" style={{ minHeight }}>
-        {/* Highlight layer (behind): colored tokens */}
         <div
           ref={highlightRef}
           className="absolute inset-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 text-sm font-mono pointer-events-none z-0"
@@ -109,13 +107,12 @@ export default function NinoScriptEditor({
         >
           {value ? highlightedLines : "\u00a0"}
         </div>
-        {/* Textarea on top: transparent text so highlight shows through, caret visible */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder}
-          aria-label="NinoScript editor"
+          aria-label="SSL script editor"
           className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-inset px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-200 dark:selection:bg-blue-800"
           style={{ minHeight }}
           spellCheck={false}

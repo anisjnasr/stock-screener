@@ -7,7 +7,7 @@ import {
   getLatestScreenerDate,
   type ScreenerFilters,
 } from "@/lib/screener-db-native";
-import { runNinoScript } from "@/lib/nino-script";
+import { runSslScript } from "@/lib/ssl";
 import { recordPerf } from "@/lib/perf-monitor";
 
 const INDEX_IDS = ["nasdaq100", "sp500", "russell2000"] as const;
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       if (scriptSymbols.length === 0) {
         return jsonWithMetrics({ date: asOfDate, rows: [] }, { status: 200 });
       }
-      const { passingSymbols, scriptColumns, scriptValues, error: scriptError } = await runNinoScript(
+      const { passingSymbols, scriptColumns, scriptValues, error: scriptError } = await runSslScript(
         scriptBody.trim(),
         scriptSymbols,
         asOfDate

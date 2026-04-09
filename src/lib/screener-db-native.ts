@@ -1360,17 +1360,20 @@ export function getScreenerSnapshot(options: {
   return { rows, date };
 }
 
-export type NinoScriptSnapshot = Record<string, number | string | null>;
+export type SslSnapshot = Record<string, number | string | null>;
 
-/** Get a lightweight snapshot of screener data for NinoScript evaluation. */
-export function getNinoScriptSnapshot(symbol: string, asOfDate: string): NinoScriptSnapshot | null {
+/** @deprecated Use SslSnapshot */
+export type NinoScriptSnapshot = SslSnapshot;
+
+/** Snapshot row for SSL scan evaluation (OHLCV indicators + company fields). */
+export function getNinoScriptSnapshot(symbol: string, asOfDate: string): SslSnapshot | null {
   const db = getDb();
   if (!db) return null;
   const row = db.prepare(`
     SELECT
       q.last_price, q.volume, q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
       ${EFFECTIVE_MARKET_CAP_SQL} AS market_cap,
-      c.ipo_date, c.sector, c.industry, c.exchange,
+      c.ipo_date, c.sector, c.industry, c.exchange, c.shares_outstanding,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
       i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m
@@ -1381,7 +1384,7 @@ export function getNinoScriptSnapshot(symbol: string, asOfDate: string): NinoScr
     LIMIT 1
   `).get(asOfDate, asOfDate, symbol) as Record<string, unknown> | undefined;
   if (!row) return null;
-  const snapshot: NinoScriptSnapshot = {};
+  const snapshot: SslSnapshot = {};
   for (const [k, v] of Object.entries(row)) {
     if (v === null || v === undefined) snapshot[k] = null;
     else if (typeof v === "number") snapshot[k] = v;
@@ -1390,9 +1393,12 @@ export function getNinoScriptSnapshot(symbol: string, asOfDate: string): NinoScr
   return snapshot;
 }
 
+/** Alias for SSL — same as {@link getNinoScriptSnapshot}. */
+export const getSslSnapshot = getNinoScriptSnapshot;
+
 export type DailyBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
-/** Get daily bars for a symbol up to asOfDate, newest-first. For Nino Script. */
+/** Get daily bars for a symbol up to asOfDate, newest-first. For SSL. */
 export function getDailyBars(symbol: string, asOfDate: string, limit = 300): DailyBar[] {
   const db = getDb();
   if (!db) return [];
@@ -2445,6 +2451,154 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
     down25pct_month: Number(r.down25pct_month ?? 0),
     up50pct_month: Number(r.up50pct_month ?? 0),
     down50pct_month: Number(r.down50pct_month ?? 0),
+  }));
+}
+
+/** Allowlisted keys for GET /api/market-monitor/constituents — predicates must match MM aggregate SQL. */
+export type MarketMonitorMetricKey =
+  | "up4pct"
+  | "down4pct"
+  | "up25pct_qtr"
+  | "down25pct_qtr"
+  | "up25pct_month"
+  | "down25pct_month"
+  | "up50pct_month"
+  | "down50pct_month";
+
+const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
+  "up4pct",
+  "down4pct",
+  "up25pct_qtr",
+  "down25pct_qtr",
+  "up25pct_month",
+  "down25pct_month",
+  "up50pct_month",
+  "down50pct_month",
+];
+
+export function isMarketMonitorMetricKey(s: string): s is MarketMonitorMetricKey {
+  return (MARKET_MONITOR_METRIC_KEYS as string[]).includes(s);
+}
+
+export type MarketMonitorConstituentRow = {
+  symbol: string;
+  name: string;
+  industry: string;
+  price: number;
+  changePct: number;
+};
+
+/** Stocks counted in a Market Monitor cell for `asOfDate` + `metric` (same rules as aggregates). Sorted: up metrics by changePct DESC, down by ASC. */
+export function getMarketMonitorConstituents(
+  asOfDate: string,
+  metric: MarketMonitorMetricKey
+): MarketMonitorConstituentRow[] {
+  const db = getDb();
+  if (!db) return [];
+
+  const hasIsEtf = (db.prepare(
+    "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
+  ).get() as { c: number })?.c > 0;
+  const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
+  const from = new Date(`${asOfDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 120);
+  const bufferStartDate = from.toISOString().slice(0, 10);
+
+  const cfg: Record<
+    MarketMonitorMetricKey,
+    { predicate: string; changeExpr: string; sortDesc: boolean }
+  > = {
+    up4pct: {
+      predicate: `b.C1 > 0 AND 100.0*(b.C-b.C1)/b.C1 >= 4 AND b.V >= 1000 AND b.V > b.V1`,
+      changeExpr: `100.0*(b.C-b.C1)/b.C1`,
+      sortDesc: true,
+    },
+    down4pct: {
+      predicate: `b.C1 > 0 AND 100.0*(b.C-b.C1)/b.C1 <= -4 AND b.V >= 1000 AND b.V > b.V1`,
+      changeExpr: `100.0*(b.C-b.C1)/b.C1`,
+      sortDesc: false,
+    },
+    up25pct_qtr: {
+      predicate: `b.C65 > 0 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C65)/b.C65 >= 25`,
+      changeExpr: `100.0*(b.C-b.C65)/b.C65`,
+      sortDesc: true,
+    },
+    down25pct_qtr: {
+      predicate: `b.C65 > 0 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C65)/b.C65 <= -25`,
+      changeExpr: `100.0*(b.C-b.C65)/b.C65`,
+      sortDesc: false,
+    },
+    up25pct_month: {
+      predicate: `b.C20 >= 5 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C20)/b.C20 >= 25`,
+      changeExpr: `100.0*(b.C-b.C20)/b.C20`,
+      sortDesc: true,
+    },
+    down25pct_month: {
+      predicate: `b.C20 >= 5 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C20)/b.C20 <= -25`,
+      changeExpr: `100.0*(b.C-b.C20)/b.C20`,
+      sortDesc: false,
+    },
+    up50pct_month: {
+      predicate: `b.C20 >= 5 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C20)/b.C20 >= 50`,
+      changeExpr: `100.0*(b.C-b.C20)/b.C20`,
+      sortDesc: true,
+    },
+    down50pct_month: {
+      predicate: `b.C20 >= 5 AND b.avg_c_20*b.avg_v_20 >= 2500 AND 100.0*(b.C-b.C20)/b.C20 <= -50`,
+      changeExpr: `100.0*(b.C-b.C20)/b.C20`,
+      sortDesc: false,
+    },
+  };
+
+  const { predicate, changeExpr, sortDesc } = cfg[metric];
+  const orderDir = sortDesc ? "DESC" : "ASC";
+
+  const sql = `
+    WITH base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close AS C,
+        d.volume AS V,
+        LAG(d.close, 1)  OVER w AS C1,
+        LAG(d.close, 20) OVER w AS C20,
+        LAG(d.close, 65) OVER w AS C65,
+        LAG(d.volume, 1) OVER w AS V1,
+        AVG(d.close)  OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_c_20,
+        AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      WHERE d.date BETWEEN ? AND ?
+      WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
+    )
+    SELECT
+      b.symbol AS symbol,
+      COALESCE(co.name, '') AS name,
+      COALESCE(co.industry, '') AS industry,
+      b.C AS price,
+      (${changeExpr}) AS changePct
+    FROM base b
+    INNER JOIN companies co ON co.symbol = b.symbol
+    WHERE b.date = ?
+    AND (${predicate})
+    ORDER BY changePct ${orderDir}
+  `;
+
+  const rows = db.prepare(sql).all(bufferStartDate, asOfDate, asOfDate) as Array<{
+    symbol: string;
+    name: string;
+    industry: string;
+    price: number;
+    changePct: number;
+  }>;
+
+  return rows.map((r) => ({
+    symbol: String(r.symbol),
+    name: String(r.name ?? ""),
+    industry: String(r.industry ?? ""),
+    price: Number(r.price ?? 0),
+    changePct: Number(r.changePct ?? 0),
   }));
 }
 

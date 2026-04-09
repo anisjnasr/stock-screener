@@ -1,22 +1,84 @@
 /**
- * Tokenizer for Nino Script syntax highlighting.
- * Produces tokens with types: keyword, function, variable, number, operator, punctuation, space.
+ * Tokenizer for SSL syntax highlighting in the editor.
  */
 
-export type TokenType = "keyword" | "function" | "variable" | "number" | "string" | "operator" | "punctuation" | "identifier" | "space";
+export type TokenType =
+  | "keyword"
+  | "function"
+  | "variable"
+  | "number"
+  | "string"
+  | "operator"
+  | "punctuation"
+  | "identifier"
+  | "space";
 
 export type Token = { type: TokenType; value: string };
 
-const KEYWORDS = new Set(["AND", "OR", "NOT"]);
+const KEYWORDS = new Set(["AND", "OR", "NOT", "SORT_BY", "LIMIT", "ASC"]);
 const BUILTIN_FUNCTIONS = new Set([
-  "MA", "EMA", "SUM", "MAX", "MIN", "ATR", "ATRP", "ROC", "RVOL", "ABS", "RS", "INDRS",
+  "MA",
+  "EMA",
+  "WMA",
+  "SUM",
+  "MAX",
+  "MIN",
+  "HHV",
+  "LLV",
+  "STDEV",
+  "STDDEV",
+  "ATR",
+  "ATRP",
+  "ROC",
+  "RSI",
+  "ABS",
+  "RS",
+  "INDRANK",
+  "INDRS",
+  "CROSS",
+  "CROSSBELOW",
+  "BARSSINCE",
+  "IIF",
+  "REF",
+  "SQRT",
+  "LOG",
+  "ROUND",
+  "VWAP",
+  "BBTOP",
+  "BBBOT",
+  "TOPN",
+  "BOTTOMN",
 ]);
-/** P and C both mean Close; O, H, L, V are Open, High, Low, Volume. */
-const PRICE_VOLUME_VARS = new Set(["P", "C", "O", "H", "L", "V"]);
-const SNAPSHOT_VARS = new Set(["MC", "IPODATE", "SECTOR", "INDUSTRY"]);
+const PRICE_VOLUME_VARS = new Set([
+  "P",
+  "C",
+  "CLOSE",
+  "O",
+  "OPEN",
+  "H",
+  "HIGH",
+  "L",
+  "LOW",
+  "V",
+  "VOLUME",
+]);
+const SNAPSHOT_VARS = new Set([
+  "MARKET_CAP",
+  "MC",
+  "IPO_DATE",
+  "IPODATE",
+  "SECTOR",
+  "INDUSTRY",
+  "NAME",
+  "ADV",
+  "DAYS_SINCE_IPO",
+  "SHARES_OUT",
+  "FLOAT",
+  "SHORT_INT",
+]);
 
-const MULTI_CHAR_OPS = ["<>", ">=", "<="];
-const SINGLE_OPS = "><=+-*/^";
+const MULTI_CHAR_OPS = ["==", "!=", "<>", ">=", "<="];
+const SINGLE_OPS = "><+-*/^%";
 const PUNCT = "()[],;";
 
 function isLetter(c: string): boolean {
@@ -47,15 +109,42 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
+    if (c === "/" && i + 1 < n && source[i + 1] === "/") {
+      let val = "";
+      while (i < n && source[i] !== "\n") {
+        val += source[i]!;
+        i++;
+      }
+      tokens.push({ type: "identifier", value: val });
+      continue;
+    }
+    if (c === "/" && i + 1 < n && source[i + 1] === "*") {
+      let val = "/*";
+      i += 2;
+      while (i + 1 < n && !(source[i] === "*" && source[i + 1] === "/")) {
+        val += source[i]!;
+        i++;
+      }
+      if (i + 1 < n) {
+        val += "*/";
+        i += 2;
+      }
+      tokens.push({ type: "identifier", value: val });
+      continue;
+    }
+
     if (c === '"' || c === "'") {
       const quote = c;
       let val = c;
       i++;
       while (i < n && source[i] !== quote) {
-        val += source[i];
+        val += source[i]!;
         i++;
       }
-      if (i < n) { val += source[i]; i++; }
+      if (i < n) {
+        val += source[i]!;
+        i++;
+      }
       tokens.push({ type: "string", value: val });
       continue;
     }
@@ -63,18 +152,17 @@ export function tokenize(source: string): Token[] {
     if (isDigit(c) || (c === "." && i + 1 < n && isDigit(source[i + 1]!))) {
       let val = "";
       while (i < n && (isDigit(source[i]!) || source[i] === ".")) {
-        val += source[i];
+        val += source[i]!;
         i++;
       }
       tokens.push({ type: "number", value: val });
       continue;
     }
 
-    // Identifier or keyword/function/variable
     if (isLetter(c) || c === "_") {
       let val = "";
       while (i < n && (isLetter(source[i]!) || isDigit(source[i]!) || source[i] === "_")) {
-        val += source[i];
+        val += source[i]!;
         i++;
       }
       const upper = val.toUpperCase();
@@ -92,7 +180,6 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
-    // Multi-char operators
     let found = false;
     for (const op of MULTI_CHAR_OPS) {
       if (source.slice(i, i + op.length) === op) {
@@ -104,21 +191,24 @@ export function tokenize(source: string): Token[] {
     }
     if (found) continue;
 
-    // Single-char operator
+    if (c === "=") {
+      tokens.push({ type: "operator", value: "=" });
+      i++;
+      continue;
+    }
+
     if (SINGLE_OPS.includes(c)) {
       tokens.push({ type: "operator", value: c });
       i++;
       continue;
     }
 
-    // Punctuation
     if (PUNCT.includes(c)) {
       tokens.push({ type: "punctuation", value: c });
       i++;
       continue;
     }
 
-    // Unknown: treat as single char so we don't lose it (e.g. in strings later)
     tokens.push({ type: "identifier", value: c });
     i++;
   }
@@ -126,9 +216,6 @@ export function tokenize(source: string): Token[] {
   return tokens;
 }
 
-/**
- * Convert token type to Tailwind class for syntax highlighting (light and dark).
- */
 export function tokenClass(type: TokenType): string {
   switch (type) {
     case "space":

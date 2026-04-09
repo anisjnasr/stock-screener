@@ -63,8 +63,8 @@ import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } f
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
 import { FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
 import { computeFlagStripPosition } from "@/lib/flag-picker-position";
-import NinoScriptEditor from "@/components/NinoScriptEditor";
-import NinoScriptHelp from "@/components/NinoScriptHelp";
+import SSLEditor from "@/components/SSLEditor";
+import SSLHelp from "@/components/SSLHelp";
 
 export const FULL_UNIVERSE_ID = "__full_universe__";
 export const DEFAULT_LISTS_OPEN_ID = "index:nasdaq100";
@@ -726,7 +726,7 @@ export default function WatchlistPanel({
   const [newScriptBody, setNewScriptBody] = useState("");
   /** When set, New Script modal is in edit mode for this screen id. */
   const [editingScriptScreenId, setEditingScriptScreenId] = useState<string | null>(null);
-  const [showNinoScriptHelp, setShowNinoScriptHelp] = useState(false);
+  const [showSSLHelp, setShowSSLHelp] = useState(false);
   const watchlistAddMenuRef = useRef<HTMLDivElement>(null);
   /** When dragging a screen to move it between folders. */
   const [draggedScreenId, setDraggedScreenId] = useState<string | null>(null);
@@ -3892,7 +3892,7 @@ export default function WatchlistPanel({
             </div>
           )}
 
-          {/* Unified New Scan modal (Traditional + NinoScript tabs) */}
+          {/* Unified New Scan modal (Traditional + SSL tabs) */}
           {(showNewScriptModal || showNewScreenerModal) && (
             <div
               className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -3941,7 +3941,7 @@ export default function WatchlistPanel({
                           color: scanModalMode === "script" ? "var(--ws-bg, #0f0f0f)" : "var(--ws-text-dim, #9ca3af)",
                         }}
                         onClick={() => setScanModalMode("script")}>
-                        NinoScript
+                        SSL
                       </button>
                     </div>
                   </div>
@@ -3950,11 +3950,11 @@ export default function WatchlistPanel({
                       <button
                         type="button"
                         onMouseDown={(e) => e.stopPropagation()}
-                        onClick={() => setShowNinoScriptHelp(true)}
+                        onClick={() => setShowSSLHelp(true)}
                         className="shrink-0 p-1.5 rounded-full transition-colors"
                         style={{ color: "var(--ws-text-dim)", border: "1px solid var(--ws-border)" }}
-                        title="Nino Script help"
-                        aria-label="Open Nino Script help"
+                        title="SSL help"
+                        aria-label="Open SSL help"
                       >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                           <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
@@ -3995,21 +3995,21 @@ export default function WatchlistPanel({
                   />
                 </div>
 
-                {/* NinoScript tab content */}
+                {/* SSL tab content */}
                 {scanModalMode === "script" && (
                   <>
                     <div className="flex-1 min-h-0 flex flex-col px-4 pb-3">
                       <label className="block text-xs font-medium mb-1" style={{ color: "var(--ws-text-dim)" }}>Script</label>
-                      <NinoScriptEditor
+                      <SSLEditor
                         value={newScriptBody}
                         onChange={setNewScriptBody}
-                        placeholder="e.g. P > 10 and MA(C, 50) > 500000"
+                        placeholder="e.g. C > 10 AND MA(V, 20) >= 500000 AND RS(12) >= 90;"
                         minHeight="200px"
                         className="flex-1"
                       />
                     </div>
-                    {showNinoScriptHelp && (
-                      <NinoScriptHelp onClose={() => setShowNinoScriptHelp(false)} />
+                    {showSSLHelp && (
+                      <SSLHelp onClose={() => setShowSSLHelp(false)} />
                     )}
                     <div className="p-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0 flex justify-between items-center gap-2">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">

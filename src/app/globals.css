@@ -39,14 +39,18 @@
   --ws-green: #3DDC84;
   --ws-purple: #a78bfa;
   --ws-amber: #f59e0b;
-  /* Market monitor / heat: subtle primary tints + high-salience extremes */
-  --ws-heat-green-bg: rgba(61, 220, 132, 0.1);
-  --ws-heat-green-bg-strong: rgba(61, 220, 132, 0.22);
-  --ws-heat-green-bg-very: rgba(61, 220, 132, 0.34);
-  --ws-heat-red-bg: rgba(239, 68, 104, 0.1);
-  --ws-heat-red-bg-strong: rgba(239, 68, 104, 0.22);
-  --ws-heat-red-bg-very: rgba(239, 68, 104, 0.34);
-  --ws-heat-text-strong: #e6edf3;
+  /* Market monitor heat: standard + extreme only (four cell styles) */
+  --ws-mm-heat-green-strong-bg: #1b7b43;
+  --ws-mm-heat-green-very-bg: #173f2d;
+  --ws-mm-heat-red-strong-bg: #8d291f;
+  --ws-mm-heat-red-very-bg: #481510;
+  --ws-heat-text-on-fill: #f8fafc;
+  /* Market monitor column group headers */
+  --ws-mm-header-text: #000000;
+  --ws-mm-header-gold: #f1c40f;
+  --ws-mm-header-green: #27ae60;
+  --ws-mm-header-purple: #a29bfe;
+  --ws-mm-header-blue: #3f51b5;
   /* Typography scale (workspace UI); px keeps sizes stable vs html font-scale */
   --ws-fs-caption: 11px;
   --ws-fs-label: 12px;
@@ -183,34 +187,38 @@ body {
     0 0 0 1px rgba(0, 229, 204, 0.18);
 }
 
-/* Market Monitor heat cells */
-.ws-mm-heat-green {
-  background: var(--ws-heat-green-bg);
-  color: var(--ws-text);
-}
+/* Market Monitor heat cells (strong = standard fill, very = extreme) */
 .ws-mm-heat-green-strong {
-  background: var(--ws-heat-green-bg-strong);
-  color: var(--ws-heat-text-strong);
+  background: var(--ws-mm-heat-green-strong-bg);
+  color: var(--ws-heat-text-on-fill);
   font-weight: 600;
 }
 .ws-mm-heat-green-very {
-  background: var(--ws-heat-green-bg-very);
-  color: var(--ws-heat-text-strong);
+  background: var(--ws-mm-heat-green-very-bg);
+  color: var(--ws-heat-text-on-fill);
   font-weight: 700;
 }
-.ws-mm-heat-red {
-  background: var(--ws-heat-red-bg);
-  color: var(--ws-text);
-}
 .ws-mm-heat-red-strong {
-  background: var(--ws-heat-red-bg-strong);
-  color: var(--ws-heat-text-strong);
+  background: var(--ws-mm-heat-red-strong-bg);
+  color: var(--ws-heat-text-on-fill);
   font-weight: 600;
 }
 .ws-mm-heat-red-very {
-  background: var(--ws-heat-red-bg-very);
-  color: var(--ws-heat-text-strong);
+  background: var(--ws-mm-heat-red-very-bg);
+  color: var(--ws-heat-text-on-fill);
   font-weight: 700;
+}
+
+/* Market Monitor: latest-row drill-down cells */
+.ws-mm-cell-drill {
+  transition: box-shadow 100ms ease;
+}
+.ws-mm-cell-drill:hover {
+  box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.14);
+}
+.ws-mm-cell-drill:focus-visible {
+  outline: 2px solid rgba(0, 229, 204, 0.45);
+  outline-offset: -2px;
 }
 
 /* AI insight output typography */

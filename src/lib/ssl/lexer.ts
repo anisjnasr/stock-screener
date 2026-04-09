@@ -1,6 +1,8 @@
 /**
- * Lexer for Nino Script parser. Produces a stream of tokens.
+ * Lexer for SSL. Produces a stream of tokens.
  */
+
+import { stripSslComments } from "./strip-comments";
 
 export type Token =
   | { type: "number"; value: string }
@@ -16,9 +18,10 @@ export type Token =
   | { type: ";" }
   | { type: "eof" };
 
-const KEYWORDS = new Set(["AND", "OR", "NOT"]);
-const MULTI_OPS = ["<>", ">=", "<="];
-const SINGLE_OPS = "><=+-*/^";
+const KEYWORDS = new Set(["AND", "OR", "NOT", "SORT_BY", "LIMIT", "ASC"]);
+/** Multi-char ops first (longest match). */
+const MULTI_OPS = ["==", "!=", "<>", ">=", "<="];
+const SINGLE_OPS = "><+-*/^%";
 
 function isLetter(c: string): boolean {
   return /^[a-zA-Z]$/.test(c);
@@ -32,11 +35,12 @@ function isSpace(c: string): boolean {
 
 export function lex(source: string): Token[] {
   const tokens: Token[] = [];
+  const input = stripSslComments(source);
   let i = 0;
-  const n = source.length;
+  const n = input.length;
 
   while (i < n) {
-    const c = source[i]!;
+    const c = input[i]!;
 
     if (isSpace(c)) {
       i++;
@@ -47,8 +51,8 @@ export function lex(source: string): Token[] {
       const quote = c;
       i++;
       let val = "";
-      while (i < n && source[i] !== quote) {
-        val += source[i];
+      while (i < n && input[i] !== quote) {
+        val += input[i]!;
         i++;
       }
       if (i < n) i++;
@@ -56,10 +60,10 @@ export function lex(source: string): Token[] {
       continue;
     }
 
-    if (isDigit(c) || (c === "." && i + 1 < n && isDigit(source[i + 1]!))) {
+    if (isDigit(c) || (c === "." && i + 1 < n && isDigit(input[i + 1]!))) {
       let val = "";
-      while (i < n && (isDigit(source[i]!) || source[i] === ".")) {
-        val += source[i];
+      while (i < n && (isDigit(input[i]!) || input[i] === ".")) {
+        val += input[i]!;
         i++;
       }
       tokens.push({ type: "number", value: val });
@@ -68,8 +72,8 @@ export function lex(source: string): Token[] {
 
     if (isLetter(c) || c === "_") {
       let val = "";
-      while (i < n && (isLetter(source[i]!) || isDigit(source[i]!) || source[i] === "_")) {
-        val += source[i];
+      while (i < n && (isLetter(input[i]!) || isDigit(input[i]!) || input[i] === "_")) {
+        val += input[i]!;
         i++;
       }
       const upper = val.toUpperCase();
@@ -83,7 +87,7 @@ export function lex(source: string): Token[] {
 
     let found = false;
     for (const op of MULTI_OPS) {
-      if (source.slice(i, i + op.length) === op) {
+      if (input.slice(i, i + op.length) === op) {
         tokens.push({ type: "op", value: op });
         i += op.length;
         found = true;
@@ -91,6 +95,12 @@ export function lex(source: string): Token[] {
       }
     }
     if (found) continue;
+
+    if (c === "=") {
+      tokens.push({ type: "op", value: "=" });
+      i++;
+      continue;
+    }
 
     if (SINGLE_OPS.includes(c)) {
       tokens.push({ type: "op", value: c });
@@ -124,7 +134,7 @@ export function lex(source: string): Token[] {
         i++;
         break;
       default:
-        i++;
+        throw new Error(`Unexpected character in SSL script: ${JSON.stringify(c)} at offset ${i}`);
     }
   }
 

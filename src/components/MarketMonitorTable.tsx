@@ -1,5 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
+import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
+import MarketMonitorConstituentsModal from "@/components/MarketMonitorConstituentsModal";
+
+const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
+  up4pct: "4% Up",
+  down4pct: "4% Down",
+  up25pct_qtr: "Up 25% Q",
+  down25pct_qtr: "Down 25% Q",
+  up25pct_month: "Up 25% M",
+  down25pct_month: "Down 25% M",
+  up50pct_month: "Up 50% M",
+  down50pct_month: "Down 50% M",
+};
 
 type ApiResponse = {
   rows: MarketMonitorRow[];
@@ -68,12 +81,19 @@ function fmtPctCell(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
-function getBreadthPctCellClass(n: number | null | undefined): string {
+/** % > 50 SMA only: red when weak breadth; no green. */
+function getBreadthPct50SmaCellClass(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
-  if (n > 70) return "ws-mm-heat-green-very";
-  if (n > 60) return "ws-mm-heat-green-strong";
-  if (n < 30) return "ws-mm-heat-red-very";
-  if (n < 40) return "ws-mm-heat-red-strong";
+  if (n <= 20) return "ws-mm-heat-red-very";
+  if (n > 20 && n <= 30) return "ws-mm-heat-red-strong";
+  return "";
+}
+
+/** % > 200 SMA only: red when weak breadth; no green. */
+function getBreadthPct200SmaCellClass(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "";
+  if (n <= 30) return "ws-mm-heat-red-very";
+  if (n > 30 && n <= 40) return "ws-mm-heat-red-strong";
   return "";
 }
 
@@ -87,28 +107,27 @@ function formatDateDmy(input: string): string {
   return `${day}-${month}-${year}`;
 }
 
-function getPairCellClass(up: number | null | undefined, down: number | null | undefined): string {
+/** Up/down pairs (4%, Q, M): every row is green or red when up ≠ down; extreme fill when dominance is very lopsided. */
+function getPairCellClassFull(up: number | null | undefined, down: number | null | undefined): string {
   const upVal = Number(up ?? 0);
   const downVal = Number(down ?? 0);
   if (!Number.isFinite(upVal) || !Number.isFinite(downVal)) return "";
   if (upVal === downVal) return "";
   const bullish = upVal > downVal;
   const winner = bullish ? upVal : downVal;
-  const loser = bullish ? downVal : upVal;
-  const total = winner + loser;
+  const total = upVal + downVal;
   if (total <= 0) return "";
 
   const dominance = winner / total;
   if (dominance >= 0.78) return bullish ? "ws-mm-heat-green-very" : "ws-mm-heat-red-very";
-  if (dominance >= 0.65) return bullish ? "ws-mm-heat-green-strong" : "ws-mm-heat-red-strong";
-  if (dominance >= 0.52) return bullish ? "ws-mm-heat-green" : "ws-mm-heat-red";
-  return "";
+  return bullish ? "ws-mm-heat-green-strong" : "ws-mm-heat-red-strong";
 }
 
-export default function MarketMonitorTable() {
+export default function MarketMonitorTable({ onSymbolSelect }: { onSymbolSelect?: (sym: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
+  const [mmModal, setMmModal] = useState<{ date: string; metric: MarketMonitorMetricKey } | null>(null);
   const [ratioThresholds, setRatioThresholds] = useState<RatioThresholds>({
     ratio5dLow: null,
     ratio5dHigh: null,
@@ -152,6 +171,8 @@ export default function MarketMonitorTable() {
     };
   }, []);
 
+  const latestDate = useMemo(() => tableRowsToShow[0]?.date ?? null, [tableRowsToShow]);
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
@@ -168,8 +189,23 @@ export default function MarketMonitorTable() {
     );
   }
 
+  const openMmModal = (metric: MarketMonitorMetricKey, rowDate: string) => {
+    if (!latestDate || rowDate !== latestDate || !onSymbolSelect) return;
+    setMmModal({ date: rowDate, metric });
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-auto px-2 sm:px-4 py-3 sm:py-4" style={{ background: "var(--ws-bg2)" }}>
+      {mmModal && onSymbolSelect && (
+        <MarketMonitorConstituentsModal
+          open
+          onClose={() => setMmModal(null)}
+          date={mmModal.date}
+          metric={mmModal.metric}
+          indicatorTitle={MM_MODAL_TITLES[mmModal.metric]}
+          onSymbolSelect={onSymbolSelect}
+        />
+      )}
       <div className="relative mb-3">
         <h2 className="text-ws-title font-semibold text-center" style={{ color: "var(--ws-text)" }}>
           Market Monitor
@@ -187,7 +223,7 @@ export default function MarketMonitorTable() {
                 scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
                 colSpan={6}
-                style={{ background: "rgba(0, 229, 204, 0.1)", borderColor: "var(--ws-border)", color: "var(--ws-cyan)" }}
+                style={{ background: "var(--ws-mm-header-gold)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Primary Breadth Indicators
               </th>
@@ -195,7 +231,7 @@ export default function MarketMonitorTable() {
                 scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
                 colSpan={4}
-                style={{ background: "rgba(92, 158, 245, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-blue)" }}
+                style={{ background: "var(--ws-mm-header-green)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Secondary Breadth Indicators
               </th>
@@ -203,7 +239,7 @@ export default function MarketMonitorTable() {
                 scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
                 colSpan={2}
-                style={{ background: "rgba(167, 139, 250, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-purple)" }}
+                style={{ background: "var(--ws-mm-header-purple)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 S&amp;P 500 Breadth
               </th>
@@ -211,57 +247,96 @@ export default function MarketMonitorTable() {
                 scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
                 colSpan={2}
-                style={{ background: "rgba(167, 139, 250, 0.12)", borderColor: "var(--ws-border)", color: "var(--ws-purple)" }}
+                style={{ background: "var(--ws-mm-header-blue)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Nasdaq Breadth
               </th>
               <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
-              {["Date", "Up %", "Down %", "5D Ratio", "10D Ratio", "Up 25% (Q)", "Down 25% (Q)", "Up 25% (M)", "Down 25% (M)", "Up 50% (M)", "Down 50% (M)"].map((label, idx) => (
-                <th
-                  scope="col"
-                  key={label}
-                  className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-medium${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
-                >
-                  {label}
-                </th>
-              ))}
-              {["% > 50 SMA", "% > 200 SMA", "% > 50 SMA", "% > 200 SMA"].map((label, idx) => (
-                <th
-                  scope="col"
-                  key={`breadth-${idx}`}
-                  className={`sticky top-[2.375rem] z-10 px-2 py-1 border-b text-xs font-medium${idx === 0 ? " border-l" : ""}`}
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
-                >
-                  {label}
-                </th>
-              ))}
+              {["Date", "Up %", "Down %", "5D Ratio", "10D Ratio", "Up 25% (Q)", "Down 25% (Q)", "Up 25% (M)", "Down 25% (M)", "Up 50% (M)", "Down 50% (M)"].map((label, idx) => {
+                const isGold = idx === 0 || (idx >= 1 && idx <= 6);
+                const isGreen = idx >= 7 && idx <= 10;
+                const hdr = isGold
+                  ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
+                  : isGreen
+                    ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
+                    : { background: "var(--ws-bg2)", color: "var(--ws-mm-header-text)" };
+                return (
+                  <th
+                    scope="col"
+                    key={label}
+                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
+                    style={{ ...hdr, borderColor: "var(--ws-border)" }}
+                  >
+                    {label}
+                  </th>
+                );
+              })}
+              {["% > 50 SMA", "% > 200 SMA", "% > 50 SMA", "% > 200 SMA"].map((label, idx) => {
+                const isSp = idx < 2;
+                const hdr = isSp
+                  ? { background: "var(--ws-mm-header-purple)", color: "var(--ws-mm-header-text)" }
+                  : { background: "var(--ws-mm-header-blue)", color: "var(--ws-mm-header-text)" };
+                return (
+                  <th
+                    scope="col"
+                    key={`breadth-${idx}`}
+                    className={`sticky top-[2.375rem] z-10 px-2 py-1 border-b text-xs font-bold${idx === 0 ? " border-l" : ""}`}
+                    style={{ ...hdr, borderColor: "var(--ws-border)" }}
+                  >
+                    {label}
+                  </th>
+                );
+              })}
               <th
                 scope="col"
-                className="sticky top-[2.375rem] z-10 px-3 py-1 border-b border-l text-xs font-medium"
-                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+                className="sticky top-[2.375rem] z-10 px-3 py-1 border-b border-l text-xs font-bold"
+                style={{ background: "var(--ws-mm-header-gold)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Stock Universe
               </th>
             </tr>
           </thead>
           <tbody>
-            {tableRowsToShow.map((row) => (
+            {tableRowsToShow.map((row) => {
+              const latest = latestDate != null && row.date === latestDate && Boolean(onSymbolSelect);
+              const pair4 = getPairCellClassFull(row.up4pct, row.down4pct);
+              const pairQ = getPairCellClassFull(row.up25pct_qtr, row.down25pct_qtr);
+              const pairM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
+              const pair50 = getPairCellClassFull(row.up50pct_month, row.down50pct_month);
+              return (
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
                 <td className="pl-3 pr-7 py-1.5 whitespace-nowrap text-right tabular-nums border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
                   {formatDateDmy(row.date)}
                 </td>
-                <td
-                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up4pct, row.down4pct)}`}
-                >
-                  {fmtInt(row.up4pct)}
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("up4pct", row.date)}
+                    >
+                      {fmtInt(row.up4pct)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair4}`}>{fmtInt(row.up4pct)}</span>
+                  )}
                 </td>
-                <td
-                  className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up4pct, row.down4pct)}`}
-                >
-                  {fmtInt(row.down4pct)}
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("down4pct", row.date)}
+                    >
+                      {fmtInt(row.down4pct)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair4}`}>{fmtInt(row.down4pct)}</span>
+                  )}
                 </td>
                 <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
                   {fmtRatio(row.ratio5d)}
@@ -269,19 +344,98 @@ export default function MarketMonitorTable() {
                 <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
                   {fmtRatio(row.ratio10d)}
                 </td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.up25pct_qtr)}</td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_qtr, row.down25pct_qtr)}`}>{fmtInt(row.down25pct_qtr)}</td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums border-l ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.up25pct_month)}</td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up25pct_month, row.down25pct_month)}`}>{fmtInt(row.down25pct_month)}</td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>{fmtInt(row.up50pct_month)}</td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getPairCellClass(row.up50pct_month, row.down50pct_month)}`}>{fmtInt(row.down50pct_month)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums border-l ${getBreadthPctCellClass(row.sp500PctAbove50d)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtPctCell(row.sp500PctAbove50d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.sp500PctAbove200d)}`}>{fmtPctCell(row.sp500PctAbove200d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.nasdaqPctAbove50d)}`}>{fmtPctCell(row.nasdaqPctAbove50d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPctCellClass(row.nasdaqPctAbove200d)}`}>{fmtPctCell(row.nasdaqPctAbove200d)}</td>
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("up25pct_qtr", row.date)}
+                    >
+                      {fmtInt(row.up25pct_qtr)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairQ}`}>{fmtInt(row.up25pct_qtr)}</span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("down25pct_qtr", row.date)}
+                    >
+                      {fmtInt(row.down25pct_qtr)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairQ}`}>{fmtInt(row.down25pct_qtr)}</span>
+                  )}
+                </td>
+                <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("up25pct_month", row.date)}
+                    >
+                      {fmtInt(row.up25pct_month)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairM}`}>{fmtInt(row.up25pct_month)}</span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("down25pct_month", row.date)}
+                    >
+                      {fmtInt(row.down25pct_month)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairM}`}>{fmtInt(row.down25pct_month)}</span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("up50pct_month", row.date)}
+                    >
+                      {fmtInt(row.up50pct_month)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair50}`}>{fmtInt(row.up50pct_month)}</span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {latest ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("down50pct_month", row.date)}
+                    >
+                      {fmtInt(row.down50pct_month)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair50}`}>{fmtInt(row.down50pct_month)}</span>
+                  )}
+                </td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums border-l ${getBreadthPct50SmaCellClass(row.sp500PctAbove50d)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtPctCell(row.sp500PctAbove50d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct200SmaCellClass(row.sp500PctAbove200d)}`}>{fmtPctCell(row.sp500PctAbove200d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct50SmaCellClass(row.nasdaqPctAbove50d)}`}>{fmtPctCell(row.nasdaqPctAbove50d)}</td>
+                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct200SmaCellClass(row.nasdaqPctAbove200d)}`}>{fmtPctCell(row.nasdaqPctAbove200d)}</td>
                 <td className="pl-3 pr-7 py-1.5 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

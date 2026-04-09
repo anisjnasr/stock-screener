@@ -248,7 +248,7 @@ export default function MarketLeftPanel({
         <IndicesTable onSymbolSelect={onSymbolSelect} selectedSymbol={selectedSymbol} />
       ) : (
         <div className="flex-1 min-h-0 overflow-auto">
-          <MarketMonitorTable />
+          <MarketMonitorTable onSymbolSelect={onSymbolSelect} />
         </div>
       )}
     </div>

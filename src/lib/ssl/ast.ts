@@ -1,5 +1,5 @@
 /**
- * AST node types for Nino Script.
+ * AST for StockStalker Scan Language (SSL).
  */
 
 export type AstNode =
@@ -11,7 +11,14 @@ export type AstNode =
   | { kind: "call"; name: string; args: AstNode[] }
   | { kind: "lookback"; target: AstNode; offset: AstNode };
 
+export type ResultShaping =
+  | { kind: "topn"; expr: AstNode; n: number }
+  | { kind: "bottomn"; expr: AstNode; n: number }
+  | { kind: "sort_limit"; sortExpr: AstNode | null; asc: boolean; limit: number | null };
+
 export type ScriptAst = {
   assignments: Array<{ name: string; expr: AstNode }>;
-  expression: AstNode;
+  /** Combined filter (AND of all non-assignment expression statements). */
+  filter: AstNode;
+  resultShaping: ResultShaping | null;
 };
