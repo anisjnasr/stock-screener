@@ -52,6 +52,7 @@ scripts/stock-type-counts.json
 .tmp-gh-artifacts/
 data/backups/
 data/.download-tmp/
+data/reports/financial-baseline-audit.json
 
 # generated runner scripts (created by setup-daily-update.ps1)
 scripts/daily-refresh-runner.ps1
