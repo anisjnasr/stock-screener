@@ -8,10 +8,12 @@
  *   node scripts/compute-market-aggregates.mjs --all
  *
  * Market Monitor universe: non-ETF, effective market cap ≥ MM_MIN_MARKET_CAP_USD on each date
- * (aligned with screener-db-native MM_EFFECTIVE_MARKET_CAP_SQL).
+ * (aligned with screener-db-native MM_EFFECTIVE_MARKET_CAP_SQL). Uses LEFT JOIN quote_daily so
+ * missing quote rows still count when cap can be inferred from shares_outstanding × bar close.
  *
- * Full rebuild (--all or --days >10): drops tables; preserves sp500/nasdaq % columns from prior
- * market_monitor_daily when re-inserting (does not recompute those four fields).
+ * Full rebuild (`--all` only): drops tables; preserves sp500/nasdaq % columns from prior
+ * market_monitor_daily when re-inserting (does not recompute those four fields). Large `--days N`
+ * alone only upserts the latest N trading days (plus gap-fill in a recent window) — it does not drop tables.
  *
  * Without --days, computes for the latest date only (incremental).
  * With --days N, recomputes the last N trading days.
@@ -29,7 +31,7 @@ const DB_PATH = join(__dirname, "..", "data", "screener.db");
 /** Keep in sync with MM_MIN_MARKET_CAP_USD in src/lib/screener-db-native.ts */
 const MM_MIN_MARKET_CAP_USD = 1_000_000_000;
 const MM_EFFECTIVE_CAP_SQL =
-  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
+  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close, d.close))";
 
 if (!existsSync(DB_PATH)) {
   console.error("Missing data/screener.db");
@@ -105,7 +107,7 @@ try {
   // Column already exists
 }
 
-const fullRebuild = allArg || backfillDays > 10;
+const fullRebuild = allArg;
 
 /** @type {Map<string, { sp50: number|null; sp200: number|null; nq50: number|null; nq200: number|null }>} */
 let preservedIndexBreadth = new Map();
@@ -288,7 +290,7 @@ const mmRows = db
       AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
     FROM daily_bars d
     INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
-    INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+    LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
     WHERE d.date BETWEEN ? AND ?
       AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
     WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
@@ -396,7 +398,7 @@ function computeUniverseNNH(date, lookbackDays) {
       SELECT DISTINCT d.symbol
       FROM daily_bars d
       INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
-      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
       WHERE d.date = ?
         AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
     ),

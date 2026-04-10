@@ -50,7 +50,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 14;
+const CACHE_VERSION = 15;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
 const LATEST_BREADTH_CACHE_TTL_MS = 60 * 1000;

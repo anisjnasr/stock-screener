@@ -91,9 +91,9 @@ const EFFECTIVE_MARKET_CAP_SQL =
 /** Minimum market cap (USD) for Market Monitor universe — keep in sync with `scripts/compute-market-aggregates.mjs`. */
 export const MM_MIN_MARKET_CAP_USD = 1_000_000_000;
 
-/** Effective cap when `quote_daily` is aliased `q` and `companies` as `co` (Market Monitor SQL). */
+/** Effective cap when `quote_daily` is aliased `q`, `companies` as `co`, `daily_bars` as `d` (Market Monitor SQL). */
 export const MM_EFFECTIVE_MARKET_CAP_SQL =
-  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
+  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close, d.close))";
 
 export function buildFilterClauses(filters: ScreenerFilters): { sql: string; params: unknown[] } {
   const conditions: string[] = [];
@@ -2376,7 +2376,7 @@ export function getNetNewHighSeriesMarketMonitor(
       SELECT DISTINCT d.symbol
       FROM daily_bars d
       INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
-      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
       WHERE d.date = ?
         AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
     ),
@@ -2586,7 +2586,7 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
           AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
         FROM daily_bars d
         INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
-        INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+        LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
         WHERE d.date BETWEEN ? AND ?
           AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
         WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
@@ -2754,7 +2754,7 @@ export function getMarketMonitorConstituents(
         AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
       FROM daily_bars d
       INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
-      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
       WHERE d.date BETWEEN ? AND ?
         AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
       WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
