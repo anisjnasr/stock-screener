@@ -18,6 +18,7 @@
  */
 
 import Database from "better-sqlite3";
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -35,6 +36,38 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
+/** Sync sleep (Windows-friendly) for SQLITE_BUSY backoff */
+function sleepSync(seconds) {
+  try {
+    execSync(`powershell -NoProfile -Command "Start-Sleep -Seconds ${seconds}"`, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Retry when another process holds the DB (e.g. Next.js / SQLite browser).
+ * Stops other writers, then waits with backoff.
+ */
+function withBusyRetry(fn, label, attempts = 120, pauseSec = 5) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return fn();
+    } catch (e) {
+      const code = e && e.code;
+      const busy = code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
+      if (!busy || i === attempts - 1) throw e;
+      console.warn(
+        `${label}: ${code} — close apps using data/screener.db (e.g. dev server), attempt ${i + 1}/${attempts}, waiting ${pauseSec}s…`
+      );
+      sleepSync(pauseSec);
+    }
+  }
+}
+
 const allArg = process.argv.includes("--all");
 const daysArg = process.argv.indexOf("--days");
 let backfillDays = daysArg >= 0 ? parseInt(process.argv[daysArg + 1], 10) : 1;
@@ -49,29 +82,6 @@ if (allArg) {
   backfillDays = Math.max(Number(row?.c ?? 0), 1);
   console.log(`--all: using ${backfillDays} distinct bar dates`);
 }
-
-// Backfill shares_outstanding from quote_daily market_cap where missing
-const backfillResult = db.prepare(`
-  UPDATE companies
-  SET shares_outstanding = (
-    SELECT q.market_cap / q.last_price
-    FROM quote_daily q
-    WHERE q.symbol = companies.symbol
-      AND q.last_price > 0
-      AND q.market_cap > 0
-    ORDER BY q.date DESC
-    LIMIT 1
-  ),
-  updated_at = datetime('now')
-  WHERE shares_outstanding IS NULL
-    AND EXISTS (
-      SELECT 1 FROM quote_daily q
-      WHERE q.symbol = companies.symbol
-        AND q.market_cap > 0
-        AND q.last_price > 0
-    )
-`).run();
-console.log(`Backfilled shares_outstanding for ${backfillResult.changes} companies`);
 
 function loadIndexSymbols(filename) {
   const path = join(__dirname, "..", "data", filename);
@@ -121,11 +131,15 @@ if (fullRebuild) {
     // table missing
   }
   console.log("Full backfill requested – dropping and recreating precomputed tables.");
-  db.exec("DROP TABLE IF EXISTS market_monitor_daily");
-  db.exec("DROP TABLE IF EXISTS breadth_daily");
+  withBusyRetry(() => {
+    db.exec("DROP TABLE IF EXISTS market_monitor_daily");
+    db.exec("DROP TABLE IF EXISTS breadth_daily");
+  }, "DROP precomputed tables");
 }
 
-db.exec(`
+withBusyRetry(
+  () =>
+    db.exec(`
   CREATE TABLE IF NOT EXISTS market_monitor_daily (
     date TEXT PRIMARY KEY,
     up4pct INTEGER NOT NULL DEFAULT 0,
@@ -179,7 +193,9 @@ db.exec(`
     updated_at TEXT NOT NULL,
     PRIMARY KEY (index_id, date)
   );
-`);
+`),
+  "CREATE precomputed tables IF NOT EXISTS"
+);
 
 // Get dates to process.
 let targetDates;
@@ -610,15 +626,42 @@ const insertAll = db.transaction(() => {
   }
 });
 
-insertAll();
+withBusyRetry(() => insertAll(), "market_monitor + breadth upserts");
 
 const cutoff = (() => {
   const d = new Date(`${targetDates[targetDates.length - 1]}T00:00:00Z`);
   d.setUTCFullYear(d.getUTCFullYear() - 3);
   return d.toISOString().slice(0, 10);
 })();
-db.prepare("DELETE FROM market_monitor_daily WHERE date < ?").run(cutoff);
-db.prepare("DELETE FROM breadth_daily WHERE date < ?").run(cutoff);
+withBusyRetry(() => {
+  db.prepare("DELETE FROM market_monitor_daily WHERE date < ?").run(cutoff);
+  db.prepare("DELETE FROM breadth_daily WHERE date < ?").run(cutoff);
+}, "trim old precomputed rows");
+
+// Backfill shares_outstanding last so earlier steps avoid contending with this UPDATE.
+withBusyRetry(() => {
+  const backfillResult = db.prepare(`
+    UPDATE companies
+    SET shares_outstanding = (
+      SELECT q.market_cap / q.last_price
+      FROM quote_daily q
+      WHERE q.symbol = companies.symbol
+        AND q.last_price > 0
+        AND q.market_cap > 0
+      ORDER BY q.date DESC
+      LIMIT 1
+    ),
+    updated_at = datetime('now')
+    WHERE shares_outstanding IS NULL
+      AND EXISTS (
+        SELECT 1 FROM quote_daily q
+        WHERE q.symbol = companies.symbol
+          AND q.market_cap > 0
+          AND q.last_price > 0
+      )
+  `).run();
+  console.log(`Backfilled shares_outstanding for ${backfillResult.changes} companies`);
+}, "shares_outstanding backfill");
 
 db.close();
 console.log(`Done. Computed aggregates for ${processed} date(s).`);
