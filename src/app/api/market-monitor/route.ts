@@ -6,7 +6,7 @@ import {
   getLatestCompletedTradingDate,
   getMarketMonitorBaseRowsFromDailyBars,
   getIndexBreadthSeries,
-  getNetNewHighSeries,
+  getNetNewHighSeriesMarketMonitor,
   getPrecomputedMarketMonitor,
 } from "@/lib/screener-db-native";
 import { recordPerf } from "@/lib/perf-monitor";
@@ -50,7 +50,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 13;
+const CACHE_VERSION = 14;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
 const LATEST_BREADTH_CACHE_TTL_MS = 60 * 1000;
@@ -444,12 +444,12 @@ export async function GET() {
     const rowsSorted = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
     const responseStartDate = rowsSorted[rowsSorted.length - 1]?.date ?? null;
 
-    const nnh1m = getNetNewHighSeries(21, 126, latestDate);
-    const nnh3m = getNetNewHighSeries(63, 126, latestDate);
-    const nnh6m = getNetNewHighSeries(126, 126, latestDate);
+    const nnh1m = getNetNewHighSeriesMarketMonitor(21, 126, latestDate);
+    const nnh3m = getNetNewHighSeriesMarketMonitor(63, 126, latestDate);
+    const nnh6m = getNetNewHighSeriesMarketMonitor(126, 126, latestDate);
     // 52W NNH is a rolling daily metric; keep at least 2 years of points so
     // the MM mini-chart remains fully populated.
-    const nnh52w = getNetNewHighSeries(252, TWO_YEARS_TRADING_DAYS, latestDate);
+    const nnh52w = getNetNewHighSeriesMarketMonitor(252, TWO_YEARS_TRADING_DAYS, latestDate);
 
     const payloadBase: CachePayload = {
       version: CACHE_VERSION,

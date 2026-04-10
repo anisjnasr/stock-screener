@@ -9,5 +9,15 @@ export type { Bar, EvalContext, SnapshotData } from "./interpreter";
 export { getBarsForSymbol, getSnapshotForSymbol } from "./get-bars";
 export { runSslScript, runNinoScript } from "./run";
 export type { RunSslResult, RunNinoScriptResult } from "./run";
-export { astToString, collectDisplayExpressions } from "./display-expressions";
-export type { DisplayExpression } from "./display-expressions";
+export {
+  astToString,
+  collectDisplayExpressions,
+  humanizeVarName,
+  astToColumnHeader,
+  inferFormat,
+} from "./display-expressions";
+export type {
+  DisplayExpression,
+  ScriptColumnFormat,
+  ScriptColumnDisplayEntry,
+} from "./display-expressions";

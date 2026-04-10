@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
-import MarketMonitorConstituentsModal from "@/components/MarketMonitorConstituentsModal";
+import MarketMonitorConstituentsModal, {
+  type MarketMonitorListCreatedInfo,
+} from "@/components/MarketMonitorConstituentsModal";
 
 const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
   up4pct: "4% Up",
@@ -123,7 +125,13 @@ function getPairCellClassFull(up: number | null | undefined, down: number | null
   return bullish ? "ws-mm-heat-green-strong" : "ws-mm-heat-red-strong";
 }
 
-export default function MarketMonitorTable({ onSymbolSelect }: { onSymbolSelect?: (sym: string) => void }) {
+export default function MarketMonitorTable({
+  onSymbolSelect,
+  onWatchlistListCreated,
+}: {
+  onSymbolSelect?: (sym: string) => void;
+  onWatchlistListCreated?: (info: MarketMonitorListCreatedInfo) => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
@@ -204,6 +212,7 @@ export default function MarketMonitorTable({ onSymbolSelect }: { onSymbolSelect?
           metric={mmModal.metric}
           indicatorTitle={MM_MODAL_TITLES[mmModal.metric]}
           onSymbolSelect={onSymbolSelect}
+          onListCreated={onWatchlistListCreated}
         />
       )}
       <div className="relative mb-3">

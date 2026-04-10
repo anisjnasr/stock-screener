@@ -65,6 +65,7 @@ import { useFundamentals } from "@/hooks/useFundamentals";
 import { useOwnership } from "@/hooks/useOwnership";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
+import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 
 const NNHPanel = dynamic(() => import("@/components/NNHPanel"), { ssr: false });
 const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel"), { ssr: false });
@@ -166,6 +167,7 @@ export default function Home() {
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [listCreatedBanner, setListCreatedBanner] = useState<MarketMonitorListCreatedInfo | null>(null);
   const secondaryPagesPrefetchedRef = useRef(false);
   const priorRailWidthBeforeInsightsRef = useRef<number | null>(null);
   const railWidthPxRef = useRef(0);
@@ -612,6 +614,25 @@ export default function Home() {
     return () => window.clearTimeout(t);
   }, [syncNotice]);
 
+  const handleWatchlistListCreatedFromMonitor = useCallback((info: MarketMonitorListCreatedInfo) => {
+    setListCreatedBanner(info);
+  }, []);
+
+  const handleGoToCreatedList = useCallback(() => {
+    if (!listCreatedBanner) return;
+    const { id } = listCreatedBanner;
+    setListCreatedBanner(null);
+    pendingAutoSelectRef.current = true;
+    setActiveWatchlistId(id);
+    setOpenToScreenerTrigger(null);
+    setOpenToCollectionTrigger(null);
+    setSection("lists");
+  }, [listCreatedBanner]);
+
+  const handleDismissListCreatedBanner = useCallback(() => {
+    setListCreatedBanner(null);
+  }, []);
+
   useEffect(() => {
     if (!symbol) return;
     let cancelled = false;
@@ -747,11 +768,20 @@ export default function Home() {
     <PanelErrorBoundary name="LeftPanel">
     <div
       ref={leftPanelMeasureRef}
-      className="h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] w-full"
+      className={
+        chartHidden
+          ? "h-full min-h-0 flex flex-col overflow-hidden w-full"
+          : "h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] w-full"
+      }
       style={{ background: "var(--ws-bg2)" }}
     >
       {section === "market" ? (
-        <MarketLeftPanel onSymbolSelect={handleSymbolSelect} selectedSymbol={symbol} activeTab={marketSubTab} />
+        <MarketLeftPanel
+          onSymbolSelect={handleSymbolSelect}
+          selectedSymbol={symbol}
+          activeTab={marketSubTab}
+          onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}
+        />
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
           subTab={sectorSubTab}
@@ -1027,19 +1057,55 @@ export default function Home() {
         centerPanel={centerPanel}
         rightPanel={rightPanel}
       />
-      {syncNotice && (
-        <div
-          className="fixed right-4 bottom-4 z-[12000] max-w-[420px] rounded-lg px-3 py-2 text-xs shadow-xl"
-          style={{
-            background: "rgba(0,229,204,0.12)",
-            border: "1px solid rgba(0,229,204,0.4)",
-            color: "var(--ws-text)",
-            backdropFilter: "blur(6px)",
-          }}
-        >
-          {syncNotice}
-        </div>
-      )}
+      <div className="fixed bottom-4 right-4 z-[12000] flex max-w-[420px] flex-col-reverse gap-2 items-end">
+        {listCreatedBanner && (
+          <div
+            className="w-full rounded-lg px-3 py-2.5 text-xs shadow-xl"
+            style={{
+              background: "var(--ws-bg3)",
+              border: "1px solid var(--ws-border-hover)",
+              color: "var(--ws-text)",
+              backdropFilter: "blur(6px)",
+            }}
+            role="status"
+          >
+            <div className="font-semibold">List created</div>
+            <div className="mt-0.5 break-words">
+              <span>{listCreatedBanner.name}</span>
+              <span style={{ color: "var(--ws-text-dim)" }}>{` · ${listCreatedBanner.symbolCount} stocks`}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-[color:var(--ws-border)] bg-transparent px-2.5 py-1 font-medium text-[color:var(--ws-text)] transition-colors hover:border-[color:var(--ws-border-hover)] hover:bg-[var(--ws-hover)]"
+                onClick={handleGoToCreatedList}
+              >
+                Go to list
+              </button>
+              <button
+                type="button"
+                className="rounded border border-[color:var(--ws-border)] bg-transparent px-2.5 py-1 font-medium text-[color:var(--ws-text)] transition-colors hover:border-[color:var(--ws-border-hover)] hover:bg-[var(--ws-hover)]"
+                onClick={handleDismissListCreatedBanner}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {syncNotice && (
+          <div
+            className="w-full rounded-lg px-3 py-2 text-xs shadow-xl"
+            style={{
+              background: "rgba(0,229,204,0.12)",
+              border: "1px solid rgba(0,229,204,0.4)",
+              color: "var(--ws-text)",
+              backdropFilter: "blur(6px)",
+            }}
+          >
+            {syncNotice}
+          </div>
+        )}
+      </div>
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

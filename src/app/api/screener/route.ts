@@ -77,7 +77,36 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const scriptBodyParam = params.get("scriptBody") ?? params.get("script") ?? "";
+
     if (params.has("countOnly")) {
+      if (scriptBodyParam.trim()) {
+        const asOfDate = date ?? getLatestScreenerDate();
+        if (!asOfDate) {
+          return jsonWithMetrics({ count: 0, date: null, error: "No screener date available" }, { status: 200 });
+        }
+        let scriptSymbols = symbols;
+        if (!scriptSymbols || scriptSymbols.length === 0) {
+          const universe = params.get("universe") ?? "all";
+          scriptSymbols = getSymbolsForUniverse(universe);
+        }
+        if (scriptSymbols.length === 0) {
+          return jsonWithMetrics({ count: 0, date: asOfDate }, {
+            headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+          });
+        }
+        const { passingSymbols, error: scriptError } = await runSslScript(
+          scriptBodyParam.trim(),
+          scriptSymbols,
+          asOfDate
+        );
+        if (scriptError) {
+          return jsonWithMetrics({ count: 0, date: asOfDate, error: scriptError }, { status: 200 });
+        }
+        return jsonWithMetrics({ count: passingSymbols.length, date: asOfDate }, {
+          headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+        });
+      }
       const { count, date: snapshotDate } = getScreenerCount({
         date: date ?? undefined,
         symbols,
@@ -88,11 +117,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const scriptBody = params.get("scriptBody") ?? params.get("script") ?? "";
+    const scriptBody = scriptBodyParam;
     if (scriptBody.trim()) {
       const asOfDate = date ?? getLatestScreenerDate();
       if (!asOfDate) {
-        return jsonWithMetrics({ date: null, rows: [], error: "No screener date available" }, { status: 200 });
+        return jsonWithMetrics(
+          { date: null, rows: [], scriptColumns: [], scriptColumnDisplay: [], error: "No screener date available" },
+          { status: 200 }
+        );
       }
       let scriptSymbols = symbols;
       if (!scriptSymbols || scriptSymbols.length === 0) {
@@ -100,18 +132,24 @@ export async function GET(request: NextRequest) {
         scriptSymbols = getSymbolsForUniverse(universe);
       }
       if (scriptSymbols.length === 0) {
-        return jsonWithMetrics({ date: asOfDate, rows: [] }, { status: 200 });
+        return jsonWithMetrics(
+          { date: asOfDate, rows: [], scriptColumns: [], scriptColumnDisplay: [] },
+          { status: 200 }
+        );
       }
-      const { passingSymbols, scriptColumns, scriptValues, error: scriptError } = await runSslScript(
-        scriptBody.trim(),
-        scriptSymbols,
-        asOfDate
-      );
+      const { passingSymbols, scriptColumns, scriptColumnDisplay, scriptValues, error: scriptError } =
+        await runSslScript(scriptBody.trim(), scriptSymbols, asOfDate);
       if (scriptError) {
-        return jsonWithMetrics({ date: asOfDate, rows: [], scriptColumns: [], error: scriptError }, { status: 200 });
+        return jsonWithMetrics(
+          { date: asOfDate, rows: [], scriptColumns: [], scriptColumnDisplay: [], error: scriptError },
+          { status: 200 }
+        );
       }
       if (passingSymbols.length === 0) {
-        return jsonWithMetrics({ date: asOfDate, rows: [], scriptColumns: scriptColumns }, { status: 200 });
+        return jsonWithMetrics(
+          { date: asOfDate, rows: [], scriptColumns, scriptColumnDisplay },
+          { status: 200 }
+        );
       }
       const { rows, date: snapshotDate } = getScreenerSnapshot({
         date: asOfDate,
@@ -125,9 +163,12 @@ export async function GET(request: NextRequest) {
         const extra = sym && scriptValues[sym] ? scriptValues[sym] : {};
         return { ...r, ...extra };
       });
-      return jsonWithMetrics({ date: snapshotDate, rows: merged, scriptColumns }, {
-        headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
-      });
+      return jsonWithMetrics(
+        { date: snapshotDate, rows: merged, scriptColumns, scriptColumnDisplay },
+        {
+          headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+        }
+      );
     }
 
     const { rows, date: snapshotDate } = getScreenerSnapshot({

@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MarketMonitorConstituentRow, MarketMonitorMetricKey } from "@/lib/screener-db-native";
 import { loadWatchlists, saveWatchlists } from "@/lib/watchlist-storage";
 
+export type MarketMonitorListCreatedInfo = {
+  id: string;
+  name: string;
+  symbolCount: number;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -11,6 +17,7 @@ type Props = {
   metric: MarketMonitorMetricKey;
   indicatorTitle: string;
   onSymbolSelect: (sym: string) => void;
+  onListCreated?: (info: MarketMonitorListCreatedInfo) => void;
 };
 
 function fmtPrice(n: number): string {
@@ -30,12 +37,18 @@ function changeColumnLabel(metric: MarketMonitorMetricKey): string {
   return "Change %";
 }
 
-function createWatchlistWithName(name: string, symbols: string[]) {
+function createWatchlistWithName(name: string, symbols: string[]): MarketMonitorListCreatedInfo {
+  const trimmed = name.slice(0, 200);
   const lists = loadWatchlists();
   const id = crypto.randomUUID();
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase().trim()).filter(Boolean))];
-  saveWatchlists([...lists, { id, name: name.slice(0, 200), symbols: uniq }]);
+  saveWatchlists([...lists, { id, name: trimmed, symbols: uniq }]);
+  return { id, name: trimmed, symbolCount: uniq.length };
 }
+
+/** Matches workspace neutral controls: dim border, text color, subtle lift on hover */
+const mmModalActionBtn =
+  "font-medium rounded border border-[color:var(--ws-border)] bg-transparent text-[color:var(--ws-text)] transition-colors hover:bg-[var(--ws-hover)] hover:border-[color:var(--ws-border-hover)]";
 
 export default function MarketMonitorConstituentsModal({
   open,
@@ -44,6 +57,7 @@ export default function MarketMonitorConstituentsModal({
   metric,
   indicatorTitle,
   onSymbolSelect,
+  onListCreated,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,16 +110,24 @@ export default function MarketMonitorConstituentsModal({
   }, []);
 
   const handleCreateListAll = useCallback(() => {
-    createWatchlistWithName(
+    const result = createWatchlistWithName(
       indicatorTitle,
       stocks.map((s) => s.symbol)
     );
-  }, [indicatorTitle, stocks]);
+    onListCreated?.(result);
+  }, [indicatorTitle, stocks, onListCreated]);
 
-  const handleCreateListIndustry = useCallback((industryName: string, rows: MarketMonitorConstituentRow[]) => {
-    const label = `${industryName} - ${indicatorTitle}`;
-    createWatchlistWithName(label, rows.map((r) => r.symbol));
-  }, [indicatorTitle]);
+  const handleCreateListIndustry = useCallback(
+    (industryName: string, rows: MarketMonitorConstituentRow[]) => {
+      const label = `${industryName} - ${indicatorTitle}`;
+      const result = createWatchlistWithName(
+        label,
+        rows.map((r) => r.symbol)
+      );
+      onListCreated?.(result);
+    },
+    [indicatorTitle, onListCreated]
+  );
 
   const handleTickerClick = useCallback(
     (sym: string) => {
@@ -144,18 +166,12 @@ export default function MarketMonitorConstituentsModal({
             {!loading && !error ? ` (${stocks.length} stocks)` : ""}
           </h2>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              className="text-xs px-2 py-1 rounded border transition-colors"
-              style={{ color: "var(--ws-text)", borderColor: "var(--ws-border)" }}
-              onClick={() => setGrouped((g) => !g)}
-            >
+            <button type="button" className={`text-xs px-2 py-1 ${mmModalActionBtn}`} onClick={() => setGrouped((g) => !g)}>
               {grouped ? "Ungroup" : "Group"}
             </button>
             <button
               type="button"
-              className="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-40"
-              style={{ color: "var(--ws-cyan)", borderColor: "var(--ws-border)" }}
+              className={`text-xs px-2 py-1 ${mmModalActionBtn} disabled:opacity-40 disabled:pointer-events-none`}
               disabled={loading || !!error || stocks.length === 0}
               onClick={handleCreateListAll}
             >
@@ -271,8 +287,7 @@ export default function MarketMonitorConstituentsModal({
                       </span>
                       <button
                         type="button"
-                        className="text-[10px] px-1.5 py-0.5 rounded border shrink-0"
-                        style={{ color: "var(--ws-cyan)", borderColor: "var(--ws-border)" }}
+                        className={`text-[10px] px-1.5 py-0.5 shrink-0 ${mmModalActionBtn}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleCreateListIndustry(indName, rows);

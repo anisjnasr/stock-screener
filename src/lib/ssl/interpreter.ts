@@ -3,6 +3,14 @@
  */
 
 import type { AstNode, ScriptAst } from "./ast";
+import type { SslFinancialSeries } from "@/lib/screener-db-native";
+import {
+  evalFundamentalCall,
+  isBareFundamentalIdentifier,
+  isFundamentalCallName,
+  MAX_FUND_PERIOD_LOOKBACK,
+  unwrapLookbackChain,
+} from "./fundamentals";
 
 export type Bar = {
   date: string;
@@ -21,6 +29,8 @@ export type EvalContext = {
   snapshot?: SnapshotData;
   /** Ticker symbol for NAME and similar. */
   symbol?: string;
+  /** Quarterly/annual fundamentals for Q(), A(), etc. */
+  fundamentals?: SslFinancialSeries;
 };
 
 const SERIES_IDS = new Set([
@@ -243,9 +253,18 @@ export function evalScalarAt(node: AstNode, ctx: EvalContext, barIdx: number): E
     case "call":
       return evalCallAt(node, ctx, barIdx);
     case "lookback": {
-      const n = toNumber(evalScalarAt(node.offset, ctx, barIdx));
-      if (n === null || n < 0 || !Number.isInteger(n) || n > MAX_LOOKBACK) return null;
-      return evalScalarAt(node.target, ctx, barIdx + n);
+      const unwrapped = unwrapLookbackChain(node, (off) => {
+        const n = toNumber(evalScalarAt(off, ctx, barIdx));
+        if (n === null || n < 0 || !Number.isInteger(n) || n > MAX_FUND_PERIOD_LOOKBACK) return null;
+        return n;
+      });
+      if (!unwrapped) return null;
+      const { inner, periodShift } = unwrapped;
+      if (inner.kind === "call" && isFundamentalCallName(inner.name)) {
+        return evalFundamentalCall(inner, ctx, periodShift, barIdx, evalScalarAt);
+      }
+      if (periodShift > MAX_LOOKBACK) return null;
+      return evalScalarAt(inner, ctx, barIdx + periodShift);
     }
     default:
       return null;
@@ -425,8 +444,8 @@ function evalCallAt(node: AstNode & { kind: "call" }, ctx: EvalContext, barIdx: 
     "SUM_A",
     "STREAK_A",
   ]);
-  if (FUNDAMENTAL_FUNCS.has(name)) {
-    return null;
+  if (FUNDAMENTAL_FUNCS.has(name.toUpperCase())) {
+    return evalFundamentalCall(node, ctx, 0, barIdx, evalScalarAt);
   }
 
   // Rolling / series functions with expression first argument
@@ -434,6 +453,22 @@ function evalCallAt(node: AstNode & { kind: "call" }, ctx: EvalContext, barIdx: 
     const period = Math.floor(numArgs[1] ?? 0);
     if (period < 1 || period > MAX_LOOKBACK) return null;
     const first = args[0]!;
+    if (
+      first.kind === "variable" &&
+      first.lookback === null &&
+      isBareFundamentalIdentifier(first.name) &&
+      (name === "MA" ||
+        name === "EMA" ||
+        name === "WMA" ||
+        name === "SUM" ||
+        name === "HHV" ||
+        name === "LLV" ||
+        name === "STDEV" ||
+        name === "STDDEV" ||
+        name === "ROC")
+    ) {
+      return null;
+    }
 
     if (name === "MA") {
       let s = 0;

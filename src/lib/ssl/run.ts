@@ -7,7 +7,9 @@ import { ParseError } from "./parser";
 import { evaluateScript, evaluateExpression, type EvalContext } from "./interpreter";
 import { getBarsForSymbol } from "./get-bars";
 import { getSnapshotForSymbol } from "./get-bars";
+import { getFinancialSeriesForSsl } from "@/lib/screener-db-native";
 import { collectDisplayExpressions } from "./display-expressions";
+import type { ScriptColumnDisplayEntry } from "./display-expressions";
 import type { ScriptAst } from "./ast";
 
 const DEFAULT_BAR_LIMIT = 300;
@@ -15,6 +17,7 @@ const DEFAULT_BAR_LIMIT = 300;
 export type RunSslResult = {
   passingSymbols: string[];
   scriptColumns: string[];
+  scriptColumnDisplay: ScriptColumnDisplayEntry[];
   scriptValues: Record<string, Record<string, number>>;
   error?: string;
 };
@@ -88,11 +91,16 @@ export async function runSslScript(
     ast = parseScript(script.trim());
   } catch (e) {
     const msg = e instanceof ParseError ? e.message : e instanceof Error ? e.message : "Parse error";
-    return { passingSymbols: [], scriptColumns: [], scriptValues: {}, error: msg };
+    return { passingSymbols: [], scriptColumns: [], scriptColumnDisplay: [], scriptValues: {}, error: msg };
   }
 
   const displayExpressions = collectDisplayExpressions(ast);
-  const scriptColumns = displayExpressions.map((e) => e.label);
+  const scriptColumns = displayExpressions.map((e) => e.key);
+  const scriptColumnDisplay: ScriptColumnDisplayEntry[] = displayExpressions.map((e) => ({
+    key: e.key,
+    header: e.header,
+    ...(e.format ? { format: e.format } : {}),
+  }));
   const passed: Array<{ symbol: string; ctx: EvalContext }> = [];
 
   for (const symbol of symbols) {
@@ -100,7 +108,14 @@ export async function runSslScript(
       const bars = await getBarsForSymbol(symbol, asOfDate, barLimit);
       if (bars.length === 0) continue;
       const snapshot = getSnapshotForSymbol(symbol, asOfDate);
-      const ctx: EvalContext = { bars, variables: {}, snapshot: snapshot ?? undefined, symbol };
+      const fundamentals = getFinancialSeriesForSsl(symbol, asOfDate);
+      const ctx: EvalContext = {
+        bars,
+        variables: {},
+        snapshot: snapshot ?? undefined,
+        symbol,
+        fundamentals,
+      };
       const pass = evaluateScript(ast, ctx);
       if (!pass) continue;
       passed.push({ symbol, ctx });
@@ -118,14 +133,14 @@ export async function runSslScript(
     const ctx = ctxBySym.get(symbol);
     if (!ctx) continue;
     const row: Record<string, number> = {};
-    for (const { label, node } of displayExpressions) {
+    for (const { key, node } of displayExpressions) {
       const v = evaluateExpression(node, ctx);
-      if (v !== null && Number.isFinite(v)) row[label] = v;
+      if (v !== null && Number.isFinite(v)) row[key] = v;
     }
     scriptValues[symbol] = row;
   }
 
-  return { passingSymbols: orderedSymbols, scriptColumns, scriptValues };
+  return { passingSymbols: orderedSymbols, scriptColumns, scriptColumnDisplay, scriptValues };
 }
 
 /** @deprecated Use runSslScript */

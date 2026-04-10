@@ -40,6 +40,7 @@ import {
   defaultFlagListLabel,
   passesColumnFilter,
 } from "@/lib/watchlist-storage";
+import type { ScriptColumnFormat, ScriptColumnDisplayEntry } from "@/lib/ssl/display-expressions";
 import ColumnFilterPopover from "./ColumnFilterPopover";
 import {
   loadScreens,
@@ -285,8 +286,11 @@ function getRowValue(row: WatchlistRow, col: TableColumnId): unknown {
   return row[col];
 }
 
-/** Format script column value by label: price 2 decimals, volume/USD whole, ratio/percent as %. */
-function formatScriptColumnValue(label: string, v: number): string {
+/** Format script column value; `format` from SSL runner when available, else heuristic on key. */
+function formatScriptColumnValue(label: string, v: number, format?: ScriptColumnFormat): string {
+  if (format === "pct") return `${Number(v).toFixed(2)}%`;
+  if (format === "int") return Math.round(v).toLocaleString();
+  if (format === "float") return Number(v).toFixed(2);
   const L = label.toUpperCase();
   if (L.includes("ATRP")) return `${Number(v).toFixed(2)}%`;
   if (L.includes("ROC(") || L.includes("PCT")) return `${Number(v).toFixed(2)}%`;
@@ -294,11 +298,16 @@ function formatScriptColumnValue(label: string, v: number): string {
   return Number(v).toFixed(2);
 }
 
-function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?: boolean): string {
+function formatCellValue(
+  row: WatchlistRow,
+  col: TableColumnId,
+  isScriptColumn?: boolean,
+  scriptFormat?: ScriptColumnFormat
+): string {
   const v = getRowValue(row, col);
   if (v == null || v === "") return "NA";
   if (isScriptColumn && typeof v === "number") {
-    return formatScriptColumnValue(String(col), v);
+    return formatScriptColumnValue(String(col), v, scriptFormat);
   }
   if (col === "lastPrice") return typeof v === "number" ? Number(v).toFixed(2) : String(v);
   if (col === "ipoDate" || col === "earningsLastReported" || col === "salesLastReported") {
@@ -331,10 +340,6 @@ function formatCellValue(row: WatchlistRow, col: TableColumnId, isScriptColumn?:
     return Number.isInteger(v) ? v.toLocaleString() : Number(v).toFixed(2);
   }
   return String(v);
-}
-
-function getColumnLabel(col: TableColumnId): string {
-  return (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
 }
 
 function isSignedMetricColumn(col: TableColumnId): boolean {
@@ -765,8 +770,10 @@ export default function WatchlistPanel({
   );
   const [screenerResultCount, setScreenerResultCount] = useState<number | null>(null);
   const [screenerError, setScreenerError] = useState<string | null>(null);
-  /** For script screeners: column labels from the script (e.g. "MA(C, 21)", "ATR(10)"). */
+  /** For script screeners: column keys from the script (stable API / row merge). */
   const [scriptColumns, setScriptColumns] = useState<string[]>([]);
+  /** Headers and formats for script columns (spec §12.2). */
+  const [scriptColumnDisplay, setScriptColumnDisplay] = useState<ScriptColumnDisplayEntry[]>([]);
   /** Per-screen result count (for showing next to each screener name in the list). */
   const [addPopupMode, setAddPopupMode] = useState<"create" | "edit" | null>(null);
   const [addPopupListId, setAddPopupListId] = useState<string | null>(null);
@@ -1763,14 +1770,24 @@ export default function WatchlistPanel({
         date?: string;
         rows?: Array<Record<string, unknown>>;
         scriptColumns?: string[];
+        scriptColumnDisplay?: ScriptColumnDisplayEntry[];
         error?: string;
       };
       if (data.error) setScreenerError(data.error);
       else setScreenerError(null);
       const list = data.rows ?? [];
       const cols = screen.type === "script" ? (data.scriptColumns ?? []) : [];
-      if (screen.type !== "script") setScriptColumns([]);
-      else if (cols.length > 0) setScriptColumns(cols);
+      const disp = screen.type === "script" ? (data.scriptColumnDisplay ?? []) : [];
+      if (screen.type !== "script") {
+        setScriptColumns([]);
+        setScriptColumnDisplay([]);
+      } else if (cols.length > 0) {
+        setScriptColumns(cols);
+        setScriptColumnDisplay(disp);
+      } else {
+        setScriptColumns([]);
+        setScriptColumnDisplay([]);
+      }
       const newRows: WatchlistRow[] = list.map((r) => mapScreenerRowToWatchlistRow(r, cols));
       setRows(newRows);
       setScreenerResultCount(newRows.length);
@@ -1779,6 +1796,7 @@ export default function WatchlistPanel({
       setScreenerError(msg);
       setRows([]);
       setScriptColumns([]);
+      setScriptColumnDisplay([]);
       setScreenerResultCount(null);
     } finally {
       setLoading(false);
@@ -2486,6 +2504,7 @@ export default function WatchlistPanel({
 
   useEffect(() => {
     if (!showNewScreenerModal) return;
+    if (scanModalMode !== "traditional") return;
     const abort = new AbortController();
     const timeout = setTimeout(async () => {
       try {
@@ -2514,7 +2533,37 @@ export default function WatchlistPanel({
       clearTimeout(timeout);
       abort.abort();
     };
-  }, [showNewScreenerModal, newScreenForm, buildEffectiveFilters, resolveRuntimeFilters]);
+  }, [showNewScreenerModal, scanModalMode, newScreenForm, buildEffectiveFilters, resolveRuntimeFilters]);
+
+  useEffect(() => {
+    const scanModalOpen = showNewScriptModal || showNewScreenerModal;
+    if (!scanModalOpen || scanModalMode !== "script") return;
+    const abort = new AbortController();
+    const timeout = setTimeout(async () => {
+      try {
+        const script = newScriptBody.trim();
+        if (!script) {
+          if (!abort.signal.aborted) setScreenerResultCount(null);
+          return;
+        }
+        const params = new URLSearchParams();
+        params.set("countOnly", "1");
+        params.set("universe", "all");
+        params.set("scriptBody", script);
+        const res = await fetch(`/api/screener?${params.toString()}`, { signal: abort.signal });
+        if (!res.ok) return;
+        const data = (await res.json()) as { count?: number; error?: string };
+        if (typeof data.count === "number") setScreenerResultCount(data.count);
+        else if (!abort.signal.aborted) setScreenerResultCount(null);
+      } catch {
+        if (!abort.signal.aborted) setScreenerResultCount(null);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timeout);
+      abort.abort();
+    };
+  }, [showNewScriptModal, showNewScreenerModal, scanModalMode, newScriptBody]);
 
   /* ── Column filter state ── */
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilterDef>>(new Map());
@@ -2608,10 +2657,36 @@ export default function WatchlistPanel({
   }, [loading, isFiltered, sortedRows.length, unfilteredRowCount, rows.length, onRowCountChange]);
 
   const scriptColumnSet = useMemo(() => new Set(scriptColumns), [scriptColumns]);
+  const scriptColumnDisplayMaps = useMemo(() => {
+    const headerByKey = new Map<string, string>();
+    const formatByKey = new Map<string, ScriptColumnFormat>();
+    for (const e of scriptColumnDisplay) {
+      headerByKey.set(e.key, e.header);
+      if (e.format) formatByKey.set(e.key, e.format);
+    }
+    return { headerByKey, formatByKey };
+  }, [scriptColumnDisplay]);
+
+  const getColumnLabel = useCallback(
+    (col: TableColumnId): string => {
+      const h = scriptColumnDisplayMaps.headerByKey.get(String(col));
+      if (h) return h;
+      return (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+    },
+    [scriptColumnDisplayMaps]
+  );
+
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [addedColumns, setAddedColumns] = useState<string[]>([]);
 
-  useEffect(() => { setHiddenColumns(new Set()); setAddedColumns([]); setColumnFilters(new Map()); setTopBottomFilter(null); }, [sidebarTab, selectedScreen?.id]);
+  useEffect(() => {
+    setHiddenColumns(new Set());
+    setAddedColumns([]);
+    setColumnFilters(new Map());
+    setTopBottomFilter(null);
+    setScriptColumns([]);
+    setScriptColumnDisplay([]);
+  }, [sidebarTab, selectedScreen?.id]);
 
   const tableColumns = useMemo((): TableColumnId[] => {
     const alwaysFirst = ["ticker", "lastPrice"];
@@ -2630,8 +2705,11 @@ export default function WatchlistPanel({
       ];
     } else if (sidebarTab === "screener" && selectedScreen) {
       if (selectedScreen.type === "script" && scriptColumns.length > 0) {
-        const rest = scriptColumns.filter((c) => c !== "ticker" && c !== "lastPrice");
-        base = [...alwaysFirst, ...rest];
+        const scriptFirst: TableColumnId[] = ["ticker", "name", "lastPrice"];
+        const rest = scriptColumns.filter(
+          (c) => c !== "ticker" && c !== "lastPrice" && c !== "name"
+        );
+        base = [...scriptFirst, ...rest];
       } else if (selectedScreen.type !== "script") {
         const filterCols = getFilterCriteriaColumns(selectedScreen.filters).filter(
           (c) => c !== "ticker" && c !== "lastPrice"
@@ -5097,6 +5175,9 @@ export default function WatchlistPanel({
                           </td>
                           {tableColumns.map((col, colIndex) => {
                             const isScriptCol = scriptColumnSet.has(col as string);
+                            const scriptFormat = isScriptCol
+                              ? scriptColumnDisplayMaps.formatByKey.get(String(col))
+                              : undefined;
                             const isNumeric = NUMERIC_COLUMN_IDS.has(col as ColumnId) || isScriptCol;
                             const isSignedMetric = isSignedMetricColumn(col);
                             const numVal = isNumeric ? (getRowValue(row, col) as number | undefined) : null;
@@ -5121,7 +5202,7 @@ export default function WatchlistPanel({
                                   {row.symbol}
                                 </button>
                               ) : (
-                                formatCellValue(row, col, isScriptCol)
+                                formatCellValue(row, col, isScriptCol, scriptFormat)
                               );
                             return (
                               <td

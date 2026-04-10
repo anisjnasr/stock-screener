@@ -3,11 +3,18 @@
  * Precompute market_monitor_daily and breadth_daily tables.
  * Run after daily bars and indicators are refreshed.
  *
- * Usage: node scripts/compute-market-aggregates.mjs [--days 504]
+ * Usage:
+ *   node scripts/compute-market-aggregates.mjs [--days 504]
+ *   node scripts/compute-market-aggregates.mjs --all
+ *
+ * Market Monitor universe: non-ETF, effective market cap ≥ MM_MIN_MARKET_CAP_USD on each date
+ * (aligned with screener-db-native MM_EFFECTIVE_MARKET_CAP_SQL).
+ *
+ * Full rebuild (--all or --days >10): drops tables; preserves sp500/nasdaq % columns from prior
+ * market_monitor_daily when re-inserting (does not recompute those four fields).
  *
  * Without --days, computes for the latest date only (incremental).
  * With --days N, recomputes the last N trading days.
- * Use --days 504 for a full 2-year backfill.
  */
 
 import Database from "better-sqlite3";
@@ -18,18 +25,30 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, "..", "data", "screener.db");
 
+/** Keep in sync with MM_MIN_MARKET_CAP_USD in src/lib/screener-db-native.ts */
+const MM_MIN_MARKET_CAP_USD = 1_000_000_000;
+const MM_EFFECTIVE_CAP_SQL =
+  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
+
 if (!existsSync(DB_PATH)) {
   console.error("Missing data/screener.db");
   process.exit(1);
 }
 
+const allArg = process.argv.includes("--all");
 const daysArg = process.argv.indexOf("--days");
-const backfillDays = daysArg >= 0 ? parseInt(process.argv[daysArg + 1], 10) : 1;
+let backfillDays = daysArg >= 0 ? parseInt(process.argv[daysArg + 1], 10) : 1;
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 30000");
 db.pragma("cache_size = -64000");
+
+if (allArg) {
+  const row = db.prepare("SELECT COUNT(DISTINCT date) AS c FROM daily_bars").get();
+  backfillDays = Math.max(Number(row?.c ?? 0), 1);
+  console.log(`--all: using ${backfillDays} distinct bar dates`);
+}
 
 // Backfill shares_outstanding from quote_daily market_cap where missing
 const backfillResult = db.prepare(`
@@ -62,9 +81,10 @@ function loadIndexSymbols(filename) {
 
 const sp500Symbols = new Set(loadIndexSymbols("sp500.json"));
 const nasdaqSymbols = new Set(
-  db.prepare("SELECT symbol FROM companies WHERE exchange LIKE '%NASDAQ%' OR exchange LIKE '%nasdaq%'")
+  db
+    .prepare("SELECT symbol FROM companies WHERE exchange LIKE '%NASDAQ%' OR exchange LIKE '%nasdaq%'")
     .all()
-    .map(r => r.symbol)
+    .map((r) => r.symbol)
 );
 
 // Ensure is_etf column exists on companies (older DBs may lack it)
@@ -75,9 +95,31 @@ try {
   // Column already exists
 }
 
-// For large backfills (>10 days), drop and recreate to handle schema changes.
-// For incremental runs (--days 1), preserve existing history.
-if (backfillDays > 10) {
+const fullRebuild = allArg || backfillDays > 10;
+
+/** @type {Map<string, { sp50: number|null; sp200: number|null; nq50: number|null; nq200: number|null }>} */
+let preservedIndexBreadth = new Map();
+
+if (fullRebuild) {
+  try {
+    const existing = db
+      .prepare(
+        `SELECT date, sp500_pct_above_50d, sp500_pct_above_200d, nasdaq_pct_above_50d, nasdaq_pct_above_200d
+         FROM market_monitor_daily`
+      )
+      .all();
+    for (const r of existing) {
+      preservedIndexBreadth.set(String(r.date), {
+        sp50: r.sp500_pct_above_50d != null ? Number(r.sp500_pct_above_50d) : null,
+        sp200: r.sp500_pct_above_200d != null ? Number(r.sp500_pct_above_200d) : null,
+        nq50: r.nasdaq_pct_above_50d != null ? Number(r.nasdaq_pct_above_50d) : null,
+        nq200: r.nasdaq_pct_above_200d != null ? Number(r.nasdaq_pct_above_200d) : null,
+      });
+    }
+    console.log(`Preserved S&P/Nasdaq % columns for ${preservedIndexBreadth.size} dates (reused on rebuild).`);
+  } catch {
+    // table missing
+  }
   console.log("Full backfill requested – dropping and recreating precomputed tables.");
   db.exec("DROP TABLE IF EXISTS market_monitor_daily");
   db.exec("DROP TABLE IF EXISTS breadth_daily");
@@ -140,29 +182,55 @@ db.exec(`
 `);
 
 // Get dates to process.
-// For incremental runs (small --days), auto-detect all dates in daily_bars that
-// are missing from market_monitor_daily so we never leave gaps.
 let targetDates;
-if (backfillDays <= 10) {
-  const missingDates = db.prepare(`
+if (!fullRebuild) {
+  // Only fill gaps in a recent window so `--days 1` does not replay full history when the table is empty.
+  const recentWindow = Math.max(260, backfillDays * 20);
+  const recentDates = db
+    .prepare(
+      `
+    SELECT date FROM daily_bars GROUP BY date ORDER BY date DESC LIMIT ?
+  `
+    )
+    .all(recentWindow)
+    .map((r) => r.date);
+  const recentSet = new Set(recentDates);
+  const missingDates = db
+    .prepare(
+      `
     SELECT DISTINCT d.date FROM daily_bars d
     LEFT JOIN market_monitor_daily m ON m.date = d.date
     WHERE m.date IS NULL
     ORDER BY d.date ASC
-  `).all().map(r => r.date);
-  const latestNDates = db.prepare(`
+  `
+    )
+    .all()
+    .map((r) => r.date)
+    .filter((d) => recentSet.has(d));
+  const latestNDates = db
+    .prepare(
+      `
     SELECT DISTINCT date FROM daily_bars
     ORDER BY date DESC
     LIMIT ?
-  `).all(Math.max(backfillDays, 1)).map(r => r.date);
+  `
+    )
+    .all(Math.max(backfillDays, 1))
+    .map((r) => r.date);
   const combined = new Set([...missingDates, ...latestNDates]);
   targetDates = [...combined].sort();
 } else {
-  targetDates = db.prepare(`
+  targetDates = db
+    .prepare(
+      `
     SELECT DISTINCT date FROM daily_bars
     ORDER BY date DESC
     LIMIT ?
-  `).all(backfillDays).map(r => r.date).reverse();
+  `
+    )
+    .all(backfillDays)
+    .map((r) => r.date)
+    .reverse();
 }
 
 if (targetDates.length === 0) {
@@ -174,7 +242,6 @@ if (targetDates.length === 0) {
 console.log(`Computing aggregates for ${targetDates.length} date(s): ${targetDates[0]} to ${targetDates[targetDates.length - 1]}`);
 
 // ── Market Monitor: compute in a single SQL batch per date range ──
-// Need 65 trading days of lookback for C[65]; use 120 calendar day buffer
 const bufferDate = (() => {
   const d = new Date(`${targetDates[0]}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 120);
@@ -184,9 +251,13 @@ const bufferDate = (() => {
 const startTarget = targetDates[0];
 const endTarget = targetDates[targetDates.length - 1];
 
-console.log("Computing market monitor base rows (all common equities, excluding ETFs)...");
+console.log(
+  `Computing market monitor base rows (non-ETF, cap ≥ $${(MM_MIN_MARKET_CAP_USD / 1e9).toFixed(0)}B USD)...`
+);
 
-const mmRows = db.prepare(`
+const mmRows = db
+  .prepare(
+    `
   WITH base AS (
     SELECT
       d.symbol,
@@ -201,7 +272,9 @@ const mmRows = db.prepare(`
       AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
     FROM daily_bars d
     INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+    INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
     WHERE d.date BETWEEN ? AND ?
+      AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
     WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
   )
   SELECT
@@ -219,11 +292,12 @@ const mmRows = db.prepare(`
   WHERE date BETWEEN ? AND ?
   GROUP BY date
   ORDER BY date ASC
-`).all(bufferDate, endTarget, startTarget, endTarget);
+`
+  )
+  .all(bufferDate, endTarget, MM_MIN_MARKET_CAP_USD, startTarget, endTarget);
 
 console.log(`  Got ${mmRows.length} dates of MM base data.`);
 
-// Build lookup for rolling ratio computation
 const up4ByDate = new Map();
 const down4ByDate = new Map();
 for (const r of mmRows) {
@@ -231,13 +305,18 @@ for (const r of mmRows) {
   down4ByDate.set(r.date, Number(r.down4pct ?? 0));
 }
 
-// Also load prior dates for rolling ratios (need up to 10 prior trading days)
-const priorDates = db.prepare(`
+const priorDates = db
+  .prepare(
+    `
   SELECT date FROM market_monitor_daily
   WHERE date < ?
   ORDER BY date DESC
   LIMIT 10
-`).all(startTarget).map(r => r.date).reverse();
+`
+  )
+  .all(startTarget)
+  .map((r) => r.date)
+  .reverse();
 
 for (const d of priorDates) {
   if (!up4ByDate.has(d)) {
@@ -249,33 +328,37 @@ for (const d of priorDates) {
   }
 }
 
-const allDatesForRatio = [...new Set([...priorDates, ...mmRows.map(r => r.date)])].sort();
+const allDatesForRatio = [...new Set([...priorDates, ...mmRows.map((r) => r.date)])].sort();
 
 function windowRatio(date, window) {
   const idx = allDatesForRatio.indexOf(date);
   if (idx < 0) return null;
-  let sumUp = 0, sumDown = 0;
+  let sumUp = 0,
+    sumDown = 0;
   for (let i = Math.max(0, idx - window + 1); i <= idx; i++) {
-    const d = allDatesForRatio[i];
-    sumUp += up4ByDate.get(d) ?? 0;
-    sumDown += down4ByDate.get(d) ?? 0;
+    const di = allDatesForRatio[i];
+    sumUp += up4ByDate.get(di) ?? 0;
+    sumDown += down4ByDate.get(di) ?? 0;
   }
   return sumDown > 0 ? sumUp / sumDown : null;
 }
 
-// ── EMA breadth for SP500 and Nasdaq ──
 function computeEMAbreadth(symbolSet, date) {
   const symbols = [...symbolSet];
   if (symbols.length === 0) return { count50d: 0, count200d: 0, pct50d: null, pct200d: null };
   const placeholders = symbols.map(() => "?").join(",");
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT
       SUM(CASE WHEN i.above_ema_50 = 1 THEN 1 ELSE 0 END) AS c50,
       SUM(CASE WHEN i.above_ema_200 = 1 THEN 1 ELSE 0 END) AS c200,
       COUNT(*) AS total
     FROM indicators_daily i
     WHERE i.date = ? AND i.symbol IN (${placeholders})
-  `).get(date, ...symbols);
+  `
+    )
+    .get(date, ...symbols);
   const total = Number(row?.total ?? 0);
   return {
     count50d: Number(row?.c50 ?? 0),
@@ -285,7 +368,61 @@ function computeEMAbreadth(symbolSet, date) {
   };
 }
 
-// ── Upsert statements ──
+/** Net new highs/lows for MM universe on one date (prior_count = lookbackDays). */
+function computeUniverseNNH(date, lookbackDays) {
+  const buf = new Date(`${date}T00:00:00Z`);
+  buf.setUTCDate(buf.getUTCDate() - (lookbackDays + 30));
+  const bufStart = buf.toISOString().slice(0, 10);
+  const row = db
+    .prepare(
+      `
+    WITH symbols_today AS (
+      SELECT DISTINCT d.symbol
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ?
+        AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
+    ),
+    base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        d.high,
+        d.low,
+        MAX(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_high,
+        MIN(d.low) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_low,
+        COUNT(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_count
+      FROM daily_bars d
+      INNER JOIN symbols_today s ON s.symbol = d.symbol
+      WHERE d.date BETWEEN ? AND ?
+    )
+    SELECT
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END), 0) AS highs,
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END), 0) AS lows
+    FROM base
+    WHERE date = ?
+  `
+    )
+    .get(date, MM_MIN_MARKET_CAP_USD, bufStart, date, date);
+  const highs = Number(row?.highs ?? 0);
+  const lows = Number(row?.lows ?? 0);
+  return { highs, lows, net: highs - lows };
+}
+
 const mmUpsert = db.prepare(`
   INSERT INTO market_monitor_daily (
     date, up4pct, down4pct, ratio5d, ratio10d,
@@ -293,8 +430,13 @@ const mmUpsert = db.prepare(`
     up50pct_month, down50pct_month,
     sp500_pct_above_50d, sp500_pct_above_200d,
     nasdaq_pct_above_50d, nasdaq_pct_above_200d,
-    universe, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    universe,
+    nnh_1m_highs, nnh_1m_lows, nnh_1m_net,
+    nnh_3m_highs, nnh_3m_lows, nnh_3m_net,
+    nnh_6m_highs, nnh_6m_lows, nnh_6m_net,
+    nnh_52w_highs, nnh_52w_lows, nnh_52w_net,
+    updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(date) DO UPDATE SET
     up4pct=excluded.up4pct, down4pct=excluded.down4pct,
     ratio5d=excluded.ratio5d, ratio10d=excluded.ratio10d,
@@ -306,6 +448,10 @@ const mmUpsert = db.prepare(`
     nasdaq_pct_above_50d=excluded.nasdaq_pct_above_50d,
     nasdaq_pct_above_200d=excluded.nasdaq_pct_above_200d,
     universe=excluded.universe,
+    nnh_1m_highs=excluded.nnh_1m_highs, nnh_1m_lows=excluded.nnh_1m_lows, nnh_1m_net=excluded.nnh_1m_net,
+    nnh_3m_highs=excluded.nnh_3m_highs, nnh_3m_lows=excluded.nnh_3m_lows, nnh_3m_net=excluded.nnh_3m_net,
+    nnh_6m_highs=excluded.nnh_6m_highs, nnh_6m_lows=excluded.nnh_6m_lows, nnh_6m_net=excluded.nnh_6m_net,
+    nnh_52w_highs=excluded.nnh_52w_highs, nnh_52w_lows=excluded.nnh_52w_lows, nnh_52w_net=excluded.nnh_52w_net,
     updated_at=excluded.updated_at
 `);
 
@@ -330,7 +476,6 @@ const breadthUpsert = db.prepare(`
     updated_at=excluded.updated_at
 `);
 
-// ── NNH helper for index-level breadth ──
 function computeIndexNNH(symbolSet, date, lookbackDays) {
   const symbols = [...symbolSet];
   if (symbols.length === 0) return { highs: 0, lows: 0, net: 0 };
@@ -340,7 +485,9 @@ function computeIndexNNH(symbolSet, date, lookbackDays) {
     d.setUTCDate(d.getUTCDate() - (lookbackDays + 30));
     return d.toISOString().slice(0, 10);
   })();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     WITH base AS (
       SELECT
         d.symbol, d.date, d.close,
@@ -356,7 +503,9 @@ function computeIndexNNH(symbolSet, date, lookbackDays) {
       SUM(CASE WHEN prior_count >= ${lookbackDays} AND close < prior_low  THEN 1 ELSE 0 END) AS lows
     FROM base
     WHERE date = ?
-  `).get(...symbols, bufStart, date, date);
+  `
+    )
+    .get(...symbols, bufStart, date, date);
   const highs = Number(rows?.highs ?? 0);
   const lows = Number(rows?.lows ?? 0);
   return { highs, lows, net: highs - lows };
@@ -365,7 +514,6 @@ function computeIndexNNH(symbolSet, date, lookbackDays) {
 const nowIso = new Date().toISOString();
 let processed = 0;
 
-// Build a map from MM SQL rows by date for fast lookup
 const mmByDate = new Map();
 for (const r of mmRows) mmByDate.set(r.date, r);
 
@@ -377,22 +525,55 @@ const insertAll = db.transaction(() => {
     const ratio5d = windowRatio(date, 5);
     const ratio10d = windowRatio(date, 10);
 
-    const sp500Breadth = computeEMAbreadth(sp500Symbols, date);
-    const nasdaqBreadth = computeEMAbreadth(nasdaqSymbols, date);
+    const preserved = preservedIndexBreadth.get(date);
+    const sp500Fresh = computeEMAbreadth(sp500Symbols, date);
+    const nasdaqFresh = computeEMAbreadth(nasdaqSymbols, date);
+    const sp50 = preserved?.sp50 ?? sp500Fresh.pct50d;
+    const sp200 = preserved?.sp200 ?? sp500Fresh.pct200d;
+    const nq50 = preserved?.nq50 ?? nasdaqFresh.pct50d;
+    const nq200 = preserved?.nq200 ?? nasdaqFresh.pct200d;
+
+    const nnh1m = computeUniverseNNH(date, 21);
+    const nnh3m = computeUniverseNNH(date, 63);
+    const nnh6m = computeUniverseNNH(date, 126);
+    const nnh52w = computeUniverseNNH(date, 252);
 
     mmUpsert.run(
-      date, up4, down4, ratio5d, ratio10d,
-      Number(mm?.up25pct_qtr ?? 0), Number(mm?.down25pct_qtr ?? 0),
-      Number(mm?.up25pct_month ?? 0), Number(mm?.down25pct_month ?? 0),
-      Number(mm?.up50pct_month ?? 0), Number(mm?.down50pct_month ?? 0),
-      sp500Breadth.pct50d, sp500Breadth.pct200d,
-      nasdaqBreadth.pct50d, nasdaqBreadth.pct200d,
+      date,
+      up4,
+      down4,
+      ratio5d,
+      ratio10d,
+      Number(mm?.up25pct_qtr ?? 0),
+      Number(mm?.down25pct_qtr ?? 0),
+      Number(mm?.up25pct_month ?? 0),
+      Number(mm?.down25pct_month ?? 0),
+      Number(mm?.up50pct_month ?? 0),
+      Number(mm?.down50pct_month ?? 0),
+      sp50,
+      sp200,
+      nq50,
+      nq200,
       Number(mm?.universe ?? 0),
+      nnh1m.highs,
+      nnh1m.lows,
+      nnh1m.net,
+      nnh3m.highs,
+      nnh3m.lows,
+      nnh3m.net,
+      nnh6m.highs,
+      nnh6m.lows,
+      nnh6m.net,
+      nnh52w.highs,
+      nnh52w.lows,
+      nnh52w.net,
       nowIso
     );
 
-    // Index breadth tables
-    for (const [indexId, symbolSet] of [["sp500", sp500Symbols], ["nasdaq", nasdaqSymbols]]) {
+    for (const [indexId, symbolSet] of [
+      ["sp500", sp500Symbols],
+      ["nasdaq", nasdaqSymbols],
+    ]) {
       const iBreadth = computeEMAbreadth(symbolSet, date);
       const iNnh1m = computeIndexNNH(symbolSet, date, 21);
       const iNnh3m = computeIndexNNH(symbolSet, date, 63);
@@ -400,13 +581,24 @@ const insertAll = db.transaction(() => {
       const iNnh52w = computeIndexNNH(symbolSet, date, 252);
 
       breadthUpsert.run(
-        indexId, date,
-        iNnh1m.highs, iNnh1m.lows, iNnh1m.net,
-        iNnh3m.highs, iNnh3m.lows, iNnh3m.net,
-        iNnh6m.highs, iNnh6m.lows, iNnh6m.net,
-        iNnh52w.highs, iNnh52w.lows, iNnh52w.net,
-        iBreadth.pct50d, iBreadth.pct200d,
-        iBreadth.count50d, iBreadth.count200d,
+        indexId,
+        date,
+        iNnh1m.highs,
+        iNnh1m.lows,
+        iNnh1m.net,
+        iNnh3m.highs,
+        iNnh3m.lows,
+        iNnh3m.net,
+        iNnh6m.highs,
+        iNnh6m.lows,
+        iNnh6m.net,
+        iNnh52w.highs,
+        iNnh52w.lows,
+        iNnh52w.net,
+        iBreadth.pct50d,
+        iBreadth.pct200d,
+        iBreadth.count50d,
+        iBreadth.count200d,
         nowIso
       );
     }
@@ -420,7 +612,6 @@ const insertAll = db.transaction(() => {
 
 insertAll();
 
-// Trim old data (keep 3+ years)
 const cutoff = (() => {
   const d = new Date(`${targetDates[targetDates.length - 1]}T00:00:00Z`);
   d.setUTCFullYear(d.getUTCFullYear() - 3);

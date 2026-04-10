@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
+import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 import { fetchBreadthClient } from "@/lib/breadth-client";
 
 type Quote = {
@@ -237,10 +238,12 @@ export default function MarketLeftPanel({
   onSymbolSelect,
   selectedSymbol,
   activeTab = "indices",
+  onWatchlistListCreated,
 }: {
   onSymbolSelect?: (sym: string) => void;
   selectedSymbol?: string;
   activeTab?: MarketLeftTab;
+  onWatchlistListCreated?: (info: MarketMonitorListCreatedInfo) => void;
 }) {
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
@@ -248,7 +251,7 @@ export default function MarketLeftPanel({
         <IndicesTable onSymbolSelect={onSymbolSelect} selectedSymbol={selectedSymbol} />
       ) : (
         <div className="flex-1 min-h-0 overflow-auto">
-          <MarketMonitorTable onSymbolSelect={onSymbolSelect} />
+          <MarketMonitorTable onSymbolSelect={onSymbolSelect} onWatchlistListCreated={onWatchlistListCreated} />
         </div>
       )}
     </div>

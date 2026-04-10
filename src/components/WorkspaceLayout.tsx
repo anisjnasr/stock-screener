@@ -41,12 +41,29 @@ export default function WorkspaceLayout({
   const [hoveringRailHandle, setHoveringRailHandle] = useState(false);
   const [activePane, setActivePane] = useState<ActivePane>("center");
 
-  const containerWidth = () => containerRef.current?.clientWidth ?? 1200;
+  const containerWidth = () => {
+    const w = containerRef.current?.clientWidth;
+    if (w != null && w > 0) return w;
+    if (typeof window !== "undefined" && window.innerWidth > 0) return window.innerWidth;
+    return 1200;
+  };
   const railTotal = rightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
   const chartIsMaximized = chartLeftPx > containerWidth();
   const effectiveChartLeft = chartIsMaximized
     ? containerWidth() - railTotal
     : chartLeftPx;
+  /**
+   * When the chart is maximized (e.g. Market Monitor), pin the left overlay to the container width.
+   * Using only `effectiveChartLeft` in px can fall back to 1200 or a stale ref width, leaving a strip
+   * of the chart visible on the right. `calc(100% - rail)` tracks the real layout width.
+   */
+  const leftOverlayWidth: number | string = chartIsMaximized
+    ? `calc(100% - ${railTotal}px)`
+    : effectiveChartLeft;
+  /** Handle sits at the right edge of the left overlay (before the right rail when open). */
+  const chartResizeHandleLeft: number | string = chartIsMaximized
+    ? `calc(100% - ${railTotal + HANDLE_PX}px)`
+    : effectiveChartLeft;
   /** Chart starts after the divider unless maximized (overlay eats almost full width; keep chart full-bleed under it). */
   const chartColumnLeft = chartIsMaximized ? 0 : effectiveChartLeft + HANDLE_PX;
 
@@ -157,10 +174,13 @@ export default function WorkspaceLayout({
       <div
         className="ws-pane absolute top-0 bottom-0 left-0 overflow-hidden"
         style={{
-          width: effectiveChartLeft,
+          width: leftOverlayWidth,
+          /* Opaque fill so the chart layer (below z-index) never shows through gaps from child max-width, padding, etc. */
+          background: "var(--ws-bg2)",
           zIndex: 10,
           transition: draggingChart ? "none" : `width ${SLIDE_TRANSITION}`,
-          borderRight: "1px solid var(--ws-border)",
+          borderRight:
+            chartIsMaximized && railTotal === 0 ? "none" : "1px solid var(--ws-border)",
         }}
         onPointerDownCapture={() => setActivePane("left")}
       >
@@ -187,7 +207,7 @@ export default function WorkspaceLayout({
         tabIndex={onChartLeftChange ? 0 : -1}
         className="absolute top-0 bottom-0 cursor-col-resize flex items-center justify-center transition-opacity"
         style={{
-          left: effectiveChartLeft,
+          left: chartResizeHandleLeft,
           width: HANDLE_PX,
           zIndex: 20,
           background: draggingChart || hoveringChartHandle ? "var(--ws-cyan)" : "var(--ws-border)",

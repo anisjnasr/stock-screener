@@ -88,6 +88,13 @@ export type ScreenerRow = {
 const EFFECTIVE_MARKET_CAP_SQL =
   "COALESCE(q.market_cap, c.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
 
+/** Minimum market cap (USD) for Market Monitor universe — keep in sync with `scripts/compute-market-aggregates.mjs`. */
+export const MM_MIN_MARKET_CAP_USD = 1_000_000_000;
+
+/** Effective cap when `quote_daily` is aliased `q` and `companies` as `co` (Market Monitor SQL). */
+export const MM_EFFECTIVE_MARKET_CAP_SQL =
+  "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close))";
+
 export function buildFilterClauses(filters: ScreenerFilters): { sql: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -1412,8 +1419,8 @@ export function getNinoScriptSnapshot(symbol: string, asOfDate: string): SslSnap
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
       i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m
     FROM companies c
-    LEFT JOIN daily_quotes q ON q.symbol = c.symbol AND q.date = ?
-    LEFT JOIN indicators i ON i.symbol = c.symbol AND i.date = ?
+    LEFT JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+    LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = ?
     WHERE c.symbol = ?
     LIMIT 1
   `).get(asOfDate, asOfDate, symbol) as Record<string, unknown> | undefined;
@@ -1429,6 +1436,57 @@ export function getNinoScriptSnapshot(symbol: string, asOfDate: string): SslSnap
 
 /** Alias for SSL — same as {@link getNinoScriptSnapshot}. */
 export const getSslSnapshot = getNinoScriptSnapshot;
+
+/** One fiscal period row from `financials` (SSL fundamentals). */
+export type SslFinancialRow = {
+  period_end: string;
+  eps: number | null;
+  eps_growth_yoy: number | null;
+  sales: number | null;
+  sales_growth_yoy: number | null;
+};
+
+/** Quarterly and annual series, newest first (index 0 = latest period_end <= asOfDate). */
+export type SslFinancialSeries = {
+  quarterly: SslFinancialRow[];
+  annual: SslFinancialRow[];
+};
+
+function mapFinancialRow(r: Record<string, unknown>): SslFinancialRow {
+  return {
+    period_end: String(r.period_end ?? ""),
+    eps: typeof r.eps === "number" ? r.eps : null,
+    eps_growth_yoy: typeof r.eps_growth_yoy === "number" ? r.eps_growth_yoy : null,
+    sales: typeof r.sales === "number" ? r.sales : null,
+    sales_growth_yoy: typeof r.sales_growth_yoy === "number" ? r.sales_growth_yoy : null,
+  };
+}
+
+/** Load fundamentals for SSL `Q()` / `A()` (point-in-time: `period_end <= asOfDate`). */
+export function getFinancialSeriesForSsl(symbol: string, asOfDate: string): SslFinancialSeries {
+  const db = getDb();
+  if (!db) return { quarterly: [], annual: [] };
+  const qRows = db
+    .prepare(
+      `SELECT period_end, eps, eps_growth_yoy, sales, sales_growth_yoy
+       FROM financials
+       WHERE symbol = ? AND period_type = 'quarterly' AND period_end <= ?
+       ORDER BY period_end DESC`
+    )
+    .all(symbol, asOfDate) as Record<string, unknown>[];
+  const aRows = db
+    .prepare(
+      `SELECT period_end, eps, eps_growth_yoy, sales, sales_growth_yoy
+       FROM financials
+       WHERE symbol = ? AND period_type = 'annual' AND period_end <= ?
+       ORDER BY period_end DESC`
+    )
+    .all(symbol, asOfDate) as Record<string, unknown>[];
+  return {
+    quarterly: qRows.map(mapFinancialRow),
+    annual: aRows.map(mapFinancialRow),
+  };
+}
 
 export type DailyBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
@@ -2279,6 +2337,97 @@ export function getNetNewHighSeries(
   };
 }
 
+/**
+ * Net new highs/lows over the Market Monitor universe (non-ETF, effective cap ≥ {@link MM_MIN_MARKET_CAP_USD} on each as-of date).
+ * Matches precomputed `market_monitor_daily` NNH semantics; use when the API falls back off precomputed data.
+ */
+export function getNetNewHighSeriesMarketMonitor(
+  lookbackDays: number,
+  displayDays = 60,
+  date?: string
+): { rows: NetNewHighRow[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { rows: [], date: null };
+  const asOfDate = date ?? getLatestCompletedTradingDate();
+  if (!asOfDate) return { rows: [], date: null };
+
+  const hasIsEtf = (db.prepare(
+    "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
+  ).get() as { c: number })?.c > 0;
+  const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
+  const displayDateRows = db
+    .prepare(
+      `
+      SELECT date
+      FROM daily_bars
+      WHERE date <= ?
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT ?
+      `
+    )
+    .all(asOfDate, Math.max(5, displayDays)) as Array<{ date: string }>;
+  const displayDatesAsc = displayDateRows.map((r) => String(r.date)).reverse();
+  if (displayDatesAsc.length === 0) return { rows: [], date: asOfDate };
+
+  const sql = `
+    WITH symbols_today AS (
+      SELECT DISTINCT d.symbol
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
+    ),
+    base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        d.high,
+        d.low,
+        MAX(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_high,
+        MIN(d.low) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_low,
+        COUNT(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING
+        ) AS prior_count
+      FROM daily_bars d
+      INNER JOIN symbols_today s ON s.symbol = d.symbol
+      WHERE d.date BETWEEN ? AND ?
+    )
+    SELECT
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END), 0) AS highs,
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END), 0) AS lows
+    FROM base
+    WHERE date = ?
+  `;
+  const stmt = db.prepare(sql);
+
+  const rows: NetNewHighRow[] = [];
+  for (const d of displayDatesAsc) {
+    const buf = new Date(`${d}T00:00:00Z`);
+    buf.setUTCDate(buf.getUTCDate() - (lookbackDays + 30));
+    const bufStart = buf.toISOString().slice(0, 10);
+    const r = stmt.get(d, MM_MIN_MARKET_CAP_USD, bufStart, d, d) as { highs: number; lows: number } | undefined;
+    const highs = Number(r?.highs ?? 0);
+    const lows = Number(r?.lows ?? 0);
+    rows.push({ date: d, highs, lows, net: highs - lows });
+  }
+
+  return { rows, date: asOfDate };
+}
+
 export function getMarketMonitorBaseRows(startDate: string, endDate?: string): MarketMonitorBaseRow[] {
   const db = getDb();
   if (!db) return [];
@@ -2437,7 +2586,9 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
           AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
         FROM daily_bars d
         INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+        INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
         WHERE d.date BETWEEN ? AND ?
+          AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
         WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
       )
       SELECT
@@ -2461,7 +2612,7 @@ export function getMarketMonitorBaseRowsFromDailyBars(startDate: string, endDate
       ORDER BY date ASC
       `
     )
-    .all(bufferStartDate, toDate, startDate, toDate) as Array<{
+    .all(bufferStartDate, toDate, MM_MIN_MARKET_CAP_USD, startDate, toDate) as Array<{
       date: string;
       universe: number;
       up4pct: number;
@@ -2603,7 +2754,9 @@ export function getMarketMonitorConstituents(
         AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20
       FROM daily_bars d
       INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      INNER JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
       WHERE d.date BETWEEN ? AND ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
       WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
     )
     SELECT
@@ -2619,7 +2772,7 @@ export function getMarketMonitorConstituents(
     ORDER BY changePct ${orderDir}
   `;
 
-  const rows = db.prepare(sql).all(bufferStartDate, asOfDate, asOfDate) as Array<{
+  const rows = db.prepare(sql).all(bufferStartDate, asOfDate, MM_MIN_MARKET_CAP_USD, asOfDate) as Array<{
     symbol: string;
     name: string;
     industry: string;
