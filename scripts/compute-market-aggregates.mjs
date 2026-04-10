@@ -39,9 +39,9 @@ const allArg = process.argv.includes("--all");
 const daysArg = process.argv.indexOf("--days");
 let backfillDays = daysArg >= 0 ? parseInt(process.argv[daysArg + 1], 10) : 1;
 
-const db = new Database(DB_PATH);
+const db = new Database(DB_PATH, { timeout: 120000 });
 db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 30000");
+db.pragma("busy_timeout = 120000");
 db.pragma("cache_size = -64000");
 
 if (allArg) {
