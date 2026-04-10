@@ -21,7 +21,7 @@ type FundamentalsCacheEntry = {
 
 const FUNDAMENTALS_TTL_MS = 5 * 60 * 1000;
 /** Bump when YoY / payload shape changes so in-process cache is not reused across logic updates. */
-const FUNDAMENTALS_CACHE_LOGIC_REV = "yoyv2";
+const FUNDAMENTALS_CACHE_LOGIC_REV = "yoyv3";
 
 function getFundamentalsCache(): Map<string, FundamentalsCacheEntry> {
   const g = globalThis as typeof globalThis & {
@@ -68,7 +68,9 @@ export async function GET(request: NextRequest) {
         epsGrowth: row.eps_growth_yoy ?? undefined,
         salesGrowth: row.sales_growth_yoy ?? undefined,
       }));
-      cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
+      if (data.length > 0) {
+        cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
+      }
       return NextResponse.json(data, {
         headers: { "Cache-Control": "private, no-store, must-revalidate" },
       });
@@ -76,7 +78,9 @@ export async function GET(request: NextRequest) {
 
     // Fallback for symbols missing in local DB.
     const data = await fetchIncomeStatement(symbolUpper, period);
-    cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
+    if (data.length > 0) {
+      cache.set(cacheKey, { data, expiresAt: Date.now() + FUNDAMENTALS_TTL_MS });
+    }
     return NextResponse.json(data, {
       headers: { "Cache-Control": "private, no-store, must-revalidate" },
     });

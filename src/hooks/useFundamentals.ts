@@ -86,7 +86,7 @@ export function useFundamentals(symbol: string) {
   const yearlyRows = useMemo((): YearlyRow[] => {
     const lines = annualFundamentals as IncomeLine[];
     if (!lines.length) return [];
-    const byYear = lines
+    return lines
       .map((l) => ({
         year: l.calendarYear ?? l.date?.slice(0, 4) ?? "",
         eps: l.eps ?? null,
@@ -95,19 +95,14 @@ export function useFundamentals(symbol: string) {
         salesGrowth: typeof l.salesGrowth === "number" ? l.salesGrowth : null,
       }))
       .filter((r) => r.year)
-      .sort((a, b) => b.year.localeCompare(a.year));
-    return byYear.map((row, i) => {
-      const prev = byYear[i + 1];
-      const epsGrowth = row.epsGrowth ??
-        (row.eps != null && prev?.eps != null && prev.eps !== 0
-          ? ((row.eps - prev.eps) / Math.abs(prev.eps)) * 100
-          : null);
-      const salesGrowth = row.salesGrowth ??
-        (row.sales != null && prev?.sales != null && prev.sales !== 0
-          ? ((row.sales - prev.sales) / Math.abs(prev.sales)) * 100
-          : null);
-      return { year: row.year, eps: row.eps, epsGrowth, sales: row.sales, salesGrowth };
-    });
+      .sort((a, b) => b.year.localeCompare(a.year))
+      .map((row) => ({
+        year: row.year,
+        eps: row.eps,
+        epsGrowth: row.epsGrowth,
+        sales: row.sales,
+        salesGrowth: row.salesGrowth,
+      }));
   }, [annualFundamentals]);
 
   const quarterlyRows = useMemo((): QuarterlyRow[] => {

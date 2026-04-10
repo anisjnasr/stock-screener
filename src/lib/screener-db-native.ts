@@ -559,6 +559,39 @@ export function resetDbConnection(): void {
   globalForDb._screenerDbLastStatCheck = undefined;
 }
 
+/** Older DBs may lack columns that newer code SELECTs; add them once (writable handle). */
+let financialsSchemaMigrationAttempted = false;
+function ensureFinancialsSchemaMigration(): void {
+  if (financialsSchemaMigrationAttempted) return;
+  financialsSchemaMigrationAttempted = true;
+  if (!existsSync(DB_PATH)) return;
+  let w: BetterSqlite3Database | undefined;
+  try {
+    w = new Database(DB_PATH, { readonly: false });
+    const cols = new Set(
+      (w.prepare("PRAGMA table_info(financials)").all() as Array<{ name: string }>).map((r) => r.name)
+    );
+    let changed = false;
+    if (!cols.has("fiscal_period")) {
+      w.exec("ALTER TABLE financials ADD COLUMN fiscal_period TEXT");
+      changed = true;
+    }
+    if (!cols.has("fiscal_year")) {
+      w.exec("ALTER TABLE financials ADD COLUMN fiscal_year INTEGER");
+      changed = true;
+    }
+    if (changed) resetDbConnection();
+  } catch {
+    /* Read-only volume or missing table — operator must run ALTER manually (see docs). */
+  } finally {
+    try {
+      w?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function getDb(): BetterSqlite3Database | null {
   if (globalForDb._screenerDb && globalForDb._screenerDbPath === DB_PATH) {
     if (dbFileChanged()) {
@@ -910,6 +943,7 @@ export function getFinancialsNative(
   periodType: "annual" | "quarterly",
   limit = 40
 ): FinancialLineNative[] {
+  ensureFinancialsSchemaMigration();
   const db = getDb();
   if (!db) return [];
   const safeLimit = Math.max(1, Math.min(200, Number(limit) || 40));
