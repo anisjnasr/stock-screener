@@ -304,6 +304,8 @@ function WorkspaceHeader({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [scanDDOpen, setScanDDOpen] = useState(false);
+  /** Scan name whose per-row "move to folder" menu is open (custom menu replaces native select). */
+  const [scanFolderPickerFor, setScanFolderPickerFor] = useState<string | null>(null);
   const [listDDOpen, setListDDOpen] = useState(false);
   const [favScreenIds, setFavScreenIds] = useState<string[]>(() => loadFavoriteScreenIds());
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
@@ -484,6 +486,10 @@ function WorkspaceHeader({
     return () => clearTimeout(t);
   }, [searchValue, symbol]);
 
+  useEffect(() => {
+    if (!scanDDOpen) setScanFolderPickerFor(null);
+  }, [scanDDOpen]);
+
   const selectSymbol = useCallback(
     (sym: string) => {
       onSearchChange("");
@@ -502,6 +508,7 @@ function WorkspaceHeader({
       }
       if (scanDDRef.current && !scanDDRef.current.contains(e.target as Node)) {
         setScanDDOpen(false);
+        setScanFolderPickerFor(null);
       }
       if (listDDRef.current && !listDDRef.current.contains(e.target as Node)) {
         setListDDOpen(false);
@@ -852,19 +859,99 @@ function WorkspaceHeader({
                           <span className="rounded p-0.5 hover:bg-white/10 cursor-pointer" title={`Clone ${s}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCloneScan?.(s); setScanDDOpen(false); }} role="button" tabIndex={0}>
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" /></svg>
                           </span>
-                          {folders.length > 0 && (
-                            <select
-                              className="rounded p-0.5 text-[10px] border-0 bg-transparent cursor-pointer"
-                              style={{ color: "inherit", maxWidth: 50 }}
-                              title="Move to folder"
-                              value={screensList.find((sc) => sc.name === s)?.folderId ?? ""}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => { e.stopPropagation(); handleMoveScanToFolder(s, e.target.value || null); }}
-                            >
-                              <option value="">Root</option>
-                              {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                            </select>
-                          )}
+                          {folders.length > 0 && (() => {
+                            const currentFid = screensList.find((sc) => sc.name === s)?.folderId;
+                            const currentFolderLabel = currentFid && folderMap.has(currentFid)
+                              ? folderMap.get(currentFid)!.name
+                              : "Root";
+                            return (
+                              <span className="relative inline-flex shrink-0">
+                                <button
+                                  type="button"
+                                  className="rounded p-0.5 hover:bg-white/10 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center"
+                                  style={{ color: "inherit" }}
+                                  title="Move to folder"
+                                  aria-label={`Move to folder (current: ${currentFolderLabel})`}
+                                  aria-expanded={scanFolderPickerFor === s}
+                                  aria-haspopup="listbox"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setScanFolderPickerFor((cur) => (cur === s ? null : s));
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                                    <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h2.379a1.5 1.5 0 0 1 1.06.44l.72.72H12.5A1.5 1.5 0 0 1 14 4.62v7.88a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12.5v-9Z" />
+                                  </svg>
+                                </button>
+                                {scanFolderPickerFor === s && (
+                                  <div
+                                    role="listbox"
+                                    className="absolute right-0 top-full z-[60] mt-0.5 rounded py-1 min-w-[160px] max-w-[min(280px,70vw)] max-h-60 overflow-auto shadow-lg"
+                                    style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      role="option"
+                                      aria-selected={!currentFid}
+                                      className="w-full text-left px-3 py-1.5 text-xs transition-colors truncate"
+                                      style={{
+                                        color: !currentFid ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                                        background: !currentFid ? "rgba(0,229,204,0.08)" : "transparent",
+                                      }}
+                                      title="Root"
+                                      onMouseEnter={(e) => {
+                                        if (!currentFid) return;
+                                        (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        (e.currentTarget as HTMLElement).style.background = !currentFid ? "rgba(0,229,204,0.08)" : "transparent";
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveScanToFolder(s, null);
+                                        setScanFolderPickerFor(null);
+                                      }}
+                                    >
+                                      Root
+                                    </button>
+                                    {folders.map((f) => {
+                                      const isActive = f.id === currentFid;
+                                      return (
+                                        <button
+                                          key={f.id}
+                                          type="button"
+                                          role="option"
+                                          aria-selected={isActive}
+                                          className="w-full text-left px-3 py-1.5 text-xs transition-colors truncate"
+                                          style={{
+                                            color: isActive ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                                            background: isActive ? "rgba(0,229,204,0.08)" : "transparent",
+                                          }}
+                                          title={f.name}
+                                          onMouseEnter={(e) => {
+                                            if (isActive) return;
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = isActive ? "rgba(0,229,204,0.08)" : "transparent";
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleMoveScanToFolder(s, f.id);
+                                            setScanFolderPickerFor(null);
+                                          }}
+                                        >
+                                          {f.name}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </span>
+                            );
+                          })()}
                           <button type="button" className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer border-0 bg-transparent inline-flex items-center justify-center shrink-0" style={{ color: "inherit" }} title={`Delete ${s}`} aria-label={`Delete scan ${s}`} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); const scanName = s; queueMicrotask(() => { if (!window.confirm(`Delete scan "${scanName}"? This cannot be undone.`)) return; onDeleteScan?.(scanName); setScanDDOpen(false); }); }}>
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" /></svg>
                           </button>
