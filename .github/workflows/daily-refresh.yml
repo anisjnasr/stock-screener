@@ -167,6 +167,12 @@ jobs:
       - name: Optimize database
         run: node scripts/optimize-db.mjs
 
+      # Fill missing quote_daily.market_cap (and related fields) from bars + shares so MM cap
+      # filter sees market_cap on fresh quote rows before precompute runs.
+      - name: Backfill quote-derived fields from bars
+        run: node scripts/backfill-quote-derived-from-bars.mjs
+        timeout-minutes: 30
+
       # Precompute market monitor and breadth aggregates directly into DB tables.
       # Uses --days 504 for a full 2-year backfill when the table is empty,
       # otherwise appends just the latest day.

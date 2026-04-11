@@ -259,6 +259,32 @@ if (targetDates.length === 0) {
 
 console.log(`Computing aggregates for ${targetDates.length} date(s): ${targetDates[0]} to ${targetDates[targetDates.length - 1]}`);
 
+// Derive shares_outstanding BEFORE MM cap math so COALESCE(market_cap, shares×price)
+// works when quote rows lack market_cap (common right after a daily refresh).
+withBusyRetry(() => {
+  const backfillResult = db.prepare(`
+    UPDATE companies
+    SET shares_outstanding = (
+      SELECT q.market_cap / q.last_price
+      FROM quote_daily q
+      WHERE q.symbol = companies.symbol
+        AND q.last_price > 0
+        AND q.market_cap > 0
+      ORDER BY q.date DESC
+      LIMIT 1
+    ),
+    updated_at = datetime('now')
+    WHERE shares_outstanding IS NULL
+      AND EXISTS (
+        SELECT 1 FROM quote_daily q
+        WHERE q.symbol = companies.symbol
+          AND q.market_cap > 0
+          AND q.last_price > 0
+      )
+  `).run();
+  console.log(`Preflight: backfilled shares_outstanding for ${backfillResult.changes} companies (for MM cap)`);
+}, "shares_outstanding preflight");
+
 // ── Market Monitor: compute in a single SQL batch per date range ──
 const bufferDate = (() => {
   const d = new Date(`${targetDates[0]}T00:00:00Z`);
@@ -639,31 +665,6 @@ withBusyRetry(() => {
   db.prepare("DELETE FROM market_monitor_daily WHERE date < ?").run(cutoff);
   db.prepare("DELETE FROM breadth_daily WHERE date < ?").run(cutoff);
 }, "trim old precomputed rows");
-
-// Backfill shares_outstanding last so earlier steps avoid contending with this UPDATE.
-withBusyRetry(() => {
-  const backfillResult = db.prepare(`
-    UPDATE companies
-    SET shares_outstanding = (
-      SELECT q.market_cap / q.last_price
-      FROM quote_daily q
-      WHERE q.symbol = companies.symbol
-        AND q.last_price > 0
-        AND q.market_cap > 0
-      ORDER BY q.date DESC
-      LIMIT 1
-    ),
-    updated_at = datetime('now')
-    WHERE shares_outstanding IS NULL
-      AND EXISTS (
-        SELECT 1 FROM quote_daily q
-        WHERE q.symbol = companies.symbol
-          AND q.market_cap > 0
-          AND q.last_price > 0
-      )
-  `).run();
-  console.log(`Backfilled shares_outstanding for ${backfillResult.changes} companies`);
-}, "shares_outstanding backfill");
 
 db.close();
 console.log(`Done. Computed aggregates for ${processed} date(s).`);
