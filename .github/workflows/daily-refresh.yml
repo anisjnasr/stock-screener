@@ -99,7 +99,8 @@ jobs:
     needs: [seed_db]
     if: ${{ always() && (needs.seed_db.result == 'success' || needs.seed_db.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Full MM precompute (--all) plus upload/sync can exceed 120m.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
@@ -173,29 +174,12 @@ jobs:
         run: node scripts/backfill-quote-derived-from-bars.mjs
         timeout-minutes: 30
 
-      # Precompute market monitor and breadth aggregates directly into DB tables.
-      # Uses --days 504 for a full 2-year backfill when the table is empty,
-      # otherwise appends just the latest day.
+      # Precompute market_monitor_daily and breadth_daily for every bar date (--all).
+      # Always full rebuild so live MM never mixes stale rows with newly recomputed dates.
+      # SQLite only; does not call Massive (Massive runs in Refresh daily bars when not skipped).
       - name: Precompute market aggregates
-        run: |
-          ROWS=$(node -e "
-            const Database = require('better-sqlite3');
-            const db = new Database('data/screener.db');
-            try {
-              const r = db.prepare('SELECT COUNT(*) AS n FROM market_monitor_daily').get();
-              console.log(r.n);
-            } catch { console.log('0'); }
-            db.close();
-          ")
-          echo "Existing precomputed rows: $ROWS"
-          if [ "$ROWS" -lt 50 ]; then
-            echo "Running full 2-year backfill..."
-            node scripts/compute-market-aggregates.mjs --days 504
-          else
-            echo "Running incremental update (auto-fills gaps + latest 5 days)..."
-            node scripts/compute-market-aggregates.mjs --days 5
-          fi
-        timeout-minutes: 30
+        run: node scripts/compute-market-aggregates.mjs --all
+        timeout-minutes: 180
 
       # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).
       - name: Warm secondary page caches
