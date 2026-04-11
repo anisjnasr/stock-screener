@@ -28,6 +28,10 @@ on:
         description: "Skip daily bars refresh"
         type: boolean
         default: false
+      full_mm_recompute:
+        description: "Full Market Monitor rebuild (--all, last ~2y of dates). Use after MM logic changes or stale rows; normal runs stay incremental."
+        type: boolean
+        default: false
 
 concurrency:
   group: daily-refresh
@@ -99,8 +103,8 @@ jobs:
     needs: [seed_db]
     if: ${{ always() && (needs.seed_db.result == 'success' || needs.seed_db.result == 'skipped') }}
     runs-on: ubuntu-latest
-    # Full MM precompute (--all) plus upload/sync can exceed 120m.
-    timeout-minutes: 300
+    # Incremental MM is fast; full --all + upload/sync may still need headroom.
+    timeout-minutes: 200
     steps:
       - uses: actions/checkout@v4
 
@@ -174,11 +178,34 @@ jobs:
         run: node scripts/backfill-quote-derived-from-bars.mjs
         timeout-minutes: 30
 
-      # Precompute market_monitor_daily and breadth_daily for every bar date (--all).
-      # Always full rebuild so live MM never mixes stale rows with newly recomputed dates.
-      # SQLite only; does not call Massive (Massive runs in Refresh daily bars when not skipped).
+      # Precompute market_monitor_daily and breadth_daily (SQLite only; no Massive).
+      # Default: incremental (--days 1) when MM table is warm; cold DB uses --days 504.
+      # Optional workflow input full_mm_recompute runs bounded --all (~2y of dates in script).
       - name: Precompute market aggregates
-        run: node scripts/compute-market-aggregates.mjs --all
+        run: |
+          set -e
+          FULL_MM="${{ github.event.inputs.full_mm_recompute }}"
+          ROWS=$(node -e "
+          const Database = require('better-sqlite3');
+          const db = new Database('data/screener.db', { readonly: true });
+          let c = 0;
+          try {
+            c = Number(db.prepare('SELECT COUNT(*) AS c FROM market_monitor_daily').get().c) || 0;
+          } catch (_) { /* missing table */ }
+          db.close();
+          process.stdout.write(String(c));
+          ")
+          echo "market_monitor_daily rows: $ROWS"
+          if [ "$FULL_MM" = "true" ]; then
+            echo "Full MM recompute (--all)"
+            node scripts/compute-market-aggregates.mjs --all
+          elif [ "$ROWS" -lt 50 ]; then
+            echo "Cold bootstrap: --days 504"
+            node scripts/compute-market-aggregates.mjs --days 504
+          else
+            echo "Incremental: --days 1"
+            node scripts/compute-market-aggregates.mjs --days 1
+          fi
         timeout-minutes: 180
 
       # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).

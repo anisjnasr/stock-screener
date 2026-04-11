@@ -6,6 +6,7 @@
  * Usage:
  *   node scripts/compute-market-aggregates.mjs [--days 504]
  *   node scripts/compute-market-aggregates.mjs --all
+ *     (bounded to last ~2y of distinct bar dates; see MM_MAX_DISTINCT_BACKFILL_DATES)
  *
  * Market Monitor universe: non-ETF, effective market cap ≥ MM_MIN_MARKET_CAP_USD on each date
  * (aligned with screener-db-native MM_EFFECTIVE_MARKET_CAP_SQL). Uses LEFT JOIN quote_daily so
@@ -30,6 +31,8 @@ const DB_PATH = join(__dirname, "..", "data", "screener.db");
 
 /** Keep in sync with MM_MIN_MARKET_CAP_USD in src/lib/screener-db-native.ts */
 const MM_MIN_MARKET_CAP_USD = 1_000_000_000;
+/** ~2y trading days; align with TWO_YEARS_TRADING_DAYS in src/app/api/market-monitor/route.ts */
+const MM_MAX_DISTINCT_BACKFILL_DATES = 252 * 2;
 const MM_EFFECTIVE_CAP_SQL =
   "COALESCE(q.market_cap, co.shares_outstanding * COALESCE(q.last_price, q.prev_close, d.close))";
 
@@ -81,8 +84,11 @@ db.pragma("cache_size = -64000");
 
 if (allArg) {
   const row = db.prepare("SELECT COUNT(DISTINCT date) AS c FROM daily_bars").get();
-  backfillDays = Math.max(Number(row?.c ?? 0), 1);
-  console.log(`--all: using ${backfillDays} distinct bar dates`);
+  const total = Math.max(Number(row?.c ?? 0), 1);
+  backfillDays = Math.min(total, MM_MAX_DISTINCT_BACKFILL_DATES);
+  console.log(
+    `--all: using ${backfillDays} distinct bar dates (capped from ${total} total; max ${MM_MAX_DISTINCT_BACKFILL_DATES})`
+  );
 }
 
 function loadIndexSymbols(filename) {
@@ -658,7 +664,7 @@ withBusyRetry(() => insertAll(), "market_monitor + breadth upserts");
 
 const cutoff = (() => {
   const d = new Date(`${targetDates[targetDates.length - 1]}T00:00:00Z`);
-  d.setUTCFullYear(d.getUTCFullYear() - 3);
+  d.setUTCFullYear(d.getUTCFullYear() - 2);
   return d.toISOString().slice(0, 10);
 })();
 withBusyRetry(() => {
