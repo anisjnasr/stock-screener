@@ -146,6 +146,10 @@ export function inferFormat(node: AstNode): ScriptColumnFormat | undefined {
   if (node.kind === "binary" && (node.op === "/" || node.op === "*" || node.op === "+" || node.op === "-")) {
     return "float";
   }
+  if (node.kind === "variable") {
+    const u = node.name.toUpperCase();
+    if (u === "MARKET_CAP" || u === "MC") return "int";
+  }
   return "float";
 }
 

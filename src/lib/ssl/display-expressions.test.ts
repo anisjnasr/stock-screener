@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { parseScript } from "./parser";
+import type { AstNode } from "./ast";
 import {
   collectDisplayExpressions,
   humanizeVarName,
   astToColumnHeader,
+  inferFormat,
 } from "./display-expressions";
 
 describe("humanizeVarName", () => {
@@ -25,6 +27,15 @@ describe("astToColumnHeader", () => {
   it("abbreviates ROC(C, n)", () => {
     const ast = parseScript("X = ROC(C, 21); C > 10;");
     expect(astToColumnHeader(ast.assignments[0]!.expr)).toBe("ROC(21)");
+  });
+});
+
+describe("inferFormat", () => {
+  it("uses int for MARKET_CAP and MC snapshot variables", () => {
+    const mcCap: AstNode = { kind: "variable", name: "MARKET_CAP", lookback: null };
+    const mc: AstNode = { kind: "variable", name: "MC", lookback: null };
+    expect(inferFormat(mcCap)).toBe("int");
+    expect(inferFormat(mc)).toBe("int");
   });
 });
 

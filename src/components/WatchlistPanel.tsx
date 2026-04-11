@@ -213,9 +213,10 @@ type WatchlistPanelProps = {
   setRightRailHidden?: (hidden: boolean) => void;
 };
 
-function fmtBillions(n: number | undefined): string {
+/** Full USD market cap: thousands separators, no fraction digits. */
+function fmtMarketCap(n: number | undefined): string {
   if (n == null || Number.isNaN(n)) return "NA";
-  return (n / 1e9).toFixed(2);
+  return Math.round(n).toLocaleString("en-US");
 }
 
 function fmtPct(n: number | undefined): string {
@@ -289,9 +290,10 @@ function getRowValue(row: WatchlistRow, col: TableColumnId): unknown {
 /** Format script column value; `format` from SSL runner when available, else heuristic on key. */
 function formatScriptColumnValue(label: string, v: number, format?: ScriptColumnFormat): string {
   if (format === "pct") return `${Number(v).toFixed(2)}%`;
-  if (format === "int") return Math.round(v).toLocaleString();
+  if (format === "int") return Math.round(v).toLocaleString("en-US");
   if (format === "float") return Number(v).toFixed(2);
   const L = label.toUpperCase();
+  if (L === "MARKET_CAP" || L === "MC") return Math.round(v).toLocaleString("en-US");
   if (L.includes("ATRP")) return `${Number(v).toFixed(2)}%`;
   if (L.includes("ROC(") || L.includes("PCT")) return `${Number(v).toFixed(2)}%`;
   if (L.includes("(V)") || L.includes("(V,") || L.includes("RVOL")) return Math.round(v).toLocaleString();
@@ -334,7 +336,7 @@ function formatCellValue(
   )
     return typeof v === "number" ? (col === "changePct" ? fmtPct(v) : `${Number(v).toFixed(2)}%`) : String(v);
   if (typeof v === "number") {
-    if (col === "marketCap") return fmtBillions(Number(v));
+    if (col === "marketCap") return fmtMarketCap(Number(v));
     if (String(col).startsWith("sales") || String(col).startsWith("avgSales")) return fmtUsd(Number(v));
     if (col === "volume" || col === "avgVolume") return Math.round(Number(v)).toLocaleString();
     return Number.isInteger(v) ? v.toLocaleString() : Number(v).toFixed(2);

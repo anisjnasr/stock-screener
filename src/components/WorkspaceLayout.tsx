@@ -177,7 +177,8 @@ export default function WorkspaceLayout({
           width: leftOverlayWidth,
           /* Opaque fill so the chart layer (below z-index) never shows through gaps from child max-width, padding, etc. */
           background: "var(--ws-bg2)",
-          zIndex: 10,
+          /* Above chart-left handle (20) so fixed modals from the panel (e.g. Edit Scan) stack on top of the divider. */
+          zIndex: 30,
           transition: draggingChart ? "none" : `width ${SLIDE_TRANSITION}`,
           borderRight:
             chartIsMaximized && railTotal === 0 ? "none" : "1px solid var(--ws-border)",
