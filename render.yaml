@@ -30,4 +30,5 @@ services:
     disk:
       name: screener-data
       mountPath: /app/data
-      sizeGB: 10
+      # Sync preflight needs roughly2x screener.db size + ~400MB margin on this volume.
+      sizeGB: 20

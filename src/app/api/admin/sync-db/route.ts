@@ -292,7 +292,8 @@ function preflightSnapshot(expectedDbBytes: number, artifactZipBytes: number) {
     // ignore
   }
 
-  const marginBytes = 512 * 1024 * 1024;
+  // Staging needs the new DB on disk while the old file still exists; peak ~= live + new.
+  const marginBytes = 384 * 1024 * 1024;
   const requiredBytes = liveDbBytes + expectedDbBytes + marginBytes;
   const enoughSpace =
     dataFreeBytes != null ? dataFreeBytes >= requiredBytes : false;
@@ -359,10 +360,14 @@ function preflightCleanupDataDir(): void {
 
   const backupsDir = join(DATA_DIR, "backups");
   try {
-    const backupFiles = readdirSync(backupsDir)
-      .filter((name) => name.startsWith("screener.db.before-sync."))
-      .sort((a, b) => b.localeCompare(a));
-    for (const old of backupFiles.slice(1)) {
+    const backupFiles = readdirSync(backupsDir).filter((name) =>
+      name.startsWith("screener.db.before-sync.")
+    );
+    // Remove every prior before-sync backup so df() sees enough free space for
+    // preflight (live + staged new DB + margin). Sync still moves the current
+    // live DB aside at swap time, creating one fresh backup; older copies are
+    // only for manual rollback and can exceed a small persistent disk.
+    for (const old of backupFiles) {
       safeRemove(join(backupsDir, old));
     }
   } catch {
@@ -541,7 +546,8 @@ export async function POST(request: NextRequest) {
           manifest,
           snapshot,
           error:
-            "Insufficient disk space for safe staged sync. " +
+            "Insufficient disk space for safe staged sync (need free bytes >= live DB + new DB + margin on the data volume). " +
+            "Expand the Render persistent disk to roughly 2x your screener.db size plus 1GB headroom, or remove large files under the data mount. " +
             "No database mutation was performed.",
         },
         { status: 507 }
