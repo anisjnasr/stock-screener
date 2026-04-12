@@ -119,18 +119,6 @@ function persistBreadthSeries(
         nowIso
       );
     }
-    // Keep only trailing 2 years for this index to bound table growth.
-    db.prepare(
-      `
-      DELETE FROM breadth_daily
-      WHERE index_id = ?
-        AND date < ?
-      `
-    ).run(indexId, (() => {
-      const d = new Date(`${latestDate}T00:00:00Z`);
-      d.setUTCFullYear(d.getUTCFullYear() - 2);
-      return d.toISOString().slice(0, 10);
-    })());
   } finally {
     db.close();
   }

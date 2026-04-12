@@ -18,6 +18,8 @@
  *
  * Without --days, computes for the latest date only (incremental).
  * With --days N, recomputes the last N trading days.
+ *
+ * Historical rows in market_monitor_daily and breadth_daily are retained (no post-run DELETE).
  */
 
 import Database from "better-sqlite3";
@@ -661,16 +663,6 @@ const insertAll = db.transaction(() => {
 });
 
 withBusyRetry(() => insertAll(), "market_monitor + breadth upserts");
-
-const cutoff = (() => {
-  const d = new Date(`${targetDates[targetDates.length - 1]}T00:00:00Z`);
-  d.setUTCFullYear(d.getUTCFullYear() - 2);
-  return d.toISOString().slice(0, 10);
-})();
-withBusyRetry(() => {
-  db.prepare("DELETE FROM market_monitor_daily WHERE date < ?").run(cutoff);
-  db.prepare("DELETE FROM breadth_daily WHERE date < ?").run(cutoff);
-}, "trim old precomputed rows");
 
 db.close();
 console.log(`Done. Computed aggregates for ${processed} date(s).`);
