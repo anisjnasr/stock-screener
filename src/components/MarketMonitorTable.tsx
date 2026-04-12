@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
 import MarketMonitorConstituentsModal, {
@@ -15,6 +15,13 @@ const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
   up50pct_month: "Up 50% M",
   down50pct_month: "Down 50% M",
 };
+
+/** Earliest session date for which primary-breadth indicator counts are drillable (ISO YYYY-MM-DD). */
+const MM_INDICATOR_DRILLDOWN_MIN_DATE = "2026-03-26";
+
+function isMmIndicatorDrilldownDate(rowDate: string): boolean {
+  return rowDate.trim() >= MM_INDICATOR_DRILLDOWN_MIN_DATE;
+}
 
 type ApiResponse = {
   rows: MarketMonitorRow[];
@@ -179,8 +186,6 @@ export default function MarketMonitorTable({
     };
   }, []);
 
-  const latestDate = useMemo(() => tableRowsToShow[0]?.date ?? null, [tableRowsToShow]);
-
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
@@ -198,7 +203,7 @@ export default function MarketMonitorTable({
   }
 
   const openMmModal = (metric: MarketMonitorMetricKey, rowDate: string) => {
-    if (!latestDate || rowDate !== latestDate || !onSymbolSelect) return;
+    if (!onSymbolSelect || !isMmIndicatorDrilldownDate(rowDate)) return;
     setMmModal({ date: rowDate, metric });
   };
 
@@ -309,7 +314,7 @@ export default function MarketMonitorTable({
           </thead>
           <tbody>
             {tableRowsToShow.map((row) => {
-              const latest = latestDate != null && row.date === latestDate && Boolean(onSymbolSelect);
+              const drillable = Boolean(onSymbolSelect) && isMmIndicatorDrilldownDate(row.date);
               const pair4 = getPairCellClassFull(row.up4pct, row.down4pct);
               const pairQ = getPairCellClassFull(row.up25pct_qtr, row.down25pct_qtr);
               const pairM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
@@ -320,7 +325,7 @@ export default function MarketMonitorTable({
                   {formatDateDmy(row.date)}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
@@ -334,7 +339,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
@@ -354,7 +359,7 @@ export default function MarketMonitorTable({
                   {fmtRatio(row.ratio10d)}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
@@ -368,7 +373,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
@@ -382,7 +387,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
@@ -396,7 +401,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
@@ -410,7 +415,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}
@@ -424,7 +429,7 @@ export default function MarketMonitorTable({
                   )}
                 </td>
                 <td className="p-0">
-                  {latest ? (
+                  {drillable ? (
                     <button
                       type="button"
                       className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}

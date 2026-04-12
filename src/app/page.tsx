@@ -350,12 +350,12 @@ export default function Home() {
         const rawLabel = formatHeaderDate(String(d.latestScreenerDateRaw ?? ""));
         if (reliableLabel) {
           if (rawLabel && rawLabel !== reliableLabel) {
-            setLastUpdated(`Reliable through ${reliableLabel} (raw ${rawLabel})`);
+            setLastUpdated(`Last Update: ${reliableLabel} (raw ${rawLabel})`);
           } else {
-            setLastUpdated(`Reliable through ${reliableLabel}`);
+            setLastUpdated(`Last Update: ${reliableLabel}`);
           }
         } else if (rawLabel) {
-          setLastUpdated(`Raw through ${rawLabel}`);
+          setLastUpdated(`Last Update: ${rawLabel}`);
         }
         if (d.candles && Array.isArray(d.candles) && d.candles.length > 0) {
           setCachedCandles(DEFAULT_SYMBOL, "daily", d.candles);
