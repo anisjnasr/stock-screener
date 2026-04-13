@@ -1,259 +1,37 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState, useCallback } from "react";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
+import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
+import type { MarketIndexSymbol } from "@/components/MarketIndexCards";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
-import { fetchBreadthClient } from "@/lib/breadth-client";
-
-type Quote = {
-  symbol: string;
-  last_price: number | null;
-  change_pct: number | null;
-  volume: number | null;
-  avg_volume_30d_shares: number | null;
-  market_cap: number | null;
-  atr_pct_21d: number | null;
-};
-
-type WatchlistQuotesApiItem = {
-  symbol: string;
-  quote: {
-    price?: number;
-    changesPercentage?: number;
-    volume?: number;
-    marketCap?: number;
-    avgVolume?: number;
-  } | null;
-  profile?: { mktCap?: number } | null;
-};
-
-function numOrNull(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
-
-function quoteFromWatchlistApiItem(item: WatchlistQuotesApiItem): Quote {
-  const q = item.quote;
-  return {
-    symbol: item.symbol,
-    last_price: numOrNull(q?.price),
-    change_pct: numOrNull(q?.changesPercentage),
-    volume: numOrNull(q?.volume),
-    avg_volume_30d_shares: numOrNull(q?.avgVolume),
-    market_cap: numOrNull(q?.marketCap ?? item.profile?.mktCap),
-    atr_pct_21d: null,
-  };
-}
-
-function normalizeWatchlistQuotesPayload(data: unknown): Quote[] {
-  if (!Array.isArray(data)) return [];
-  return data.map((raw) => quoteFromWatchlistApiItem(raw as WatchlistQuotesApiItem));
-}
-
-type MarketLeftTab = "indices" | "monitor";
-
-const INDEX_SYMBOLS = ["SPY", "QQQ", "IWM"];
-
-const SYMBOL_TO_BREADTH_INDEX: Record<string, string> = {
-  SPY: "sp500",
-  QQQ: "nasdaq",
-};
-
-function fmtPrice(n: number | null): string {
-  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
-  return n.toFixed(2);
-}
-
-function fmtPct(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (n === 0) return "0.00%";
-  return `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
-}
-
-function fmtVol(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
-}
-
-function fmtBreadth(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(1)}%`;
-}
-
-function breadthColor(v: number | null): string {
-  if (v == null) return "var(--ws-text-vdim)";
-  if (v > 45) return "var(--ws-text)";
-  if (v >= 25) return "var(--ws-amber)";
-  return "var(--ws-red)";
-}
-
-type BreadthMap = Record<string, { pct50: number | null; pct200: number | null }>;
-
-function IndicesTable({
-  onSymbolSelect,
-  selectedSymbol,
-}: {
-  onSymbolSelect?: (sym: string) => void;
-  selectedSymbol?: string;
-}) {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [breadthMap, setBreadthMap] = useState<BreadthMap>({});
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetch(`/api/watchlist-quotes?symbols=${INDEX_SYMBOLS.join(",")}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        setQuotes(normalizeWatchlistQuotesPayload(data));
-      })
-      .catch(() => { if (!cancelled) setQuotes([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const indices = Object.entries(SYMBOL_TO_BREADTH_INDEX);
-    Promise.all(
-      indices.map(([sym, indexId]) =>
-        fetchBreadthClient(indexId as "sp500" | "nasdaq", { includeNetNewHighs: false })
-          .then((d) => {
-            if (!d) return [sym, { pct50: null, pct200: null }] as const;
-            const pts = d.breadth ?? [];
-            const ld = d.latestDate ?? null;
-            const match = ld ? pts.find((p) => p.date === ld) : undefined;
-            const last = match ?? (pts.length > 0 ? pts[pts.length - 1] : undefined);
-            return [sym, { pct50: last?.pctAbove50d ?? null, pct200: last?.pctAbove200d ?? null }] as const;
-          })
-          .catch(() => [sym, { pct50: null, pct200: null }] as const)
-      )
-    ).then((results) => {
-      if (cancelled) return;
-      setBreadthMap(Object.fromEntries(results));
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
-      if (quotes.length === 0) return;
-      const curIdx = quotes.findIndex((q) => q.symbol === selectedSymbol?.toUpperCase());
-      const nextIdx = e.key === "ArrowDown"
-        ? Math.min(quotes.length - 1, (curIdx < 0 ? 0 : curIdx + 1))
-        : Math.max(0, (curIdx < 0 ? 0 : curIdx - 1));
-      if (nextIdx === curIdx) return;
-      e.preventDefault();
-      onSymbolSelect?.(quotes[nextIdx].symbol);
-    },
-    [quotes, selectedSymbol, onSymbolSelect]
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
-
-  const COL_STYLE = "px-2 py-[6px]";
-  const HDR_STYLE: React.CSSProperties = { color: "var(--ws-text-dim)" };
-
-  return (
-    <div className="flex-1 min-h-0 overflow-auto min-w-[min(100%,640px)]">
-      <table
-        className="border-collapse whitespace-nowrap"
-        style={{ color: "var(--ws-text)", fontSize: 13, lineHeight: "1.4", minWidth: "max-content" }}
-      >
-        <thead className="sticky top-0 z-10" style={{ background: "var(--ws-bg3)", borderBottom: "1px solid var(--ws-border)" }}>
-          <tr>
-            <th className={`text-left ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>Symbol</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>Price</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>Change %</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>Volume</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>Avg Vol</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>&gt; 50D</th>
-            <th className={`text-right ${COL_STYLE} font-medium text-xs`} style={HDR_STYLE}>&gt; 200D</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading ? (
-            <tr><td colSpan={7} className="px-2 py-3 text-center" style={{ color: "var(--ws-text-vdim)" }}>Loading…</td></tr>
-          ) : quotes.length === 0 ? (
-            <tr><td colSpan={7} className="px-2 py-3 text-center" style={{ color: "var(--ws-text-vdim)" }}>No data</td></tr>
-          ) : (
-            quotes.map((q) => {
-              const isSelected = selectedSymbol?.toUpperCase() === q.symbol;
-              const ch = q.change_pct;
-              const hasChange = ch != null && Number.isFinite(ch);
-              const changeColor = !hasChange
-                ? "var(--ws-text-dim)"
-                : ch > 0
-                  ? "var(--ws-green)"
-                  : ch < 0
-                    ? "var(--ws-red)"
-                    : "var(--ws-text-dim)";
-              const b = breadthMap[q.symbol];
-              return (
-                <tr
-                  key={q.symbol}
-                  className={`cursor-pointer ws-row-hover ws-focus-ring ${isSelected ? "" : ""}`}
-                  style={{
-                    background: isSelected ? "rgba(0,229,204,0.08)" : undefined,
-                    borderBottom: "1px solid var(--ws-border)",
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Select ${q.symbol}`}
-                  aria-pressed={isSelected}
-                  onClick={() => onSymbolSelect?.(q.symbol)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSymbolSelect?.(q.symbol); } }}
-                >
-                  <td className={`${COL_STYLE} font-mono font-medium`} style={{ color: "var(--ws-cyan)" }}>{q.symbol}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtPrice(q.last_price)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: changeColor }}>{fmtPct(ch)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtVol(q.volume)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`}>{fmtVol(q.avg_volume_30d_shares)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: breadthColor(b?.pct50 ?? null) }}>{fmtBreadth(b?.pct50 ?? null)}</td>
-                  <td className={`${COL_STYLE} text-right tabular-nums`} style={{ color: breadthColor(b?.pct200 ?? null) }}>{fmtBreadth(b?.pct200 ?? null)}</td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export type { MarketLeftTab };
 
 export default function MarketLeftPanel({
   onSymbolSelect,
-  selectedSymbol,
-  activeTab = "indices",
+  indexCardSelection,
+  onIndexCardClick,
   onWatchlistListCreated,
+  /** When true, index cards + credit render in the page chrome above the split; this panel is table only. */
+  omitIndexHeader = false,
 }: {
   onSymbolSelect?: (sym: string) => void;
-  selectedSymbol?: string;
-  activeTab?: MarketLeftTab;
+  indexCardSelection: MarketIndexSymbol | null;
+  onIndexCardClick: (sym: MarketIndexSymbol) => void;
   onWatchlistListCreated?: (info: MarketMonitorListCreatedInfo) => void;
+  omitIndexHeader?: boolean;
 }) {
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      {activeTab === "indices" ? (
-        <IndicesTable onSymbolSelect={onSymbolSelect} selectedSymbol={selectedSymbol} />
-      ) : (
-        <div className="flex-1 min-h-0 overflow-auto">
+    <div
+      className="h-full min-h-0 flex flex-col overflow-x-auto overflow-y-hidden"
+      style={{ background: "var(--ws-bg2)" }}
+    >
+      <div className="flex min-w-max flex-col h-full min-h-0">
+        {!omitIndexHeader && (
+          <MarketIndexHeaderBlock indexCardSelection={indexCardSelection} onIndexCardClick={onIndexCardClick} />
+        )}
+        <div className="flex min-h-0 min-w-max flex-1 flex-col overflow-y-auto">
           <MarketMonitorTable onSymbolSelect={onSymbolSelect} onWatchlistListCreated={onWatchlistListCreated} />
         </div>
-      )}
+      </div>
     </div>
   );
 }

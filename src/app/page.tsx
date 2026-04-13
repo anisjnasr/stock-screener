@@ -34,7 +34,8 @@ class PanelErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-import WorkspaceHeader, { type MarketSubTab, type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
+import WorkspaceHeader, { type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
+import type { MarketIndexSymbol } from "@/components/MarketIndexCards";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { type InsightInput } from "@/components/AIInsightFormCard";
 import { DEFAULT_LISTS_OPEN_ID, FULL_UNIVERSE_ID } from "@/components/WatchlistPanel";
@@ -71,6 +72,7 @@ import SectorPerfPanel from "@/components/SectorPerfPanel";
 import NNHPanel from "@/components/NNHPanel";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketLeftPanel from "@/components/MarketLeftPanel";
+import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
 
@@ -130,8 +132,8 @@ export default function Home() {
   const [visibleDateRange, setVisibleDateRange] = useState<{ from: string; to: string } | null>(null);
   const [nnhCollapsed, setNnhCollapsed] = useState(false);
 
-  // Market contextual state
-  const [marketSubTab, setMarketSubTab] = useState<MarketSubTab>("indices");
+  /** When null, Market chart is minimized (full-width MM table). */
+  const [marketIndexCardSelection, setMarketIndexCardSelection] = useState<MarketIndexSymbol | null>(null);
 
   // Sectors contextual state
   const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>("sectors");
@@ -187,7 +189,7 @@ export default function Home() {
     setRightRailHidden,
     handleRightRailToggle,
   } = useLayoutPreferences();
-  const chartHidden = section === "market" && marketSubTab === "monitor";
+  const chartHidden = section === "market" && marketIndexCardSelection === null;
   const isSectorSection = section === "sectors-industries";
   const railSupportedSection = section === "scans" || section === "lists";
   const effectiveRightRailHidden = railSupportedSection ? rightRailHidden : true;
@@ -197,9 +199,16 @@ export default function Home() {
 
   useLayoutEffect(() => {
     if (chartHidden) return;
-    const key = `${section}:${marketSubTab}:${sectorSubTab}`;
+    const key =
+      section === "market"
+        ? `m:${marketIndexCardSelection ?? "none"}`
+        : `${section}:${sectorSubTab}`;
     if (sectionLayoutKeyRef.current === key) return;
     sectionLayoutKeyRef.current = key;
+
+    if (section === "market") {
+      return;
+    }
 
     const railTotal = effectiveRightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
     const run = () => {
@@ -211,11 +220,7 @@ export default function Home() {
         const w = Math.max(el.scrollWidth, el.getBoundingClientRect().width);
         target = Math.ceil(w + 24);
       }
-      if (section === "market") {
-        if (marketSubTab === "monitor") target = Math.max(target, 720);
-        target = Math.min(maxLeft, Math.max(380, target));
-        setChartLeftPx(target);
-      } else if (section === "sectors-industries") {
+      if (section === "sectors-industries") {
         target = Math.min(maxLeft, Math.max(520, Math.max(target, Math.round(cw * 0.44))));
         setChartLeftSectorsPx(target);
       } else {
@@ -229,7 +234,7 @@ export default function Home() {
     return () => cancelAnimationFrame(id);
   }, [
     section,
-    marketSubTab,
+    marketIndexCardSelection,
     sectorSubTab,
     chartHidden,
     effectiveRightRailHidden,
@@ -376,6 +381,31 @@ export default function Home() {
     setSymbol(upper);
     setSearchValue("");
   }, []);
+
+  const handleMarketIndexCardClick = useCallback(
+    (sym: MarketIndexSymbol) => {
+      const upper = sym as string;
+      if (marketIndexCardSelection === upper) {
+        setMarketIndexCardSelection(null);
+        return;
+      }
+      setMarketIndexCardSelection(sym);
+      setSymbol(upper);
+      setSearchValue("");
+      const railTotal = effectiveRightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
+      const cw = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const maxLeft = Math.max(0, cw - railTotal - CHART_HANDLE_PX - MIN_CENTER_WIDTH_PX);
+      const targetLeft = Math.floor(cw * 0.4) - CHART_HANDLE_PX;
+      setChartLeftPx(Math.max(0, Math.min(maxLeft, targetLeft)));
+    },
+    [marketIndexCardSelection, effectiveRightRailHidden, setChartLeftPx]
+  );
+
+  useEffect(() => {
+    if (section !== "market") {
+      setMarketIndexCardSelection(null);
+    }
+  }, [section]);
 
   const handleOrderedSymbolsChange = useCallback((symbols: string[]) => {
     const upper = symbols.map((s) => normalizeTicker(s)).filter((s) => s.length > 0);
@@ -742,16 +772,19 @@ export default function Home() {
       className={
         chartHidden
           ? "h-full min-h-0 flex flex-col overflow-hidden w-full"
-          : "h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] w-full"
+          : section === "market"
+            ? "h-full min-h-0 flex flex-col overflow-x-auto overflow-y-hidden min-w-0 w-full max-w-[min(92vw,1600px)]"
+            : "h-full min-h-0 flex flex-col overflow-hidden max-w-[min(92vw,1600px)] w-full"
       }
       style={{ background: "var(--ws-bg2)" }}
     >
       {section === "market" ? (
         <MarketLeftPanel
           onSymbolSelect={handleSymbolSelect}
-          selectedSymbol={symbol}
-          activeTab={marketSubTab}
+          indexCardSelection={marketIndexCardSelection}
+          onIndexCardClick={handleMarketIndexCardClick}
           onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}
+          omitIndexHeader={!chartHidden}
         />
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
@@ -912,8 +945,6 @@ export default function Home() {
           setSection("lists");
           setOpenToCollectionTrigger({ kind: "index", value: flagListId, nonce: Date.now() });
         }}
-        marketSubTab={marketSubTab}
-        onMarketSubTabChange={setMarketSubTab}
         sectorSubTab={sectorSubTab}
         onSectorSubTabChange={setSectorSubTab}
         sectorTimeframe={sectorTimeframe}
@@ -1017,17 +1048,31 @@ export default function Home() {
           {dbHealthBanner}
         </div>
       )}
-      <WorkspaceLayout
-        chartLeftPx={chartHidden ? 99999 : activeChartLeft}
-        onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
-        railWidthPx={railWidthPx}
-        onRailWidthChange={setRailWidthPx}
-        rightRailHidden={effectiveRightRailHidden}
-        onToggleRightRail={railSupportedSection ? handleRightRailToggle : undefined}
-        leftPanel={leftPanel}
-        centerPanel={centerPanel}
-        rightPanel={rightPanel}
-      />
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+        {section === "market" && !chartHidden && (
+          <div
+            className="shrink-0 min-w-0 overflow-x-auto border-b"
+            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
+          >
+            <MarketIndexHeaderBlock
+              indexCardSelection={marketIndexCardSelection}
+              onIndexCardClick={handleMarketIndexCardClick}
+            />
+          </div>
+        )}
+        <WorkspaceLayout
+          chartLeftPx={chartHidden ? 99999 : activeChartLeft}
+          onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
+          chartInsetTopPx={0}
+          railWidthPx={railWidthPx}
+          onRailWidthChange={setRailWidthPx}
+          rightRailHidden={effectiveRightRailHidden}
+          onToggleRightRail={railSupportedSection ? handleRightRailToggle : undefined}
+          leftPanel={leftPanel}
+          centerPanel={centerPanel}
+          rightPanel={rightPanel}
+        />
+      </div>
       <div className="fixed bottom-4 right-4 z-[12000] flex max-w-[420px] flex-col-reverse gap-2 items-end">
         {listCreatedBanner && (
           <div

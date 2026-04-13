@@ -7,6 +7,8 @@ import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
 type WorkspaceLayoutProps = {
   chartLeftPx: number;
   onChartLeftChange?: (px: number) => void;
+  /** Inset from top of workspace (px). Used on Market so the chart starts below index cards + credit. */
+  chartInsetTopPx?: number;
   railWidthPx: number;
   onRailWidthChange: (px: number) => void;
   rightRailHidden: boolean;
@@ -26,6 +28,7 @@ type ActivePane = "left" | "center" | "right";
 export default function WorkspaceLayout({
   chartLeftPx,
   onChartLeftChange,
+  chartInsetTopPx = 0,
   railWidthPx,
   onRailWidthChange,
   rightRailHidden,
@@ -149,12 +152,32 @@ export default function WorkspaceLayout({
       className="flex-1 min-h-0 overflow-hidden relative"
       style={{ background: "var(--ws-bg)" }}
     >
-      {/* Chart layer — always full width from left edge to right panel, never resizes */}
+      {/* When chart is top-inset, paint the uncovered band (above chart, right of left overlay) with table surface */}
+      {chartInsetTopPx > 0 && (
+        <div
+          aria-hidden
+          className="absolute pointer-events-none"
+          style={{
+            left: chartColumnLeft,
+            right: railTotal,
+            top: 0,
+            height: chartInsetTopPx,
+            zIndex: 4,
+            background: "var(--ws-bg2)",
+            transition: draggingChart
+              ? "none"
+              : `left ${SLIDE_TRANSITION}, right ${SLIDE_TRANSITION}`,
+          }}
+        />
+      )}
+
+      {/* Chart layer — full width from left edge to right panel; optional top inset (Market: below cards + credit) */}
       <div
-        className="ws-pane ws-chart-column absolute top-0 bottom-0 min-h-0"
+        className="ws-pane ws-chart-column absolute bottom-0 min-h-0"
         style={{
           left: chartColumnLeft,
           right: railTotal,
+          top: chartInsetTopPx,
           zIndex: 5,
           transition: draggingChart
             ? "none"
@@ -206,9 +229,10 @@ export default function WorkspaceLayout({
         aria-orientation="vertical"
         aria-label="Resize chart left edge"
         tabIndex={onChartLeftChange ? 0 : -1}
-        className="absolute top-0 bottom-0 cursor-col-resize flex items-center justify-center transition-opacity"
+        className="absolute bottom-0 cursor-col-resize flex items-center justify-center transition-opacity"
         style={{
           left: chartResizeHandleLeft,
+          top: chartInsetTopPx,
           width: HANDLE_PX,
           zIndex: 20,
           background: draggingChart || hoveringChartHandle ? "var(--ws-cyan)" : "var(--ws-border)",

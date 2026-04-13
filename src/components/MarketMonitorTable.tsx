@@ -192,7 +192,7 @@ export default function MarketMonitorTable({
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto px-2 sm:px-4 py-3 sm:py-4" style={{ background: "var(--ws-bg2)" }}>
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible px-2 sm:px-4 py-3 sm:py-4" style={{ background: "var(--ws-bg2)" }}>
       {mmModal && onSymbolSelect && (
         <MarketMonitorConstituentsModal
           open
@@ -204,14 +204,6 @@ export default function MarketMonitorTable({
           onListCreated={onWatchlistListCreated}
         />
       )}
-      <div className="relative mb-3">
-        <h2 className="text-ws-title font-semibold text-center" style={{ color: "var(--ws-text)" }}>
-          Market Monitor
-        </h2>
-        <p className="text-ws-caption text-center -mt-0.5" style={{ color: "var(--ws-text-vdim)" }}>
-          Credit: Stockbee
-        </p>
-      </div>
       {staleBanner && (
         <div
           className="mb-3 rounded-md border px-3 py-2 text-sm"
@@ -225,8 +217,11 @@ export default function MarketMonitorTable({
           {staleBanner}
         </div>
       )}
-      <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
-        <table className="min-w-full text-ws-body text-center border-collapse">
+      <div
+        className="mx-auto w-max max-w-none overflow-x-visible overflow-y-visible rounded-md shadow-sm"
+        style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}
+      >
+        <table className="min-w-max whitespace-nowrap text-ws-body text-center border-collapse">
           <thead>
             <tr>
               <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />

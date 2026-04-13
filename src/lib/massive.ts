@@ -27,6 +27,9 @@ function url(path: string, params: Record<string, string> = {}): string {
   return `${BASE}${path}?${search}`;
 }
 
+/** Prevents hung upstream sockets from blocking the UI forever (watchlist-quotes, etc.). */
+const FETCH_TIMEOUT_MS = 20_000;
+
 async function fetchWithRetry(
   input: string,
   init?: RequestInit,
@@ -34,8 +37,22 @@ async function fetchWithRetry(
 ): Promise<Response> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), FETCH_TIMEOUT_MS);
+    const parentSignal = init?.signal;
+    if (parentSignal) {
+      if (parentSignal.aborted) {
+        clearTimeout(timeoutId);
+        throw new DOMException("Aborted", "AbortError");
+      }
+      parentSignal.addEventListener("abort", () => timeoutController.abort(), { once: true });
+    }
     try {
-      const res = await fetch(input, init);
+      const res = await fetch(input, {
+        ...init,
+        signal: timeoutController.signal,
+      });
+      clearTimeout(timeoutId);
       if (res.status === 429) {
         const waitMs = Math.min(1000 * 2 ** attempt, 8000);
         await new Promise((r) => setTimeout(r, waitMs));
@@ -43,6 +60,7 @@ async function fetchWithRetry(
       }
       return res;
     } catch (e) {
+      clearTimeout(timeoutId);
       lastError = e instanceof Error ? e : new Error(String(e));
       if (attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));

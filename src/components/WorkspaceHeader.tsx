@@ -28,7 +28,6 @@ const FLAG_COLORS: Record<StockFlag, string> = {
   purple: "#A855F7",
 };
 
-export type MarketSubTab = "indices" | "monitor";
 export type SectorSubTab = "sectors" | "industries";
 export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "6m" | "y" | "ytd";
 
@@ -89,9 +88,6 @@ type WorkspaceHeaderProps = {
   onFlagFilter?: (flag: StockFlag | null) => void;
   activeFlagFilter?: StockFlag | null;
   onFlagListOpen?: (flag: StockFlag) => void;
-  // Market contextual
-  marketSubTab?: MarketSubTab;
-  onMarketSubTabChange?: (t: MarketSubTab) => void;
   // Sectors contextual
   sectorSubTab?: SectorSubTab;
   onSectorSubTabChange?: (t: SectorSubTab) => void;
@@ -265,8 +261,6 @@ function WorkspaceHeader({
   onFlagFilter,
   activeFlagFilter,
   onFlagListOpen,
-  marketSubTab = "indices",
-  onMarketSubTabChange,
   sectorSubTab = "sectors",
   onSectorSubTabChange,
   sectorTimeframe = "1w",
@@ -694,7 +688,8 @@ function WorkspaceHeader({
         </div>
       </div>
 
-      {/* ===== ROW 2 — Sub-bar ===== */}
+      {/* ===== ROW 2 — Sub-bar (omitted on Market — index cards live in the left panel) ===== */}
+      {section !== "market" && (
       <div
         className="flex items-center gap-2 h-[40px]"
         style={{
@@ -706,17 +701,6 @@ function WorkspaceHeader({
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
         }}
       >
-        {/* Section-specific content is below; market status/clock are right-aligned at the end of this row */}
-        {section === "market" && (
-          <div className="flex items-center gap-1 flex-1">
-            {(["indices", "monitor"] as MarketSubTab[]).map((t) => (
-              <Pill key={t} on={marketSubTab === t} onClick={() => onMarketSubTabChange?.(t)}>
-                {t === "indices" ? "Indices" : "Market Monitor"}
-              </Pill>
-            ))}
-          </div>
-        )}
-
         {section === "sectors-industries" && (
           <div className="flex items-center gap-1.5 flex-1">
             {(["sectors", "industries"] as SectorSubTab[]).map((t) => (
@@ -1615,6 +1599,7 @@ function WorkspaceHeader({
         )}
 
       </div>
+      )}
     </header>
   );
 }

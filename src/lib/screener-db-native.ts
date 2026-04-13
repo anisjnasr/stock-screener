@@ -10,6 +10,7 @@ import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { isUSMarketOpen } from "@/lib/market-hours";
 import { getScreenerDbPath, getDataDir } from "@/lib/data-path";
+import { SCREENER_SNAPSHOT_FINANCIAL_SQL } from "@/lib/screener-snapshot-financial-sql";
 
 /* ── Shared types & filter builder (previously in screener-db.ts) ── */
 
@@ -1072,12 +1073,31 @@ export function getScreenerCount(options: {
   return { count: row?.cnt ?? 0, date };
 }
 
+/** Symbols with a quote row on the latest screener date (cheap; use for universe "all" instead of scanning full snapshots). */
+export function getAllQuotedSymbols(limit = 20000): string[] {
+  const db = getDb();
+  if (!db) return [];
+  const date = getLatestScreenerDate();
+  if (!date) return [];
+  const rows = db
+    .prepare(
+      `SELECT c.symbol FROM companies c
+       INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+       ORDER BY c.symbol
+       LIMIT ?`
+    )
+    .all(date, limit) as { symbol: string }[];
+  return rows.map((r) => String(r.symbol).toUpperCase());
+}
+
 export function getScreenerSnapshot(options: {
   date?: string;
   symbols?: string[];
   limit?: number;
   offset?: number;
   filters?: ScreenerFilters;
+  /** When false, omits heavy per-row financial subqueries (EPS/sales TTM, etc.). Default true. */
+  includeFinancialExtras?: boolean;
 }): { rows: ScreenerRow[]; date: string | null } {
   const db = getDb();
   if (!db) return { rows: [], date: null };
@@ -1091,11 +1111,15 @@ export function getScreenerSnapshot(options: {
     : null;
   const symbolSql = symFilter ? ` AND c.symbol IN (${symFilter.placeholders})` : "";
   const { sql: filterSql, params: filterParams } = buildFilterClauses(options.filters ?? {});
+  const includeFin = options.includeFinancialExtras !== false;
+  const ipoDateExpr = includeFin
+    ? "COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol)) AS ipo_date"
+    : "c.ipo_date AS ipo_date";
   const sql = `
     SELECT
       c.symbol, c.name, c.exchange, c.industry, c.sector,
       q.date,
-      COALESCE(c.ipo_date, (SELECT MIN(b.date) FROM daily_bars b WHERE b.symbol = c.symbol)) AS ipo_date,
+      ${ipoDateExpr},
       ${EFFECTIVE_MARKET_CAP_SQL} AS market_cap,
       q.last_price, q.change_pct, q.volume, q.avg_volume_30d_shares,
       q.high_52w, q.off_52w_high_pct, q.atr_pct_21d,
@@ -1104,289 +1128,7 @@ export function getScreenerSnapshot(options: {
       i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
-      i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m,
-      (
-        SELECT fq.period_end
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.period_end IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS earnings_last_reported,
-      (
-        SELECT fq.period_end
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.period_end IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS sales_last_reported,
-      (
-        SELECT fq.eps
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.eps IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS eps_recent_q,
-      (
-        SELECT AVG(x.eps)
-        FROM (
-          SELECT fq.eps
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.eps IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_eps_2q,
-      (
-        SELECT fq.eps_growth_yoy
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.eps_growth_yoy IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS eps_growth_recent_q,
-      (
-        SELECT AVG(x.eps_growth_yoy)
-        FROM (
-          SELECT fq.eps_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.eps_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_eps_growth_2q,
-      (
-        SELECT AVG(x.eps_growth_yoy)
-        FROM (
-          SELECT fq.eps_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.eps_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 3
-        ) x
-      ) AS avg_eps_growth_3q,
-      (
-        SELECT AVG(x.eps_growth_yoy)
-        FROM (
-          SELECT fq.eps_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.eps_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 4
-        ) x
-      ) AS avg_eps_growth_4q,
-      (
-        SELECT SUM(x.eps)
-        FROM (
-          SELECT fq.eps
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.eps IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 4
-        ) x
-      ) AS eps_ttm,
-      (
-        SELECT AVG(x.eps)
-        FROM (
-          SELECT fa.eps
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.eps IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_eps_2y,
-      (
-        SELECT fa.eps_growth_yoy
-        FROM financials fa
-        WHERE fa.symbol = c.symbol
-          AND fa.period_type = 'annual'
-          AND fa.eps_growth_yoy IS NOT NULL
-        ORDER BY fa.period_end DESC
-        LIMIT 1
-      ) AS eps_growth_1y,
-      (
-        SELECT fa.eps_growth_yoy
-        FROM financials fa
-        WHERE fa.symbol = c.symbol
-          AND fa.period_type = 'annual'
-          AND fa.eps_growth_yoy IS NOT NULL
-        ORDER BY fa.period_end DESC
-        LIMIT 1 OFFSET 1
-      ) AS eps_growth_2y_ago,
-      (
-        SELECT AVG(x.eps_growth_yoy)
-        FROM (
-          SELECT fa.eps_growth_yoy
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.eps_growth_yoy IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_eps_growth_2y,
-      (
-        SELECT AVG(x.eps_growth_yoy)
-        FROM (
-          SELECT fa.eps_growth_yoy
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.eps_growth_yoy IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 3
-        ) x
-      ) AS avg_eps_growth_3y,
-      (
-        SELECT fq.sales
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.sales IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS sales_recent_q,
-      (
-        SELECT AVG(x.sales)
-        FROM (
-          SELECT fq.sales
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.sales IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_sales_2q,
-      (
-        SELECT fq.sales_growth_yoy
-        FROM financials fq
-        WHERE fq.symbol = c.symbol
-          AND fq.period_type = 'quarterly'
-          AND fq.sales_growth_yoy IS NOT NULL
-        ORDER BY fq.period_end DESC
-        LIMIT 1
-      ) AS sales_growth_recent_q,
-      (
-        SELECT AVG(x.sales_growth_yoy)
-        FROM (
-          SELECT fq.sales_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.sales_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_sales_growth_2q,
-      (
-        SELECT AVG(x.sales_growth_yoy)
-        FROM (
-          SELECT fq.sales_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.sales_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 3
-        ) x
-      ) AS avg_sales_growth_3q,
-      (
-        SELECT AVG(x.sales_growth_yoy)
-        FROM (
-          SELECT fq.sales_growth_yoy
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.sales_growth_yoy IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 4
-        ) x
-      ) AS avg_sales_growth_4q,
-      (
-        SELECT SUM(x.sales)
-        FROM (
-          SELECT fq.sales
-          FROM financials fq
-          WHERE fq.symbol = c.symbol
-            AND fq.period_type = 'quarterly'
-            AND fq.sales IS NOT NULL
-          ORDER BY fq.period_end DESC
-          LIMIT 4
-        ) x
-      ) AS sales_ttm,
-      (
-        SELECT AVG(x.sales)
-        FROM (
-          SELECT fa.sales
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.sales IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_sales_2y,
-      (
-        SELECT fa.sales_growth_yoy
-        FROM financials fa
-        WHERE fa.symbol = c.symbol
-          AND fa.period_type = 'annual'
-          AND fa.sales_growth_yoy IS NOT NULL
-        ORDER BY fa.period_end DESC
-        LIMIT 1
-      ) AS sales_growth_1y,
-      (
-        SELECT fa.sales_growth_yoy
-        FROM financials fa
-        WHERE fa.symbol = c.symbol
-          AND fa.period_type = 'annual'
-          AND fa.sales_growth_yoy IS NOT NULL
-        ORDER BY fa.period_end DESC
-        LIMIT 1 OFFSET 1
-      ) AS sales_growth_2y_ago,
-      (
-        SELECT AVG(x.sales_growth_yoy)
-        FROM (
-          SELECT fa.sales_growth_yoy
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.sales_growth_yoy IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 2
-        ) x
-      ) AS avg_sales_growth_2y,
-      (
-        SELECT AVG(x.sales_growth_yoy)
-        FROM (
-          SELECT fa.sales_growth_yoy
-          FROM financials fa
-          WHERE fa.symbol = c.symbol
-            AND fa.period_type = 'annual'
-            AND fa.sales_growth_yoy IS NOT NULL
-          ORDER BY fa.period_end DESC
-          LIMIT 3
-        ) x
-      ) AS avg_sales_growth_3y
+      i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m${includeFin ? SCREENER_SNAPSHOT_FINANCIAL_SQL : ""}
     FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date

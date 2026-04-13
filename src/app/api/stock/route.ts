@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
 
     const stockRecord = getStockRecord(symbolUpper);
     const companyClass = getCompanyClassification(symbolUpper);
-    const dbSnapshot = getScreenerSnapshot({ symbols: [symbolUpper], limit: 1 });
+    const dbSnapshot = getScreenerSnapshot({ symbols: [symbolUpper], limit: 1, includeFinancialExtras: false });
     const dbRow = dbSnapshot.rows[0] ?? null;
     const industryRankUniverse = getIndustryRankUniverseCounts(dbSnapshot.date ?? undefined).counts;
     const dbProfileMetrics = getStockProfileDbMetrics(symbolUpper, dbSnapshot.date ?? undefined).metrics;

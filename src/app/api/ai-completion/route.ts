@@ -154,7 +154,7 @@ async function classifyModel(anthropic: Anthropic, prompt: string): Promise<Mode
 function buildDatabaseContext(symbol: string, lookback: DataLookback): Record<string, unknown> {
   const asOfDate = getLatestScreenerDate() ?? "";
   const cutoff = lookbackToCutoffIso(lookback);
-  const snapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1 }).rows[0] ?? null;
+  const snapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1, includeFinancialExtras: false }).rows[0] ?? null;
   const calendar = getCompanyCalendarFields(symbol);
   const company = {
     name: getCompanyName(symbol),

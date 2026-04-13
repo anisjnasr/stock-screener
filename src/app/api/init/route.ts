@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     const stockRecord = getStockRecord(symbol);
     const companyClass = getCompanyClassification(symbol);
-    const dbSnapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1 });
+    const dbSnapshot = getScreenerSnapshot({ symbols: [symbol], limit: 1, includeFinancialExtras: false });
     const dbRow = dbSnapshot.rows[0] ?? null;
     const industryRankUniverse = getIndustryRankUniverseCounts(dbSnapshot.date ?? undefined).counts;
     const dbProfileMetrics = getStockProfileDbMetrics(symbol, dbSnapshot.date ?? undefined).metrics;

@@ -5,6 +5,7 @@ import {
   getScreenerSnapshot,
   getScreenerCount,
   getLatestScreenerDate,
+  getAllQuotedSymbols,
   type ScreenerFilters,
 } from "@/lib/screener-db-native";
 import { runSslScript } from "@/lib/ssl";
@@ -14,8 +15,7 @@ const INDEX_IDS = ["nasdaq100", "sp500", "russell2000"] as const;
 
 function getSymbolsForUniverse(universe: string): string[] {
   if (universe === "all") {
-    const { rows } = getScreenerSnapshot({ limit: 20000, filters: {} });
-    return rows.map((r) => r.symbol);
+    return getAllQuotedSymbols(20000);
   }
   const id = universe.toLowerCase();
   if (INDEX_IDS.includes(id as (typeof INDEX_IDS)[number])) {
@@ -69,6 +69,9 @@ export async function GET(request: NextRequest) {
         filters = undefined;
       }
     }
+
+    /** Full EPS/sales subqueries; default off so scans load in reasonable time. Pass full=1 if needed. */
+    const includeFinancialExtras = params.get("full") === "1";
 
     if (params.has("latestDateOnly")) {
       const latest = getLatestScreenerDate();
@@ -157,6 +160,7 @@ export async function GET(request: NextRequest) {
         limit: limit != null ? parseInt(limit, 10) : undefined,
         offset: offset != null ? parseInt(offset, 10) : undefined,
         filters,
+        includeFinancialExtras,
       });
       const merged = rows.map((r) => {
         const sym = (r as { symbol?: string }).symbol;
@@ -177,6 +181,7 @@ export async function GET(request: NextRequest) {
       limit: limit != null ? parseInt(limit, 10) : undefined,
       offset: offset != null ? parseInt(offset, 10) : undefined,
       filters,
+      includeFinancialExtras,
     });
 
     return jsonWithMetrics({ date: snapshotDate, rows }, {

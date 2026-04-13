@@ -32,7 +32,7 @@ function parseIndustry(value: unknown): string | null {
 export async function GET() {
   try {
     const asOfDate = getLatestCompletedTradingDate() ?? undefined;
-    const snapshot = getScreenerSnapshot({ date: asOfDate, limit: 20000 });
+    const snapshot = getScreenerSnapshot({ date: asOfDate, limit: 20000, includeFinancialExtras: false });
     const byIndustry = new Map<string, IndustryRankingRow>();
 
     for (const row of snapshot.rows) {
