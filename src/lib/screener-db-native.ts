@@ -1604,6 +1604,14 @@ export type NetNewHighRow = {
   net: number;
 };
 
+/**
+ * Calendar days to load before each as-of date so ROWS BETWEEN N PRECEDING has enough trading rows (~5 per 7 calendar).
+ * Keep in sync with `nnhCalendarBufferDays` in `scripts/compute-market-aggregates.mjs`.
+ */
+function nnhCalendarBufferDays(lookbackDays: number): number {
+  return Math.max(lookbackDays + 120, Math.ceil((lookbackDays * 7) / 5) + 40);
+}
+
 function getPerformanceLookbackDays(timeframe: PerformanceTimeframe, asOfDate?: string): number {
   switch (timeframe) {
     case "day":
@@ -2161,7 +2169,7 @@ export function getIndexNetNewHighSeries(
   const symbolFilter = symbols.map((s) => `'${String(s).replace(/'/g, "''")}'`).join(",");
 
   const from = new Date(`${startDate}T00:00:00Z`);
-  from.setUTCDate(from.getUTCDate() - (lookbackDays + 30));
+  from.setUTCDate(from.getUTCDate() - nnhCalendarBufferDays(lookbackDays));
   const bufferStartDate = from.toISOString().slice(0, 10);
 
   const rows = db
@@ -2417,7 +2425,7 @@ export function getNetNewHighSeriesMarketMonitor(
   const rows: NetNewHighRow[] = [];
   for (const d of displayDatesAsc) {
     const buf = new Date(`${d}T00:00:00Z`);
-    buf.setUTCDate(buf.getUTCDate() - (lookbackDays + 30));
+    buf.setUTCDate(buf.getUTCDate() - nnhCalendarBufferDays(lookbackDays));
     const bufStart = buf.toISOString().slice(0, 10);
     const r = stmt.get(d, MM_MIN_MARKET_CAP_USD, bufStart, d, d) as { highs: number; lows: number } | undefined;
     const highs = Number(r?.highs ?? 0);
@@ -2648,7 +2656,12 @@ export type MarketMonitorMetricKey =
   | "up25pct_month"
   | "down25pct_month"
   | "up50pct_month"
-  | "down50pct_month";
+  | "down50pct_month"
+  | "nnh52w_highs"
+  | "nnh52w_lows";
+
+/** Breadth-style metrics (daily_bar CTE); 52W NNH uses a separate query. */
+type MarketMonitorBreadthMetricKey = Exclude<MarketMonitorMetricKey, "nnh52w_highs" | "nnh52w_lows">;
 
 const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "up4pct",
@@ -2659,6 +2672,8 @@ const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "down25pct_month",
   "up50pct_month",
   "down50pct_month",
+  "nnh52w_highs",
+  "nnh52w_lows",
 ];
 
 export function isMarketMonitorMetricKey(s: string): s is MarketMonitorMetricKey {
@@ -2673,11 +2688,104 @@ export type MarketMonitorConstituentRow = {
   changePct: number;
 };
 
+/** Same 252-trading-day window as `computeUniverseNNH(..., 252)` / `getNetNewHighSeriesMarketMonitor(252, ...)`. */
+const NNh_52W_LOOKBACK = 252;
+
+/** Symbols counted in MM 52W net-new high/low columns for `asOfDate` (MM universe + NNH window semantics). */
+function getMarketMonitorNnh52wConstituents(asOfDate: string, side: "highs" | "lows"): MarketMonitorConstituentRow[] {
+  const db = getDb();
+  if (!db) return [];
+
+  const hasIsEtf = (db.prepare(
+    "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
+  ).get() as { c: number })?.c > 0;
+  const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
+  const buf = new Date(`${asOfDate}T00:00:00Z`);
+  buf.setUTCDate(buf.getUTCDate() - nnhCalendarBufferDays(NNh_52W_LOOKBACK));
+  const bufStart = buf.toISOString().slice(0, 10);
+
+  const pred =
+    side === "highs"
+      ? `b.prior_count = ${NNh_52W_LOOKBACK} AND b.close > b.prior_high`
+      : `b.prior_count = ${NNh_52W_LOOKBACK} AND b.close < b.prior_low`;
+  const orderDir = side === "highs" ? "DESC" : "ASC";
+
+  const sql = `
+    WITH symbols_today AS (
+      SELECT DISTINCT d.symbol
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
+    ),
+    base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS prev_close,
+        MAX(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${NNh_52W_LOOKBACK} PRECEDING AND 1 PRECEDING
+        ) AS prior_high,
+        MIN(d.low) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${NNh_52W_LOOKBACK} PRECEDING AND 1 PRECEDING
+        ) AS prior_low,
+        COUNT(d.high) OVER (
+          PARTITION BY d.symbol
+          ORDER BY d.date
+          ROWS BETWEEN ${NNh_52W_LOOKBACK} PRECEDING AND 1 PRECEDING
+        ) AS prior_count
+      FROM daily_bars d
+      INNER JOIN symbols_today s ON s.symbol = d.symbol
+      WHERE d.date BETWEEN ? AND ?
+    )
+    SELECT
+      b.symbol AS symbol,
+      COALESCE(co.name, '') AS name,
+      COALESCE(co.industry, '') AS industry,
+      b.close AS price,
+      CASE
+        WHEN b.prev_close IS NOT NULL AND b.prev_close > 0 THEN 100.0 * (b.close - b.prev_close) / b.prev_close
+        ELSE 0
+      END AS changePct
+    FROM base b
+    INNER JOIN companies co ON co.symbol = b.symbol
+    WHERE b.date = ?
+      AND (${pred})
+    ORDER BY changePct ${orderDir}
+  `;
+
+  const rows = db.prepare(sql).all(asOfDate, MM_MIN_MARKET_CAP_USD, bufStart, asOfDate, asOfDate) as Array<{
+    symbol: string;
+    name: string;
+    industry: string;
+    price: number;
+    changePct: number;
+  }>;
+
+  return rows.map((r) => ({
+    symbol: String(r.symbol),
+    name: String(r.name ?? ""),
+    industry: String(r.industry ?? ""),
+    price: Number(r.price ?? 0),
+    changePct: Number(r.changePct ?? 0),
+  }));
+}
+
 /** Stocks counted in a Market Monitor cell for `asOfDate` + `metric` (same rules as aggregates). Sorted: up metrics by changePct DESC, down by ASC. */
 export function getMarketMonitorConstituents(
   asOfDate: string,
   metric: MarketMonitorMetricKey
 ): MarketMonitorConstituentRow[] {
+  if (metric === "nnh52w_highs") return getMarketMonitorNnh52wConstituents(asOfDate, "highs");
+  if (metric === "nnh52w_lows") return getMarketMonitorNnh52wConstituents(asOfDate, "lows");
+
   const db = getDb();
   if (!db) return [];
 
@@ -2691,7 +2799,7 @@ export function getMarketMonitorConstituents(
   const bufferStartDate = from.toISOString().slice(0, 10);
 
   const cfg: Record<
-    MarketMonitorMetricKey,
+    MarketMonitorBreadthMetricKey,
     { predicate: string; changeExpr: string; sortDesc: boolean }
   > = {
     up4pct: {

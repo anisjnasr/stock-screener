@@ -51,6 +51,7 @@
   --ws-mm-header-green: #27ae60;
   --ws-mm-header-purple: #a29bfe;
   --ws-mm-header-blue: #3f51b5;
+  --ws-mm-header-teal: #1abc9c;
   /* Typography scale (workspace UI); px keeps sizes stable vs html font-scale */
   --ws-fs-caption: 11px;
   --ws-fs-label: 12px;
@@ -207,6 +208,12 @@ body {
   background: var(--ws-mm-heat-red-very-bg);
   color: var(--ws-heat-text-on-fill);
   font-weight: 700;
+}
+
+/* Teal MM column group: hex fallbacks if custom property is missing */
+.ws-mm-header-teal {
+  background-color: var(--ws-mm-header-teal, #1abc9c);
+  color: var(--ws-mm-header-text, #0a0a0a);
 }
 
 /* Market Monitor: latest-row drill-down cells */

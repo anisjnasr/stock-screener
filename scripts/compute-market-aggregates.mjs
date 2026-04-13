@@ -420,10 +420,18 @@ function computeEMAbreadth(symbolSet, date) {
   };
 }
 
+/**
+ * ~5 trading days per 7 calendar; ensure enough rows for ROWS BETWEEN N PRECEDING.
+ * Keep in sync with `nnhCalendarBufferDays` in `src/lib/screener-db-native.ts`.
+ */
+function nnhCalendarBufferDays(lookbackDays) {
+  return Math.max(lookbackDays + 120, Math.ceil((lookbackDays * 7) / 5) + 40);
+}
+
 /** Net new highs/lows for MM universe on one date (prior_count = lookbackDays). */
 function computeUniverseNNH(date, lookbackDays) {
   const buf = new Date(`${date}T00:00:00Z`);
-  buf.setUTCDate(buf.getUTCDate() - (lookbackDays + 30));
+  buf.setUTCDate(buf.getUTCDate() - nnhCalendarBufferDays(lookbackDays));
   const bufStart = buf.toISOString().slice(0, 10);
   const row = db
     .prepare(

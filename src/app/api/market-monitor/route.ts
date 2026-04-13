@@ -28,6 +28,8 @@ export type MarketMonitorRow = {
   nasdaqPctAbove50d: number | null;
   nasdaqPctAbove200d: number | null;
   universe: number;
+  nnh52wHighs: number;
+  nnh52wLows: number;
 };
 
 type CachePayload = {
@@ -50,7 +52,7 @@ type CachePayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 15;
+const CACHE_VERSION = 18;
 const TRADING_DAYS_PER_YEAR = 252;
 const TWO_YEARS_TRADING_DAYS = TRADING_DAYS_PER_YEAR * 2;
 const LATEST_BREADTH_CACHE_TTL_MS = 60 * 1000;
@@ -277,6 +279,8 @@ export async function GET() {
         nasdaqPctAbove50d: r.nasdaq_pct_above_50d,
         nasdaqPctAbove200d: r.nasdaq_pct_above_200d,
         universe: r.universe,
+        nnh52wHighs: r.nnh_52w_highs ?? 0,
+        nnh52wLows: r.nnh_52w_lows ?? 0,
       })) satisfies MarketMonitorRow[];
 
       // Backfill breadth independently per index family so partial precompute data
@@ -305,6 +309,23 @@ export async function GET() {
         }));
       }
 
+      // Live 52W NNH (fixed calendar buffer in getNetNewHighSeriesMarketMonitor) — do not rely on
+      // market_monitor_daily.nnh_52w_* alone; stale or pre-fix aggregates can leave zeros in the DB.
+      markStart("nnh52wLiveMerge");
+      const nnh52wLive = getNetNewHighSeriesMarketMonitor(252, TWO_YEARS_TRADING_DAYS, latestDate);
+      const nnh52wByDate = new Map(
+        nnh52wLive.rows.map((row) => [row.date, { highs: row.highs, lows: row.lows }])
+      );
+      rows = rows.map((r) => {
+        const n = nnh52wByDate.get(r.date);
+        return {
+          ...r,
+          nnh52wHighs: n?.highs ?? r.nnh52wHighs,
+          nnh52wLows: n?.lows ?? r.nnh52wLows,
+        };
+      });
+      markEnd("nnh52wLiveMerge");
+
       const payloadBase: CachePayload = {
         version: CACHE_VERSION,
         rows,
@@ -315,7 +336,7 @@ export async function GET() {
           oneMonth: precomputed.map((r) => ({ date: r.date, highs: r.nnh_1m_highs ?? 0, lows: r.nnh_1m_lows ?? 0, net: r.nnh_1m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
           threeMonths: precomputed.map((r) => ({ date: r.date, highs: r.nnh_3m_highs ?? 0, lows: r.nnh_3m_lows ?? 0, net: r.nnh_3m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
           sixMonths: precomputed.map((r) => ({ date: r.date, highs: r.nnh_6m_highs ?? 0, lows: r.nnh_6m_lows ?? 0, net: r.nnh_6m_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
-          fiftyTwoWeek: precomputed.map((r) => ({ date: r.date, highs: r.nnh_52w_highs ?? 0, lows: r.nnh_52w_lows ?? 0, net: r.nnh_52w_net ?? 0 })).sort((a, b) => a.date.localeCompare(b.date)),
+          fiftyTwoWeek: nnh52wLive.rows,
         },
       };
       markStart("breadthSync");
@@ -439,10 +460,9 @@ export async function GET() {
       nasdaqPctAbove50d: nasdaqByDate.get(r.date)?.pctAbove50d ?? null,
       nasdaqPctAbove200d: nasdaqByDate.get(r.date)?.pctAbove200d ?? null,
       universe: r.universe,
+      nnh52wHighs: 0,
+      nnh52wLows: 0,
     }));
-
-    const rowsSorted = withRatiosAsc.sort((a, b) => b.date.localeCompare(a.date));
-    const responseStartDate = rowsSorted[rowsSorted.length - 1]?.date ?? null;
 
     const nnh1m = getNetNewHighSeriesMarketMonitor(21, 126, latestDate);
     const nnh3m = getNetNewHighSeriesMarketMonitor(63, 126, latestDate);
@@ -450,6 +470,21 @@ export async function GET() {
     // 52W NNH is a rolling daily metric; keep at least 2 years of points so
     // the MM mini-chart remains fully populated.
     const nnh52w = getNetNewHighSeriesMarketMonitor(252, TWO_YEARS_TRADING_DAYS, latestDate);
+    const nnh52wByDate = new Map(
+      nnh52w.rows.map((row) => [row.date, { highs: row.highs, lows: row.lows }])
+    );
+
+    const rowsSorted = withRatiosAsc
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => {
+        const n = nnh52wByDate.get(r.date);
+        return {
+          ...r,
+          nnh52wHighs: n?.highs ?? 0,
+          nnh52wLows: n?.lows ?? 0,
+        };
+      });
+    const responseStartDate = rowsSorted[rowsSorted.length - 1]?.date ?? null;
 
     const payloadBase: CachePayload = {
       version: CACHE_VERSION,

@@ -66,6 +66,7 @@ import { useOwnership } from "@/hooks/useOwnership";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
+import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 
 const NNHPanel = dynamic(() => import("@/components/NNHPanel"), { ssr: false });
 const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel"), { ssr: false });
@@ -73,7 +74,6 @@ const MarketLeftPanel = dynamic(() => import("@/components/MarketLeftPanel"), { 
 const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { ssr: false });
 const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
 const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
-const KeyboardShortcutsModal = dynamic(() => import("@/components/KeyboardShortcutsModal"), { ssr: false });
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,

@@ -14,6 +14,8 @@ const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
   down25pct_month: "Down 25% M",
   up50pct_month: "Up 50% M",
   down50pct_month: "Down 50% M",
+  nnh52w_highs: "52W Highs",
+  nnh52w_lows: "52W Lows",
 };
 
 /** Earliest session date for which primary-breadth indicator counts are drillable (ISO YYYY-MM-DD). */
@@ -251,6 +253,14 @@ export default function MarketMonitorTable({
               </th>
               <th
                 scope="colgroup"
+                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide ws-mm-header-teal"
+                colSpan={2}
+                style={{ borderColor: "var(--ws-border)" }}
+              >
+                New 52W Highs / Lows
+              </th>
+              <th
+                scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
                 colSpan={2}
                 style={{ background: "var(--ws-mm-header-purple)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
@@ -268,19 +278,38 @@ export default function MarketMonitorTable({
               <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
-              {["Date", "Up %", "Down %", "5D Ratio", "10D Ratio", "Up 25% (Q)", "Down 25% (Q)", "Up 25% (M)", "Down 25% (M)", "Up 50% (M)", "Down 50% (M)"].map((label, idx) => {
+              {[
+                "Date",
+                "Up %",
+                "Down %",
+                "5D Ratio",
+                "10D Ratio",
+                "Up 25% (Q)",
+                "Down 25% (Q)",
+                "Up 25% (M)",
+                "Down 25% (M)",
+                "Up 50% (M)",
+                "Down 50% (M)",
+                "Highs",
+                "Lows",
+              ].map((label, idx) => {
                 const isGold = idx === 0 || (idx >= 1 && idx <= 6);
                 const isGreen = idx >= 7 && idx <= 10;
+                const isTeal = idx >= 11 && idx <= 12;
                 const hdr = isGold
                   ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
                   : isGreen
                     ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
-                    : { background: "var(--ws-bg2)", color: "var(--ws-mm-header-text)" };
+                    : isTeal
+                      ? {}
+                      : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
+                const edge =
+                  idx === 0 || idx === 7 ? " border-l border-r" : idx === 11 ? " border-l" : "";
                 return (
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${idx === 0 || idx === 7 ? " border-l border-r" : ""}`}
+                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${edge}${isTeal ? " ws-mm-header-teal" : ""}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -319,6 +348,7 @@ export default function MarketMonitorTable({
               const pairQ = getPairCellClassFull(row.up25pct_qtr, row.down25pct_qtr);
               const pairM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
               const pair50 = getPairCellClassFull(row.up50pct_month, row.down50pct_month);
+              const pair52w = getPairCellClassFull(row.nnh52wHighs ?? 0, row.nnh52wLows ?? 0);
               return (
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
                 <td className="pl-3 pr-7 py-1.5 whitespace-nowrap text-right tabular-nums border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
@@ -440,6 +470,36 @@ export default function MarketMonitorTable({
                     </button>
                   ) : (
                     <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair50}`}>{fmtInt(row.down50pct_month)}</span>
+                  )}
+                </td>
+                <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
+                  {drillable ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair52w}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("nnh52w_highs", row.date)}
+                    >
+                      {fmtInt(row.nnh52wHighs ?? 0)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums border-l ${pair52w}`} style={{ borderColor: "var(--ws-border)" }}>
+                      {fmtInt(row.nnh52wHighs ?? 0)}
+                    </span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {drillable ? (
+                    <button
+                      type="button"
+                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair52w}`}
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("nnh52w_lows", row.date)}
+                    >
+                      {fmtInt(row.nnh52wLows ?? 0)}
+                    </button>
+                  ) : (
+                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair52w}`}>{fmtInt(row.nnh52wLows ?? 0)}</span>
                   )}
                 </td>
                 <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums border-l ${getBreadthPct50SmaCellClass(row.sp500PctAbove50d)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtPctCell(row.sp500PctAbove50d)}</td>
