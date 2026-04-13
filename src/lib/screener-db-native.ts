@@ -2180,6 +2180,8 @@ export function getIndexNetNewHighSeries(
           d.symbol,
           d.date,
           d.close,
+          d.high,
+          d.low,
           MAX(d.high) OVER (
             PARTITION BY d.symbol
             ORDER BY d.date
@@ -2201,8 +2203,8 @@ export function getIndexNetNewHighSeries(
       )
       SELECT
         date,
-        SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END) AS highs,
-        SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END) AS lows
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND high > prior_high THEN 1 ELSE 0 END) AS highs,
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND low < prior_low THEN 1 ELSE 0 END) AS lows
       FROM base
       WHERE date BETWEEN ? AND ?
       GROUP BY date
@@ -2318,8 +2320,8 @@ export function getNetNewHighSeries(
       )
       SELECT
         date,
-        SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END) AS highs,
-        SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END) AS lows
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND high > prior_high THEN 1 ELSE 0 END) AS highs,
+        SUM(CASE WHEN prior_count = ${lookbackDays} AND low < prior_low THEN 1 ELSE 0 END) AS lows
       FROM base
       GROUP BY date
       ORDER BY date ASC
@@ -2415,8 +2417,8 @@ export function getNetNewHighSeriesMarketMonitor(
       WHERE d.date BETWEEN ? AND ?
     )
     SELECT
-      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END), 0) AS highs,
-      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END), 0) AS lows
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND high > prior_high THEN 1 ELSE 0 END), 0) AS highs,
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND low < prior_low THEN 1 ELSE 0 END), 0) AS lows
     FROM base
     WHERE date = ?
   `;
@@ -2707,8 +2709,8 @@ function getMarketMonitorNnh52wConstituents(asOfDate: string, side: "highs" | "l
 
   const pred =
     side === "highs"
-      ? `b.prior_count = ${NNh_52W_LOOKBACK} AND b.close > b.prior_high`
-      : `b.prior_count = ${NNh_52W_LOOKBACK} AND b.close < b.prior_low`;
+      ? `b.prior_count = ${NNh_52W_LOOKBACK} AND b.high > b.prior_high`
+      : `b.prior_count = ${NNh_52W_LOOKBACK} AND b.low < b.prior_low`;
   const orderDir = side === "highs" ? "DESC" : "ASC";
 
   const sql = `
@@ -2725,6 +2727,8 @@ function getMarketMonitorNnh52wConstituents(asOfDate: string, side: "highs" | "l
         d.symbol,
         d.date,
         d.close,
+        d.high,
+        d.low,
         LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS prev_close,
         MAX(d.high) OVER (
           PARTITION BY d.symbol

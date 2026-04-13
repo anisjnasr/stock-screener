@@ -471,8 +471,8 @@ function computeUniverseNNH(date, lookbackDays) {
       WHERE d.date BETWEEN ? AND ?
     )
     SELECT
-      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END), 0) AS highs,
-      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND close < prior_low THEN 1 ELSE 0 END), 0) AS lows
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND high > prior_high THEN 1 ELSE 0 END), 0) AS highs,
+      COALESCE(SUM(CASE WHEN prior_count = ${lookbackDays} AND low < prior_low THEN 1 ELSE 0 END), 0) AS lows
     FROM base
     WHERE date = ?
   `
@@ -550,7 +550,7 @@ function computeIndexNNH(symbolSet, date, lookbackDays) {
       `
     WITH base AS (
       SELECT
-        d.symbol, d.date, d.close,
+        d.symbol, d.date, d.close, d.high, d.low,
         MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING) AS prior_high,
         MIN(d.low)  OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING) AS prior_low,
         COUNT(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN ${lookbackDays} PRECEDING AND 1 PRECEDING) AS prior_count
@@ -559,8 +559,8 @@ function computeIndexNNH(symbolSet, date, lookbackDays) {
         AND d.date BETWEEN ? AND ?
     )
     SELECT
-      SUM(CASE WHEN prior_count >= ${lookbackDays} AND close > prior_high THEN 1 ELSE 0 END) AS highs,
-      SUM(CASE WHEN prior_count >= ${lookbackDays} AND close < prior_low  THEN 1 ELSE 0 END) AS lows
+      SUM(CASE WHEN prior_count >= ${lookbackDays} AND high > prior_high THEN 1 ELSE 0 END) AS highs,
+      SUM(CASE WHEN prior_count >= ${lookbackDays} AND low < prior_low  THEN 1 ELSE 0 END) AS lows
     FROM base
     WHERE date = ?
   `
