@@ -67,13 +67,13 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
+import SectorPerfPanel from "@/components/SectorPerfPanel";
+import NNHPanel from "@/components/NNHPanel";
+import WatchlistPanel from "@/components/WatchlistPanel";
+import MarketLeftPanel from "@/components/MarketLeftPanel";
+import RightRail from "@/components/RightRail";
+import MarketBreadthRail from "@/components/MarketBreadthRail";
 
-const NNHPanel = dynamic(() => import("@/components/NNHPanel"), { ssr: false });
-const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel"), { ssr: false });
-const MarketLeftPanel = dynamic(() => import("@/components/MarketLeftPanel"), { ssr: false });
-const SectorPerfPanel = dynamic(() => import("@/components/SectorPerfPanel"), { ssr: false });
-const RightRail = dynamic(() => import("@/components/RightRail"), { ssr: false });
-const MarketBreadthRail = dynamic(() => import("@/components/MarketBreadthRail"), { ssr: false });
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -168,7 +168,6 @@ export default function Home() {
   const [tableRowCountDisplay, setTableRowCountDisplay] = useState("");
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [listCreatedBanner, setListCreatedBanner] = useState<MarketMonitorListCreatedInfo | null>(null);
-  const secondaryPagesPrefetchedRef = useRef(false);
   const priorRailWidthBeforeInsightsRef = useRef<number | null>(null);
   const railWidthPxRef = useRef(0);
   const sectionHistoryRef = useRef<Record<string, string | null>>({});
@@ -369,34 +368,6 @@ export default function Home() {
       })
       .catch(() => {});
   }, [setCachedCandles]);
-
-  useEffect(() => {
-    if (secondaryPagesPrefetchedRef.current) return;
-    secondaryPagesPrefetchedRef.current = true;
-
-    const sectorTimeframes = ["week", "month", "quarter", "half_year", "year", "ytd", "day"];
-    const sectorUrls = sectorTimeframes.map(
-      (tf) => `/api/sectors-industries?indicesTimeframe=${tf}&sectorsTimeframe=${tf}&industriesTimeframe=${tf}`
-    );
-    const phase1Urls = ["/api/market-monitor"];
-    const phase2Urls = sectorUrls;
-
-    const prefetchPhase1 = () => {
-      for (const url of phase1Urls) fetch(url).catch(() => {});
-    };
-    const prefetchPhase2 = () => {
-      for (const url of phase2Urls) fetch(url).catch(() => {});
-    };
-
-    if (typeof window.requestIdleCallback === "function") {
-      const id1 = window.requestIdleCallback(prefetchPhase1, { timeout: 2000 });
-      const id2 = window.requestIdleCallback(prefetchPhase2, { timeout: 5000 });
-      return () => { window.cancelIdleCallback(id1); window.cancelIdleCallback(id2); };
-    }
-    const t1 = window.setTimeout(prefetchPhase1, 1000);
-    const t2 = window.setTimeout(prefetchPhase2, 2500);
-    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
-  }, []);
 
   const handleSymbolSelect = useCallback((sym: string) => {
     if (!sym) return;

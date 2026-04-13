@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
+import type { MarketMonitorRow, MarketMonitorApiPayload } from "@/app/api/market-monitor/route";
 import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
 import MarketMonitorConstituentsModal, {
   type MarketMonitorListCreatedInfo,
@@ -24,13 +24,6 @@ const MM_INDICATOR_DRILLDOWN_MIN_DATE = "2026-03-26";
 function isMmIndicatorDrilldownDate(rowDate: string): boolean {
   return rowDate.trim() >= MM_INDICATOR_DRILLDOWN_MIN_DATE;
 }
-
-type ApiResponse = {
-  rows: MarketMonitorRow[];
-  latestDate: string | null;
-  startDate: string | null;
-  error?: string;
-};
 
 type RatioThresholds = {
   ratio5dLow: number | null;
@@ -87,27 +80,6 @@ function getRatioExtremeCellClass(
   return "";
 }
 
-function fmtPctCell(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(1)}%`;
-}
-
-/** % > 50 SMA only: red when weak breadth; no green. */
-function getBreadthPct50SmaCellClass(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  if (n <= 20) return "ws-mm-heat-red-very";
-  if (n > 20 && n <= 30) return "ws-mm-heat-red-strong";
-  return "";
-}
-
-/** % > 200 SMA only: red when weak breadth; no green. */
-function getBreadthPct200SmaCellClass(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  if (n <= 30) return "ws-mm-heat-red-very";
-  if (n > 30 && n <= 40) return "ws-mm-heat-red-strong";
-  return "";
-}
-
 function formatDateDmy(input: string): string {
   const d = new Date(input.trim());
   if (Number.isNaN(d.getTime())) return input;
@@ -151,20 +123,26 @@ export default function MarketMonitorTable({
     ratio10dLow: null,
     ratio10dHigh: null,
   });
+  const [staleBanner, setStaleBanner] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/market-monitor")
-      .then((r) => r.json() as Promise<ApiResponse>)
+      .then((r) => r.json() as Promise<MarketMonitorApiPayload>)
       .then((json) => {
         if (cancelled) return;
         if (json.error) {
           setError(json.error);
+          setStaleBanner(null);
         } else {
           setError(null);
           const all = json.rows ?? [];
-          // Use all available historical rows returned by the API to define extremes.
           setRatioThresholds(computeRatioThresholds(all));
+          if (json.stale && (json.message || json.dataAsOf)) {
+            setStaleBanner(json.message ?? `Data through ${json.dataAsOf ?? "unknown"} — refresh precompute when ready.`);
+          } else {
+            setStaleBanner(null);
+          }
           if (all.length > 0) {
             const latest = new Date(`${all[0].date}T00:00:00Z`);
             const cutoff = new Date(latest);
@@ -173,12 +151,16 @@ export default function MarketMonitorTable({
             setTableRowsToShow(all.filter((r) => r.date >= cutoffStr));
           } else {
             setTableRowsToShow([]);
+            if (json.message && !json.error) {
+              setStaleBanner(json.message);
+            }
           }
         }
       })
       .catch(() => {
         if (cancelled) return;
         setError("Failed to load market monitor");
+        setStaleBanner(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -230,6 +212,19 @@ export default function MarketMonitorTable({
           Credit: Stockbee
         </p>
       </div>
+      {staleBanner && (
+        <div
+          className="mb-3 rounded-md border px-3 py-2 text-sm"
+          style={{
+            background: "var(--ws-amber-bg, rgba(245, 158, 11, 0.12))",
+            borderColor: "var(--ws-amber, #d97706)",
+            color: "var(--ws-text)",
+          }}
+          role="status"
+        >
+          {staleBanner}
+        </div>
+      )}
       <div className="max-w-full overflow-auto rounded-md shadow-sm" style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}>
         <table className="min-w-full text-ws-body text-center border-collapse">
           <thead>
@@ -258,22 +253,6 @@ export default function MarketMonitorTable({
                 style={{ borderColor: "var(--ws-border)" }}
               >
                 New 52W Highs / Lows
-              </th>
-              <th
-                scope="colgroup"
-                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
-                colSpan={2}
-                style={{ background: "var(--ws-mm-header-purple)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
-              >
-                S&amp;P 500 Breadth
-              </th>
-              <th
-                scope="colgroup"
-                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
-                colSpan={2}
-                style={{ background: "var(--ws-mm-header-blue)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
-              >
-                Nasdaq Breadth
               </th>
               <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
@@ -310,22 +289,6 @@ export default function MarketMonitorTable({
                     scope="col"
                     key={label}
                     className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${edge}${isTeal ? " ws-mm-header-teal" : ""}`}
-                    style={{ ...hdr, borderColor: "var(--ws-border)" }}
-                  >
-                    {label}
-                  </th>
-                );
-              })}
-              {["% > 50 SMA", "% > 200 SMA", "% > 50 SMA", "% > 200 SMA"].map((label, idx) => {
-                const isSp = idx < 2;
-                const hdr = isSp
-                  ? { background: "var(--ws-mm-header-purple)", color: "var(--ws-mm-header-text)" }
-                  : { background: "var(--ws-mm-header-blue)", color: "var(--ws-mm-header-text)" };
-                return (
-                  <th
-                    scope="col"
-                    key={`breadth-${idx}`}
-                    className={`sticky top-[2.375rem] z-10 px-2 py-1 border-b text-xs font-bold${idx === 0 ? " border-l" : ""}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -502,10 +465,6 @@ export default function MarketMonitorTable({
                     <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair52w}`}>{fmtInt(row.nnh52wLows ?? 0)}</span>
                   )}
                 </td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums border-l ${getBreadthPct50SmaCellClass(row.sp500PctAbove50d)}`} style={{ borderColor: "var(--ws-border)" }}>{fmtPctCell(row.sp500PctAbove50d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct200SmaCellClass(row.sp500PctAbove200d)}`}>{fmtPctCell(row.sp500PctAbove200d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct50SmaCellClass(row.nasdaqPctAbove50d)}`}>{fmtPctCell(row.nasdaqPctAbove50d)}</td>
-                <td className={`pl-3 pr-5 py-1.5 text-right tabular-nums ${getBreadthPct200SmaCellClass(row.nasdaqPctAbove200d)}`}>{fmtPctCell(row.nasdaqPctAbove200d)}</td>
                 <td className="pl-3 pr-7 py-1.5 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>
               </tr>
               );
@@ -516,4 +475,3 @@ export default function MarketMonitorTable({
     </div>
   );
 }
-
