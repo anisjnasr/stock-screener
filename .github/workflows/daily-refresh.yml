@@ -208,6 +208,26 @@ jobs:
           fi
         timeout-minutes: 180
 
+      - name: MM NNH sanity (latest row in DB)
+        run: |
+          node -e "
+          const Database = require('better-sqlite3');
+          const db = new Database('data/screener.db', { readonly: true });
+          try {
+            const latest = db.prepare(
+              'SELECT date, nnh_52w_highs, nnh_52w_lows, nnh_1m_highs, nnh_1m_lows FROM market_monitor_daily ORDER BY date DESC LIMIT 1'
+            ).get();
+            const maxH = db.prepare('SELECT COALESCE(MAX(nnh_52w_highs), -1) AS m FROM market_monitor_daily').get();
+            console.log('MM NNH latest row:', JSON.stringify(latest));
+            console.log('MAX(nnh_52w_highs) in market_monitor_daily:', maxH?.m);
+          } catch (e) {
+            console.error('MM NNH sanity check failed:', e && e.message);
+            process.exit(1);
+          } finally {
+            db.close();
+          }
+          "
+
       # Warm secondary-page disk caches (best-effort; failures here don't block the pipeline).
       - name: Warm secondary page caches
         continue-on-error: true
