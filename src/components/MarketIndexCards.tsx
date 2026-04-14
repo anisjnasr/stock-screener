@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchBreadthClient } from "@/lib/breadth-client";
 
 export const MARKET_INDEX_SYMBOLS = ["SPY", "QQQ", "IWM"] as const;
 export type MarketIndexSymbol = (typeof MARKET_INDEX_SYMBOLS)[number];
@@ -24,11 +23,6 @@ type WatchlistQuotesApiItem = {
     avgVolume?: number;
   } | null;
   profile?: { mktCap?: number } | null;
-};
-
-const SYMBOL_TO_BREADTH_INDEX: Record<string, "sp500" | "nasdaq"> = {
-  SPY: "sp500",
-  QQQ: "nasdaq",
 };
 
 function numOrNull(v: unknown): number | null {
@@ -63,7 +57,7 @@ function fmtPct(n: number | null): string {
   return `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
-/** Session volume ÷ 30d average volume. */
+/** RVOL = session volume / 30d avg volume. */
 function computeRvol(volume: number | null, avgVolume: number | null): number | null {
   if (volume == null || avgVolume == null || !Number.isFinite(volume) || !Number.isFinite(avgVolume) || avgVolume <= 0) {
     return null;
@@ -99,20 +93,6 @@ function rvolStyle(rvol: number | null): RvolVisual {
   return { color: "var(--ws-green)", fontWeight: 700 };
 }
 
-function fmtBreadth(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(1)}%`;
-}
-
-function breadthColor(v: number | null): string {
-  if (v == null) return "var(--ws-text-vdim)";
-  if (v > 45) return "var(--ws-text)";
-  if (v >= 25) return "var(--ws-amber)";
-  return "var(--ws-red)";
-}
-
-type BreadthMap = Record<string, { pct50: number | null; pct200: number | null }>;
-
 export default function MarketIndexCards({
   indexCardSelection,
   onCardClick,
@@ -122,7 +102,6 @@ export default function MarketIndexCards({
 }) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
-  const [breadthMap, setBreadthMap] = useState<BreadthMap>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -144,39 +123,14 @@ export default function MarketIndexCards({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const indices = Object.entries(SYMBOL_TO_BREADTH_INDEX);
-    Promise.all(
-      indices.map(([sym, indexId]) =>
-        fetchBreadthClient(indexId, { includeNetNewHighs: false })
-          .then((d) => {
-            if (!d) return [sym, { pct50: null, pct200: null }] as const;
-            const pts = d.breadth ?? [];
-            const ld = d.latestDate ?? null;
-            const match = ld ? pts.find((p) => p.date === ld) : undefined;
-            const last = match ?? (pts.length > 0 ? pts[pts.length - 1] : undefined);
-            return [sym, { pct50: last?.pctAbove50d ?? null, pct200: last?.pctAbove200d ?? null }] as const;
-          })
-          .catch(() => [sym, { pct50: null, pct200: null }] as const)
-      )
-    ).then((results) => {
-      if (cancelled) return;
-      setBreadthMap(Object.fromEntries(results));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const quoteBySymbol = Object.fromEntries(quotes.map((q) => [q.symbol, q])) as Record<string, Quote | undefined>;
 
   return (
     <div
-      className="shrink-0 min-w-max flex flex-col items-center px-2 sm:px-4 py-3 border-b"
+      className="shrink-0 min-w-max flex flex-col items-center px-1.5 sm:px-3 py-2 border-b"
       style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
     >
-      <div className="flex min-w-max flex-nowrap items-stretch justify-center gap-2 sm:gap-3 overflow-x-auto">
+      <div className="flex min-w-max flex-nowrap items-stretch justify-center gap-1.5 sm:gap-2 overflow-x-auto">
         {loading ? (
           <span className="text-sm" style={{ color: "var(--ws-text-vdim)" }}>
             Loading indices…
@@ -194,8 +148,6 @@ export default function MarketIndexCards({
                 : chNum < 0
                   ? "var(--ws-red)"
                   : "var(--ws-text-dim)";
-            const b = breadthMap[sym];
-            const showBreadth = sym === "SPY" || sym === "QQQ";
             const isSelected = indexCardSelection === sym;
 
             const rvol = computeRvol(q?.volume ?? null, q?.avg_volume_30d_shares ?? null);
@@ -206,55 +158,35 @@ export default function MarketIndexCards({
                 key={sym}
                 type="button"
                 onClick={() => onCardClick(sym)}
-                className={`rounded-lg px-3 py-2.5 text-center w-max shrink-0 transition-[background-color,border-color,box-shadow] duration-100 ws-focus-ring ${
+                className={`rounded-md px-2 py-1.5 w-[19.75rem] sm:w-[21.25rem] shrink-0 transition-[background-color,border-color,box-shadow] duration-100 ws-focus-ring ${
                   isSelected
                     ? "border border-[color:var(--ws-cyan)] bg-[rgba(0,229,204,0.12)] shadow-[inset_0_0_0_1px_rgba(0,229,204,0.15)] hover:bg-[rgba(0,229,204,0.18)]"
                     : "border border-[color:var(--ws-border)] bg-[var(--ws-bg3)] hover:bg-[var(--ws-hover)]"
                 }`}
                 aria-pressed={isSelected}
               >
-                <div className="flex items-baseline justify-center gap-2 sm:gap-3 whitespace-nowrap">
-                  <span className="font-mono font-semibold text-base" style={{ color: "var(--ws-cyan)" }}>
+                <div className="grid w-full grid-cols-4 gap-x-0.5 sm:gap-x-1 items-baseline justify-items-center tabular-nums leading-tight whitespace-nowrap">
+                  <span
+                    className="font-mono font-bold text-base sm:text-lg tracking-tight text-center min-w-0"
+                    style={{ color: "var(--ws-cyan)" }}
+                  >
                     {sym}
                   </span>
-                  <span className="tabular-nums text-sm font-normal leading-snug" style={{ color: "var(--ws-text)" }}>
+                  <span className="text-xs sm:text-sm font-normal text-center min-w-0" style={{ color: "var(--ws-text)" }}>
                     {fmtPriceDisplay(q?.last_price ?? null)}
                   </span>
-                  <span className="tabular-nums text-sm font-normal leading-snug" style={{ color: changeColor }}>
+                  <span className="text-xs sm:text-sm font-normal text-center min-w-0" style={{ color: changeColor }}>
                     {fmtPct(ch)}
                   </span>
-                </div>
-                <div
-                  className="mt-2 flex flex-nowrap items-center justify-center gap-x-2 tabular-nums text-sm leading-snug whitespace-nowrap"
-                  style={{ color: "var(--ws-text-dim)" }}
-                >
-                  <span>
-                    <span>RVOL </span>
+                  <span className="text-xs sm:text-sm text-center min-w-0" style={{ color: "var(--ws-text-dim)" }}>
+                    <span className="font-normal">RVOL </span>
                     <span
-                      className="tabular-nums"
+                      className="tabular-nums font-normal"
                       style={{ color: rvolVis.color, fontWeight: rvolVis.fontWeight }}
                     >
                       {fmtRvol(rvol)}
                     </span>
                   </span>
-                  {showBreadth && (
-                    <>
-                      <span className="opacity-60" aria-hidden>
-                        ·
-                      </span>
-                      <span>
-                        &gt;50D{" "}
-                        <span style={{ color: breadthColor(b?.pct50 ?? null) }}>{fmtBreadth(b?.pct50 ?? null)}</span>
-                      </span>
-                      <span className="opacity-60" aria-hidden>
-                        ·
-                      </span>
-                      <span>
-                        &gt;200D{" "}
-                        <span style={{ color: breadthColor(b?.pct200 ?? null) }}>{fmtBreadth(b?.pct200 ?? null)}</span>
-                      </span>
-                    </>
-                  )}
                 </div>
               </button>
             );

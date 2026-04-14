@@ -72,6 +72,8 @@ const SNAPSHOT_VARS = new Set([
   "INDUSTRY",
   "NAME",
   "ADV",
+  "DADV1M",
+  "DADV3M",
   "DAYS_SINCE_IPO",
   "SHARES_OUT",
   "FLOAT",

@@ -64,6 +64,10 @@ const SERIES_KEYS: Record<string, keyof Bar> = {
 const SNAPSHOT_NUMERIC: Record<string, string> = {
   MARKET_CAP: "market_cap",
   MC: "market_cap",
+  /** Mean daily dollar volume (~21 sessions), from indicators_daily. */
+  DADV1M: "avg_dollar_volume_1m",
+  /** Mean daily dollar volume (~63 sessions), from indicators_daily. */
+  DADV3M: "avg_dollar_volume_3m",
   DAYS_SINCE_IPO: "days_since_ipo",
   SHARES_OUT: "shares_outstanding",
 };

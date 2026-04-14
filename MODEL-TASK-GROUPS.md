@@ -2,6 +2,8 @@
 
 Purpose: run fixes independently by model track with minimal overlap.
 
+**Completion status:** Live-site work that is done vs still open is tracked in [`general_notes.md`](./general_notes.md) (**Completed** / **Open**). Bullets in this file are not individually checkmarked; use that file for what has shipped.
+
 ## Auto Track (low-risk, execution-focused)
 
 ### General

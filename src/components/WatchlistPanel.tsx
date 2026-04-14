@@ -1118,6 +1118,16 @@ export default function WatchlistPanel({
     else if (sectionMode === "lists") setSidebarTab("watchlists");
   }, [sectionMode]);
 
+  /** Keep bulk-selection highlight in sync when the active chart symbol changes (e.g. arrow keys, search). */
+  useEffect(() => {
+    const sym = selectedSymbol?.trim().toUpperCase() ?? "";
+    if (!sym) return;
+    setSelectedSymbols((prev) => {
+      if (prev.size === 1 && prev.has(sym)) return prev;
+      return new Set([sym]);
+    });
+  }, [selectedSymbol]);
+
   useEffect(() => {
     saveWatchlists(lists);
     window.dispatchEvent(new CustomEvent("stock-watchlists-changed", { detail: lists }));
@@ -1963,21 +1973,34 @@ export default function WatchlistPanel({
     setSidebarTab("watchlists");
   }, [setActiveListId]);
 
+  const addSymbolsToListIds = useCallback((symbols: string[], listId: string) => {
+    const upper = new Set(symbols.map((s) => s.toUpperCase()));
+    setLists((prev) =>
+      prev.map((l) => {
+        if (l.id !== listId) return l;
+        const next = [...l.symbols];
+        for (const s of upper) {
+          if (!next.includes(s)) next.push(s);
+        }
+        return { ...l, symbols: next };
+      })
+    );
+  }, []);
+
+  const removeSymbolsFromListIds = useCallback((symbols: string[], listId: string) => {
+    const upper = new Set(symbols.map((s) => s.toUpperCase()));
+    setLists((prev) =>
+      prev.map((l) => (l.id === listId ? { ...l, symbols: l.symbols.filter((s) => !upper.has(s)) } : l))
+    );
+  }, []);
+
   const addSymbolToList = useCallback(
     (symbol: string, listId?: string) => {
       const targetId = listId ?? activeListId;
       if (!targetId) return;
-      const sym = symbol.toUpperCase();
-      setLists((prev) =>
-        prev.map((l) =>
-          l.id === targetId && !l.symbols.includes(sym)
-            ? { ...l, symbols: [...l.symbols, sym] }
-            : l
-        )
-      );
-      setShowAddToListMenu(false);
+      addSymbolsToListIds([symbol], targetId);
     },
-    [activeListId]
+    [activeListId, addSymbolsToListIds]
   );
 
   const commitInlineTicker = useCallback(
@@ -2651,6 +2674,15 @@ export default function WatchlistPanel({
   useEffect(() => {
     onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
   }, [sortedRows, onOrderedSymbolsChange]);
+
+  useLayoutEffect(() => {
+    if (!selectedSymbol?.trim()) return;
+    const sym = selectedSymbol.trim().toUpperCase();
+    const table = tableRef.current;
+    if (!table) return;
+    const row = table.querySelector(`tr[data-symbol-row="${CSS.escape(sym)}"]`);
+    row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selectedSymbol, sortedRows]);
 
   useEffect(() => {
     if (!onRowCountChange) return;
@@ -4828,19 +4860,26 @@ export default function WatchlistPanel({
                 {showAddToListMenu && (
                   <div className="absolute left-0 top-full z-50 mt-1 rounded py-1 min-w-[180px] max-h-60 overflow-auto shadow-lg" style={{ background: "var(--ws-bg3)", border: "1px solid var(--ws-border-hover)" }}>
                     {lists.map((l) => {
-                      const allIn = Array.from(selectedSymbols).every((s) => l.symbols.includes(s));
+                      const selected = Array.from(selectedSymbols).map((s) => s.toUpperCase());
+                      const allIn = selected.length > 0 && selected.every((s) => l.symbols.includes(s));
+                      const someIn = selected.some((s) => l.symbols.includes(s));
                       return (
                         <label key={l.id} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer" style={{ color: "var(--ws-text-dim)" }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                         >
-                          <input type="checkbox" checked={allIn} onChange={() => {
-                            if (allIn) {
-                              Array.from(selectedSymbols).forEach((sym) => removeSymbolsFromList([sym]));
-                            } else {
-                              Array.from(selectedSymbols).forEach((sym) => addSymbolToList(sym, l.id));
-                            }
-                          }} className="accent-[var(--ws-cyan)]" />
+                          <input
+                            type="checkbox"
+                            ref={(el) => {
+                              if (el) el.indeterminate = someIn && !allIn;
+                            }}
+                            checked={allIn}
+                            onChange={() => {
+                              if (allIn) removeSymbolsFromListIds(selected, l.id);
+                              else addSymbolsToListIds(selected, l.id);
+                            }}
+                            className="accent-[var(--ws-cyan)]"
+                          />
                           {l.name}
                         </label>
                       );
@@ -5104,6 +5143,7 @@ export default function WatchlistPanel({
                       return (
                         <tr
                           key={row.symbol}
+                          data-symbol-row={row.symbol.toUpperCase()}
                           draggable
                           onDragStart={(e) => { e.dataTransfer.setData("stockSymbol", row.symbol); e.dataTransfer.effectAllowed = "copy"; }}
                           className={`${onSymbolSelect ? "cursor-pointer" : ""}`}

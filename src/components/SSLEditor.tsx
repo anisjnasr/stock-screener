@@ -32,6 +32,24 @@ function isCaretInLineComment(text: string, caret: number): boolean {
   return before.slice(lineStart).includes("//");
 }
 
+/** Uppercase identifiers/keywords; ASCII length is unchanged so caret indices stay valid. */
+function normalizeSslText(raw: string): string {
+  const lines = raw.split("\n");
+  return lines
+    .map((line) => {
+      const tokens = tokenize(line);
+      return tokens
+        .map((t) => {
+          if (t.type === "number" || t.type === "space" || t.type === "punctuation") {
+            return t.value;
+          }
+          return t.value.toUpperCase();
+        })
+        .join("");
+    })
+    .join("\n");
+}
+
 export default function SSLEditor({
   value,
   onChange,
@@ -49,24 +67,12 @@ export default function SSLEditor({
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const replaceRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+  /** After controlled `value` updates, restore textarea selection (normalization runs on each keystroke). */
+  const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
   const handleChangeRaw = useCallback(
     (raw: string) => {
-      const lines = raw.split("\n");
-      const normalized = lines
-        .map((line) => {
-          const tokens = tokenize(line);
-          return tokens
-            .map((t) => {
-              if (t.type === "number" || t.type === "space" || t.type === "punctuation") {
-                return t.value;
-              }
-              return t.value.toUpperCase();
-            })
-            .join("");
-        })
-        .join("\n");
-      onChange(normalized);
+      onChange(normalizeSslText(raw));
     },
     [onChange]
   );
@@ -183,6 +189,16 @@ export default function SSLEditor({
     return () => clearTimeout(timer);
   }, [value, onValidation]);
 
+  useLayoutEffect(() => {
+    const p = pendingSelectionRef.current;
+    const ta = textareaRef.current;
+    pendingSelectionRef.current = null;
+    if (!p || !ta) return;
+    const start = Math.max(0, Math.min(p.start, ta.value.length));
+    const end = Math.max(0, Math.min(p.end, ta.value.length));
+    ta.setSelectionRange(start, end);
+  }, [value]);
+
   /** Re-filter or close when script changes while menu is open. */
   useLayoutEffect(() => {
     if (!menuOpen) return;
@@ -216,8 +232,18 @@ export default function SSLEditor({
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const raw = e.target.value;
     const caret = e.target.selectionStart;
-    handleChangeRaw(raw);
-    refreshCompletionsAt(raw, caret, false);
+    const selEnd = e.target.selectionEnd;
+    const normalized = normalizeSslText(raw);
+    if (normalized !== raw) {
+      pendingSelectionRef.current = {
+        start: Math.min(caret, normalized.length),
+        end: Math.min(selEnd, normalized.length),
+      };
+    } else {
+      pendingSelectionRef.current = null;
+    }
+    onChange(normalized);
+    refreshCompletionsAt(normalized, Math.min(caret, normalized.length), false);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

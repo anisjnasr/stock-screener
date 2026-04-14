@@ -16,6 +16,8 @@ const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
   down50pct_month: "Down 50% M",
   nnh52w_highs: "52W Highs",
   nnh52w_lows: "52W Lows",
+  universe_above_50d: ">50D",
+  universe_above_200d: ">200D",
 };
 
 /** Earliest session date for which primary-breadth indicator counts are drillable (ISO YYYY-MM-DD). */
@@ -40,6 +42,11 @@ function fmtInt(n: number | null | undefined): string {
 function fmtRatio(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "";
   return n.toFixed(2);
+}
+
+function fmtUniverseBreadthPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "";
+  return `${n.toFixed(1)}%`;
 }
 
 function quantile(values: number[], p: number): number | null {
@@ -236,18 +243,10 @@ export default function MarketMonitorTable({
               <th
                 scope="colgroup"
                 className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
-                colSpan={4}
+                colSpan={8}
                 style={{ background: "var(--ws-mm-header-green)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Secondary Breadth Indicators
-              </th>
-              <th
-                scope="colgroup"
-                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide ws-mm-header-teal"
-                colSpan={2}
-                style={{ borderColor: "var(--ws-border)" }}
-              >
-                New 52W Highs / Lows
               </th>
               <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
@@ -264,26 +263,24 @@ export default function MarketMonitorTable({
                 "Down 25% (M)",
                 "Up 50% (M)",
                 "Down 50% (M)",
-                "Highs",
-                "Lows",
+                "52W Highs",
+                "52W Lows",
+                ">50D",
+                ">200D",
               ].map((label, idx) => {
                 const isGold = idx === 0 || (idx >= 1 && idx <= 6);
-                const isGreen = idx >= 7 && idx <= 10;
-                const isTeal = idx >= 11 && idx <= 12;
+                const isGreen = idx >= 7 && idx <= 14;
                 const hdr = isGold
                   ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
                   : isGreen
                     ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
-                    : isTeal
-                      ? {}
-                      : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
-                const edge =
-                  idx === 0 || idx === 7 ? " border-l border-r" : idx === 11 ? " border-l" : "";
+                    : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
+                const edge = idx === 0 || idx === 7 ? " border-l border-r" : "";
                 return (
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${edge}${isTeal ? " ws-mm-header-teal" : ""}`}
+                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${edge}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -458,6 +455,38 @@ export default function MarketMonitorTable({
                     </button>
                   ) : (
                     <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair52w}`}>{fmtInt(row.nnh52wLows ?? 0)}</span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {drillable ? (
+                    <button
+                      type="button"
+                      className="ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit"
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("universe_above_50d", row.date)}
+                    >
+                      {fmtUniverseBreadthPct(row.universePctAbove50d)}
+                    </button>
+                  ) : (
+                    <span className="block pl-3 pr-7 py-1.5 text-right tabular-nums">
+                      {fmtUniverseBreadthPct(row.universePctAbove50d)}
+                    </span>
+                  )}
+                </td>
+                <td className="p-0">
+                  {drillable ? (
+                    <button
+                      type="button"
+                      className="ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit"
+                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      onClick={() => openMmModal("universe_above_200d", row.date)}
+                    >
+                      {fmtUniverseBreadthPct(row.universePctAbove200d)}
+                    </button>
+                  ) : (
+                    <span className="block pl-3 pr-7 py-1.5 text-right tabular-nums">
+                      {fmtUniverseBreadthPct(row.universePctAbove200d)}
+                    </span>
                   )}
                 </td>
                 <td className="pl-3 pr-7 py-1.5 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>

@@ -166,6 +166,8 @@ withBusyRetry(
     sp500_pct_above_200d REAL,
     nasdaq_pct_above_50d REAL,
     nasdaq_pct_above_200d REAL,
+    universe_pct_above_50d REAL,
+    universe_pct_above_200d REAL,
     universe INTEGER NOT NULL DEFAULT 0,
     nnh_1m_highs INTEGER,
     nnh_1m_lows INTEGER,
@@ -206,6 +208,32 @@ withBusyRetry(
 `),
   "CREATE precomputed tables IF NOT EXISTS"
 );
+
+for (const stmt of [
+  "ALTER TABLE market_monitor_daily ADD COLUMN universe_pct_above_50d REAL",
+  "ALTER TABLE market_monitor_daily ADD COLUMN universe_pct_above_200d REAL",
+]) {
+  try {
+    db.exec(stmt);
+  } catch {
+    /* column already exists */
+  }
+}
+
+const mmUniverseSymbolsStmt = db.prepare(`
+  SELECT DISTINCT d.symbol AS symbol
+  FROM daily_bars d
+  INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+  LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+  WHERE d.date = ?
+    AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
+`);
+
+/** @param {string} date */
+function getMmUniverseSymbolSet(date) {
+  const rows = mmUniverseSymbolsStmt.all(date, MM_MIN_MARKET_CAP_USD);
+  return new Set(rows.map((r) => r.symbol));
+}
 
 // Get dates to process.
 let targetDates;
@@ -490,13 +518,14 @@ const mmUpsert = db.prepare(`
     up50pct_month, down50pct_month,
     sp500_pct_above_50d, sp500_pct_above_200d,
     nasdaq_pct_above_50d, nasdaq_pct_above_200d,
+    universe_pct_above_50d, universe_pct_above_200d,
     universe,
     nnh_1m_highs, nnh_1m_lows, nnh_1m_net,
     nnh_3m_highs, nnh_3m_lows, nnh_3m_net,
     nnh_6m_highs, nnh_6m_lows, nnh_6m_net,
     nnh_52w_highs, nnh_52w_lows, nnh_52w_net,
     updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(date) DO UPDATE SET
     up4pct=excluded.up4pct, down4pct=excluded.down4pct,
     ratio5d=excluded.ratio5d, ratio10d=excluded.ratio10d,
@@ -507,6 +536,8 @@ const mmUpsert = db.prepare(`
     sp500_pct_above_200d=excluded.sp500_pct_above_200d,
     nasdaq_pct_above_50d=excluded.nasdaq_pct_above_50d,
     nasdaq_pct_above_200d=excluded.nasdaq_pct_above_200d,
+    universe_pct_above_50d=excluded.universe_pct_above_50d,
+    universe_pct_above_200d=excluded.universe_pct_above_200d,
     universe=excluded.universe,
     nnh_1m_highs=excluded.nnh_1m_highs, nnh_1m_lows=excluded.nnh_1m_lows, nnh_1m_net=excluded.nnh_1m_net,
     nnh_3m_highs=excluded.nnh_3m_highs, nnh_3m_lows=excluded.nnh_3m_lows, nnh_3m_net=excluded.nnh_3m_net,
@@ -598,6 +629,9 @@ const insertAll = db.transaction(() => {
     const nnh6m = computeUniverseNNH(date, 126);
     const nnh52w = computeUniverseNNH(date, 252);
 
+    const mmUnivSet = getMmUniverseSymbolSet(date);
+    const univBreadth = computeEMAbreadth(mmUnivSet, date);
+
     mmUpsert.run(
       date,
       up4,
@@ -614,6 +648,8 @@ const insertAll = db.transaction(() => {
       sp200,
       nq50,
       nq200,
+      univBreadth.pct50d,
+      univBreadth.pct200d,
       Number(mm?.universe ?? 0),
       nnh1m.highs,
       nnh1m.lows,

@@ -2402,10 +2402,15 @@ export type MarketMonitorMetricKey =
   | "up50pct_month"
   | "down50pct_month"
   | "nnh52w_highs"
-  | "nnh52w_lows";
+  | "nnh52w_lows"
+  | "universe_above_50d"
+  | "universe_above_200d";
 
 /** Breadth-style metrics (daily_bar CTE); 52W NNH uses a separate query. */
-type MarketMonitorBreadthMetricKey = Exclude<MarketMonitorMetricKey, "nnh52w_highs" | "nnh52w_lows">;
+type MarketMonitorBreadthMetricKey = Exclude<
+  MarketMonitorMetricKey,
+  "nnh52w_highs" | "nnh52w_lows" | "universe_above_50d" | "universe_above_200d"
+>;
 
 const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "up4pct",
@@ -2418,6 +2423,8 @@ const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "down50pct_month",
   "nnh52w_highs",
   "nnh52w_lows",
+  "universe_above_50d",
+  "universe_above_200d",
 ];
 
 export function isMarketMonitorMetricKey(s: string): s is MarketMonitorMetricKey {
@@ -2540,6 +2547,65 @@ export function getMarketMonitorConstituents(
   ).get() as { c: number })?.c > 0;
   const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
 
+  if (metric === "universe_above_50d" || metric === "universe_above_200d") {
+    const emaPred = metric === "universe_above_50d" ? "i.above_ema_50 = 1" : "i.above_ema_200 = 1";
+    const sql = `
+    WITH symbols_today AS (
+      SELECT DISTINCT d.symbol
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
+    ),
+    b AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS prev_close
+      FROM daily_bars d
+      INNER JOIN symbols_today st ON st.symbol = d.symbol
+      WHERE d.date <= ?
+    )
+    SELECT
+      b.symbol AS symbol,
+      COALESCE(co.name, '') AS name,
+      COALESCE(co.industry, '') AS industry,
+      b.close AS price,
+      CASE
+        WHEN b.prev_close IS NOT NULL AND b.prev_close > 0 THEN 100.0 * (b.close - b.prev_close) / b.prev_close
+        ELSE 0
+      END AS changePct
+    FROM b
+    INNER JOIN companies co ON co.symbol = b.symbol
+    INNER JOIN indicators_daily i ON i.symbol = b.symbol AND i.date = b.date
+    WHERE b.date = ?
+      AND (${emaPred})
+    ORDER BY changePct DESC
+  `;
+    const rows = db.prepare(sql).all(
+      asOfDate,
+      MM_MIN_MARKET_CAP_USD,
+      asOfDate,
+      asOfDate
+    ) as Array<{
+      symbol: string;
+      name: string;
+      industry: string;
+      price: number;
+      changePct: number;
+    }>;
+
+    return rows.map((r) => ({
+      symbol: String(r.symbol),
+      name: String(r.name ?? ""),
+      industry: String(r.industry ?? ""),
+      price: Number(r.price ?? 0),
+      changePct: Number(r.changePct ?? 0),
+    }));
+  }
+
   const from = new Date(`${asOfDate}T00:00:00Z`);
   from.setUTCDate(from.getUTCDate() - 120);
   const bufferStartDate = from.toISOString().slice(0, 10);
@@ -2661,6 +2727,8 @@ export type MarketMonitorDailyRow = {
   sp500_pct_above_200d: number | null;
   nasdaq_pct_above_50d: number | null;
   nasdaq_pct_above_200d: number | null;
+  universe_pct_above_50d: number | null;
+  universe_pct_above_200d: number | null;
   universe: number;
   nnh_1m_highs: number | null;
   nnh_1m_lows: number | null;
@@ -2705,6 +2773,10 @@ export function getPrecomputedMarketMonitor(startDate: string, endDate: string):
     sp500_pct_above_200d: r.sp500_pct_above_200d != null ? Number(r.sp500_pct_above_200d) : null,
     nasdaq_pct_above_50d: r.nasdaq_pct_above_50d != null ? Number(r.nasdaq_pct_above_50d) : null,
     nasdaq_pct_above_200d: r.nasdaq_pct_above_200d != null ? Number(r.nasdaq_pct_above_200d) : null,
+    universe_pct_above_50d:
+      r.universe_pct_above_50d != null ? Number(r.universe_pct_above_50d) : null,
+    universe_pct_above_200d:
+      r.universe_pct_above_200d != null ? Number(r.universe_pct_above_200d) : null,
     universe: Number(r.universe ?? 0),
     nnh_1m_highs: r.nnh_1m_highs != null ? Number(r.nnh_1m_highs) : null,
     nnh_1m_lows: r.nnh_1m_lows != null ? Number(r.nnh_1m_lows) : null,

@@ -382,6 +382,17 @@ export default function Home() {
     setSearchValue("");
   }, []);
 
+  /** Market Monitor drill-down: open Lists with the ticker and restore last active list. */
+  const handleMarketMonitorSymbolSelect = useCallback(
+    (sym: string) => {
+      handleSymbolSelect(sym);
+      const prevList = sectionHistoryRef.current.lists;
+      if (prevList) setActiveWatchlistId(prevList);
+      setSection("lists");
+    },
+    [handleSymbolSelect]
+  );
+
   const handleMarketIndexCardClick = useCallback(
     (sym: MarketIndexSymbol) => {
       const upper = sym as string;
@@ -780,7 +791,7 @@ export default function Home() {
     >
       {section === "market" ? (
         <MarketLeftPanel
-          onSymbolSelect={handleSymbolSelect}
+          onSymbolSelect={handleMarketMonitorSymbolSelect}
           indexCardSelection={marketIndexCardSelection}
           onIndexCardClick={handleMarketIndexCardClick}
           onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}

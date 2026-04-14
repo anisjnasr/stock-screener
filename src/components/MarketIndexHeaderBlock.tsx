@@ -11,7 +11,7 @@ export default function MarketIndexHeaderBlock({
   onIndexCardClick: (sym: MarketIndexSymbol) => void;
 }) {
   return (
-    <div className="shrink-0 flex flex-col min-w-max">
+    <div className="shrink-0 flex flex-col min-w-max pt-3">
       <MarketIndexCards indexCardSelection={indexCardSelection} onCardClick={onIndexCardClick} />
       <p
         className="shrink-0 text-center text-xs uppercase tracking-wide py-2 px-4 border-b"

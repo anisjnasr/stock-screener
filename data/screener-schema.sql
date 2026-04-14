@@ -207,6 +207,8 @@ CREATE TABLE IF NOT EXISTS market_monitor_daily (
   sp500_pct_above_200d REAL,
   nasdaq_pct_above_50d REAL,
   nasdaq_pct_above_200d REAL,
+  universe_pct_above_50d REAL,
+  universe_pct_above_200d REAL,
   universe INTEGER NOT NULL DEFAULT 0,
   nnh_1m_highs INTEGER,
   nnh_1m_lows INTEGER,

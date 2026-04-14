@@ -23,6 +23,9 @@ export type MarketMonitorRow = {
   up50pct_month: number;
   down50pct_month: number;
   universe: number;
+  /** MM universe (cap ≥ $1B): % above50D / 200D EMA; absent in older cached payloads until recomputed. */
+  universePctAbove50d?: number | null;
+  universePctAbove200d?: number | null;
   nnh52wHighs: number;
   nnh52wLows: number;
 };
@@ -49,7 +52,7 @@ export type MarketMonitorApiPayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 20;
+const CACHE_VERSION = 21;
 const RESPONSE_CACHE_TTL_MS = 30 * 1000;
 
 const STALE_HINT =
@@ -91,6 +94,8 @@ function marketMonitorRowFromPrecomputedDaily(r: MarketMonitorDailyRow): MarketM
     up50pct_month: r.up50pct_month,
     down50pct_month: r.down50pct_month,
     universe: r.universe,
+    universePctAbove50d: r.universe_pct_above_50d,
+    universePctAbove200d: r.universe_pct_above_200d,
     nnh52wHighs: r.nnh_52w_highs ?? 0,
     nnh52wLows: r.nnh_52w_lows ?? 0,
   };
