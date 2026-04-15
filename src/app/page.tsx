@@ -75,6 +75,7 @@ import MarketLeftPanel from "@/components/MarketLeftPanel";
 import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
+import PreMarketWorkspace from "@/components/PreMarketWorkspace";
 
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
@@ -198,7 +199,7 @@ export default function Home() {
   const sectionLayoutKeyRef = useRef<string>("");
 
   useLayoutEffect(() => {
-    if (chartHidden) return;
+    if (chartHidden || section === "pre-market") return;
     const key =
       section === "market"
         ? `m:${marketIndexCardSelection ?? "none"}`
@@ -300,6 +301,8 @@ export default function Home() {
       setRightRailHidden(true);
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
+    } else if (section === "pre-market") {
+      setRightRailHidden(true);
     }
   }, [section, setRightRailHidden]);
 
@@ -755,6 +758,7 @@ export default function Home() {
   }, [scanSymbols, symbol, handleSymbolSelect]);
 
   useKeyboardShortcuts(useMemo(() => [
+    { key: "5", description: "Go to Pre-Market", category: "navigation" as const, action: () => setSection("pre-market") },
     { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
       const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
       el?.focus(); el?.select();
@@ -768,7 +772,7 @@ export default function Home() {
     { key: "d", description: "Daily chart", category: "chart" as const, action: () => setChartTimeframe("daily") },
     { key: "w", description: "Weekly chart", category: "chart" as const, action: () => setChartTimeframe("weekly") },
     { key: "m", description: "Monthly chart", category: "chart" as const, action: () => setChartTimeframe("monthly") },
-  ], [shortcutsOpen, cycleTheme]));
+  ], [shortcutsOpen, cycleTheme, setSection]));
 
   /* Stock data errors no longer block the full UI — the workspace, chart,
      and panels can still render. The right rail already handles missing data
@@ -797,6 +801,8 @@ export default function Home() {
           onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}
           omitIndexHeader={!chartHidden}
         />
+      ) : section === "pre-market" ? (
+        <div className="h-full min-h-0" style={{ background: "var(--ws-bg2)" }} aria-hidden />
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
           subTab={sectorSubTab}
@@ -1071,18 +1077,41 @@ export default function Home() {
             />
           </div>
         )}
-        <WorkspaceLayout
-          chartLeftPx={chartHidden ? 99999 : activeChartLeft}
-          onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
-          chartInsetTopPx={0}
-          railWidthPx={railWidthPx}
-          onRailWidthChange={setRailWidthPx}
-          rightRailHidden={effectiveRightRailHidden}
-          onToggleRightRail={railSupportedSection ? handleRightRailToggle : undefined}
-          leftPanel={leftPanel}
-          centerPanel={centerPanel}
-          rightPanel={rightPanel}
-        />
+        {section === "pre-market" ? (
+          <PanelErrorBoundary name="PreMarket">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <PreMarketWorkspace
+                selectedSymbol={symbol}
+                onSymbolSelect={handleSymbolSelect}
+                candles={candles}
+                chartLoading={chartLoading}
+                onChartRetry={() => {
+                  setChartLoading(true);
+                  setChartReloadNonce((n) => n + 1);
+                }}
+                chartTimeframe={chartTimeframe}
+                onChartTimeframeChange={setChartTimeframe}
+                stockFlag={currentStockFlag}
+                onFlagChange={handleFlagChange}
+                watchlistPickerLists={watchlistPickerLists}
+                onWatchlistMembershipSave={handleWatchlistMembershipSave}
+              />
+            </div>
+          </PanelErrorBoundary>
+        ) : (
+          <WorkspaceLayout
+            chartLeftPx={chartHidden ? 99999 : activeChartLeft}
+            onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
+            chartInsetTopPx={0}
+            railWidthPx={railWidthPx}
+            onRailWidthChange={setRailWidthPx}
+            rightRailHidden={effectiveRightRailHidden}
+            onToggleRightRail={railSupportedSection ? handleRightRailToggle : undefined}
+            leftPanel={leftPanel}
+            centerPanel={centerPanel}
+            rightPanel={rightPanel}
+          />
+        )}
       </div>
       <div className="fixed bottom-4 right-4 z-[12000] flex max-w-[420px] flex-col-reverse gap-2 items-end">
         {listCreatedBanner && (

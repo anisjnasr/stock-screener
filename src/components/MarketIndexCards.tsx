@@ -130,7 +130,7 @@ export default function MarketIndexCards({
       className="shrink-0 min-w-max flex flex-col items-center px-1.5 sm:px-3 py-2 border-b"
       style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
     >
-      <div className="flex min-w-max flex-nowrap items-stretch justify-center gap-1.5 sm:gap-2 overflow-x-auto">
+      <div className="flex min-w-max flex-nowrap items-stretch justify-center gap-1.5 sm:gap-2 overflow-x-auto mx-auto max-w-full">
         {loading ? (
           <span className="text-sm" style={{ color: "var(--ws-text-vdim)" }}>
             Loading indices…
@@ -158,27 +158,27 @@ export default function MarketIndexCards({
                 key={sym}
                 type="button"
                 onClick={() => onCardClick(sym)}
-                className={`rounded-md px-2 py-1.5 w-[19.75rem] sm:w-[21.25rem] shrink-0 transition-[background-color,border-color,box-shadow] duration-100 ws-focus-ring ${
+                className={`rounded-md px-1.5 py-1 w-[12.5rem] sm:w-[13.25rem] shrink-0 transition-[background-color,border-color,box-shadow] duration-100 ws-focus-ring ${
                   isSelected
                     ? "border border-[color:var(--ws-cyan)] bg-[rgba(0,229,204,0.12)] shadow-[inset_0_0_0_1px_rgba(0,229,204,0.15)] hover:bg-[rgba(0,229,204,0.18)]"
                     : "border border-[color:var(--ws-border)] bg-[var(--ws-bg3)] hover:bg-[var(--ws-hover)]"
                 }`}
                 aria-pressed={isSelected}
               >
-                <div className="grid w-full grid-cols-4 gap-x-0.5 sm:gap-x-1 items-baseline justify-items-center tabular-nums leading-tight whitespace-nowrap">
+                <div className="grid w-full grid-cols-4 gap-x-0.5 items-baseline justify-items-center tabular-nums leading-tight whitespace-nowrap">
                   <span
-                    className="font-mono font-bold text-base sm:text-lg tracking-tight text-center min-w-0"
+                    className="font-mono font-semibold text-ws-title text-xs sm:text-sm tracking-tight text-center min-w-0"
                     style={{ color: "var(--ws-cyan)" }}
                   >
                     {sym}
                   </span>
-                  <span className="text-xs sm:text-sm font-normal text-center min-w-0" style={{ color: "var(--ws-text)" }}>
+                  <span className="text-ws-caption font-normal text-center min-w-0" style={{ color: "var(--ws-text)" }}>
                     {fmtPriceDisplay(q?.last_price ?? null)}
                   </span>
-                  <span className="text-xs sm:text-sm font-normal text-center min-w-0" style={{ color: changeColor }}>
+                  <span className="text-ws-caption font-normal text-center min-w-0" style={{ color: changeColor }}>
                     {fmtPct(ch)}
                   </span>
-                  <span className="text-xs sm:text-sm text-center min-w-0" style={{ color: "var(--ws-text-dim)" }}>
+                  <span className="text-ws-caption text-center min-w-0" style={{ color: "var(--ws-text-dim)" }}>
                     <span className="font-normal">RVOL </span>
                     <span
                       className="tabular-nums font-normal"

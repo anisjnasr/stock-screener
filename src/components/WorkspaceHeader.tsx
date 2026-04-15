@@ -689,7 +689,7 @@ function WorkspaceHeader({
       </div>
 
       {/* ===== ROW 2 — Sub-bar (omitted on Market — index cards live in the left panel) ===== */}
-      {section !== "market" && (
+      {section !== "market" && section !== "pre-market" && (
       <div
         className="flex items-center gap-2 h-[40px]"
         style={{

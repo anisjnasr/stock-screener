@@ -1,4 +1,4 @@
-export type BaseWorkspaceSection = "market" | "sectors-industries" | "scans" | "lists";
+export type BaseWorkspaceSection = "market" | "sectors-industries" | "scans" | "lists" | "pre-market";
 export type WorkspaceSection = BaseWorkspaceSection;
 
 export const WORKSPACE_SECTIONS: { id: BaseWorkspaceSection; label: string; shortLabel: string; key: string }[] = [
@@ -6,4 +6,5 @@ export const WORKSPACE_SECTIONS: { id: BaseWorkspaceSection; label: string; shor
   { id: "sectors-industries", label: "Sectors / Industries", shortLabel: "Sectors", key: "2" },
   { id: "scans", label: "Scans", shortLabel: "Scans", key: "3" },
   { id: "lists", label: "Lists", shortLabel: "Lists", key: "4" },
+  { id: "pre-market", label: "Pre-Market", shortLabel: "Pre", key: "5" },
 ];

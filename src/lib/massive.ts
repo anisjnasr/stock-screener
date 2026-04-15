@@ -261,6 +261,78 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
   };
 }
 
+/** One row from Top Market Movers snapshot (before DB name / enrichment). */
+export type TopMoverSnapshotRow = {
+  ticker: string;
+  prevClose: number;
+  lastPrice: number;
+  gapPct: number;
+  pmVolume: number;
+  avgVolume1m: number | null;
+};
+
+function parseNumLoose(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Top gainers/losers: GET /v2/snapshot/locale/us/markets/stocks/{direction}
+ * Returns at most 20 tickers (Massive limit). % change is vs previous session close.
+ */
+export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Promise<TopMoverSnapshotRow[]> {
+  const res = await fetchDedup(url(`/v2/snapshot/locale/us/markets/stocks/${direction}`));
+  if (!res.ok) return [];
+  const data = (await res.json()) as {
+    tickers?: Array<{
+      ticker?: string;
+      day?: { c?: unknown; v?: unknown; o?: unknown; h?: unknown; l?: unknown };
+      prevDay?: { c?: unknown };
+      lastTrade?: { p?: unknown };
+      lastQuote?: { p?: unknown; P?: unknown };
+      todaysChangePerc?: unknown;
+      min?: { av?: unknown; v?: unknown };
+    }>;
+  };
+  const raw = data.tickers ?? [];
+  const out: TopMoverSnapshotRow[] = [];
+  for (const t of raw) {
+    const sym = String(t.ticker ?? "").trim().toUpperCase();
+    if (!sym) continue;
+    const prevClose = parseNumLoose(t.prevDay?.c) ?? 0;
+    const lastTradeP = parseNumLoose(t.lastTrade?.p);
+    const bid = parseNumLoose(t.lastQuote?.p);
+    const ask = parseNumLoose(t.lastQuote?.P);
+    const quoteMid =
+      bid != null && ask != null && bid > 0 && ask > 0 ? (bid + ask) / 2 : null;
+    const dayClose = parseNumLoose(t.day?.c);
+    const lastPrice = lastTradeP ?? quoteMid ?? dayClose ?? 0;
+    let gapPct = parseNumLoose(t.todaysChangePerc) ?? 0;
+    if (prevClose > 0 && lastPrice > 0) {
+      gapPct = ((lastPrice - prevClose) / prevClose) * 100;
+    }
+    const pmVolume =
+      parseNumLoose(t.day?.v) ??
+      parseNumLoose(t.min?.v) ??
+      0;
+    const avgVolume1m = parseNumLoose(t.min?.av);
+    if (prevClose <= 0 || lastPrice <= 0) continue;
+    out.push({
+      ticker: sym,
+      prevClose,
+      lastPrice,
+      gapPct,
+      pmVolume,
+      avgVolume1m: avgVolume1m != null && avgVolume1m > 0 ? avgVolume1m : null,
+    });
+  }
+  return out;
+}
+
 /** Ticker search: /v3/reference/tickers with search and market=stocks */
 export async function fetchSearchSymbol(query: string): Promise<SearchSymbolResult[]> {
   const q = query.trim();
