@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import type { PremarketMoverRow } from "@/lib/premarket-types";
 import type { ChartTimeframe } from "@/components/StockChart";
 import type { StockFlag } from "@/lib/watchlist-storage";
@@ -20,6 +28,99 @@ import {
   PREMARKET_THRESHOLDS_DEFAULTS,
   savePremarketThresholds,
 } from "@/lib/premarket-thresholds-storage";
+
+const SIP_COL_WIDTHS_KEY = "premarket-sip-col-widths-v2";
+const GAP_COL_WIDTHS_KEY = "premarket-gappers-col-widths-v3";
+
+/** Wider mins so headers wrap inside cells instead of overlapping adjacent columns. */
+const SIP_COL_MINS = [40, 60, 120, 58, 58, 70, 80, 96, 64, 76] as const;
+const SIP_COL_DEFAULTS = [48, 76, 240, 68, 68, 78, 92, 108, 76, 96] as const;
+
+/** Six explicit widths — no auto “fill” column, so Market Cap is not stretched across empty space. */
+const GAP_COL_MINS = [56, 120, 54, 72, 80, 88] as const;
+const GAP_COL_DEFAULTS = [72, 200, 62, 80, 92, 96] as const;
+
+function loadColWidths(key: string, mins: readonly number[], defaults: readonly number[]): number[] {
+  if (typeof window === "undefined") return [...defaults];
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [...defaults];
+    const p = JSON.parse(raw) as unknown;
+    if (!Array.isArray(p) || p.length !== defaults.length) return [...defaults];
+    return defaults.map((d, i) => {
+      const n = Number(p[i]);
+      return Math.max(mins[i] ?? 40, Number.isFinite(n) ? n : d);
+    });
+  } catch {
+    return [...defaults];
+  }
+}
+
+function saveColWidths(key: string, widths: number[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(widths));
+  } catch {
+    /* ignore */
+  }
+}
+
+const thBorderStyle = { borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" } as const;
+
+function ResizableTh({
+  align,
+  children,
+  colIdx,
+  onResizePointerDown,
+  showHandle,
+}: {
+  align: "left" | "right" | "center";
+  children: React.ReactNode;
+  colIdx: number;
+  onResizePointerDown: (e: ReactPointerEvent, colIdx: number) => void;
+  showHandle: boolean;
+}) {
+  const ac = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  return (
+    <th
+      className={`relative ${ac} py-2 pl-1.5 align-bottom text-ws-body font-semibold border-b box-border ${
+        showHandle ? "pr-2.5" : "pr-1.5"
+      }`}
+      style={{ ...thBorderStyle, overflow: "hidden" }}
+    >
+      <span className={`block w-full min-w-0 break-words leading-snug ${align === "center" ? "text-center" : ""}`}>
+        {children}
+      </span>
+      {showHandle ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize column"
+          className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize touch-none select-none group"
+          style={{ zIndex: 1 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onResizePointerDown(e, colIdx);
+          }}
+        >
+          <span className="absolute inset-y-0 right-1 w-px bg-[var(--ws-border)] group-hover:bg-[var(--ws-cyan)]" />
+        </div>
+      ) : null}
+    </th>
+  );
+}
+
+function digitsOnlyIntString(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
+function formatThousandsDisplay(raw: string): string {
+  const d = digitsOnlyIntString(raw);
+  if (!d) return "";
+  const n = Number(d);
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("en-US");
+}
 
 function sipPlaceholderRow(ticker: string): PremarketMoverRow {
   return {
@@ -142,7 +243,7 @@ function renderCatalystSummary(summary: string | undefined, loading: boolean): R
   }
   const parts = t.split(/(\[[^\]]+\]\([^)]+\))/g);
   return (
-    <span className="text-ws-caption leading-snug">
+    <span className="text-ws-body leading-snug">
       {parts.map((part, i) => {
         const m = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (m) {
@@ -234,6 +335,68 @@ export default function PreMarketWorkspace({
   const sipStateRef = useRef({ sipTickers, lastByTicker, catalystMap });
   sipStateRef.current = { sipTickers, lastByTicker, catalystMap };
   const skipNextThresholdSaveRef = useRef(true);
+
+  const [sipColWidths, setSipColWidths] = useState(() =>
+    loadColWidths(SIP_COL_WIDTHS_KEY, SIP_COL_MINS, SIP_COL_DEFAULTS)
+  );
+  const [gapColWidths, setGapColWidths] = useState(() =>
+    loadColWidths(GAP_COL_WIDTHS_KEY, GAP_COL_MINS, GAP_COL_DEFAULTS)
+  );
+  const sipWidthsRef = useRef(sipColWidths);
+  sipWidthsRef.current = sipColWidths;
+  const gapWidthsRef = useRef(gapColWidths);
+  gapWidthsRef.current = gapColWidths;
+
+  useEffect(() => {
+    saveColWidths(SIP_COL_WIDTHS_KEY, sipColWidths);
+  }, [sipColWidths]);
+  useEffect(() => {
+    saveColWidths(GAP_COL_WIDTHS_KEY, gapColWidths);
+  }, [gapColWidths]);
+
+  const onSipColResizePointerDown = useCallback((e: ReactPointerEvent, idx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = sipWidthsRef.current[idx] ?? SIP_COL_DEFAULTS[idx]!;
+    const minW = SIP_COL_MINS[idx] ?? 40;
+    const move = (ev: PointerEvent) => {
+      const dw = ev.clientX - startX;
+      setSipColWidths((p) => {
+        const n = [...p];
+        n[idx] = Math.max(minW, startW + dw);
+        return n;
+      });
+    };
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  }, []);
+
+  const onGapColResizePointerDown = useCallback((e: ReactPointerEvent, idx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = gapWidthsRef.current[idx] ?? GAP_COL_DEFAULTS[idx]!;
+    const minW = GAP_COL_MINS[idx] ?? 40;
+    const move = (ev: PointerEvent) => {
+      const dw = ev.clientX - startX;
+      setGapColWidths((p) => {
+        const n = [...p];
+        n[idx] = Math.max(minW, startW + dw);
+        return n;
+      });
+    };
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  }, []);
 
   /** Archive completed ET day from localStorage into ledger; clear working keys; advance active date. */
   useEffect(() => {
@@ -404,9 +567,7 @@ export default function PreMarketWorkspace({
       const list = data.movers ?? [];
       const elig = data.eligibleNow ?? [];
       if (list.length > 0 && elig.length === 0) {
-        setSipEmptyHint(
-          "None of the current top gainers pass every threshold. This list is usually small caps—your min market cap (e.g. $500M) often excludes all of them. Try lowering min mkt cap or other limits, then Refresh."
-        );
+        setSipEmptyHint("No results");
       } else {
         setSipEmptyHint(null);
       }
@@ -531,39 +692,43 @@ export default function PreMarketWorkspace({
         onClick={() => onSymbolSelect(row.ticker)}
       >
         {opts.rank != null && (
-          <td className="py-1.5 pr-1 text-right tabular-nums text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
+          <td
+            className="py-1.5 px-1 text-center tabular-nums text-ws-body"
+            style={{ color: "var(--ws-text-dim)" }}
+            align="center"
+          >
             {opts.rank}
           </td>
         )}
         <td
-          className="py-1.5 pr-2 font-mono text-ws-body font-semibold whitespace-nowrap"
+          className="py-1.5 px-1.5 font-mono text-ws-body font-semibold whitespace-nowrap"
           style={{ color: "var(--ws-cyan)" }}
         >
           {row.ticker}
         </td>
-        <td className="py-1.5 pr-2 text-ws-body truncate max-w-[140px]" style={{ color: "var(--ws-text)" }} title={row.name}>
+        <td className="py-1.5 px-1.5 text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
           {row.name}
         </td>
-        <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {fmtPrice(row.prevClose)}
         </td>
-        <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text)" }}>
+        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
           {fmtPrice(row.lastPrice)}
         </td>
         <td
-          className="py-1.5 pr-2 text-right tabular-nums text-ws-body font-medium"
+          className="py-1.5 px-1.5 text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
           style={{ color: row.gapPct >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
         >
           {fmtPct(row.gapPct)}
         </td>
-        <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text)" }}>
+        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
           {fmtVol(row.pmVolume)}
         </td>
-        <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {row.avgVolume1m != null ? fmtVol(row.avgVolume1m) : "—"}
         </td>
         <td
-          className={`py-1.5 pr-2 text-right tabular-nums text-ws-body ${
+          className={`py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap ${
             row.volRatioPct != null && row.volRatioPct > 20 ? "font-medium" : ""
           }`}
           style={{
@@ -575,12 +740,12 @@ export default function PreMarketWorkspace({
         >
           {row.volRatioPct != null ? fmtPct(row.volRatioPct) : "—"}
         </td>
-        <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {fmtMcap(row.marketCap)}
         </td>
         {opts.showCatalyst && (
           <td
-            className="py-1.5 pr-2 align-top max-w-[min(280px,36vw)]"
+            className="py-1.5 px-1.5 align-top min-w-0"
             onClick={(e) => e.stopPropagation()}
           >
             {renderCatalystSummary(catText, catLoading)}
@@ -611,66 +776,78 @@ export default function PreMarketWorkspace({
     label: string,
     value: string,
     onChange: (v: string) => void,
-    narrow?: boolean
-  ) => (
-    <label className="flex flex-col gap-0.5 min-w-0">
-      <span className="text-ws-caption whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
-        {label}
-      </span>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`rounded px-2 py-1 text-ws-label tabular-nums ws-focus-ring ${narrow ? "w-[88px]" : "w-[120px]"}`}
-        style={{
-          background: "var(--ws-bg)",
-          border: "1px solid var(--ws-border)",
-          color: "var(--ws-text)",
-        }}
-      />
-    </label>
-  );
+    opts?: { narrow?: boolean; thousands?: boolean }
+  ) => {
+    const display = opts?.thousands ? formatThousandsDisplay(value) : value;
+    return (
+      <label className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-ws-caption whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
+          {label}
+        </span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={display}
+          onChange={(e) => {
+            if (opts?.thousands) onChange(digitsOnlyIntString(e.target.value));
+            else onChange(e.target.value);
+          }}
+          className={`rounded px-2 py-1 text-ws-label tabular-nums ws-focus-ring ${
+            opts?.thousands ? "w-[9.5rem] min-w-[7rem]" : opts?.narrow ? "w-[88px]" : "w-[120px]"
+          }`}
+          style={{
+            background: "var(--ws-bg)",
+            border: "1px solid var(--ws-border)",
+            color: "var(--ws-text)",
+          }}
+        />
+      </label>
+    );
+  };
 
   return (
     <div className="h-full min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
       <div
-        className="shrink-0 flex flex-wrap items-end gap-3 px-3 py-2 border-b"
+        className="shrink-0 flex flex-wrap items-end gap-x-4 gap-y-2 px-3 py-2 border-b"
         style={{ borderColor: "var(--ws-border)" }}
       >
-        <span className="text-ws-caption font-semibold uppercase tracking-wider mr-1" style={{ color: "var(--ws-text-dim)" }}>
-          Thresholds
+        <span className="shrink-0 text-ws-title font-semibold tracking-tight pb-1" style={{ color: "var(--ws-text)" }}>
+          Scan Filters
         </span>
-        {filterInput("Min price ($)", minPrice, setMinPrice, true)}
-        {filterInput("Min PM vol", minPmVolume, setMinPmVolume)}
-        {filterInput("Min gap %", minGapPct, setMinGapPct, true)}
-        {filterInput("Min mkt cap ($)", minMarketCap, setMinMarketCap)}
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void refresh()}
-          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-ws-label font-semibold transition-opacity ws-focus-ring disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            background: "rgba(0,229,204,0.12)",
-            color: "var(--ws-cyan)",
-            border: "1px solid rgba(0,229,204,0.25)",
-          }}
-        >
-          {loading ? (
-            <span className="inline-block h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
+        <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0">
+          {filterInput("Min Price ($)", minPrice, setMinPrice, { narrow: true })}
+          {filterInput("Min PM Volume", minPmVolume, setMinPmVolume, { thousands: true })}
+          {filterInput("Min Gap %", minGapPct, setMinGapPct, { narrow: true })}
+          {filterInput("Min Market Cap ($)", minMarketCap, setMinMarketCap, { thousands: true })}
+        </div>
+        <div className="flex flex-wrap items-end gap-3 shrink-0 ml-auto">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void refresh()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-ws-label font-semibold transition-opacity ws-focus-ring disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(0,229,204,0.12)",
+              color: "var(--ws-cyan)",
+              border: "1px solid rgba(0,229,204,0.25)",
+            }}
+          >
+            {loading ? (
+              <span className="inline-block h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
+            ) : null}
+            Refresh
+          </button>
+          {fetchedAt && !error ? (
+            <span className="text-ws-caption tabular-nums pb-1.5 whitespace-nowrap" style={{ color: "var(--ws-text-vdim)" }}>
+              Last fetch: {new Date(fetchedAt).toLocaleString()}
+            </span>
           ) : null}
-          Refresh
-        </button>
+        </div>
       </div>
 
       {error && (
         <div className="shrink-0 px-3 py-1 text-ws-caption" style={{ color: "var(--ws-red)" }}>
           {error}
-        </div>
-      )}
-      {fetchedAt && !error && (
-        <div className="shrink-0 px-3 py-0.5 text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
-          Last fetch: {new Date(fetchedAt).toLocaleString()}
         </div>
       )}
 
@@ -719,40 +896,55 @@ export default function PreMarketWorkspace({
           style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
         >
           {premarketTab === "sip" ? (
-            <table className="w-full text-left border-collapse min-w-[640px]">
+            <table
+              className="w-full text-left border-collapse"
+              style={{
+                tableLayout: "fixed",
+                minWidth: Math.max(640, sipColWidths.reduce((a, b) => a + b, 0) + 200),
+              }}
+            >
+              <colgroup>
+                {sipColWidths.map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+                <col />
+              </colgroup>
               <thead className="sticky top-0 z-[1]" style={{ background: "var(--ws-bg3)" }}>
-                <tr className="border-b" style={{ borderColor: "var(--ws-border)" }}>
-                  <th className="py-2 pl-2 pr-1 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                <tr>
+                  <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onSipColResizePointerDown}>
                     #
-                  </th>
-                  <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onSipColResizePointerDown}>
                     Ticker
-                  </th>
-                  <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onSipColResizePointerDown}>
                     Company
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Prev
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    PM
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Gap
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    PM vol
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Avg 1M
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Vol %
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Mkt cap
-                  </th>
-                  <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Prev. Close
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Price
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={5} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Gap %
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={6} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    PM Volume
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={7} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Avg Volume (1M)
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={8} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Volume %
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={9} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                    Market Cap
+                  </ResizableTh>
+                  <th
+                    className="py-2 px-1.5 text-center text-ws-body font-semibold border-b align-bottom box-border"
+                    style={{ ...thBorderStyle, overflow: "hidden" }}
+                  >
                     Catalyst
                   </th>
                 </tr>
@@ -762,7 +954,7 @@ export default function PreMarketWorkspace({
                   <tr>
                     <td
                       colSpan={11}
-                      className="py-6 px-4 text-center text-ws-caption leading-relaxed max-w-prose mx-auto"
+                      className="py-6 px-4 text-center text-ws-body leading-relaxed max-w-prose mx-auto"
                       style={{ color: "var(--ws-text-vdim)" }}
                     >
                       {sipEmptyHint ?? (
@@ -780,27 +972,35 @@ export default function PreMarketWorkspace({
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-left border-collapse min-w-[420px]">
+            <table className="w-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                {(() => {
+                  const t = gapColWidths.reduce((a, b) => a + b, 0) || 1;
+                  return gapColWidths.map((w, i) => (
+                    <col key={i} style={{ width: `${(100 * w) / t}%` }} />
+                  ));
+                })()}
+              </colgroup>
               <thead className="sticky top-0 z-[1]" style={{ background: "var(--ws-bg3)" }}>
-                <tr className="border-b" style={{ borderColor: "var(--ws-border)" }}>
-                  <th className="py-2 pl-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                <tr>
+                  <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onGapColResizePointerDown}>
                     Ticker
-                  </th>
-                  <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Name
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    PM
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Gap
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    PM vol
-                  </th>
-                  <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    Mkt cap
-                  </th>
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                    Company
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                    Price
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                    Gap %
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                    PM Volume
+                  </ResizableTh>
+                  <ResizableTh align="center" colIdx={5} showHandle={false} onResizePointerDown={onGapColResizePointerDown}>
+                    Market Cap
+                  </ResizableTh>
                 </tr>
               </thead>
               <tbody>
@@ -825,27 +1025,27 @@ export default function PreMarketWorkspace({
                       onClick={() => onSymbolSelect(row.ticker)}
                     >
                       <td
-                        className="py-1.5 pl-2 pr-2 font-mono text-ws-body font-semibold whitespace-nowrap"
+                        className="py-1.5 px-1.5 font-mono text-ws-body font-semibold whitespace-nowrap"
                         style={{ color: "var(--ws-cyan)" }}
                       >
                         {row.ticker}
                       </td>
-                      <td className="py-1.5 pr-2 text-ws-body truncate max-w-[160px]" style={{ color: "var(--ws-text)" }} title={row.name}>
+                      <td className="py-1.5 px-1.5 text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
                         {row.name}
                       </td>
-                      <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text)" }}>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
                         {fmtPrice(row.lastPrice)}
                       </td>
                       <td
-                        className="py-1.5 pr-2 text-right tabular-nums text-ws-body font-medium"
+                        className="py-1.5 px-1.5 text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
                         style={{ color: row.gapPct >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
                       >
                         {fmtPct(row.gapPct)}
                       </td>
-                      <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text)" }}>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
                         {fmtVol(row.pmVolume)}
                       </td>
-                      <td className="py-1.5 pr-2 text-right tabular-nums text-ws-body" style={{ color: "var(--ws-text-dim)" }}>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
                         {fmtMcap(row.marketCap)}
                       </td>
                     </tr>
@@ -938,40 +1138,56 @@ export default function PreMarketWorkspace({
                       </button>
                       {open && (
                         <div className="px-2 pb-3 overflow-x-auto" style={{ background: "var(--ws-bg2)" }}>
-                          <table className="w-full text-left border-collapse min-w-[640px] rounded border overflow-hidden" style={{ borderColor: "var(--ws-border)" }}>
+                          <table
+                            className="w-full text-left border-collapse rounded border overflow-hidden"
+                            style={{
+                              borderColor: "var(--ws-border)",
+                              tableLayout: "fixed",
+                              minWidth: Math.max(640, sipColWidths.reduce((a, b) => a + b, 0) + 200),
+                            }}
+                          >
+                            <colgroup>
+                              {sipColWidths.map((w, i) => (
+                                <col key={i} style={{ width: w }} />
+                              ))}
+                              <col />
+                            </colgroup>
                             <thead style={{ background: "var(--ws-bg3)" }}>
-                              <tr className="border-b" style={{ borderColor: "var(--ws-border)" }}>
-                                <th className="py-2 pl-2 pr-1 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                              <tr>
+                                <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onSipColResizePointerDown}>
                                   #
-                                </th>
-                                <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onSipColResizePointerDown}>
                                   Ticker
-                                </th>
-                                <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onSipColResizePointerDown}>
                                   Company
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  Prev
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  PM
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  Gap
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  PM vol
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  Avg 1M
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  Vol %
-                                </th>
-                                <th className="py-2 pr-2 text-right text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                                  Mkt cap
-                                </th>
-                                <th className="py-2 pr-2 text-ws-caption font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Prev. Close
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Price
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={5} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Gap %
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={6} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  PM Volume
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={7} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Avg Volume (1M)
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={8} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Volume %
+                                </ResizableTh>
+                                <ResizableTh align="center" colIdx={9} showHandle onResizePointerDown={onSipColResizePointerDown}>
+                                  Market Cap
+                                </ResizableTh>
+                                <th
+                                  className="py-2 px-1.5 text-center text-ws-body font-semibold border-b align-bottom box-border"
+                                  style={{ ...thBorderStyle, overflow: "hidden" }}
+                                >
                                   Catalyst
                                 </th>
                               </tr>
