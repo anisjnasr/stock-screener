@@ -13,6 +13,7 @@ import type { PremarketMoverRow } from "@/lib/premarket-types";
 import type { ChartTimeframe } from "@/components/StockChart";
 import type { StockFlag } from "@/lib/watchlist-storage";
 import StockChart from "@/components/StockChart";
+import IntradayChart from "@/components/IntradayChart";
 import type { Candle } from "@/hooks/useCandleCache";
 import {
   ACTIVE_ET_DATE_KEY,
@@ -1062,29 +1063,37 @@ export default function PreMarketWorkspace({
         style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
       >
         <div
-          className="rounded-lg overflow-hidden min-h-[280px] h-[min(38vh,440px)] flex flex-col"
+          className="rounded-lg overflow-hidden min-h-[360px] h-[min(48vh,560px)] flex flex-col"
           style={{
             border: "1px solid var(--ws-border)",
             background: "var(--ws-bg)",
             boxShadow: "0 1px 0 rgba(0,0,0,0.06)",
           }}
         >
-          <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-            <StockChart
-              symbol={selectedSymbol}
-              data={candles}
-              loading={chartLoading}
-              onRetryLoad={onChartRetry}
-              timeframe={chartTimeframe}
-              onTimeframeChange={onChartTimeframeChange}
-              dualModeEnabled={false}
-              showGlobalControls
-              chartInstanceId="premarket"
-              stockFlag={stockFlag}
-              onFlagChange={onFlagChange}
-              watchlistPickerLists={watchlistPickerLists}
-              onWatchlistMembershipSave={onWatchlistMembershipSave}
-            />
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:gap-0">
+            <div
+              className="flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden border-b lg:min-h-0 lg:border-b-0 lg:border-r"
+              style={{ borderColor: "var(--ws-border)" }}
+            >
+              <StockChart
+                symbol={selectedSymbol}
+                data={candles}
+                loading={chartLoading}
+                onRetryLoad={onChartRetry}
+                timeframe={chartTimeframe}
+                onTimeframeChange={onChartTimeframeChange}
+                dualModeEnabled={false}
+                showGlobalControls
+                chartInstanceId="premarket"
+                stockFlag={stockFlag}
+                onFlagChange={onFlagChange}
+                watchlistPickerLists={watchlistPickerLists}
+                onWatchlistMembershipSave={onWatchlistMembershipSave}
+              />
+            </div>
+            <div className="flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
+              <IntradayChart symbol={selectedSymbol} />
+            </div>
           </div>
         </div>
 

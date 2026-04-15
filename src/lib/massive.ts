@@ -673,3 +673,86 @@ export async function fetchHistoricalDaily(
     return true;
   });
 }
+
+/** Client-side interval for intraday aggregates (minutes, or 60 for hourly bars). */
+export type IntradayBarInterval = 1 | 5 | 15 | 60;
+
+function polygonAggsUrl(
+  sym: string,
+  multiplier: number,
+  timespan: "minute" | "hour",
+  fromMs: number,
+  toMs: number
+): string {
+  return url(`/v2/aggs/ticker/${sym}/range/${multiplier}/${timespan}/${fromMs}/${toMs}`, {
+    adjusted: "true",
+    sort: "asc",
+    limit: "50000",
+  });
+}
+
+function ensureApiKeyOnUrl(fullUrl: string): string {
+  if (fullUrl.includes("apiKey=")) return fullUrl;
+  const sep = fullUrl.includes("?") ? "&" : "?";
+  return `${fullUrl}${sep}apiKey=${encodeURIComponent(getApiKey())}`;
+}
+
+/**
+ * Intraday aggregates from Polygon `/v2/aggs/ticker/.../range/...`.
+ * `fromMs` / `toMs` are Unix milliseconds. Follows `next_url` until exhausted.
+ */
+export async function fetchIntradayAggs(
+  symbol: string,
+  interval: IntradayBarInterval,
+  fromMs: number,
+  toMs: number,
+  init?: { signal?: AbortSignal }
+): Promise<Candle[]> {
+  const sym = symbol.toUpperCase();
+  const mult = interval === 60 ? 1 : interval;
+  const timespan: "minute" | "hour" = interval === 60 ? "hour" : "minute";
+
+  const parseChunk = (data: {
+    results?: Array<{ t?: number; o?: number; h?: number; l?: number; c?: number; v?: number }>;
+    next_url?: string;
+  }): { bars: Candle[]; nextUrl: string | null } => {
+    const results = data.results ?? [];
+    const bars = results
+      .filter((bar) => typeof bar.t === "number" && Number.isFinite(bar.t))
+      .map((bar) => ({
+        date: new Date(bar.t!).toISOString(),
+        open: bar.o ?? 0,
+        high: bar.h ?? 0,
+        low: bar.l ?? 0,
+        close: bar.c ?? 0,
+        volume: bar.v ?? 0,
+      }));
+    const next = data.next_url != null && String(data.next_url).trim() !== "" ? String(data.next_url) : null;
+    return { bars, nextUrl: next };
+  };
+
+  const all: Candle[] = [];
+  let next: string | null = polygonAggsUrl(sym, mult, timespan, fromMs, toMs);
+
+  while (next) {
+    const res = await fetchWithRetry(ensureApiKeyOnUrl(next), init);
+    if (!res.ok) {
+      throw new Error(`Intraday aggs failed: ${res.status}`);
+    }
+    const data = (await res.json()) as {
+      results?: Array<{ t?: number; o?: number; h?: number; l?: number; c?: number; v?: number }>;
+      next_url?: string;
+    };
+    const { bars, nextUrl } = parseChunk(data);
+    for (const b of bars) all.push(b);
+    next = nextUrl;
+  }
+
+  all.sort((a, b) => a.date.localeCompare(b.date));
+  const seen = new Set<string>();
+  return all.filter((b) => {
+    if (seen.has(b.date)) return false;
+    seen.add(b.date);
+    return true;
+  });
+}

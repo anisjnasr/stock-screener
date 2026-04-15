@@ -82,6 +82,11 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
 });
 
+const IntradayChart = dynamic(() => import("@/components/IntradayChart"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
+});
+
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
 const RIGHT_DIVIDER_PX = 2;
@@ -854,26 +859,34 @@ export default function Home() {
   const centerPanel = (
     <PanelErrorBoundary name="CenterPanel">
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        <StockChart
-          symbol={symbol}
-          data={candles}
-          loading={chartLoading}
-          onRetryLoad={() => {
-            setChartLoading(true);
-            setChartReloadNonce((n) => n + 1);
-          }}
-          timeframe={chartTimeframe}
-          onTimeframeChange={setChartTimeframe}
-          onVisibleDateRangeChange={section === "market" ? setVisibleDateRange : undefined}
-          dualModeEnabled={false}
-          showGlobalControls
-          chartInstanceId="single"
-          stockFlag={currentStockFlag}
-          onFlagChange={handleFlagChange}
-          watchlistPickerLists={watchlistPickerLists}
-          onWatchlistMembershipSave={handleWatchlistMembershipSave}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        <div
+          className="flex min-h-[min(52vh,560px)] min-w-0 flex-1 flex-col overflow-hidden border-b lg:min-h-0 lg:border-b-0 lg:border-r"
+          style={{ borderColor: "var(--ws-border)" }}
+        >
+          <StockChart
+            symbol={symbol}
+            data={candles}
+            loading={chartLoading}
+            onRetryLoad={() => {
+              setChartLoading(true);
+              setChartReloadNonce((n) => n + 1);
+            }}
+            timeframe={chartTimeframe}
+            onTimeframeChange={setChartTimeframe}
+            onVisibleDateRangeChange={section === "market" ? setVisibleDateRange : undefined}
+            dualModeEnabled={false}
+            showGlobalControls
+            chartInstanceId="single"
+            stockFlag={currentStockFlag}
+            onFlagChange={handleFlagChange}
+            watchlistPickerLists={watchlistPickerLists}
+            onWatchlistMembershipSave={handleWatchlistMembershipSave}
+          />
+        </div>
+        <div className="flex min-h-[min(48vh,520px)] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
+          <IntradayChart symbol={symbol} />
+        </div>
       </div>
       {section === "market" && (
         <NNHPanel
