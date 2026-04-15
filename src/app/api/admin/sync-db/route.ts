@@ -95,6 +95,15 @@ function isStaleRunningStatus(status: SyncStatusRecord): boolean {
   return Date.now() - updated > STALE_MS;
 }
 
+/** Background sync bumps updatedAt every 30s; if it is frozen longer, the worker likely died. */
+function isRunningHeartbeatFrozen(status: SyncStatusRecord): boolean {
+  if (status.state !== "running") return false;
+  const updated = Date.parse(status.updatedAt);
+  if (!Number.isFinite(updated)) return false;
+  const HEARTBEAT_FROZEN_MS = 30 * 60 * 1000;
+  return Date.now() - updated > HEARTBEAT_FROZEN_MS;
+}
+
 function defaultSyncStatus(): SyncStatusRecord {
   return {
     state: "idle",
@@ -857,8 +866,24 @@ export async function GET(request: NextRequest) {
   if (!adminSecret || auth !== `Bearer ${adminSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  let status = readSyncStatus();
+  if (status.state === "running") {
+    const staleWall = isStaleRunningStatus(status);
+    const staleHeartbeat = isRunningHeartbeatFrozen(status);
+    if (staleWall || staleHeartbeat) {
+      const error = staleWall
+        ? "Stale running sync (no completion within 2h); marked failed via GET."
+        : "Running sync heartbeat stalled (status not updated for 30+ minutes); marked failed via GET.";
+      setSyncStatus({
+        state: "failed",
+        completedAt: nowIso(),
+        error,
+      });
+      status = readSyncStatus();
+    }
+  }
   return NextResponse.json({
     ok: true,
-    status: readSyncStatus(),
+    status,
   });
 }

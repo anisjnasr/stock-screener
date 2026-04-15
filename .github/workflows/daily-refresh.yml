@@ -377,6 +377,8 @@ jobs:
             local sleep_sec="$3"
             local consec_fails=0
             local max_consec_fails=20
+            local consec_same_updated=0
+            local last_updated=""
             for i in $(seq 1 "$max_polls"); do
               STATUS_CODE=$(curl -s -o /tmp/sync-status.json -w "%{http_code}" \
                 --max-time 120 \
@@ -399,6 +401,17 @@ jobs:
               ARTIFACT=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.artifact ? d.status.artifact : ''));")
               UPDATED=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.updatedAt ? d.status.updatedAt : ''));")
               echo "${label} poll $i/$max_polls: state=$STATE artifact=$ARTIFACT updatedAt=$UPDATED"
+              if [ "$STATE" = "running" ] && [ -n "$UPDATED" ] && [ -n "$last_updated" ] && [ "$UPDATED" = "$last_updated" ]; then
+                consec_same_updated=$((consec_same_updated + 1))
+              else
+                consec_same_updated=0
+              fi
+              last_updated="$UPDATED"
+              if [ "$STATE" = "running" ] && [ "$consec_same_updated" -ge 60 ]; then
+                echo "::error::${label}: updatedAt unchanged for 60 polls (~30 min) while state=running — sync likely stuck (deploy GET stale fix or check Render logs)"
+                cat /tmp/sync-status.json
+                return 1
+              fi
               if [ "$STATE" = "completed" ]; then
                 return 0
               fi
