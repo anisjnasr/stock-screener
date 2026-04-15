@@ -425,7 +425,7 @@ jobs:
             EXISTING_STATE=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-existing.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
             if [ "$EXISTING_STATE" = "running" ]; then
               echo "::warning::Existing Render sync is already running; waiting for it to finish before triggering a new one."
-              poll_sync_status "existing-sync" 140 30 || exit 1
+              poll_sync_status "existing-sync" 320 30 || exit 1
               echo "Existing sync finished; continuing with preflight."
             fi
           fi
@@ -460,7 +460,7 @@ jobs:
             echo "::error::DB sync trigger failed with status $STATUS"
             exit 1
           fi
-          poll_sync_status "new-sync" 140 30 || exit 1
+          poll_sync_status "new-sync" 320 30 || exit 1
           echo "DB sync completed successfully on Render"
 
       - name: Send completion email via Formspree
