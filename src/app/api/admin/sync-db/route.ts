@@ -609,7 +609,7 @@ export async function POST(request: NextRequest) {
       `rm -rf "$EXTRACT_TMP"`,
       `mkdir -p "$EXTRACT_TMP"`,
       `echo "[sync] Streaming artifact ZIP and extracting archive..."`,
-      `curl -fsSL --max-time 1800 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xf - -C "$EXTRACT_TMP"`,
+      `curl -fsSL --max-time 7200 -H "Authorization: token $SYNC_TOKEN" "$SYNC_URL" | bsdtar -xf - -C "$EXTRACT_TMP"`,
       `FOUND_DB=$(find "$EXTRACT_TMP" -name "screener.db" -type f | head -1)`,
       `if [ -z "$FOUND_DB" ]; then`,
       `  echo "[sync] ERROR: screener.db not found in extracted archive"`,
@@ -673,8 +673,9 @@ export async function POST(request: NextRequest) {
     writeFileSync(scriptPath, script, { mode: 0o755 });
 
     resetDbConnection();
+    /** Large ZIP + extract + integrity on ~5GB DB can exceed 1h; run #83 failed at exactly 60m (old 3_600_000 cap). */
     const execOptions = {
-      timeout: 3_600_000,
+      timeout: 7_200_000,
       maxBuffer: 20 * 1024 * 1024,
       env: {
         ...process.env,
