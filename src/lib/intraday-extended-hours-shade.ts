@@ -45,9 +45,10 @@ export function createExtendedHoursShadePrimitive(
   let stepSec = 60;
   let shade = initialShade;
 
+  // Lightweight Charts always invokes `draw` for the foreground pass; `drawBackground` is optional.
+  // Keep real work in `draw` so minifiers never drop an empty stub and `draw` is always a function.
   const renderer: IPrimitivePaneRenderer = {
-    draw: () => {},
-    drawBackground: (target) => {
+    draw(target) {
       const c = chart;
       if (!c || barTimes.length === 0) return;
       const ts = c.timeScale();
