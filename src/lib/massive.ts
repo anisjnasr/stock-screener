@@ -280,6 +280,62 @@ function parseNumLoose(v: unknown): number | null {
   return null;
 }
 
+/** Raw ticker object from snapshot `tickers[]` (movers or full-market). */
+export type SnapshotTickerRaw = {
+  ticker?: string;
+  day?: { c?: unknown; v?: unknown; o?: unknown; h?: unknown; l?: unknown };
+  prevDay?: { c?: unknown };
+  lastTrade?: { p?: unknown };
+  lastQuote?: { p?: unknown; P?: unknown };
+  todaysChangePerc?: unknown;
+  min?: { av?: unknown; v?: unknown; c?: unknown; o?: unknown };
+};
+
+/**
+ * Shared snapshot row parser (movers + full-market list use the same ticker shape).
+ * When includeAvgVolume is false, avgVolume1m is always null (premarket scanner omits avg volume).
+ */
+export function parseSnapshotTickerToPremarketRow(
+  t: SnapshotTickerRaw,
+  options?: { includeAvgVolume?: boolean }
+): TopMoverSnapshotRow | null {
+  const includeAvg = options?.includeAvgVolume === true;
+  const sym = String(t.ticker ?? "").trim().toUpperCase();
+  if (!sym) return null;
+  const prevClose = parseNumLoose(t.prevDay?.c) ?? 0;
+  const lastTradeP = parseNumLoose(t.lastTrade?.p);
+  const bid = parseNumLoose(t.lastQuote?.p);
+  const ask = parseNumLoose(t.lastQuote?.P);
+  let quoteMid: number | null = null;
+  if (bid != null && ask != null && bid > 0 && ask > 0) quoteMid = (bid + ask) / 2;
+  else if (bid != null && bid > 0) quoteMid = bid;
+  else if (ask != null && ask > 0) quoteMid = ask;
+  const dayClose = parseNumLoose(t.day?.c);
+  const minClose = parseNumLoose(t.min?.c);
+  const minOpen = parseNumLoose(t.min?.o);
+  const lastPrice = lastTradeP ?? quoteMid ?? dayClose ?? minClose ?? minOpen ?? 0;
+  let gapPct = parseNumLoose(t.todaysChangePerc) ?? 0;
+  if (prevClose > 0 && lastPrice > 0) {
+    gapPct = ((lastPrice - prevClose) / prevClose) * 100;
+  }
+  const pmVolume =
+    parseNumLoose(t.day?.v) ??
+    parseNumLoose(t.min?.v) ??
+    0;
+  const avgRaw = parseNumLoose(t.min?.av);
+  const avgVolume1m =
+    includeAvg && avgRaw != null && avgRaw > 0 ? avgRaw : null;
+  if (prevClose <= 0 || lastPrice <= 0) return null;
+  return {
+    ticker: sym,
+    prevClose,
+    lastPrice,
+    gapPct,
+    pmVolume,
+    avgVolume1m,
+  };
+}
+
 /**
  * Top gainers/losers: GET /v2/snapshot/locale/us/markets/stocks/{direction}
  * Returns at most 20 tickers (Massive limit). % change is vs previous session close.
@@ -313,40 +369,93 @@ export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Pro
   const raw = data.tickers ?? [];
   const out: TopMoverSnapshotRow[] = [];
   for (const t of raw) {
-    const sym = String(t.ticker ?? "").trim().toUpperCase();
-    if (!sym) continue;
-    const prevClose = parseNumLoose(t.prevDay?.c) ?? 0;
-    const lastTradeP = parseNumLoose(t.lastTrade?.p);
-    const bid = parseNumLoose(t.lastQuote?.p);
-    const ask = parseNumLoose(t.lastQuote?.P);
-    let quoteMid: number | null = null;
-    if (bid != null && ask != null && bid > 0 && ask > 0) quoteMid = (bid + ask) / 2;
-    else if (bid != null && bid > 0) quoteMid = bid;
-    else if (ask != null && ask > 0) quoteMid = ask;
-    const dayClose = parseNumLoose(t.day?.c);
-    const minClose = parseNumLoose(t.min?.c);
-    const minOpen = parseNumLoose(t.min?.o);
-    const lastPrice = lastTradeP ?? quoteMid ?? dayClose ?? minClose ?? minOpen ?? 0;
-    let gapPct = parseNumLoose(t.todaysChangePerc) ?? 0;
-    if (prevClose > 0 && lastPrice > 0) {
-      gapPct = ((lastPrice - prevClose) / prevClose) * 100;
-    }
-    const pmVolume =
-      parseNumLoose(t.day?.v) ??
-      parseNumLoose(t.min?.v) ??
-      0;
-    const avgVolume1m = parseNumLoose(t.min?.av);
-    if (prevClose <= 0 || lastPrice <= 0) continue;
-    out.push({
-      ticker: sym,
-      prevClose,
-      lastPrice,
-      gapPct,
-      pmVolume,
-      avgVolume1m: avgVolume1m != null && avgVolume1m > 0 ? avgVolume1m : null,
-    });
+    const row = parseSnapshotTickerToPremarketRow(t as SnapshotTickerRaw, { includeAvgVolume: true });
+    if (row) out.push(row);
   }
   return out;
+}
+
+const FULL_MARKET_SNAPSHOT_PATH = "/v2/snapshot/locale/us/markets/stocks/tickers";
+
+/** ~4k chars for tickers= param keeps total URL under typical proxy limits when chunking. */
+export const PREMARKET_TICKERS_PARAM_BUDGET_CHARS = 4000;
+
+/**
+ * Full market snapshot: GET /v2/snapshot/locale/us/markets/stocks/tickers
+ * Optional comma-separated `tickers` (empty = all ~10k+ tickers — avoid unless intersecting locally).
+ */
+export async function fetchStockSnapshotsFullMarket(options: {
+  tickers: string[];
+  includeOtc?: boolean;
+  signal?: AbortSignal;
+}): Promise<TopMoverSnapshotRow[]> {
+  const { tickers, includeOtc = false, signal } = options;
+  if (tickers.length === 0) return [];
+  const params: Record<string, string> = {
+    tickers: tickers.map((s) => String(s).trim().toUpperCase()).filter(Boolean).join(","),
+  };
+  if (includeOtc) params.include_otc = "true";
+  const res = await fetchWithRetry(url(FULL_MARKET_SNAPSHOT_PATH, params), { signal });
+  const bodyText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Full market snapshot HTTP ${res.status}: ${bodyText.slice(0, 280)}`);
+  }
+  let data: { status?: string; tickers?: SnapshotTickerRaw[] };
+  try {
+    data = JSON.parse(bodyText) as { status?: string; tickers?: SnapshotTickerRaw[] };
+  } catch {
+    throw new Error("Full market snapshot: response was not valid JSON");
+  }
+  if (data.status && data.status !== "OK" && data.status !== "DELAYED") {
+    throw new Error(`Full market snapshot status: ${data.status}`);
+  }
+  const raw = data.tickers ?? [];
+  const out: TopMoverSnapshotRow[] = [];
+  for (const t of raw) {
+    const row = parseSnapshotTickerToPremarketRow(t, { includeAvgVolume: false });
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Chunk symbol list by approximate tickers= query length, fetch full-market snapshot per chunk, merge (later chunk wins on dupes).
+ */
+export async function fetchStockSnapshotsForSymbolList(
+  symbols: string[],
+  init?: { signal?: AbortSignal; includeOtc?: boolean; paramBudgetChars?: number }
+): Promise<{ rows: TopMoverSnapshotRow[]; chunkCount: number }> {
+  const budget = init?.paramBudgetChars ?? PREMARKET_TICKERS_PARAM_BUDGET_CHARS;
+  const unique = [...new Set(symbols.map((s) => String(s).trim().toUpperCase()).filter(Boolean))];
+  const chunks: string[][] = [];
+  let cur: string[] = [];
+  let used = 0;
+  for (const sym of unique) {
+    const sep = cur.length > 0 ? 1 : 0;
+    if (used + sep + sym.length > budget && cur.length > 0) {
+      chunks.push(cur);
+      cur = [];
+      used = 0;
+    }
+    cur.push(sym);
+    used += sep + sym.length;
+  }
+  if (cur.length) chunks.push(cur);
+
+  const byTicker = new Map<string, TopMoverSnapshotRow>();
+  let chunkCount = 0;
+  for (const chunk of chunks) {
+    chunkCount++;
+    const rows = await fetchStockSnapshotsFullMarket({
+      tickers: chunk,
+      includeOtc: init?.includeOtc,
+      signal: init?.signal,
+    });
+    for (const r of rows) {
+      byTicker.set(r.ticker, r);
+    }
+  }
+  return { rows: [...byTicker.values()], chunkCount };
 }
 
 /** Ticker search: /v3/reference/tickers with search and market=stocks */

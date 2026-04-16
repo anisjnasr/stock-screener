@@ -2,6 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { fetchStockNews } from "@/lib/massive";
 import {
+  normalizeCatalystFromApi,
+  type PremarketCatalystEntry,
+} from "@/lib/premarket-catalyst-types";
+import {
   isNewsInPremarketWindow,
   priorTradingSessionYmdEt,
   todayYmdEt,
@@ -25,19 +29,24 @@ function normalizeSymbols(raw: unknown): string[] {
   return out.slice(0, MAX_SYMBOLS);
 }
 
-function parseModelJsonSummary(raw: string): string {
+function parseModelJsonCatalyst(raw: string): PremarketCatalystEntry {
   let t = raw.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(t);
   if (fence) t = fence[1].trim();
   const start = t.indexOf("{");
   const end = t.lastIndexOf("}");
-  if (start < 0 || end < start) return "No news";
+  if (start < 0 || end < start) {
+    return normalizeCatalystFromApi({ summary: "No news", category: "UNKNOWN", guidanceTone: null });
+  }
   try {
-    const o = JSON.parse(t.slice(start, end + 1)) as { summary?: unknown };
-    const s = o.summary != null ? String(o.summary).trim() : "";
-    return s.length > 0 ? s : "No news";
+    const o = JSON.parse(t.slice(start, end + 1)) as {
+      summary?: unknown;
+      category?: unknown;
+      guidanceTone?: unknown;
+    };
+    return normalizeCatalystFromApi(o);
   } catch {
-    return "No news";
+    return normalizeCatalystFromApi({ summary: "No news", category: "UNKNOWN", guidanceTone: null });
   }
 }
 
@@ -53,8 +62,7 @@ export async function POST(req: Request) {
   const todayYmd = todayYmdEt(now);
   const priorYmd = priorTradingSessionYmdEt(now);
 
-  type Row = { summary: string };
-  const results: Record<string, Row> = {};
+  const results: Record<string, PremarketCatalystEntry> = {};
 
   const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
@@ -63,7 +71,7 @@ export async function POST(req: Request) {
     try {
       items = await fetchStockNews(symbol, NEWS_FETCH_LIMIT);
     } catch {
-      results[symbol] = { summary: "No news" };
+      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
       continue;
     }
 
@@ -72,14 +80,16 @@ export async function POST(req: Request) {
     );
 
     if (filtered.length === 0) {
-      results[symbol] = { summary: "No news" };
+      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
       continue;
     }
 
     if (!anthropic) {
-      results[symbol] = {
+      results[symbol] = normalizeCatalystFromApi({
         summary: filtered.length > 0 ? "Catalyst unavailable" : "No news",
-      };
+        category: "UNKNOWN",
+        guidanceTone: null,
+      });
       continue;
     }
 
@@ -106,25 +116,38 @@ ${articlesBlock}
 
 **Task:** Identify which item(s) — if any — plausibly explain a gap-up move for ${symbol}. If none are relevant, respond with summary exactly: No news
 
+**Category (pick exactly one):**
+EARNINGS — EPS/revenue beat or miss vs expectations
+GUIDANCE — forward outlook raised or lowered
+CONTRACT — new deal, government award, enterprise win
+CLINICAL — FDA, trial data, drug pipeline
+M_AND_A — acquisition, merger, buyout offer
+PARTNERSHIP — alliance, JV, licensing
+UPGRADE — analyst upgrade/initiation, PT raise
+MANAGEMENT — CEO change, board, activist
+UNKNOWN — only if none of the above fit
+
+For GUIDANCE only: set guidanceTone to "raised" or "lowered" when inferable; otherwise null.
+
 **Output rules:**
-- Return ONLY valid JSON: {"summary":"..."} 
-- summary: at most 1–2 sentences.
+- Return ONLY valid JSON: {"summary":"...","category":"...","guidanceTone":null or "raised" or "lowered"}
+- summary: 3–4 sentences, concise, professional.
 - When citing a source, include a markdown link: [publisher or short title](full_url) using ONLY URLs from the articles above.
-- If nothing is relevant: {"summary":"No news"}
+- If nothing is relevant: {"summary":"No news","category":"UNKNOWN","guidanceTone":null}
 - No prose outside the JSON object.`;
 
     try {
       const msg = await anthropic.messages.create({
         model: SONNET_MODEL,
-        max_tokens: 500,
+        max_tokens: 900,
         messages: [{ role: "user", content: userPrompt }],
       });
       const block = msg.content[0];
       const text = block && block.type === "text" ? block.text : "";
-      const summary = parseModelJsonSummary(text);
-      results[symbol] = { summary };
+      const parsed = parseModelJsonCatalyst(text);
+      results[symbol] = normalizeCatalystFromApi(parsed);
     } catch {
-      results[symbol] = { summary: "No news" };
+      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
     }
   }
 

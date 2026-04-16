@@ -10,15 +10,17 @@ export const PREMARKET_THRESHOLDS_CLOUD_KEY = "premarket_thresholds";
 
 export type PremarketThresholdsState = {
   minPrice: string;
-  minPmVolume: string;
   minGapPct: string;
+  minPmVolume: string;
+  minAvgVolume: string;
   minMarketCap: string;
 };
 
 export const PREMARKET_THRESHOLDS_DEFAULTS: PremarketThresholdsState = {
   minPrice: "5",
-  minPmVolume: "50000",
   minGapPct: "3",
+  minPmVolume: "50000",
+  minAvgVolume: "500000",
   minMarketCap: "500000000",
 };
 
@@ -29,8 +31,9 @@ function coerceThresholds(raw: unknown): PremarketThresholdsState | null {
     typeof o[k] === "string" && o[k].trim() !== "" ? o[k] : fallback;
   return {
     minPrice: str("minPrice", PREMARKET_THRESHOLDS_DEFAULTS.minPrice),
-    minPmVolume: str("minPmVolume", PREMARKET_THRESHOLDS_DEFAULTS.minPmVolume),
     minGapPct: str("minGapPct", PREMARKET_THRESHOLDS_DEFAULTS.minGapPct),
+    minPmVolume: str("minPmVolume", PREMARKET_THRESHOLDS_DEFAULTS.minPmVolume),
+    minAvgVolume: str("minAvgVolume", PREMARKET_THRESHOLDS_DEFAULTS.minAvgVolume),
     minMarketCap: str("minMarketCap", PREMARKET_THRESHOLDS_DEFAULTS.minMarketCap),
   };
 }

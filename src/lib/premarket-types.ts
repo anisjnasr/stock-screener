@@ -14,7 +14,9 @@ export type PremarketMoverRow = {
 
 export type PremarketFilters = {
   minPrice: number;
-  minPmVolume: number;
   minGapPct: number;
+  minPmVolume: number;
+  /** Minimum average daily volume (month / DB avg_volume_1m). */
+  minAvgVolume: number;
   minMarketCap: number;
 };

@@ -2,16 +2,21 @@
  * Persistent SIP history by America/New_York calendar date (browser localStorage).
  */
 
+import type { PremarketCatalystEntry } from "@/lib/premarket-catalyst-types";
 import type { PremarketMoverRow } from "@/lib/premarket-types";
 
 export const LEDGER_STORAGE_KEY = "premarket-ledger-v1";
-/** Active premarket session date (YYYY-MM-DD ET); rolls at 03:00 ET, not midnight. */
+/** Active premarket session date (YYYY-MM-DD ET); rolls at 04:00 ET, not midnight. */
 export const ACTIVE_PREMARKET_SESSION_KEY = "premarket-active-session-et-v2";
+
+/** Session “day” advances when ET local hour >= this value (SIP stays on prior session until 03:59 ET). */
+export const PREMARKET_SESSION_ROLL_HOUR_ET = 4;
 
 export type PremarketLedgerDay = {
   tickers: string[];
   rows: Record<string, PremarketMoverRow>;
-  catalyst?: Record<string, string>;
+  /** Older ledgers may store plain strings per ticker. */
+  catalyst?: Record<string, PremarketCatalystEntry | string>;
 };
 
 export type PremarketLedger = Record<string, PremarketLedgerDay>;
@@ -43,11 +48,11 @@ function subtractOneCalendarDayYmd(ymd: string): string {
 
 /**
  * Premarket SIP session calendar date in America/New_York.
- * The session rolls at 03:00 ET (before ~4:00 AM pre-market), not at midnight.
+ * The session rolls at 04:00 ET (aligned with typical premarket open), not at midnight.
  */
 export function premarketSessionEtDateKey(now = new Date()): string {
   const cal = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  if (getEtHour24(now) < 3) return subtractOneCalendarDayYmd(cal);
+  if (getEtHour24(now) < PREMARKET_SESSION_ROLL_HOUR_ET) return subtractOneCalendarDayYmd(cal);
   return cal;
 }
 

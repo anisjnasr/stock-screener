@@ -1090,6 +1090,45 @@ export function getAllQuotedSymbols(limit = 20000): string[] {
   return rows.map((r) => String(r.symbol).toUpperCase());
 }
 
+/** Default max symbols passed to Massive full-market snapshot (chunked). */
+export const PREMARKET_SCAN_DEFAULT_MAX_SYMBOLS = 3000;
+
+/**
+ * Stage-1 premarket scan: symbols with quote row on latest screener date, market cap and
+ * last-known price vs thresholds. Ordered by liquidity so LIMIT keeps the most liquid names.
+ */
+export function getPremarketScanCandidates(args: {
+  minMarketCap: number;
+  minPrice: number;
+  minAvgVolume: number;
+  maxSymbols: number;
+  date?: string;
+}): { symbols: string[]; date: string | null } {
+  const db = getDb();
+  if (!db) return { symbols: [], date: null };
+  const date = args.date ?? getLatestScreenerDate();
+  if (!date) return { symbols: [], date: null };
+  const maxSym = Math.max(1, Math.min(50_000, Math.floor(Number(args.maxSymbols)) || PREMARKET_SCAN_DEFAULT_MAX_SYMBOLS));
+  const sql = `
+    SELECT c.symbol
+    FROM companies c
+    INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+    LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
+    WHERE (${EFFECTIVE_MARKET_CAP_SQL}) >= ?
+      AND COALESCE(q.last_price, q.prev_close) >= ?
+      AND COALESCE(i.avg_volume_1m, 0) >= ?
+    ORDER BY COALESCE(i.avg_volume_1m, 0) DESC, c.symbol ASC
+    LIMIT ?
+  `;
+  const rows = db
+    .prepare(sql)
+    .all(date, args.minMarketCap, args.minPrice, args.minAvgVolume, maxSym) as { symbol: string }[];
+  return {
+    symbols: rows.map((r) => String(r.symbol).toUpperCase()),
+    date,
+  };
+}
+
 export function getScreenerSnapshot(options: {
   date?: string;
   symbols?: string[];

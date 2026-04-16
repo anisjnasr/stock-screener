@@ -24,21 +24,36 @@ import {
   type PremarketLedger,
 } from "@/lib/premarket-ledger";
 import {
+  loadPremarketGappersDisplay,
+  PREMARKET_GAPPERS_DISPLAY_DEFAULTS,
+  savePremarketGappersDisplay,
+} from "@/lib/premarket-gappers-display-storage";
+import {
   loadPremarketThresholds,
   PREMARKET_THRESHOLDS_DEFAULTS,
   savePremarketThresholds,
 } from "@/lib/premarket-thresholds-storage";
+import {
+  catalystEntryOrStringToEntry,
+  catalystSummaryText,
+  categoryBadgeLabel,
+  migrateCatalystStorageJson,
+  normalizeCatalystFromApi,
+  type CatalystCategory,
+  type GuidanceTone,
+  type PremarketCatalystEntry,
+} from "@/lib/premarket-catalyst-types";
 
 const SIP_COL_WIDTHS_KEY = "premarket-sip-col-widths-v2";
-const GAP_COL_WIDTHS_KEY = "premarket-gappers-col-widths-v3";
+const GAP_COL_WIDTHS_KEY = "premarket-gappers-col-widths-v4";
 
 /** Wider mins so headers wrap inside cells instead of overlapping adjacent columns. */
 const SIP_COL_MINS = [40, 60, 120, 58, 58, 70, 80, 96, 64, 76] as const;
 const SIP_COL_DEFAULTS = [48, 76, 240, 68, 68, 78, 92, 108, 76, 96] as const;
 
-/** Six explicit widths — no auto “fill” column, so Market Cap is not stretched across empty space. */
-const GAP_COL_MINS = [56, 120, 54, 72, 80, 88] as const;
-const GAP_COL_DEFAULTS = [72, 200, 62, 80, 92, 96] as const;
+/** Top Movers table: Ticker, Company, Price, Gap %, PM Vol, Vol %, MCap */
+const GAP_COL_MINS = [56, 120, 54, 72, 80, 64, 88] as const;
+const GAP_COL_DEFAULTS = [72, 200, 62, 80, 92, 72, 96] as const;
 
 function loadColWidths(key: string, mins: readonly number[], defaults: readonly number[]): number[] {
   if (typeof window === "undefined") return [...defaults];
@@ -136,19 +151,43 @@ function sipPlaceholderRow(ticker: string): PremarketMoverRow {
   };
 }
 
+/** Stocks in Play table: show at most this many rows until redesign. */
+const SIP_TABLE_MAX_ROWS = 10;
+
 const SIP_STORAGE_PREFIX = "premarket-sip-v2:";
 const SIP_ROWS_STORAGE_PREFIX = "premarket-sip-rows-v2:";
-
-function sipStorageKey(): string {
-  return `${SIP_STORAGE_PREFIX}${premarketSessionEtDateKey()}`;
-}
 
 function sipRowsStorageKey(): string {
   return `${SIP_ROWS_STORAGE_PREFIX}${premarketSessionEtDateKey()}`;
 }
 
+const SIP_CATALYST_V2_PREFIX = "premarket-sip-catalyst-v2:";
+const SIP_CATALYST_V3_PREFIX = "premarket-sip-catalyst-v3:";
+
 function sipCatalystStorageKey(ymd = premarketSessionEtDateKey()): string {
-  return `premarket-sip-catalyst-v2:${ymd}`;
+  return `${SIP_CATALYST_V3_PREFIX}${ymd}`;
+}
+
+function removeCatalystKeysForSession(ymd: string) {
+  try {
+    localStorage.removeItem(`${SIP_CATALYST_V3_PREFIX}${ymd}`);
+    localStorage.removeItem(`${SIP_CATALYST_V2_PREFIX}${ymd}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadMergedCatalystFromDisk(ymd: string): Record<string, PremarketCatalystEntry> {
+  try {
+    const raw3 = localStorage.getItem(`${SIP_CATALYST_V3_PREFIX}${ymd}`);
+    const raw2 = localStorage.getItem(`${SIP_CATALYST_V2_PREFIX}${ymd}`);
+    let merged: Record<string, PremarketCatalystEntry> = {};
+    if (raw3) merged = { ...merged, ...migrateCatalystStorageJson(JSON.parse(raw3) as unknown) };
+    if (raw2) merged = { ...merged, ...migrateCatalystStorageJson(JSON.parse(raw2) as unknown) };
+    return merged;
+  } catch {
+    return {};
+  }
 }
 
 function coerceSnapshot(v: unknown): PremarketMoverRow | null {
@@ -230,6 +269,76 @@ function fmtMcap(n: number | null): string {
   return fmtVol(n);
 }
 
+function catalystBadgeChrome(
+  category: CatalystCategory,
+  guidanceTone: GuidanceTone | null
+): { background: string; color: string; border: string } {
+  if (category === "GUIDANCE" && guidanceTone === "raised") {
+    return {
+      background: "rgba(34,197,94,0.18)",
+      color: "rgb(134,239,172)",
+      border: "1px solid rgba(34,197,94,0.35)",
+    };
+  }
+  if (category === "GUIDANCE" && guidanceTone === "lowered") {
+    return {
+      background: "rgba(239,68,68,0.15)",
+      color: "rgb(252,165,165)",
+      border: "1px solid rgba(239,68,68,0.35)",
+    };
+  }
+  if (category === "GUIDANCE") {
+    return {
+      background: "rgba(148,163,184,0.15)",
+      color: "rgb(203,213,225)",
+      border: "1px solid rgba(148,163,184,0.3)",
+    };
+  }
+  const map: Partial<Record<CatalystCategory, { background: string; color: string; border: string }>> = {
+    EARNINGS: {
+      background: "rgba(34,197,94,0.12)",
+      color: "rgb(74,222,128)",
+      border: "1px solid rgba(34,197,94,0.28)",
+    },
+    CONTRACT: {
+      background: "rgba(59,130,246,0.15)",
+      color: "rgb(147,197,253)",
+      border: "1px solid rgba(59,130,246,0.35)",
+    },
+    CLINICAL: {
+      background: "rgba(168,85,247,0.18)",
+      color: "rgb(233,213,255)",
+      border: "1px solid rgba(168,85,247,0.35)",
+    },
+    M_AND_A: {
+      background: "rgba(139,92,246,0.18)",
+      color: "rgb(196,181,253)",
+      border: "1px solid rgba(139,92,246,0.35)",
+    },
+    PARTNERSHIP: {
+      background: "rgba(45,212,191,0.14)",
+      color: "rgb(153,246,228)",
+      border: "1px solid rgba(45,212,191,0.32)",
+    },
+    UPGRADE: {
+      background: "rgba(245,158,11,0.18)",
+      color: "rgb(253,230,138)",
+      border: "1px solid rgba(245,158,11,0.4)",
+    },
+    MANAGEMENT: {
+      background: "rgba(148,163,184,0.12)",
+      color: "rgb(203,213,225)",
+      border: "1px solid rgba(148,163,184,0.28)",
+    },
+    UNKNOWN: {
+      background: "rgba(100,116,139,0.12)",
+      color: "rgb(148,163,184)",
+      border: "1px solid rgba(100,116,139,0.25)",
+    },
+  };
+  return map[category] ?? map.UNKNOWN!;
+}
+
 function renderCatalystSummary(summary: string | undefined, loading: boolean): ReactNode {
   if (loading) {
     return <span style={{ color: "var(--ws-text-vdim)" }}>…</span>;
@@ -271,6 +380,85 @@ function renderCatalystSummary(summary: string | undefined, loading: boolean): R
   );
 }
 
+function SipGainerCard({
+  row,
+  entry,
+  loading,
+  selected,
+  onSelect,
+}: {
+  row: PremarketMoverRow;
+  entry: PremarketCatalystEntry | undefined;
+  loading: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const gapUp = row.gapPct >= 0;
+  const e = entry ?? normalizeCatalystFromApi({ summary: "No news" });
+  const badgeLabel = categoryBadgeLabel(e.category, e.guidanceTone);
+  const chrome = catalystBadgeChrome(e.category, e.guidanceTone);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full text-left rounded-xl border flex overflow-hidden transition-colors ws-focus-ring"
+      style={{
+        borderColor: "var(--ws-border)",
+        background: "var(--ws-bg)",
+        boxShadow: selected ? "0 0 0 1px rgba(0,229,204,0.35)" : "none",
+      }}
+    >
+      <div
+        className="shrink-0 flex flex-col items-center justify-center px-3 py-3 w-[5.5rem] border-r"
+        style={{
+          borderColor: "var(--ws-border)",
+          background: "rgba(0,0,0,0.2)",
+        }}
+      >
+        <span
+          className="w-1 self-stretch rounded-full mb-2"
+          style={{ background: gapUp ? "var(--ws-green)" : "var(--ws-red)" }}
+          aria-hidden
+        />
+        <span
+          className="text-lg font-bold tabular-nums leading-tight"
+          style={{ color: gapUp ? "var(--ws-green)" : "var(--ws-red)" }}
+        >
+          {fmtPct(row.gapPct)}
+        </span>
+        <span className="text-ws-caption tabular-nums mt-1" style={{ color: "var(--ws-text)" }}>
+          {fmtPrice(row.lastPrice)}
+        </span>
+      </div>
+      <div className="flex-1 min-w-0 py-3 pr-3 pl-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0">
+            <span className="font-mono text-ws-title font-semibold" style={{ color: "var(--ws-cyan)" }}>
+              {row.ticker}
+            </span>
+            <span className="text-ws-caption truncate max-w-[14rem]" style={{ color: "var(--ws-text-dim)" }} title={row.name}>
+              {row.name}
+            </span>
+          </div>
+          <span
+            className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+            style={loading ? catalystBadgeChrome("UNKNOWN", null) : chrome}
+          >
+            {loading ? "…" : badgeLabel === "—" ? "NEWS" : badgeLabel}
+          </span>
+        </div>
+        <div className="text-ws-body leading-relaxed min-h-[3.5rem]" style={{ color: "var(--ws-text-dim)" }}>
+          {loading ? (
+            <span style={{ color: "var(--ws-text-vdim)" }}>Loading catalyst…</span>
+          ) : (
+            renderCatalystSummary(catalystSummaryText(e), false)
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 type PreMarketWorkspaceProps = {
   selectedSymbol: string;
   onSymbolSelect: (sym: string) => void;
@@ -301,14 +489,23 @@ export default function PreMarketWorkspace({
   const [minPrice, setMinPrice] = useState(() =>
     typeof window !== "undefined" ? loadPremarketThresholds().minPrice : PREMARKET_THRESHOLDS_DEFAULTS.minPrice
   );
-  const [minPmVolume, setMinPmVolume] = useState(() =>
-    typeof window !== "undefined" ? loadPremarketThresholds().minPmVolume : PREMARKET_THRESHOLDS_DEFAULTS.minPmVolume
-  );
   const [minGapPct, setMinGapPct] = useState(() =>
     typeof window !== "undefined" ? loadPremarketThresholds().minGapPct : PREMARKET_THRESHOLDS_DEFAULTS.minGapPct
   );
+  const [minPmVolume, setMinPmVolume] = useState(() =>
+    typeof window !== "undefined" ? loadPremarketThresholds().minPmVolume : PREMARKET_THRESHOLDS_DEFAULTS.minPmVolume
+  );
+  const [minAvgVolume, setMinAvgVolume] = useState(() =>
+    typeof window !== "undefined" ? loadPremarketThresholds().minAvgVolume : PREMARKET_THRESHOLDS_DEFAULTS.minAvgVolume
+  );
   const [minMarketCap, setMinMarketCap] = useState(() =>
     typeof window !== "undefined" ? loadPremarketThresholds().minMarketCap : PREMARKET_THRESHOLDS_DEFAULTS.minMarketCap
+  );
+
+  const [moversMaxRows, setMoversMaxRows] = useState(() =>
+    typeof window !== "undefined"
+      ? loadPremarketGappersDisplay().maxRows
+      : PREMARKET_GAPPERS_DISPLAY_DEFAULTS.maxRows
   );
 
   const [movers, setMovers] = useState<PremarketMoverRow[]>([]);
@@ -318,23 +515,22 @@ export default function PreMarketWorkspace({
   /** When SIP is empty but we have movers: explain that thresholds filtered everyone out. */
   const [sipEmptyHint, setSipEmptyHint] = useState<string | null>(null);
 
-  const [premarketTab, setPremarketTab] = useState<"sip" | "gappers">("sip");
   const [ledger, setLedger] = useState<PremarketLedger>(() =>
     typeof window === "undefined" ? {} : loadLedger()
   );
   const [ledgerExpandedYmd, setLedgerExpandedYmd] = useState<string | null>(null);
 
-  const [sipTickers, setSipTickers] = useState<string[]>([]);
   const [lastByTicker, setLastByTicker] = useState<Record<string, PremarketMoverRow>>({});
-  const [catalystMap, setCatalystMap] = useState<Record<string, string>>({});
+  const [catalystMap, setCatalystMap] = useState<Record<string, PremarketCatalystEntry>>({});
   const [catalystLoading, setCatalystLoading] = useState<Record<string, boolean>>({});
-  const catalystMapRef = useRef<Record<string, string>>({});
+  const catalystMapRef = useRef<Record<string, PremarketCatalystEntry>>({});
   catalystMapRef.current = catalystMap;
 
   const sessionEtDateRef = useRef(premarketSessionEtDateKey());
-  const sipStateRef = useRef({ sipTickers, lastByTicker, catalystMap });
-  sipStateRef.current = { sipTickers, lastByTicker, catalystMap };
+  const sipStateRef = useRef({ movers, lastByTicker, catalystMap });
+  sipStateRef.current = { movers, lastByTicker, catalystMap };
   const skipNextThresholdSaveRef = useRef(true);
+  const skipNextMoversDisplaySaveRef = useRef(true);
 
   const [sipColWidths, setSipColWidths] = useState(() =>
     loadColWidths(SIP_COL_WIDTHS_KEY, SIP_COL_MINS, SIP_COL_DEFAULTS)
@@ -398,7 +594,7 @@ export default function PreMarketWorkspace({
     document.addEventListener("pointerup", up);
   }, []);
 
-  /** Archive completed premarket session (rolls 03:00 ET) into ledger; clear working keys; advance active session date. */
+  /** Archive completed premarket session (rolls 04:00 ET) into ledger; clear working keys; advance active session date. */
   useEffect(() => {
     try {
       const today = premarketSessionEtDateKey();
@@ -406,7 +602,6 @@ export default function PreMarketWorkspace({
       if (active && active !== today) {
         const rawT = localStorage.getItem(`${SIP_STORAGE_PREFIX}${active}`);
         const rawR = localStorage.getItem(`${SIP_ROWS_STORAGE_PREFIX}${active}`);
-        const rawC = localStorage.getItem(`premarket-sip-catalyst-v2:${active}`);
         if (rawT) {
           const tickers = JSON.parse(rawT) as unknown;
           if (Array.isArray(tickers) && tickers.length > 0) {
@@ -418,15 +613,9 @@ export default function PreMarketWorkspace({
                 if (row) rows[row.ticker] = row;
               }
             }
-            let catalyst: Record<string, string> | undefined;
-            if (rawC) {
-              try {
-                const c = JSON.parse(rawC) as Record<string, string>;
-                if (c && typeof c === "object") catalyst = c;
-              } catch {
-                /* ignore */
-              }
-            }
+            const catMerged = loadMergedCatalystFromDisk(active);
+            const catalyst: Record<string, PremarketCatalystEntry> | undefined =
+              Object.keys(catMerged).length > 0 ? catMerged : undefined;
             const nextLedger = mergeLedgerDay(loadLedger(), active, {
               tickers: tickers.map((t) => String(t).toUpperCase()).filter(Boolean),
               rows,
@@ -437,7 +626,7 @@ export default function PreMarketWorkspace({
         }
         localStorage.removeItem(`${SIP_STORAGE_PREFIX}${active}`);
         localStorage.removeItem(`${SIP_ROWS_STORAGE_PREFIX}${active}`);
-        localStorage.removeItem(`premarket-sip-catalyst-v2:${active}`);
+        removeCatalystKeysForSession(active);
       }
       localStorage.setItem(ACTIVE_PREMARKET_SESSION_KEY, today);
       sessionEtDateRef.current = today;
@@ -449,19 +638,8 @@ export default function PreMarketWorkspace({
     try {
       const snaps = loadSipRowSnapshots();
       if (Object.keys(snaps).length > 0) setLastByTicker(snaps);
-      const raw = localStorage.getItem(sipStorageKey());
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) {
-          const tickers = parsed.map((t) => String(t).toUpperCase()).filter(Boolean);
-          setSipTickers(tickers);
-        }
-      }
-      const rawCat = localStorage.getItem(sipCatalystStorageKey());
-      if (rawCat) {
-        const c = JSON.parse(rawCat) as Record<string, string>;
-        if (c && typeof c === "object") setCatalystMap(c);
-      }
+      const mergedCat = loadMergedCatalystFromDisk(premarketSessionEtDateKey());
+      if (Object.keys(mergedCat).length > 0) setCatalystMap(mergedCat);
     } catch {
       /* ignore */
     }
@@ -471,8 +649,9 @@ export default function PreMarketWorkspace({
     const onProfile = () => {
       const t = loadPremarketThresholds();
       setMinPrice(t.minPrice);
-      setMinPmVolume(t.minPmVolume);
       setMinGapPct(t.minGapPct);
+      setMinPmVolume(t.minPmVolume);
+      setMinAvgVolume(t.minAvgVolume);
       setMinMarketCap(t.minMarketCap);
     };
     window.addEventListener("profile-changed", onProfile);
@@ -484,8 +663,16 @@ export default function PreMarketWorkspace({
       skipNextThresholdSaveRef.current = false;
       return;
     }
-    savePremarketThresholds({ minPrice, minPmVolume, minGapPct, minMarketCap });
-  }, [minPrice, minPmVolume, minGapPct, minMarketCap]);
+    savePremarketThresholds({ minPrice, minGapPct, minPmVolume, minAvgVolume, minMarketCap });
+  }, [minPrice, minGapPct, minPmVolume, minAvgVolume, minMarketCap]);
+
+  useEffect(() => {
+    if (skipNextMoversDisplaySaveRef.current) {
+      skipNextMoversDisplaySaveRef.current = false;
+      return;
+    }
+    savePremarketGappersDisplay({ maxRows: moversMaxRows });
+  }, [moversMaxRows]);
 
   useEffect(() => {
     try {
@@ -502,11 +689,18 @@ export default function PreMarketWorkspace({
       if (today === sessionEtDateRef.current) return;
       const prev = sessionEtDateRef.current;
       sessionEtDateRef.current = today;
-      const { sipTickers: st, lastByTicker: lb, catalystMap: cm } = sipStateRef.current;
-      if (st.length > 0) {
+      const { movers: mv, lastByTicker: lb, catalystMap: cm } = sipStateRef.current;
+      const sorted = [...mv].sort((a, b) => b.gapPct - a.gapPct);
+      const top10 = sorted.slice(0, SIP_TABLE_MAX_ROWS);
+      if (top10.length > 0) {
+        const tickers = top10.map((r) => r.ticker);
+        const rows: Record<string, PremarketMoverRow> = {};
+        for (const r of top10) {
+          rows[r.ticker] = lb[r.ticker] ?? r;
+        }
         const nextLedger = mergeLedgerDay(loadLedger(), prev, {
-          tickers: [...st],
-          rows: { ...lb },
+          tickers,
+          rows,
           catalyst: { ...cm },
         });
         saveLedger(nextLedger);
@@ -514,8 +708,7 @@ export default function PreMarketWorkspace({
       localStorage.setItem(ACTIVE_PREMARKET_SESSION_KEY, today);
       localStorage.removeItem(`${SIP_STORAGE_PREFIX}${prev}`);
       localStorage.removeItem(`${SIP_ROWS_STORAGE_PREFIX}${prev}`);
-      localStorage.removeItem(`premarket-sip-catalyst-v2:${prev}`);
-      setSipTickers([]);
+      removeCatalystKeysForSession(prev);
       setLastByTicker({});
       setCatalystMap({});
       setLedger(loadLedger());
@@ -524,20 +717,13 @@ export default function PreMarketWorkspace({
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(sipStorageKey(), JSON.stringify(sipTickers));
-    } catch {
-      /* ignore */
-    }
-  }, [sipTickers]);
-
   const refresh = useCallback(async () => {
     const mp = Number(minPrice);
-    const mv = Number(minPmVolume);
     const mg = Number(minGapPct);
+    const mv = Number(minPmVolume);
+    const ma = Number(minAvgVolume);
     const mc = Number(minMarketCap);
-    if (![mp, mv, mg, mc].every((n) => Number.isFinite(n) && n >= 0)) {
+    if (![mp, mg, mv, ma, mc].every((n) => Number.isFinite(n) && n >= 0)) {
       setError("Invalid filter values");
       return;
     }
@@ -546,8 +732,9 @@ export default function PreMarketWorkspace({
     const qs = new URLSearchParams({
       direction: "gainers",
       minPrice: String(mp),
-      minPmVolume: String(mv),
       minGapPct: String(mg),
+      minPmVolume: String(mv),
+      minAvgVolume: String(ma),
       minMarketCap: String(mc),
     });
     try {
@@ -565,12 +752,7 @@ export default function PreMarketWorkspace({
         return;
       }
       const list = data.movers ?? [];
-      const elig = data.eligibleNow ?? [];
-      if (list.length > 0 && elig.length === 0) {
-        setSipEmptyHint("No results");
-      } else {
-        setSipEmptyHint(null);
-      }
+      setSipEmptyHint(list.length === 0 ? "No movers match the current filters — adjust thresholds and Refresh." : null);
       setMovers(list);
       setFetchedAt(data.fetchedAt ?? null);
       setLastByTicker((prev) => {
@@ -579,11 +761,6 @@ export default function PreMarketWorkspace({
         saveSipRowSnapshots(next);
         return next;
       });
-      setSipTickers((prev) => {
-        const s = new Set(prev);
-        for (const r of elig) s.add(r.ticker);
-        return [...s];
-      });
     } catch {
       setError("Network error");
       setMovers([]);
@@ -591,7 +768,7 @@ export default function PreMarketWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [minPrice, minPmVolume, minGapPct, minMarketCap]);
+  }, [minPrice, minGapPct, minPmVolume, minAvgVolume, minMarketCap]);
 
   useEffect(() => {
     void refresh();
@@ -599,18 +776,28 @@ export default function PreMarketWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
-  const sipRows = useMemo(() => {
-    return [...sipTickers]
-      .map((t) => lastByTicker[t] ?? sipPlaceholderRow(t))
-      .sort((a, b) => b.gapPct - a.gapPct);
-  }, [sipTickers, lastByTicker]);
+  const moversSortedByGap = useMemo(
+    () => [...movers].sort((a, b) => b.gapPct - a.gapPct),
+    [movers]
+  );
+
+  const sipRowsDisplayed = useMemo(
+    () => moversSortedByGap.slice(0, SIP_TABLE_MAX_ROWS),
+    [moversSortedByGap]
+  );
+
+  const topMoverRows = useMemo(() => {
+    const maxR = Number(moversMaxRows);
+    const cap = Number.isFinite(maxR) && maxR >= 1 ? Math.min(500, Math.floor(maxR)) : 50;
+    return moversSortedByGap.slice(0, cap);
+  }, [moversSortedByGap, moversMaxRows]);
 
   const sipKey = useMemo(
     () =>
-      [...new Set(sipRows.map((r) => r.ticker))]
+      [...new Set(sipRowsDisplayed.map((r) => r.ticker))]
         .sort()
         .join(","),
-    [sipRows]
+    [sipRowsDisplayed]
   );
 
   useEffect(() => {
@@ -632,20 +819,23 @@ export default function PreMarketWorkspace({
             body: JSON.stringify({ symbols: missing }),
           });
           const data = (await res.json()) as {
-            results?: Record<string, { summary?: string }>;
+            results?: Record<string, { summary?: string; category?: unknown; guidanceTone?: unknown }>;
           };
           if (!alive) return;
           const r = data.results ?? {};
           setCatalystMap((prev) => {
             const next = { ...prev };
-            for (const m of missing) next[m] = (r[m]?.summary ?? "No news").trim() || "No news";
+            for (const m of missing) {
+              const row = r[m];
+              next[m] = row ? normalizeCatalystFromApi(row) : normalizeCatalystFromApi({ summary: "No news" });
+            }
             return next;
           });
         } catch {
           if (alive) {
             setCatalystMap((prev) => {
               const next = { ...prev };
-              for (const m of missing) next[m] = "No news";
+              for (const m of missing) next[m] = normalizeCatalystFromApi({ summary: "No news" });
               return next;
             });
           }
@@ -669,15 +859,16 @@ export default function PreMarketWorkspace({
     opts: {
       rank?: number;
       showCatalyst?: boolean;
-      catalystMapOverride?: Record<string, string>;
+      catalystMapOverride?: Record<string, string | PremarketCatalystEntry>;
       skipCatalystLoading?: boolean;
       rowKey?: string;
     }
   ) => {
-    const catText =
-      opts.catalystMapOverride != null
-        ? opts.catalystMapOverride[row.ticker]
-        : catalystMap[row.ticker];
+    const rawCat =
+      opts.catalystMapOverride != null ? opts.catalystMapOverride[row.ticker] : catalystMap[row.ticker];
+    const catText = catalystSummaryText(
+      catalystEntryOrStringToEntry(rawCat as PremarketCatalystEntry | string | undefined)
+    );
     const catLoading = opts.skipCatalystLoading ? false : Boolean(catalystLoading[row.ticker]);
     const isSel =
       Boolean(selectedSymbol) && row.ticker.toUpperCase() === selectedSymbol.toUpperCase();
@@ -807,253 +998,202 @@ export default function PreMarketWorkspace({
 
   return (
     <div className="h-full min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
-      <div
-        className="shrink-0 flex flex-wrap items-end gap-x-4 gap-y-2 px-3 py-2 border-b"
-        style={{ borderColor: "var(--ws-border)" }}
-      >
-        <span className="shrink-0 text-ws-title font-semibold tracking-tight pb-1" style={{ color: "var(--ws-text)" }}>
-          Scan Filters
-        </span>
-        <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0">
-          {filterInput("Min Price ($)", minPrice, setMinPrice, { narrow: true })}
-          {filterInput("Min PM Volume", minPmVolume, setMinPmVolume, { thousands: true })}
-          {filterInput("Min Gap %", minGapPct, setMinGapPct, { narrow: true })}
-          {filterInput("Min Market Cap ($)", minMarketCap, setMinMarketCap, { thousands: true })}
-        </div>
-        <div className="flex flex-wrap items-end gap-3 shrink-0 ml-auto">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void refresh()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-ws-label font-semibold transition-opacity ws-focus-ring disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: "rgba(0,229,204,0.12)",
-              color: "var(--ws-cyan)",
-              border: "1px solid rgba(0,229,204,0.25)",
-            }}
-          >
-            {loading ? (
-              <span className="inline-block h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
-            ) : null}
-            Refresh
-          </button>
-          {fetchedAt && !error ? (
-            <span className="text-ws-caption tabular-nums pb-1.5 whitespace-nowrap" style={{ color: "var(--ws-text-vdim)" }}>
-              Last fetch: {new Date(fetchedAt).toLocaleString()}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
       {error && (
-        <div className="shrink-0 px-3 py-1 text-ws-caption" style={{ color: "var(--ws-red)" }}>
+        <div className="shrink-0 px-3 py-1 text-ws-caption border-b" style={{ color: "var(--ws-red)", borderColor: "var(--ws-border)" }}>
           {error}
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col px-3 pb-2 pt-1 min-w-0">
-        <div className="shrink-0 flex gap-0.5 mb-0">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={premarketTab === "sip"}
-            onClick={() => setPremarketTab("sip")}
-            className="px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-colors cursor-pointer ws-focus-ring text-xs sm:text-sm"
-            style={{
-              background: premarketTab === "sip" ? "rgba(255,255,255,0.06)" : undefined,
-              borderBottom: premarketTab === "sip" ? "2px solid var(--ws-cyan)" : "2px solid transparent",
-              borderTop: "2px solid transparent",
-              borderLeft: "none",
-              borderRight: "none",
-              borderRadius: 0,
-              color: premarketTab === "sip" ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-            }}
-          >
-            Stocks in Play
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={premarketTab === "gappers"}
-            onClick={() => setPremarketTab("gappers")}
-            className="px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-colors cursor-pointer ws-focus-ring text-xs sm:text-sm"
-            style={{
-              background: premarketTab === "gappers" ? "rgba(255,255,255,0.06)" : undefined,
-              borderBottom: premarketTab === "gappers" ? "2px solid var(--ws-cyan)" : "2px solid transparent",
-              borderTop: "2px solid transparent",
-              borderLeft: "none",
-              borderRight: "none",
-              borderRadius: 0,
-              color: premarketTab === "gappers" ? "var(--ws-cyan)" : "var(--ws-text-dim)",
-            }}
-          >
-            Top Gappers
-          </button>
-        </div>
+      <div className="flex-1 min-h-0 flex flex-col px-3 pb-2 pt-2 min-w-0">
+        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-2 xl:gap-x-3 xl:gap-y-2 min-h-0">
+          <div className="grid grid-cols-2 gap-x-3 items-baseline shrink-0 pb-1 xl:pb-0 xl:col-span-2">
+            <div className="text-ws-title font-semibold tracking-tight" style={{ color: "var(--ws-text)" }}>
+              Stocks in Play
+            </div>
+            <div className="text-ws-title font-semibold tracking-tight" style={{ color: "var(--ws-text)" }}>
+              Top Movers
+            </div>
+          </div>
 
-        <div
-          className="flex-1 min-h-0 overflow-auto rounded border"
-          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
-        >
-          {premarketTab === "sip" ? (
-            <table
-              className="w-full text-left border-collapse"
+          <div className="hidden xl:block xl:row-start-2 xl:col-start-1 min-h-0" aria-hidden />
+
+          <div
+            className="shrink-0 flex flex-wrap items-end gap-x-3 gap-y-2 pb-2 xl:pb-0 xl:row-start-2 xl:col-start-2 border-b xl:border-b-0"
+            style={{ borderColor: "var(--ws-border)" }}
+          >
+            <span className="sr-only">Premarket scan filters</span>
+            {filterInput("Min Price ($)", minPrice, setMinPrice, { narrow: true })}
+            {filterInput("Min Gap %", minGapPct, setMinGapPct, { narrow: true })}
+            {filterInput("Min PM Volume", minPmVolume, setMinPmVolume, { thousands: true })}
+            {filterInput("Min Avg Volume", minAvgVolume, setMinAvgVolume, { thousands: true })}
+            {filterInput("Min Market Cap ($)", minMarketCap, setMinMarketCap, { thousands: true })}
+            {filterInput("Max rows", moversMaxRows, setMoversMaxRows, { narrow: true })}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void refresh()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-ws-label font-semibold transition-opacity ws-focus-ring disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                tableLayout: "fixed",
-                minWidth: Math.max(640, sipColWidths.reduce((a, b) => a + b, 0) + 200),
+                background: "rgba(0,229,204,0.12)",
+                color: "var(--ws-cyan)",
+                border: "1px solid rgba(0,229,204,0.25)",
               }}
             >
-              <colgroup>
-                {sipColWidths.map((w, i) => (
-                  <col key={i} style={{ width: w }} />
-                ))}
-                <col />
-              </colgroup>
-              <thead className="sticky top-0 z-[1]" style={{ background: "var(--ws-bg3)" }}>
-                <tr>
-                  <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    #
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Ticker
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Company
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Prev. Close
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Price
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={5} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Gap %
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={6} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    PM Volume
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={7} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Avg Volume (1M)
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={8} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Volume %
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={9} showHandle onResizePointerDown={onSipColResizePointerDown}>
-                    Market Cap
-                  </ResizableTh>
-                  <th
-                    className="py-2 px-1.5 text-center text-ws-body font-semibold border-b align-bottom box-border"
-                    style={{ ...thBorderStyle, overflow: "hidden" }}
-                  >
-                    Catalyst
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sipRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={11}
-                      className="py-6 px-4 text-center text-ws-body leading-relaxed max-w-prose mx-auto"
-                      style={{ color: "var(--ws-text-vdim)" }}
-                    >
-                      {sipEmptyHint ?? (
-                        <>
-                          Each ET session starts blank. <strong>Refresh</strong> loads gainers and adds tickers that pass{" "}
-                          <strong>all</strong> thresholds (they stay until the session rolls at 3:00 AM Eastern). Prior sessions
-                          are kept in SIP Archive below the chart—open a date to see that day&apos;s table.
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  sipRows.map((row, i) => renderRow(row, { rank: i + 1, showCatalyst: true }))
+              {loading ? (
+                <span className="inline-block h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
+              ) : null}
+              Refresh
+            </button>
+            {fetchedAt && !error ? (
+              <span className="text-ws-caption tabular-nums pb-1.5 whitespace-nowrap" style={{ color: "var(--ws-text-vdim)" }}>
+                Last fetch: {new Date(fetchedAt).toLocaleString()}
+              </span>
+            ) : null}
+            <span className="text-ws-caption pb-1.5 w-full sm:w-auto" style={{ color: "var(--ws-text-vdim)" }}>
+              Thresholds &amp; max rows saved on change. <strong>Refresh</strong> runs the scan.
+            </span>
+          </div>
+
+          <div
+            className="min-h-0 flex flex-col overflow-auto rounded border gap-2 p-2 xl:row-start-3 xl:col-start-1"
+            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
+          >
+            {loading && movers.length === 0 ? (
+              <div className="py-8 text-center text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+                Loading…
+              </div>
+            ) : movers.length === 0 ? (
+              <div
+                className="py-8 px-4 text-center text-ws-body leading-relaxed max-w-prose mx-auto"
+                style={{ color: "var(--ws-text-vdim)" }}
+              >
+                {sipEmptyHint ?? (
+                  <>
+                    <strong>Refresh</strong> loads the premarket scan. Stocks in Play lists the top {SIP_TABLE_MAX_ROWS} by gap %
+                    from that result. Sessions roll at 4:00 AM Eastern; prior days are in SIP Archive below.
+                  </>
                 )}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
-              <colgroup>
-                {(() => {
-                  const t = gapColWidths.reduce((a, b) => a + b, 0) || 1;
-                  return gapColWidths.map((w, i) => (
-                    <col key={i} style={{ width: `${(100 * w) / t}%` }} />
-                  ));
-                })()}
-              </colgroup>
-              <thead className="sticky top-0 z-[1]" style={{ background: "var(--ws-bg3)" }}>
-                <tr>
-                  <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onGapColResizePointerDown}>
-                    Ticker
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onGapColResizePointerDown}>
-                    Company
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onGapColResizePointerDown}>
-                    Price
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onGapColResizePointerDown}>
-                    Gap %
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onGapColResizePointerDown}>
-                    PM Volume
-                  </ResizableTh>
-                  <ResizableTh align="center" colIdx={5} showHandle={false} onResizePointerDown={onGapColResizePointerDown}>
-                    Market Cap
-                  </ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {movers.length === 0 && !loading ? (
+              </div>
+            ) : (
+              sipRowsDisplayed.map((row) => (
+                <SipGainerCard
+                  key={row.ticker}
+                  row={row}
+                  entry={catalystMap[row.ticker]}
+                  loading={Boolean(catalystLoading[row.ticker])}
+                  selected={
+                    Boolean(selectedSymbol) && row.ticker.toUpperCase() === selectedSymbol.toUpperCase()
+                  }
+                  onSelect={() => onSymbolSelect(row.ticker)}
+                />
+              ))
+            )}
+          </div>
+
+          <div
+            className="min-h-0 overflow-auto rounded border xl:row-start-3 xl:col-start-2 flex flex-col"
+            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
+          >
+              <table className="w-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  {(() => {
+                    const t = gapColWidths.reduce((a, b) => a + b, 0) || 1;
+                    return gapColWidths.map((w, i) => (
+                      <col key={i} style={{ width: `${(100 * w) / t}%` }} />
+                    ));
+                  })()}
+                </colgroup>
+                <thead className="sticky top-0 z-[1]" style={{ background: "var(--ws-bg3)" }}>
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
-                      No data. Check API key or refresh.
-                    </td>
+                    <ResizableTh align="center" colIdx={0} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      Ticker
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={1} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      Company
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={2} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      Price
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={3} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      Gap %
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={4} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      PM Volume
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={5} showHandle onResizePointerDown={onGapColResizePointerDown}>
+                      Vol %
+                    </ResizableTh>
+                    <ResizableTh align="center" colIdx={6} showHandle={false} onResizePointerDown={onGapColResizePointerDown}>
+                      Market Cap
+                    </ResizableTh>
                   </tr>
-                ) : (
-                  movers.map((row) => (
-                    <tr
-                      key={row.ticker}
-                      className="border-b cursor-pointer ws-row-hover ws-focus-ring"
-                      style={{
-                        borderColor: "var(--ws-border)",
-                        background:
-                          selectedSymbol && row.ticker.toUpperCase() === selectedSymbol.toUpperCase()
-                            ? "rgba(0,229,204,0.15)"
-                            : undefined,
-                      }}
-                      onClick={() => onSymbolSelect(row.ticker)}
-                    >
-                      <td
-                        className="py-1.5 px-1.5 font-mono text-ws-body font-semibold whitespace-nowrap"
-                        style={{ color: "var(--ws-cyan)" }}
-                      >
-                        {row.ticker}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
-                        {row.name}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
-                        {fmtPrice(row.lastPrice)}
-                      </td>
-                      <td
-                        className="py-1.5 px-1.5 text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
-                        style={{ color: row.gapPct >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
-                      >
-                        {fmtPct(row.gapPct)}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
-                        {fmtVol(row.pmVolume)}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
-                        {fmtMcap(row.marketCap)}
+                </thead>
+                <tbody>
+                  {topMoverRows.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+                        {movers.length === 0
+                          ? "No data. Check API key or refresh."
+                          : "No rows to show — increase Max rows."}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+                  ) : (
+                    topMoverRows.map((row) => (
+                      <tr
+                        key={row.ticker}
+                        className="border-b cursor-pointer ws-row-hover ws-focus-ring"
+                        style={{
+                          borderColor: "var(--ws-border)",
+                          background:
+                            selectedSymbol && row.ticker.toUpperCase() === selectedSymbol.toUpperCase()
+                              ? "rgba(0,229,204,0.15)"
+                              : undefined,
+                        }}
+                        onClick={() => onSymbolSelect(row.ticker)}
+                      >
+                        <td
+                          className="py-1.5 px-1.5 font-mono text-ws-body font-semibold whitespace-nowrap"
+                          style={{ color: "var(--ws-cyan)" }}
+                        >
+                          {row.ticker}
+                        </td>
+                        <td className="py-1.5 px-1.5 text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
+                          {row.name}
+                        </td>
+                        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
+                          {fmtPrice(row.lastPrice)}
+                        </td>
+                        <td
+                          className="py-1.5 px-1.5 text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
+                          style={{ color: row.gapPct >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
+                        >
+                          {fmtPct(row.gapPct)}
+                        </td>
+                        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
+                          {fmtVol(row.pmVolume)}
+                        </td>
+                        <td
+                          className={`py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap ${
+                            row.volRatioPct != null && row.volRatioPct > 30 ? "font-medium" : ""
+                          }`}
+                          style={{
+                            color:
+                              row.volRatioPct != null && row.volRatioPct > 30
+                                ? "var(--ws-green)"
+                                : "var(--ws-text-dim)",
+                          }}
+                        >
+                          {row.volRatioPct != null ? fmtPct(row.volRatioPct) : "—"}
+                        </td>
+                        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
+                          {fmtMcap(row.marketCap)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
         </div>
       </div>
 
@@ -1103,7 +1243,7 @@ export default function PreMarketWorkspace({
           <div className="flex-1 min-h-0 overflow-auto">
             {ledgerDatesDesc.length === 0 ? (
               <p className="px-3 py-4 text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
-                Completed sessions with at least one SIP name appear here after the premarket session rolls at 3:00 AM Eastern
+                Completed sessions with at least one SIP name appear here after the premarket session rolls at 4:00 AM Eastern
                 (or on your next visit).
               </p>
             ) : (
