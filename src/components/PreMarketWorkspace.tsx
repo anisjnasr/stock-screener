@@ -13,7 +13,6 @@ import type { PremarketMoverRow } from "@/lib/premarket-types";
 import type { ChartTimeframe } from "@/components/StockChart";
 import type { StockFlag } from "@/lib/watchlist-storage";
 import StockChart from "@/components/StockChart";
-import IntradayChart from "@/components/IntradayChart";
 import type { Candle } from "@/hooks/useCandleCache";
 import {
   ACTIVE_PREMARKET_SESSION_KEY,
@@ -1070,11 +1069,8 @@ export default function PreMarketWorkspace({
             boxShadow: "0 1px 0 rgba(0,0,0,0.06)",
           }}
         >
-          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:gap-0">
-            <div
-              className="flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden border-b lg:min-h-0 lg:border-b-0 lg:border-r"
-              style={{ borderColor: "var(--ws-border)" }}
-            >
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+            <div className="flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
               <StockChart
                 symbol={selectedSymbol}
                 data={candles}
@@ -1090,9 +1086,6 @@ export default function PreMarketWorkspace({
                 watchlistPickerLists={watchlistPickerLists}
                 onWatchlistMembershipSave={onWatchlistMembershipSave}
               />
-            </div>
-            <div className="flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
-              <IntradayChart symbol={selectedSymbol} />
             </div>
           </div>
         </div>

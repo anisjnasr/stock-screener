@@ -15,10 +15,29 @@ type CacheEntry = {
   expiresAt: number;
 };
 
-const WINDOW_MS = 48 * 60 * 60 * 1000;
 const TTL_MS = 20 * 1000;
 
-const ALLOWED = new Set<IntradayBarInterval>([1, 5, 15, 60]);
+const ALLOWED = new Set<IntradayBarInterval>([1, 5, 15, 30, 60, 240]);
+
+/** Lookback per Polygon interval code (Polygon caps apply; tune if needed). */
+function windowMsForInterval(interval: IntradayBarInterval): number {
+  const h = 60 * 60 * 1000;
+  const d = 24 * h;
+  switch (interval) {
+    case 1:
+    case 5:
+    case 15:
+      return 48 * h;
+    case 30:
+      return 10 * d;
+    case 60:
+      return 14 * d;
+    case 240:
+      return 60 * d;
+    default:
+      return 48 * h;
+  }
+}
 
 function getCache(): Map<string, CacheEntry> {
   const g = globalThis as typeof globalThis & {
@@ -43,11 +62,14 @@ export async function GET(request: NextRequest) {
   const intervalRaw = request.nextUrl.searchParams.get("interval") ?? "5";
   const interval = Number(intervalRaw) as IntradayBarInterval;
   if (!ALLOWED.has(interval)) {
-    return NextResponse.json({ error: "interval must be 1, 5, 15, or 60" }, { status: 400 });
+    return NextResponse.json(
+      { error: "interval must be 1, 5, 15, 30, 60 (1h), or 240 (4h)" },
+      { status: 400 }
+    );
   }
 
   const toMs = Date.now();
-  const fromMs = toMs - WINDOW_MS;
+  const fromMs = toMs - windowMsForInterval(interval);
   const cacheKey = `${symbol}:${interval}:${Math.floor(toMs / TTL_MS)}`;
   const cache = getCache();
   const hit = cache.get(cacheKey);

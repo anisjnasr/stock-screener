@@ -18,6 +18,22 @@ import { DEFAULT_CHART_SETTINGS, LIGHT_CHART_THEME, loadChartSettings, saveChart
 import type { StockFlag } from "@/lib/watchlist-storage";
 import { FLAG_HEX as CHART_FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
 import { computeFlagStripPosition } from "@/lib/flag-picker-position";
+import {
+  type ChartTimeframe,
+  CHART_TIMEFRAMES,
+  CHART_TIMEFRAME_META,
+  barDurationSeconds,
+  defaultVisibleIntradayBars,
+  formatMeasureSpanText,
+  isIntradayTimeframe,
+  loadTimeframeFavorites,
+  DEFAULT_TIMEFRAME_FAVORITES,
+  FAVORITES_STORAGE_KEY,
+  MAX_TIMEFRAME_FAVORITES,
+  sortChartTimeframesByResolution,
+} from "@/lib/chart-timeframe";
+
+export type { ChartTimeframe } from "@/lib/chart-timeframe";
 
 /** Inset from chart right for price scale (see rightPriceScale minimumWidth). */
 const CHART_PRICE_SCALE_GUTTER_PX = 88;
@@ -34,8 +50,6 @@ type Candle = {
   close: number;
   volume: number;
 };
-
-export type ChartTimeframe = "daily" | "weekly" | "monthly";
 
 type StockChartProps = {
   symbol: string;
@@ -104,8 +118,16 @@ type DragState = {
   handle: DragHandle;
 };
 
-function dateToTime(dateStr: string): UTCTimestamp {
-  return (new Date(dateStr + "T12:00:00Z").getTime() / 1000) as UTCTimestamp;
+function candleTimeToUtcTimestamp(dateStr: string): UTCTimestamp {
+  const s = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return (new Date(`${s}T12:00:00.000Z`).getTime() / 1000) as UTCTimestamp;
+  }
+  const ms = Date.parse(s);
+  if (Number.isFinite(ms)) {
+    return Math.floor(ms / 1000) as UTCTimestamp;
+  }
+  return (new Date(`${s}T12:00:00.000Z`).getTime() / 1000) as UTCTimestamp;
 }
 
 function fmtVol(v: number): string {
@@ -131,7 +153,7 @@ function normalizeTime(raw: unknown): UTCTimestamp | null {
     "day" in raw
   ) {
     const t = raw as { year: number; month: number; day: number };
-    return dateToTime(toIsoDate(t));
+    return candleTimeToUtcTimestamp(toIsoDate(t));
   }
   return null;
 }
@@ -157,12 +179,14 @@ function timeToDateKey(raw: unknown): string | null {
 
 function formatMeasureLabel(
   d: { startTime: UTCTimestamp; startPrice: number; endTime: UTCTimestamp; endPrice: number },
-  barIndexByTime?: Map<number, number>
+  barIndexByTime: Map<number, number> | undefined,
+  tf: ChartTimeframe
 ): string {
   const stats = getMeasureStats(d, barIndexByTime);
   const pct = `${stats.pricePct >= 0 ? "+" : ""}${stats.pricePct.toFixed(2)}%`;
   const chg = `${stats.priceDelta >= 0 ? "+" : ""}${stats.priceDelta.toFixed(2)}`;
-  return `${pct}  ${chg}\n${stats.barsDiff} bars  ·  ${stats.daysDiff} days`;
+  const span = formatMeasureSpanText(tf, Number(d.startTime), Number(d.endTime), stats.barsDiff, stats.daysDiff);
+  return `${pct}  ${chg}\n${span}`;
 }
 
 function getMeasureStats(
@@ -210,6 +234,12 @@ function getViewportStorageKey(chartInstanceId: string, timeframe: ChartTimefram
 }
 
 function getDefaultLogicalRange(timeframe: ChartTimeframe, barCount: number): { from: number; to: number } {
+  if (isIntradayTimeframe(timeframe)) {
+    const n = defaultVisibleIntradayBars(timeframe);
+    const visibleFrom = Math.max(0, barCount - Math.min(n, barCount));
+    const visibleTo = Math.max(0, barCount - 1);
+    return { from: visibleFrom, to: visibleTo + 3 };
+  }
   const barsIn12Months = timeframe === "daily" ? 252 : timeframe === "weekly" ? 52 : 12;
   const visibleFrom = Math.max(0, barCount - barsIn12Months);
   const visibleTo = Math.max(0, barCount - 1);
@@ -364,6 +394,10 @@ function StockChart({
   const [wlDraft, setWlDraft] = useState<Record<string, boolean>>({});
   const [pendingTrendDrawingId, setPendingTrendDrawingId] = useState<string | null>(null);
   const [chartNarrow, setChartNarrow] = useState(false);
+  const [tfFavorites, setTfFavorites] = useState<ChartTimeframe[]>(() => [...DEFAULT_TIMEFRAME_FAVORITES]);
+  const [tfMenuOpen, setTfMenuOpen] = useState(false);
+  const tfMenuRef = useRef<HTMLDivElement | null>(null);
+  const tfFavoritesHydratedRef = useRef(false);
   const suppressCrosshairBroadcastRef = useRef(false);
   const suppressDrawingBroadcastRef = useRef(false);
   const suppressViewportMemoryRef = useRef(false);
@@ -376,6 +410,52 @@ function StockChart({
   useEffect(() => { pendingMeasureStartRef.current = pendingMeasureStart; }, [pendingMeasureStart]);
   useEffect(() => { pendingMeasureDrawingIdRef.current = pendingMeasureDrawingId; }, [pendingMeasureDrawingId]);
 
+  useEffect(() => {
+    setTfFavorites(loadTimeframeFavorites());
+    tfFavoritesHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!tfFavoritesHydratedRef.current) return;
+    try {
+      localStorage.setItem(
+        FAVORITES_STORAGE_KEY,
+        JSON.stringify(sortChartTimeframesByResolution(tfFavorites))
+      );
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [tfFavorites]);
+
+  useEffect(() => {
+    if (!tfMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (tfMenuRef.current && !tfMenuRef.current.contains(e.target as Node)) {
+        setTfMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTfMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [tfMenuOpen]);
+
+  const toggleTfFavorite = useCallback((tf: ChartTimeframe) => {
+    setTfFavorites((prev) => {
+      const idx = prev.indexOf(tf);
+      let next: ChartTimeframe[];
+      if (idx >= 0) next = prev.filter((x) => x !== tf);
+      else if (prev.length >= MAX_TIMEFRAME_FAVORITES) return prev;
+      else next = [...prev, tf];
+      return sortChartTimeframesByResolution(next);
+    });
+  }, []);
+
   const chronological = useMemo(() => {
     if (!data || data.length === 0) return [];
     return data.slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -384,7 +464,7 @@ function StockChart({
   const seriesData = useMemo(() => {
     if (chronological.length === 0) return [];
     return chronological.map((d) => ({
-      time: dateToTime(d.date),
+      time: candleTimeToUtcTimestamp(d.date),
       open: d.open,
       high: d.high,
       low: d.low,
@@ -394,13 +474,13 @@ function StockChart({
 
   const timeToCandle = useMemo(() => {
     const m = new Map<number, Candle>();
-    chronological.forEach((c) => m.set(dateToTime(c.date), c));
+    chronological.forEach((c) => m.set(candleTimeToUtcTimestamp(c.date), c));
     return m;
   }, [chronological]);
 
   const barIndexByTime = useMemo(() => {
     const m = new Map<number, number>();
-    chronological.forEach((c, i) => m.set(Number(dateToTime(c.date)), i));
+    chronological.forEach((c, i) => m.set(Number(candleTimeToUtcTimestamp(c.date)), i));
     return m;
   }, [chronological]);
 
@@ -410,7 +490,7 @@ function StockChart({
   const volumeCandleData = useMemo(() => {
     if (chronological.length === 0) return [];
     return chronological.map((d) => {
-      const time = dateToTime(d.date);
+      const time = candleTimeToUtcTimestamp(d.date);
       const v = d.volume;
       if (v <= 0) {
         return { time, open: 0, high: 0, low: 0, close: 0 };
@@ -624,7 +704,7 @@ function StockChart({
       height: Math.max(el.clientHeight, 300),
       timeScale: {
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: timeframe === "1m" || timeframe === "5m" || timeframe === "15m" || timeframe === "30m",
         borderColor: isLightBackground ? "rgba(0,0,0,0.2)" : "rgba(113,113,122,0.4)",
         allowBoldLabels: true,
       },
@@ -755,13 +835,12 @@ function StockChart({
     const mainSeries = addMainSeries(settings.type);
     mainSeriesRef.current = mainSeries;
 
-    const drawingStepSeconds: number =
-      timeframe === "monthly" ? 60 * 60 * 24 * 30 : timeframe === "weekly" ? 60 * 60 * 24 * 7 : 60 * 60 * 24;
-    const firstSeriesTime = seriesData[0]?.time ?? (dateToTime("1970-01-01") as UTCTimestamp);
-    const lastSeriesTime = seriesData[seriesData.length - 1]?.time ?? (dateToTime("1970-01-01") as UTCTimestamp);
+    const drawingStepSeconds = barDurationSeconds(timeframe);
+    const firstSeriesTime = seriesData[0]?.time ?? (candleTimeToUtcTimestamp("1970-01-01") as UTCTimestamp);
+    const lastSeriesTime = seriesData[seriesData.length - 1]?.time ?? (candleTimeToUtcTimestamp("1970-01-01") as UTCTimestamp);
     const firstSeriesIndex = 0;
     const lastSeriesIndex = Math.max(0, seriesData.length - 1);
-    const farRightTime = (Number(lastSeriesTime) + drawingStepSeconds * 3600) as UTCTimestamp;
+    const farRightTime = (Number(lastSeriesTime) + drawingStepSeconds) as UTCTimestamp;
     const resolveTimeAtX = (x: number, preferredRawTime?: unknown): UTCTimestamp | null => {
       const direct = normalizeTime(preferredRawTime ?? chart.timeScale().coordinateToTime(x));
       if (direct != null) return direct;
@@ -850,7 +929,8 @@ function StockChart({
                         ...d.style,
                         label: formatMeasureLabel(
                           { startTime: d.startTime, startPrice: d.startPrice, endTime: snapped.time, endPrice: snapped.price },
-                          barIndexByTime
+                          barIndexByTime,
+                          timeframe
                         ),
                       },
                     }
@@ -932,7 +1012,7 @@ function StockChart({
         prev.map((d) => {
           if (d.id !== activeMeasureId || d.kind !== "measure") return d;
           const updated = { ...d, endTime: snapped.time, endPrice: snapped.price };
-          return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated, barIndexByTime) } };
+          return { ...updated, style: { ...updated.style, label: formatMeasureLabel(updated, barIndexByTime, timeframe) } };
         })
       );
       setSelectedDrawingId(activeMeasureId);
@@ -1257,7 +1337,6 @@ function StockChart({
     barIndexByTime,
   ]);
 
-  const timeframes: ChartTimeframe[] = ["daily", "weekly", "monthly"];
   const selectedDrawing = useMemo(
     () => drawings.find((d) => d.id === selectedDrawingId) ?? null,
     [drawings, selectedDrawingId]
@@ -1587,20 +1666,30 @@ function StockChart({
     () =>
       drawings
         .filter((d): d is MeasureDrawing => d.kind === "measure" && Boolean(d.style.label?.trim()))
-        .map((d) => ({
-          id: d.id,
-          color: d.style.color,
-          stats: getMeasureStats(
+        .map((d) => {
+          const stats = getMeasureStats(
             { startTime: d.startTime, startPrice: d.startPrice, endTime: d.endTime, endPrice: d.endPrice },
             barIndexByTime
-          ),
-          point:
-            d.id === pendingMeasureDrawingId && pendingMeasureCursorPoint
-              ? pendingMeasureCursorPoint
-              : getHandlePoint(d, "trend-end"),
-        }))
+          );
+          return {
+            id: d.id,
+            color: d.style.color,
+            stats,
+            spanText: formatMeasureSpanText(
+              timeframe,
+              Number(d.startTime),
+              Number(d.endTime),
+              stats.barsDiff,
+              stats.daysDiff
+            ),
+            point:
+              d.id === pendingMeasureDrawingId && pendingMeasureCursorPoint
+                ? pendingMeasureCursorPoint
+                : getHandlePoint(d, "trend-end"),
+          };
+        })
         .filter((m) => m.point != null),
-    [drawings, getHandlePoint, pendingMeasureDrawingId, pendingMeasureCursorPoint, barIndexByTime]
+    [drawings, getHandlePoint, pendingMeasureDrawingId, pendingMeasureCursorPoint, barIndexByTime, timeframe]
   );
 
   return (
@@ -1618,19 +1707,100 @@ function StockChart({
           }}
         >
           <div className="flex items-center gap-1">
-            {onTimeframeChange &&
-              timeframes.map((tf) => (
-                <button
-                  key={tf}
-                  type="button"
-                  onClick={() => onTimeframeChange(tf)}
-                  className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
-                    timeframe === tf ? toolbarActiveClass : toolbarMutedClass
-                  }`}
-                >
-                  {tf.charAt(0).toUpperCase() + tf.slice(1)}
-                </button>
-              ))}
+            {onTimeframeChange && (
+              <>
+                {tfFavorites.map((tf) => (
+                  <button
+                    key={tf}
+                    type="button"
+                    onClick={() => onTimeframeChange(tf)}
+                    className={`px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${
+                      timeframe === tf ? toolbarActiveClass : toolbarMutedClass
+                    }`}
+                  >
+                    {CHART_TIMEFRAME_META[tf].abbrev}
+                  </button>
+                ))}
+                <div className="relative" ref={tfMenuRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={tfMenuOpen}
+                    onClick={() => setTfMenuOpen((o) => !o)}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-ws-label font-medium rounded transition-colors ${toolbarMutedClass}`}
+                    title="All timeframes"
+                  >
+                    <svg
+                      viewBox="0 0 14 14"
+                      className="h-[14px] w-[14px] shrink-0 text-current"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M3.5 5.25L7 8.75l3.5-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    TF
+                  </button>
+                  {tfMenuOpen && (
+                    <div
+                      className="absolute right-0 top-full z-50 mt-0.5 min-w-[220px] max-h-[min(70vh,420px)] overflow-y-auto rounded border py-1 shadow-lg"
+                      role="listbox"
+                      style={{
+                        background: isLightBackground ? "rgba(255,255,255,0.98)" : "rgba(28,30,34,0.98)",
+                        borderColor: isLightBackground ? "rgba(0,0,0,0.12)" : "rgba(113,113,122,0.5)",
+                      }}
+                    >
+                      {CHART_TIMEFRAMES.map((tf) => {
+                        const fav = tfFavorites.includes(tf);
+                        const atMax = tfFavorites.length >= MAX_TIMEFRAME_FAVORITES;
+                        return (
+                          <div key={tf} className="flex items-center gap-1 px-1 py-0.5">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={timeframe === tf}
+                              className={`min-w-0 flex-1 text-left px-2 py-1 text-ws-label rounded ${
+                                timeframe === tf ? toolbarActiveClass : toolbarMutedClass
+                              }`}
+                              onClick={() => {
+                                onTimeframeChange(tf);
+                                setTfMenuOpen(false);
+                              }}
+                            >
+                              {CHART_TIMEFRAME_META[tf].labelLong}
+                            </button>
+                            <button
+                              type="button"
+                              className={`shrink-0 px-1.5 py-1 text-sm leading-none rounded ${toolbarMutedClass}`}
+                              aria-label={fav ? "Remove from favorites" : "Add to favorites"}
+                              title={
+                                fav
+                                  ? "Remove from favorites"
+                                  : atMax && !fav
+                                    ? `Maximum ${MAX_TIMEFRAME_FAVORITES} favorites`
+                                    : "Add to favorites"
+                              }
+                              disabled={!fav && atMax}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTfFavorite(tf);
+                              }}
+                            >
+                              {fav ? "★" : "☆"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -1938,7 +2108,7 @@ function StockChart({
                 </span>
               </div>
               <div className="text-[12px] opacity-90 whitespace-nowrap" style={{ color: isLightBackground ? "#444" : "var(--ws-text-dim, #a1a1aa)" }}>
-                {m.stats.barsDiff} bars · {m.stats.daysDiff} days
+                {m.spanText}
               </div>
             </div>
           ))}

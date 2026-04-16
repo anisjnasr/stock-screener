@@ -690,8 +690,17 @@ export async function fetchHistoricalDaily(
   });
 }
 
-/** Client-side interval for intraday aggregates (minutes, or 60 for hourly bars). */
-export type IntradayBarInterval = 1 | 5 | 15 | 60;
+/**
+ * Client-side interval for intraday aggregates:
+ * minute multipliers 1,5,15,30; 60 = 1-hour bars; 240 = 4-hour bars (multiplier 4, timespan hour).
+ */
+export type IntradayBarInterval = 1 | 5 | 15 | 30 | 60 | 240;
+
+function intradayAggSpec(interval: IntradayBarInterval): { multiplier: number; timespan: "minute" | "hour" } {
+  if (interval === 60) return { multiplier: 1, timespan: "hour" };
+  if (interval === 240) return { multiplier: 4, timespan: "hour" };
+  return { multiplier: interval, timespan: "minute" };
+}
 
 function polygonAggsUrl(
   sym: string,
@@ -725,8 +734,7 @@ export async function fetchIntradayAggs(
   init?: { signal?: AbortSignal }
 ): Promise<Candle[]> {
   const sym = symbol.toUpperCase();
-  const mult = interval === 60 ? 1 : interval;
-  const timespan: "minute" | "hour" = interval === 60 ? "hour" : "minute";
+  const { multiplier: mult, timespan } = intradayAggSpec(interval);
 
   const parseChunk = (data: {
     results?: Array<{ t?: number; o?: number; h?: number; l?: number; c?: number; v?: number }>;
@@ -765,10 +773,12 @@ export async function fetchIntradayAggs(
   }
 
   all.sort((a, b) => a.date.localeCompare(b.date));
-  const seen = new Set<string>();
+  const seenMs = new Set<number>();
   return all.filter((b) => {
-    if (seen.has(b.date)) return false;
-    seen.add(b.date);
+    const ms = new Date(b.date).getTime();
+    if (!Number.isFinite(ms)) return false;
+    if (seenMs.has(ms)) return false;
+    seenMs.add(ms);
     return true;
   });
 }

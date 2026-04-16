@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import type { ChartTimeframe } from "@/components/StockChart";
+import {
+  type ChartTimeframe,
+  intradayApiIntervalParam,
+  isIntradayTimeframe,
+} from "@/lib/chart-timeframe";
 
 export type Candle = {
   date: string;
@@ -72,12 +76,18 @@ export function useCandleCache() {
       const run = async (): Promise<Candle[] | null> => {
         let endpoint = "";
         try {
-          const to = new Date();
-          const from = new Date();
-          from.setFullYear(from.getFullYear() - 20);
-          const fromStr = from.toISOString().slice(0, 10);
-          const toStr = to.toISOString().slice(0, 10);
-          endpoint = `/api/candles?symbol=${encodeURIComponent(normalizedSymbol)}&from=${fromStr}&to=${toStr}&interval=${tf}`;
+          if (isIntradayTimeframe(tf)) {
+            const interval = intradayApiIntervalParam(tf);
+            if (!interval) return null;
+            endpoint = `/api/intraday-candles?symbol=${encodeURIComponent(normalizedSymbol)}&interval=${interval}`;
+          } else {
+            const to = new Date();
+            const from = new Date();
+            from.setFullYear(from.getFullYear() - 20);
+            const fromStr = from.toISOString().slice(0, 10);
+            const toStr = to.toISOString().slice(0, 10);
+            endpoint = `/api/candles?symbol=${encodeURIComponent(normalizedSymbol)}&from=${fromStr}&to=${toStr}&interval=${tf}`;
+          }
           const res = await fetch(endpoint, { signal: opts?.signal });
           if (!res.ok) {
             let body = "";

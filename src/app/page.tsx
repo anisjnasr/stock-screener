@@ -82,11 +82,6 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
 });
 
-const IntradayChart = dynamic(() => import("@/components/IntradayChart"), {
-  ssr: false,
-  loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
-});
-
 const DEFAULT_SYMBOL = "SPY";
 const PREFETCH_NEIGHBOR_COUNT = 3;
 const RIGHT_DIVIDER_PX = 2;
@@ -779,9 +774,9 @@ export default function Home() {
     }},
     { key: "t", description: "Cycle theme", category: "general" as const, action: cycleTheme },
     { key: "?", shift: true, description: "Show shortcuts", category: "general" as const, action: () => setShortcutsOpen(true) },
-    { key: "d", description: "Daily chart", category: "chart" as const, action: () => setChartTimeframe("daily") },
-    { key: "w", description: "Weekly chart", category: "chart" as const, action: () => setChartTimeframe("weekly") },
-    { key: "m", description: "Monthly chart", category: "chart" as const, action: () => setChartTimeframe("monthly") },
+    { key: "d", description: "Chart: Daily (intraday: use chart ▾ TF menu)", category: "chart" as const, action: () => setChartTimeframe("daily") },
+    { key: "w", description: "Chart: Weekly", category: "chart" as const, action: () => setChartTimeframe("weekly") },
+    { key: "m", description: "Chart: Monthly", category: "chart" as const, action: () => setChartTimeframe("monthly") },
   ], [shortcutsOpen, cycleTheme, setSection]));
 
   /* Stock data errors no longer block the full UI — the workspace, chart,
@@ -864,11 +859,8 @@ export default function Home() {
   const centerPanel = (
     <PanelErrorBoundary name="CenterPanel">
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <div
-          className="flex min-h-[min(52vh,560px)] min-w-0 flex-1 flex-col overflow-hidden border-b lg:min-h-0 lg:border-b-0 lg:border-r"
-          style={{ borderColor: "var(--ws-border)" }}
-        >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-[min(52vh,560px)] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
           <StockChart
             symbol={symbol}
             data={candles}
@@ -888,9 +880,6 @@ export default function Home() {
             watchlistPickerLists={watchlistPickerLists}
             onWatchlistMembershipSave={handleWatchlistMembershipSave}
           />
-        </div>
-        <div className="flex min-h-[min(48vh,520px)] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
-          <IntradayChart symbol={symbol} />
         </div>
       </div>
       {section === "market" && (
