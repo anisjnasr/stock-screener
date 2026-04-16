@@ -5,7 +5,8 @@
 import type { PremarketMoverRow } from "@/lib/premarket-types";
 
 export const LEDGER_STORAGE_KEY = "premarket-ledger-v1";
-export const ACTIVE_ET_DATE_KEY = "premarket-active-et-date";
+/** Active premarket session date (YYYY-MM-DD ET); rolls at 03:00 ET, not midnight. */
+export const ACTIVE_PREMARKET_SESSION_KEY = "premarket-active-session-et-v2";
 
 export type PremarketLedgerDay = {
   tickers: string[];
@@ -17,6 +18,37 @@ export type PremarketLedger = Record<string, PremarketLedgerDay>;
 
 export function etDateKey(now = new Date()): string {
   return now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+function getEtHour24(now: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const h = parts.find((p) => p.type === "hour")?.value;
+  if (!h) return 0;
+  let n = Number(h);
+  if (n === 24) n = 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function subtractOneCalendarDayYmd(ymd: string): string {
+  const parts = ymd.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((x) => !Number.isFinite(x))) return ymd;
+  const [y, m, d] = parts;
+  const ms = Date.UTC(y, m - 1, d);
+  return new Date(ms - 86400000).toISOString().slice(0, 10);
+}
+
+/**
+ * Premarket SIP session calendar date in America/New_York.
+ * The session rolls at 03:00 ET (before ~4:00 AM pre-market), not at midnight.
+ */
+export function premarketSessionEtDateKey(now = new Date()): string {
+  const cal = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  if (getEtHour24(now) < 3) return subtractOneCalendarDayYmd(cal);
+  return cal;
 }
 
 export function formatLedgerHeading(ymd: string): string {

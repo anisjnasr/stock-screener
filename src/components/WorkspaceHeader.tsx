@@ -153,7 +153,7 @@ function MarketStatusClock() {
 
   return (
     <div
-      className="flex items-center gap-2 shrink-0 mr-2 text-sm font-medium select-none tabular-nums"
+      className="flex items-center gap-2 shrink-0 text-sm font-medium select-none tabular-nums"
       style={{ color: "var(--ws-text)" }}
     >
       <span
@@ -170,6 +170,38 @@ function MarketStatusClock() {
         {timeStr} ET
       </span>
     </div>
+  );
+}
+
+function dbTooltipLabel(detail: string | null | undefined): string {
+  const t = detail?.trim();
+  if (!t) return "Database last updated: loading…";
+  if (/^last update:/i.test(t)) {
+    return t.replace(/^last update:\s*/i, "Database last updated: ");
+  }
+  if (/^(could not load|no date returned)/i.test(t)) {
+    return `Database last updated: ${t}`;
+  }
+  return `Database last updated: ${t}`;
+}
+
+function DataFreshnessInfo({ detail }: { detail: string | null | undefined }) {
+  const tooltip = dbTooltipLabel(detail);
+  return (
+    <button
+      type="button"
+      className="shrink-0 inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-[var(--ws-border-hover)] bg-white/[0.05] text-[var(--ws-text-dim)] ws-focus-ring transition-colors duration-150 hover:border-[rgba(0,229,204,0.5)] hover:bg-[rgba(0,229,204,0.16)] hover:text-[var(--ws-cyan)]"
+      title={tooltip}
+      aria-label={tooltip}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden>
+        <path
+          fillRule="evenodd"
+          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.749 16H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.251 9H9z"
+          clipRule="evenodd"
+        />
+      </svg>
+    </button>
   );
 }
 
@@ -679,11 +711,7 @@ function WorkspaceHeader({
 
         <div className="ml-auto flex items-center gap-2 md:gap-3 shrink-0 z-10 order-2 lg:order-none">
           <MarketStatusClock />
-          {lastUpdated && (
-            <span className="shrink-0 text-ws-label tabular-nums max-md:hidden" style={{ color: "rgba(201,209,217,0.45)" }}>
-              {lastUpdated}
-            </span>
-          )}
+          <DataFreshnessInfo detail={lastUpdated} />
           <ProfileIcon />
         </div>
       </div>

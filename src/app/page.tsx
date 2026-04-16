@@ -378,8 +378,13 @@ export default function Home() {
           window.__initStockData = d.stock;
           window.dispatchEvent(new CustomEvent("init-stock-data", { detail: d.stock }));
         }
+        if (!reliableLabel && !rawLabel) {
+          setLastUpdated("No date returned from database (is screener.db available?)");
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        setLastUpdated("Could not load — check server and screener.db");
+      });
   }, [setCachedCandles]);
 
   const handleSymbolSelect = useCallback((sym: string) => {

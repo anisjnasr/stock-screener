@@ -286,8 +286,12 @@ function parseNumLoose(v: unknown): number | null {
  */
 export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Promise<TopMoverSnapshotRow[]> {
   const res = await fetchDedup(url(`/v2/snapshot/locale/us/markets/stocks/${direction}`));
-  if (!res.ok) return [];
-  const data = (await res.json()) as {
+  const bodyText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Market movers HTTP ${res.status}: ${bodyText.slice(0, 280)}`);
+  }
+  let data: {
+    status?: string;
     tickers?: Array<{
       ticker?: string;
       day?: { c?: unknown; v?: unknown; o?: unknown; h?: unknown; l?: unknown };
@@ -295,9 +299,17 @@ export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Pro
       lastTrade?: { p?: unknown };
       lastQuote?: { p?: unknown; P?: unknown };
       todaysChangePerc?: unknown;
-      min?: { av?: unknown; v?: unknown };
+      min?: { av?: unknown; v?: unknown; c?: unknown; o?: unknown };
     }>;
   };
+  try {
+    data = JSON.parse(bodyText) as typeof data;
+  } catch {
+    throw new Error("Market movers: response was not valid JSON");
+  }
+  if (data.status && data.status !== "OK" && data.status !== "DELAYED") {
+    throw new Error(`Market movers status: ${data.status}`);
+  }
   const raw = data.tickers ?? [];
   const out: TopMoverSnapshotRow[] = [];
   for (const t of raw) {
@@ -307,10 +319,14 @@ export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Pro
     const lastTradeP = parseNumLoose(t.lastTrade?.p);
     const bid = parseNumLoose(t.lastQuote?.p);
     const ask = parseNumLoose(t.lastQuote?.P);
-    const quoteMid =
-      bid != null && ask != null && bid > 0 && ask > 0 ? (bid + ask) / 2 : null;
+    let quoteMid: number | null = null;
+    if (bid != null && ask != null && bid > 0 && ask > 0) quoteMid = (bid + ask) / 2;
+    else if (bid != null && bid > 0) quoteMid = bid;
+    else if (ask != null && ask > 0) quoteMid = ask;
     const dayClose = parseNumLoose(t.day?.c);
-    const lastPrice = lastTradeP ?? quoteMid ?? dayClose ?? 0;
+    const minClose = parseNumLoose(t.min?.c);
+    const minOpen = parseNumLoose(t.min?.o);
+    const lastPrice = lastTradeP ?? quoteMid ?? dayClose ?? minClose ?? minOpen ?? 0;
     let gapPct = parseNumLoose(t.todaysChangePerc) ?? 0;
     if (prevClose > 0 && lastPrice > 0) {
       gapPct = ((lastPrice - prevClose) / prevClose) * 100;

@@ -5,6 +5,7 @@
  * produces a byte-identical copy of the production database.
  *
  * Requires: gh CLI authenticated (run `gh auth login` once).
+ * Optional: SCREENER_DB_REPO=owner/name (default anisjnasr/stock-screener).
  *
  * Usage:
  *   node scripts/download-latest-db.mjs              # download + set as active DB
@@ -23,7 +24,9 @@ const root = join(__dirname, "..");
 const DATA_DIR = join(root, "data");
 const BACKUP_DIR = join(DATA_DIR, "backups");
 const DB_PATH = join(DATA_DIR, "screener.db");
-const REPO = "anisjnasr/stock-screener";
+const REPO = process.env.SCREENER_DB_REPO?.trim() || "anisjnasr/stock-screener";
+/** Matches daily refresh upload only (excludes screener-db-backup-*, ownership, manifest). */
+const DAILY_ARTIFACT_NAME = /^screener-db-\d+$/;
 const KEEP_DAYS = 14;
 
 const backupOnly = process.argv.includes("--backup-only");
@@ -64,39 +67,45 @@ function main() {
     process.exit(1);
   }
 
-  console.log("Finding latest screener-db artifact...");
+  console.log("Finding latest daily screener-db artifact...");
 
   let artifactName;
   try {
-    const listOutput = execSync(
-      `gh api repos/${REPO}/actions/artifacts --jq ".artifacts[] | select(.name | startswith(\\"screener-db-\\")) | select(.expired == false) | .name" -q .`,
-      { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+    const listOutput = execSync(`gh api "repos/${REPO}/actions/artifacts?per_page=100"`, {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const data = JSON.parse(listOutput);
+    const artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+    const candidates = artifacts.filter(
+      (a) =>
+        a &&
+        a.expired === false &&
+        typeof a.name === "string" &&
+        DAILY_ARTIFACT_NAME.test(a.name)
     );
-    const names = listOutput.trim().split("\n").filter(Boolean);
-    if (names.length === 0) {
-      console.error("No unexpired screener-db artifacts found.");
+    candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    const best = candidates[0];
+    if (!best) {
+      console.error("No unexpired daily screener-db-<runId> artifacts found (first 100 API results).");
       process.exit(1);
     }
-    artifactName = names[0];
-  } catch {
-    // Fallback: use gh run download which auto-finds latest
-    artifactName = null;
+    artifactName = best.name;
+    console.log(`Using artifact ${artifactName} (created ${best.created_at})`);
+  } catch (e) {
+    console.error("Failed to list artifacts. Is `gh` logged in and do you have repo access?");
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
   }
 
   const tmpDir = join(DATA_DIR, ".download-tmp");
   mkdirSync(tmpDir, { recursive: true });
 
-  console.log(`Downloading artifact${artifactName ? ` "${artifactName}"` : ""}...`);
+  console.log(`Downloading artifact "${artifactName}"...`);
   try {
-    if (artifactName) {
-      execSync(`gh run download -R ${REPO} -n "${artifactName}" -D "${tmpDir}"`, {
-        stdio: "inherit",
-      });
-    } else {
-      execSync(`gh run download -R ${REPO} -n screener-db -D "${tmpDir}"`, {
-        stdio: "inherit",
-      });
-    }
+    execSync(`gh run download -R ${REPO} -n "${artifactName}" -D "${tmpDir}"`, {
+      stdio: "inherit",
+    });
   } catch (err) {
     console.error("Download failed. Make sure you have access to the repository.");
     console.error(err instanceof Error ? err.message : String(err));

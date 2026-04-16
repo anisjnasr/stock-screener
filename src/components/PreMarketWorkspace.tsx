@@ -16,11 +16,11 @@ import StockChart from "@/components/StockChart";
 import IntradayChart from "@/components/IntradayChart";
 import type { Candle } from "@/hooks/useCandleCache";
 import {
-  ACTIVE_ET_DATE_KEY,
-  etDateKey,
+  ACTIVE_PREMARKET_SESSION_KEY,
   formatLedgerHeading,
   loadLedger,
   mergeLedgerDay,
+  premarketSessionEtDateKey,
   saveLedger,
   type PremarketLedger,
 } from "@/lib/premarket-ledger";
@@ -137,19 +137,19 @@ function sipPlaceholderRow(ticker: string): PremarketMoverRow {
   };
 }
 
-const SIP_STORAGE_PREFIX = "premarket-sip-v1:";
-const SIP_ROWS_STORAGE_PREFIX = "premarket-sip-rows-v1:";
+const SIP_STORAGE_PREFIX = "premarket-sip-v2:";
+const SIP_ROWS_STORAGE_PREFIX = "premarket-sip-rows-v2:";
 
 function sipStorageKey(): string {
-  return `${SIP_STORAGE_PREFIX}${etDateKey()}`;
+  return `${SIP_STORAGE_PREFIX}${premarketSessionEtDateKey()}`;
 }
 
 function sipRowsStorageKey(): string {
-  return `${SIP_ROWS_STORAGE_PREFIX}${etDateKey()}`;
+  return `${SIP_ROWS_STORAGE_PREFIX}${premarketSessionEtDateKey()}`;
 }
 
-function sipCatalystStorageKey(ymd = etDateKey()): string {
-  return `premarket-sip-catalyst-v1:${ymd}`;
+function sipCatalystStorageKey(ymd = premarketSessionEtDateKey()): string {
+  return `premarket-sip-catalyst-v2:${ymd}`;
 }
 
 function coerceSnapshot(v: unknown): PremarketMoverRow | null {
@@ -332,7 +332,7 @@ export default function PreMarketWorkspace({
   const catalystMapRef = useRef<Record<string, string>>({});
   catalystMapRef.current = catalystMap;
 
-  const sessionEtDateRef = useRef(etDateKey());
+  const sessionEtDateRef = useRef(premarketSessionEtDateKey());
   const sipStateRef = useRef({ sipTickers, lastByTicker, catalystMap });
   sipStateRef.current = { sipTickers, lastByTicker, catalystMap };
   const skipNextThresholdSaveRef = useRef(true);
@@ -399,15 +399,15 @@ export default function PreMarketWorkspace({
     document.addEventListener("pointerup", up);
   }, []);
 
-  /** Archive completed ET day from localStorage into ledger; clear working keys; advance active date. */
+  /** Archive completed premarket session (rolls 03:00 ET) into ledger; clear working keys; advance active session date. */
   useEffect(() => {
     try {
-      const today = etDateKey();
-      const active = localStorage.getItem(ACTIVE_ET_DATE_KEY);
+      const today = premarketSessionEtDateKey();
+      const active = localStorage.getItem(ACTIVE_PREMARKET_SESSION_KEY);
       if (active && active !== today) {
         const rawT = localStorage.getItem(`${SIP_STORAGE_PREFIX}${active}`);
         const rawR = localStorage.getItem(`${SIP_ROWS_STORAGE_PREFIX}${active}`);
-        const rawC = localStorage.getItem(`premarket-sip-catalyst-v1:${active}`);
+        const rawC = localStorage.getItem(`premarket-sip-catalyst-v2:${active}`);
         if (rawT) {
           const tickers = JSON.parse(rawT) as unknown;
           if (Array.isArray(tickers) && tickers.length > 0) {
@@ -438,9 +438,9 @@ export default function PreMarketWorkspace({
         }
         localStorage.removeItem(`${SIP_STORAGE_PREFIX}${active}`);
         localStorage.removeItem(`${SIP_ROWS_STORAGE_PREFIX}${active}`);
-        localStorage.removeItem(`premarket-sip-catalyst-v1:${active}`);
+        localStorage.removeItem(`premarket-sip-catalyst-v2:${active}`);
       }
-      localStorage.setItem(ACTIVE_ET_DATE_KEY, today);
+      localStorage.setItem(ACTIVE_PREMARKET_SESSION_KEY, today);
       sessionEtDateRef.current = today;
       setLedger(loadLedger());
     } catch {
@@ -499,7 +499,7 @@ export default function PreMarketWorkspace({
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      const today = etDateKey();
+      const today = premarketSessionEtDateKey();
       if (today === sessionEtDateRef.current) return;
       const prev = sessionEtDateRef.current;
       sessionEtDateRef.current = today;
@@ -512,10 +512,10 @@ export default function PreMarketWorkspace({
         });
         saveLedger(nextLedger);
       }
-      localStorage.setItem(ACTIVE_ET_DATE_KEY, today);
+      localStorage.setItem(ACTIVE_PREMARKET_SESSION_KEY, today);
       localStorage.removeItem(`${SIP_STORAGE_PREFIX}${prev}`);
       localStorage.removeItem(`${SIP_ROWS_STORAGE_PREFIX}${prev}`);
-      localStorage.removeItem(`premarket-sip-catalyst-v1:${prev}`);
+      localStorage.removeItem(`premarket-sip-catalyst-v2:${prev}`);
       setSipTickers([]);
       setLastByTicker({});
       setCatalystMap({});
@@ -757,7 +757,7 @@ export default function PreMarketWorkspace({
   };
 
   const ledgerDatesDesc = useMemo(() => {
-    const today = etDateKey();
+    const today = premarketSessionEtDateKey();
     return Object.keys(ledger)
       .filter((d) => d < today)
       .sort()
@@ -961,8 +961,8 @@ export default function PreMarketWorkspace({
                       {sipEmptyHint ?? (
                         <>
                           Each ET session starts blank. <strong>Refresh</strong> loads gainers and adds tickers that pass{" "}
-                          <strong>all</strong> thresholds (they stay for the rest of the day). Prior sessions are kept in
-                          SIP History below the chart—open a date to see that day&apos;s table.
+                          <strong>all</strong> thresholds (they stay until the session rolls at 3:00 AM Eastern). Prior sessions
+                          are kept in SIP Archive below the chart—open a date to see that day&apos;s table.
                         </>
                       )}
                     </td>
@@ -1102,16 +1102,16 @@ export default function PreMarketWorkspace({
           style={{ border: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}
         >
           <div
-            className="shrink-0 px-3 py-2 border-b text-ws-caption font-semibold uppercase tracking-wider"
-            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}
+            className="shrink-0 px-3 py-2 border-b text-ws-title font-semibold tracking-tight"
+            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg3)", color: "var(--ws-text)" }}
           >
-            SIP History (prior ET days)
+            SIP Archive
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {ledgerDatesDesc.length === 0 ? (
               <p className="px-3 py-4 text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
-                Completed sessions with at least one SIP name will appear here after the ET day rolls over (or on your next
-                visit).
+                Completed sessions with at least one SIP name appear here after the premarket session rolls at 3:00 AM Eastern
+                (or on your next visit).
               </p>
             ) : (
               <ul className="divide-y" style={{ borderColor: "var(--ws-border)" }}>
@@ -1140,8 +1140,11 @@ export default function PreMarketWorkspace({
                         }}
                       >
                         <span className="font-medium">{formatLedgerHeading(ymd)}</span>
-                        <span style={{ color: "var(--ws-text-dim)" }}> SIP: </span>
-                        <span className="font-mono text-ws-caption" style={{ color: "var(--ws-cyan)" }}>
+                        <span className="font-medium" style={{ color: "var(--ws-text-dim)" }}>
+                          {" "}
+                          SIP:{" "}
+                        </span>
+                        <span className="font-mono text-ws-body font-semibold" style={{ color: "var(--ws-cyan)" }}>
                           {tickersLine || "—"}
                         </span>
                       </button>
