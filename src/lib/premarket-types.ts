@@ -20,3 +20,13 @@ export type PremarketFilters = {
   minAvgVolume: number;
   minMarketCap: number;
 };
+
+/** Same rules as GET /api/premarket/movers (eligible SIP / Top Movers thresholds). */
+export function passesPremarketFilters(row: PremarketMoverRow, f: PremarketFilters): boolean {
+  if (row.lastPrice < f.minPrice) return false;
+  if (row.gapPct < f.minGapPct) return false;
+  if (row.pmVolume < f.minPmVolume) return false;
+  if (row.avgVolume1m == null || row.avgVolume1m < f.minAvgVolume) return false;
+  if (row.marketCap == null || row.marketCap < f.minMarketCap) return false;
+  return true;
+}

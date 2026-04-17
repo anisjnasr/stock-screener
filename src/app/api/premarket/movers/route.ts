@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchProfile, fetchStockSnapshotsForSymbolList, fetchTopMarketMovers } from "@/lib/massive";
 import type { PremarketFilters, PremarketMoverRow } from "@/lib/premarket-types";
+import { passesPremarketFilters } from "@/lib/premarket-types";
 import {
   getCompanyName,
   getPremarketScanCandidates,
@@ -15,15 +16,6 @@ function parsePositiveFloat(s: string | null, fallback: number): number {
   if (s == null || s === "") return fallback;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
-
-function passesFilters(row: PremarketMoverRow, f: PremarketFilters): boolean {
-  if (row.lastPrice < f.minPrice) return false;
-  if (row.gapPct < f.minGapPct) return false;
-  if (row.pmVolume < f.minPmVolume) return false;
-  if (row.avgVolume1m == null || row.avgVolume1m < f.minAvgVolume) return false;
-  if (row.marketCap == null || row.marketCap < f.minMarketCap) return false;
-  return true;
 }
 
 function buildRowFromSnapshot(
@@ -82,6 +74,7 @@ export async function GET(request: NextRequest) {
       raw = await fetchTopMarketMovers(direction);
       sourceUsed = "movers";
     } else {
+      // Stage 1: DB universe filtered by cap, price, and avg volume (see getPremarketScanCandidates) — reduces stage-2 snapshot load.
       const { symbols, date } = getPremarketScanCandidates({
         minMarketCap: filters.minMarketCap,
         minPrice: filters.minPrice,
@@ -123,7 +116,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const eligibleNow = movers.filter((row) => passesFilters(row, filters));
+    const eligibleNow = movers.filter((row) => passesPremarketFilters(row, filters));
 
     return NextResponse.json({
       movers,
