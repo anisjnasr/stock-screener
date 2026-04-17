@@ -1288,7 +1288,11 @@ export default function PreMarketWorkspace({
             className="min-h-0 overflow-auto rounded border xl:row-start-3 xl:col-start-2 flex flex-col"
             style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
           >
-            {topMoverRows.length === 0 && !loading ? (
+            {loading && topMoverRows.length === 0 ? (
+              <div className="py-12 text-center text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+                Loading…
+              </div>
+            ) : topMoverRows.length === 0 ? (
               <div className="py-12 px-4 text-center text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
                 {movers.length === 0
                   ? "No stocks available. Click Refresh"

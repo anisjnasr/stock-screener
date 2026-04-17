@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     let candidateCount = 0;
     let snapshotChunkCount = 0;
     let scanDate: string | null = null;
-    let sourceUsed: "full-market" | "movers" = "full-market";
+    let sourceUsed: "full-market" | "movers" | "movers-fallback" = "full-market";
 
     if (useMoversFallback) {
       raw = await fetchTopMarketMovers(direction);
@@ -84,7 +84,14 @@ export async function GET(request: NextRequest) {
       scanDate = date;
       candidateCount = symbols.length;
       if (symbols.length === 0) {
-        raw = [];
+        // No local DB / no screener date / zero rows after SQL — common on misconfigured hosts (see docs/DEPLOY.md).
+        // Top gainers/losers snapshot (~20 symbols) avoids a totally empty premarket page.
+        try {
+          raw = await fetchTopMarketMovers(direction);
+          sourceUsed = "movers-fallback";
+        } catch {
+          raw = [];
+        }
       } else {
         const { rows, chunkCount } = await fetchStockSnapshotsForSymbolList(symbols);
         snapshotChunkCount = chunkCount;
