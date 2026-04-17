@@ -377,6 +377,33 @@ export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Pro
 
 const FULL_MARKET_SNAPSHOT_PATH = "/v2/snapshot/locale/us/markets/stocks/tickers";
 
+/**
+ * Full US market snapshot in one request (omit `tickers` query param).
+ * Join against screener.db in memory instead of chunking symbol lists.
+ */
+export async function fetchFullMarketSnapshotRaw(init?: {
+  includeOtc?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ tickers: SnapshotTickerRaw[]; status: string }> {
+  const params: Record<string, string> = {};
+  if (init?.includeOtc) params.include_otc = "true";
+  const res = await fetchWithRetry(url(FULL_MARKET_SNAPSHOT_PATH, params), { signal: init?.signal });
+  const bodyText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Full market snapshot HTTP ${res.status}: ${bodyText.slice(0, 280)}`);
+  }
+  let data: { status?: string; tickers?: SnapshotTickerRaw[] };
+  try {
+    data = JSON.parse(bodyText) as { status?: string; tickers?: SnapshotTickerRaw[] };
+  } catch {
+    throw new Error("Full market snapshot: response was not valid JSON");
+  }
+  if (data.status && data.status !== "OK" && data.status !== "DELAYED") {
+    throw new Error(`Full market snapshot status: ${data.status}`);
+  }
+  return { tickers: data.tickers ?? [], status: data.status ?? "OK" };
+}
+
 /** ~4k chars for tickers= param keeps total URL under typical proxy limits when chunking. */
 export const PREMARKET_TICKERS_PARAM_BUDGET_CHARS = 4000;
 

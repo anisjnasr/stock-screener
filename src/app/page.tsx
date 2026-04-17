@@ -1086,7 +1086,7 @@ export default function Home() {
         )}
         {section === "pre-market" ? (
           <PanelErrorBoundary name="PreMarket">
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
               <PreMarketWorkspace
                 selectedSymbol={symbol}
                 onSymbolSelect={handleSymbolSelect}

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchProfile, fetchStockSnapshotsForSymbolList, fetchTopMarketMovers } from "@/lib/massive";
+import { fetchProfile, fetchFullMarketSnapshotRaw, fetchTopMarketMovers } from "@/lib/massive";
 import type { PremarketFilters, PremarketMoverRow } from "@/lib/premarket-types";
 import { passesPremarketFilters } from "@/lib/premarket-types";
 import {
-  getCompanyName,
-  getPremarketScanCandidates,
-  getStockProfileDbMetrics,
-  PREMARKET_SCAN_DEFAULT_MAX_SYMBOLS,
-} from "@/lib/screener-db-native";
+  buildPremarketMoversFromFullSnapshot,
+  premarketMoverFromTopSnapshotRow,
+} from "@/lib/premarket/build-movers-from-snapshot";
+import { getPremarketScreenerJoinMap, PREMARKET_SCAN_DEFAULT_MAX_SYMBOLS } from "@/lib/screener-db-native";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,33 +17,26 @@ function parsePositiveFloat(s: string | null, fallback: number): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-function buildRowFromSnapshot(
-  r: import("@/lib/massive").TopMoverSnapshotRow
-): PremarketMoverRow {
-  const name = getCompanyName(r.ticker) ?? r.ticker;
-  const { metrics } = getStockProfileDbMetrics(r.ticker);
-  const marketCap = metrics?.marketCap ?? null;
-  const avgFromDb =
-    metrics?.avgVolume20d != null && Number.isFinite(metrics.avgVolume20d) && metrics.avgVolume20d > 0
-      ? metrics.avgVolume20d
-      : null;
-  const avgVolume1m =
-    r.avgVolume1m != null && r.avgVolume1m > 0 ? r.avgVolume1m : avgFromDb;
-  let volRatioPct: number | null = null;
-  if (avgVolume1m != null && avgVolume1m > 0 && Number.isFinite(r.pmVolume) && r.pmVolume >= 0) {
-    volRatioPct = (r.pmVolume / avgVolume1m) * 100;
+async function enrichMoversWithProfile(movers: PremarketMoverRow[]): Promise<void> {
+  for (let i = 0; i < movers.length; i++) {
+    const row = movers[i];
+    if (row.marketCap != null && row.name !== row.ticker) continue;
+    try {
+      const p = await fetchProfile(row.ticker);
+      const marketCap =
+        row.marketCap ??
+        (typeof p?.mktCap === "number" && Number.isFinite(p.mktCap) && p.mktCap > 0 ? p.mktCap : null);
+      const name =
+        row.name !== row.ticker
+          ? row.name
+          : p?.companyName && String(p.companyName).trim()
+            ? String(p.companyName).trim()
+            : row.ticker;
+      movers[i] = { ...row, name, marketCap };
+    } catch {
+      /* keep row as-is */
+    }
   }
-  return {
-    ticker: r.ticker,
-    name,
-    prevClose: r.prevClose,
-    lastPrice: r.lastPrice,
-    gapPct: r.gapPct,
-    pmVolume: r.pmVolume,
-    avgVolume1m,
-    marketCap,
-    volRatioPct,
-  };
 }
 
 export async function GET(request: NextRequest) {
@@ -59,67 +51,55 @@ export async function GET(request: NextRequest) {
       minMarketCap: parsePositiveFloat(sp.get("minMarketCap"), 500_000_000),
     };
 
-    const useMoversFallback = sp.get("source") === "movers";
+    const useMoversOnly = sp.get("source") === "movers";
     const envMax = Number(process.env.PREMARKET_SNAPSHOT_MAX_SYMBOLS);
     const defaultMax = Number.isFinite(envMax) && envMax > 0 ? envMax : PREMARKET_SCAN_DEFAULT_MAX_SYMBOLS;
     const maxSymbols = parsePositiveFloat(sp.get("maxSymbols"), defaultMax);
 
-    let raw: import("@/lib/massive").TopMoverSnapshotRow[];
+    let movers: PremarketMoverRow[];
+    let sourceUsed: "full-market-snapshot" | "movers" | "movers-fallback";
     let candidateCount = 0;
     let snapshotChunkCount = 0;
     let scanDate: string | null = null;
-    let sourceUsed: "full-market" | "movers" | "movers-fallback" = "full-market";
+    let snapshotTickerCount = 0;
 
-    if (useMoversFallback) {
-      raw = await fetchTopMarketMovers(direction);
+    if (useMoversOnly) {
+      const raw = await fetchTopMarketMovers(direction);
+      movers = raw.map(premarketMoverFromTopSnapshotRow);
+      if (direction === "gainers") {
+        movers.sort((a, b) => b.gapPct - a.gapPct);
+      } else {
+        movers.sort((a, b) => a.gapPct - b.gapPct);
+      }
+      await enrichMoversWithProfile(movers);
       sourceUsed = "movers";
+      snapshotTickerCount = raw.length;
     } else {
-      // Stage 1: DB universe filtered by cap, price, and avg volume (see getPremarketScanCandidates) — reduces stage-2 snapshot load.
-      const { symbols, date } = getPremarketScanCandidates({
-        minMarketCap: filters.minMarketCap,
-        minPrice: filters.minPrice,
-        minAvgVolume: filters.minAvgVolume,
-        maxSymbols,
-      });
+      const { byTicker, date } = getPremarketScreenerJoinMap();
       scanDate = date;
-      candidateCount = symbols.length;
-      if (symbols.length === 0) {
-        // No local DB / no screener date / zero rows after SQL — common on misconfigured hosts (see docs/DEPLOY.md).
-        // Top gainers/losers snapshot (~20 symbols) avoids a totally empty premarket page.
+      candidateCount = byTicker.size;
+
+      if (byTicker.size === 0) {
         try {
-          raw = await fetchTopMarketMovers(direction);
+          const raw = await fetchTopMarketMovers(direction);
+          movers = raw.map(premarketMoverFromTopSnapshotRow);
+          if (direction === "gainers") {
+            movers.sort((a, b) => b.gapPct - a.gapPct);
+          } else {
+            movers.sort((a, b) => a.gapPct - b.gapPct);
+          }
+          await enrichMoversWithProfile(movers);
           sourceUsed = "movers-fallback";
+          snapshotTickerCount = raw.length;
         } catch {
-          raw = [];
+          movers = [];
+          sourceUsed = "movers-fallback";
         }
       } else {
-        const { rows, chunkCount } = await fetchStockSnapshotsForSymbolList(symbols);
-        snapshotChunkCount = chunkCount;
-        raw = rows.filter((r) => r.gapPct > 0);
-      }
-    }
-
-    const movers: PremarketMoverRow[] = raw.map((r) => buildRowFromSnapshot(r));
-
-    movers.sort((a, b) => b.gapPct - a.gapPct);
-
-    for (let i = 0; i < movers.length; i++) {
-      const row = movers[i];
-      if (row.marketCap != null && row.name !== row.ticker) continue;
-      try {
-        const p = await fetchProfile(row.ticker);
-        const marketCap =
-          row.marketCap ??
-          (typeof p?.mktCap === "number" && Number.isFinite(p.mktCap) && p.mktCap > 0 ? p.mktCap : null);
-        const name =
-          row.name !== row.ticker
-            ? row.name
-            : p?.companyName && String(p.companyName).trim()
-              ? String(p.companyName).trim()
-              : row.ticker;
-        movers[i] = { ...row, name, marketCap };
-      } catch {
-        /* keep row as-is */
+        const { tickers: rawTickers } = await fetchFullMarketSnapshotRaw();
+        snapshotTickerCount = rawTickers.length;
+        movers = buildPremarketMoversFromFullSnapshot(rawTickers, byTicker, { direction });
+        sourceUsed = "full-market-snapshot";
       }
     }
 
@@ -134,7 +114,7 @@ export async function GET(request: NextRequest) {
       meta: {
         source: sourceUsed,
         candidateCount,
-        snapshotTickerCount: raw.length,
+        snapshotTickerCount,
         snapshotChunkCount,
         scanDate,
         maxSymbols,
