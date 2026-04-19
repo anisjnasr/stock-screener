@@ -70,6 +70,19 @@ export function formatLedgerHeading(ymd: string): string {
   });
 }
 
+const ARCHIVE_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** SIP archive date column: `dd mmm yyyy` (e.g. `17 Apr 2026`) from session `YYYY-MM-DD`. */
+export function formatLedgerArchiveDate(ymd: string): string {
+  const parts = ymd.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return ymd;
+  const [y, m, d] = parts;
+  if (m < 1 || m > 12) return ymd;
+  const mmm = ARCHIVE_MONTHS[m - 1];
+  const dd = String(d).padStart(2, "0");
+  return `${dd} ${mmm} ${y}`;
+}
+
 export function loadLedger(): PremarketLedger {
   try {
     const raw = localStorage.getItem(LEDGER_STORAGE_KEY);

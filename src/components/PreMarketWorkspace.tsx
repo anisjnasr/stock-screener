@@ -16,7 +16,7 @@ import StockChart from "@/components/StockChart";
 import type { Candle } from "@/hooks/useCandleCache";
 import {
   ACTIVE_PREMARKET_SESSION_KEY,
-  formatLedgerHeading,
+  formatLedgerArchiveDate,
   loadLedger,
   mergeLedgerDay,
   premarketSessionEtDateKey,
@@ -35,8 +35,8 @@ import {
 } from "@/lib/premarket-thresholds-storage";
 import {
   catalystEntryOrStringToEntry,
-  catalystSummaryText,
   categoryBadgeLabel,
+  legacySummaryToEntry,
   migrateCatalystStorageJson,
   normalizeCatalystFromApi,
   type CatalystCategory,
@@ -549,33 +549,55 @@ function catalystBadgeChrome(
   return map[category] ?? map.UNKNOWN!;
 }
 
-function renderCatalystSummary(summary: string | undefined, loading: boolean): ReactNode {
+function renderCatalystSummary(
+  entryOrLegacy: PremarketCatalystEntry | string | undefined,
+  loading: boolean
+): ReactNode {
   if (loading) {
     return <span style={{ color: "var(--ws-text-vdim)" }}>…</span>;
   }
-  const t = (summary ?? "").trim();
-  if (!t || t === "No news") {
+  const entry: PremarketCatalystEntry =
+    typeof entryOrLegacy === "string"
+      ? legacySummaryToEntry(entryOrLegacy)
+      : entryOrLegacy ?? normalizeCatalystFromApi({ summary: "No news" });
+
+  const narrative = (entry.summary ?? "").trim();
+  const sources = (entry.sourcesMarkdown ?? "").trim();
+
+  if (!narrative || narrative === "No news") {
     return <span style={{ color: "var(--ws-text-vdim)" }}>No news</span>;
   }
-  if (t === "Catalyst unavailable") {
+  if (narrative === "Catalyst unavailable") {
     return <span style={{ color: "var(--ws-text-dim)" }}>Catalyst unavailable</span>;
   }
-  const { lead, rest } = splitCatalystLeadline(t);
-  if (!rest) {
-    return (
-      <span className="text-ws-body leading-relaxed">
-        <span className="font-semibold" style={{ color: "var(--ws-text)" }}>
-          {renderLinkedTextParts(lead, "c0")}
-        </span>
+
+  const { lead, rest } = splitCatalystLeadline(narrative);
+  const narrativeBlock = !rest ? (
+    <span className="text-ws-body leading-relaxed">
+      <span className="font-semibold" style={{ color: "var(--ws-text)" }}>
+        {renderLinkedTextParts(lead, "c0")}
       </span>
-    );
-  }
-  return (
+    </span>
+  ) : (
     <span className="text-ws-body leading-relaxed">
       <span className="font-semibold" style={{ color: "var(--ws-text)" }}>
         {renderLinkedTextParts(lead, "c1")}
       </span>
       <span style={{ color: "var(--ws-text-dim)" }}> {renderLinkedTextParts(rest, "c2")}</span>
+    </span>
+  );
+
+  if (!sources) return narrativeBlock;
+
+  return (
+    <span className="flex min-w-0 flex-col gap-1.5">
+      {narrativeBlock}
+      <span
+        className="text-[11px] leading-snug break-words sm:text-xs"
+        style={{ color: "var(--ws-text-vdim)", whiteSpace: "pre-line" }}
+      >
+        {renderLinkedTextParts(sources, "csrc")}
+      </span>
     </span>
   );
 }
@@ -660,7 +682,7 @@ function SipGainerCard({
             {loading ? (
               <span style={{ color: "var(--ws-text-vdim)" }}>Loading catalyst…</span>
             ) : (
-              renderCatalystSummary(catalystSummaryText(e), false)
+              renderCatalystSummary(e, false)
             )}
           </div>
         </div>
@@ -1152,9 +1174,9 @@ export default function PreMarketWorkspace({
   ) => {
     const rawCat =
       opts.catalystMapOverride != null ? opts.catalystMapOverride[row.ticker] : catalystMap[row.ticker];
-    const catText = catalystSummaryText(
-      catalystEntryOrStringToEntry(rawCat as PremarketCatalystEntry | string | undefined)
-    );
+    const catEntry =
+      catalystEntryOrStringToEntry(rawCat as PremarketCatalystEntry | string | undefined) ??
+      normalizeCatalystFromApi({ summary: "No news" });
     const catLoading = opts.skipCatalystLoading ? false : Boolean(catalystLoading[row.ticker]);
     const isSel =
       Boolean(selectedSymbol) && row.ticker.toUpperCase() === selectedSymbol.toUpperCase();
@@ -1170,7 +1192,7 @@ export default function PreMarketWorkspace({
       >
         {opts.rank != null && (
           <td
-            className="py-1.5 px-1 text-center tabular-nums text-ws-body"
+            className="py-1.5 px-1 align-top text-center tabular-nums text-ws-body"
             style={{ color: "var(--ws-text-dim)" }}
             align="center"
           >
@@ -1178,34 +1200,34 @@ export default function PreMarketWorkspace({
           </td>
         )}
         <td
-          className="py-1.5 px-1.5 font-mono text-ws-body font-semibold whitespace-nowrap"
+          className="py-1.5 px-1.5 align-top font-mono text-ws-body font-semibold whitespace-nowrap"
           style={{ color: "var(--ws-cyan)" }}
         >
           {row.ticker}
         </td>
-        <td className="py-1.5 px-1.5 text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
+        <td className="py-1.5 px-1.5 align-top text-ws-body min-w-0 truncate" style={{ color: "var(--ws-text)" }} title={row.name}>
           {row.name}
         </td>
-        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {fmtPrice(row.prevClose)}
         </td>
-        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
+        <td className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
           {fmtPrice(row.lastPrice)}
         </td>
         <td
-          className="py-1.5 px-1.5 text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
+          className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body font-medium whitespace-nowrap"
           style={{ color: row.gapPct >= 0 ? "var(--ws-green)" : "var(--ws-red)" }}
         >
           {fmtPct(row.gapPct)}
         </td>
-        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
+        <td className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text)" }}>
           {fmtVol(row.pmVolume)}
         </td>
-        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {row.avgVolume1m != null ? fmtVol(row.avgVolume1m) : "—"}
         </td>
         <td
-          className={`py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap ${
+          className={`py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap ${
             row.volRatioPct != null && row.volRatioPct > 20 ? "font-medium" : ""
           }`}
           style={{
@@ -1217,7 +1239,7 @@ export default function PreMarketWorkspace({
         >
           {row.volRatioPct != null ? fmtPct(row.volRatioPct) : "—"}
         </td>
-        <td className="py-1.5 px-1.5 text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
+        <td className="py-1.5 px-1.5 align-top text-right tabular-nums text-ws-body whitespace-nowrap" style={{ color: "var(--ws-text-dim)" }}>
           {fmtMcap(row.marketCap)}
         </td>
         {opts.showCatalyst && (
@@ -1225,7 +1247,7 @@ export default function PreMarketWorkspace({
             className="py-1.5 px-1.5 align-top min-w-0"
             onClick={(e) => e.stopPropagation()}
           >
-            {renderCatalystSummary(catText, catLoading)}
+            {renderCatalystSummary(catEntry, catLoading)}
           </td>
         )}
       </tr>
@@ -1553,14 +1575,22 @@ export default function PreMarketWorkspace({
                           color: "var(--ws-text)",
                         }}
                       >
-                        <span className="font-medium">{formatLedgerHeading(ymd)}</span>
-                        <span className="font-medium" style={{ color: "var(--ws-text-dim)" }}>
-                          {" "}
-                          SIP:{" "}
-                        </span>
-                        <span className="font-mono text-ws-body font-semibold" style={{ color: "var(--ws-cyan)" }}>
-                          {tickersLine || "—"}
-                        </span>
+                        <div className="grid w-full grid-cols-[minmax(0,6.75rem)_1fr] items-start gap-x-3 sm:grid-cols-[7.25rem_1fr] sm:gap-x-4">
+                          <span className="shrink-0 font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>
+                            {formatLedgerArchiveDate(ymd)}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="font-medium" style={{ color: "var(--ws-text-dim)" }}>
+                              SIP:{" "}
+                            </span>
+                            <span
+                              className="font-mono text-ws-body font-semibold break-words"
+                              style={{ color: "var(--ws-cyan)" }}
+                            >
+                              {tickersLine || "—"}
+                            </span>
+                          </div>
+                        </div>
                       </button>
                       {open && (
                         <div className="px-2 pb-3 overflow-x-auto" style={{ background: "var(--ws-bg2)" }}>

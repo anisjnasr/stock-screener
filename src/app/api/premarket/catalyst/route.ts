@@ -1,21 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { fetchStockNews } from "@/lib/massive";
 import {
   normalizeCatalystFromApi,
   type PremarketCatalystEntry,
 } from "@/lib/premarket-catalyst-types";
+import { priorTradingSessionYmdEt, todayYmdEt } from "@/lib/premarket-news-window";
 import {
-  isNewsInPremarketWindow,
-  priorTradingSessionYmdEt,
-  todayYmdEt,
-} from "@/lib/premarket-news-window";
+  fetchYahooSearchNewsInWindow,
+  formatYahooNewsForPrompt,
+  type YahooNewsArticleForCatalyst,
+} from "@/lib/premarket-yahoo-news";
 
 export const runtime = "nodejs";
 
 const SONNET_MODEL = "claude-sonnet-4-20250514";
 const MAX_SYMBOLS = 12;
-const NEWS_FETCH_LIMIT = 50;
+const WEB_SEARCH_MAX_USES = 12;
 
 function normalizeSymbols(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -27,6 +27,14 @@ function normalizeSymbols(raw: unknown): string[] {
     if (/^[A-Z][A-Z0-9.\-]{0,9}$/.test(s) && !out.includes(s)) out.push(s);
   }
   return out.slice(0, MAX_SYMBOLS);
+}
+
+function anthropicAssistantText(msg: Anthropic.Messages.Message): string {
+  const parts: string[] = [];
+  for (const block of msg.content) {
+    if (block.type === "text") parts.push(block.text);
+  }
+  return parts.join("\n");
 }
 
 function parseModelJsonCatalyst(raw: string): PremarketCatalystEntry {
@@ -43,11 +51,81 @@ function parseModelJsonCatalyst(raw: string): PremarketCatalystEntry {
       summary?: unknown;
       category?: unknown;
       guidanceTone?: unknown;
+      sourcesMarkdown?: unknown;
     };
     return normalizeCatalystFromApi(o);
   } catch {
     return normalizeCatalystFromApi({ summary: "No news", category: "UNKNOWN", guidanceTone: null });
   }
+}
+
+function buildUserPrompt(symbol: string, todayYmd: string, priorYmd: string, yahooBlock: string): string {
+  return `Ticker: ${symbol}
+
+You are helping a trader understand why the stock may be gapping up in pre-market.
+
+**Allowed news dates (America/New_York calendar only):** ${priorYmd} and ${todayYmd}.
+Treat any source outside those two calendar dates as out of scope.
+
+**Step 1 — Yahoo Finance (in-window headlines, already filtered to those dates):**
+${yahooBlock}
+
+**Step 2 — Web search:** Use the \`web_search\` tool to find additional reporting that plausibly explains the gap-up for ${symbol}, still limited to publications dated ${priorYmd} or ${todayYmd} in the US/Eastern sense when the publication date is clear. Prefer **concrete, company-specific** items: earnings results or expectations, guidance changes, signed deals, partnerships, M&A, FDA/clinical, analyst upgrades, management changes. If those are not available, you may cite **broader** pieces (newsletters, sector/market roundups mentioning multiple names) but clearly treat them as weaker, indirect evidence.
+
+**Sources / links:** Every factual claim should lean on real URLs. In \`sourcesMarkdown\`, list the **most important** articles as markdown bullet lines using only verified \`https://\` links (from Yahoo block above and/or web_search). Format each line exactly as: \`- [short title or publisher](https://...)\`
+
+**Category (pick exactly one):**
+EARNINGS — EPS/revenue beat or miss vs expectations
+GUIDANCE — forward outlook raised or lowered
+CONTRACT — new deal, government award, enterprise win
+CLINICAL — FDA, trial data, drug pipeline
+M_AND_A — acquisition, merger, buyout offer
+PARTNERSHIP — alliance, JV, licensing
+UPGRADE — analyst upgrade/initiation, PT raise
+MANAGEMENT — CEO change, board, activist
+UNKNOWN — only if none of the above fit
+
+For GUIDANCE only: set guidanceTone to "raised" or "lowered" when inferable; otherwise null.
+
+**Output rules:**
+- Return ONLY valid JSON (one object, no markdown outside it):
+  {"summary":"...","category":"...","guidanceTone":null or "raised" or "lowered","sourcesMarkdown":"..."}
+- summary: 3–4 sentences, concise, professional. You may include inline markdown links in the summary when citing a specific piece.
+- sourcesMarkdown: markdown bullet list (\`- [label](url)\` per line). Use empty string "" only if there are truly no usable sources in the allowed window.
+- If nothing explains the move: {"summary":"No news","category":"UNKNOWN","guidanceTone":null,"sourcesMarkdown":""}
+- No prose outside the JSON object.`;
+}
+
+async function runCatalystModel(
+  anthropic: Anthropic,
+  symbol: string,
+  todayYmd: string,
+  priorYmd: string,
+  yahooBlock: string,
+  withWebSearch: boolean
+): Promise<PremarketCatalystEntry> {
+  const userPrompt = buildUserPrompt(symbol, todayYmd, priorYmd, yahooBlock);
+  const base = {
+    model: SONNET_MODEL,
+    max_tokens: 2200,
+    messages: [{ role: "user" as const, content: userPrompt }],
+  };
+
+  if (withWebSearch) {
+    try {
+      const msg = await anthropic.messages.create({
+        ...base,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: WEB_SEARCH_MAX_USES }],
+        tool_choice: { type: "auto" },
+      });
+      return parseModelJsonCatalyst(anthropicAssistantText(msg));
+    } catch {
+      // fall through to non-tool call below
+    }
+  }
+
+  const msg = await anthropic.messages.create(base);
+  return parseModelJsonCatalyst(anthropicAssistantText(msg));
 }
 
 export async function POST(req: Request) {
@@ -67,87 +145,29 @@ export async function POST(req: Request) {
   const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
   for (const symbol of symbols) {
-    let items;
+    let yahooArticles: YahooNewsArticleForCatalyst[] = [];
     try {
-      items = await fetchStockNews(symbol, NEWS_FETCH_LIMIT);
+      yahooArticles = await fetchYahooSearchNewsInWindow(symbol, todayYmd, priorYmd);
     } catch {
-      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
-      continue;
+      yahooArticles = [];
     }
 
-    const filtered = items.filter((n) =>
-      isNewsInPremarketWindow(n.publishedUtc ?? n.publishedDate ?? "", todayYmd, priorYmd)
-    );
-
-    if (filtered.length === 0) {
-      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
-      continue;
-    }
+    const yahooBlock = formatYahooNewsForPrompt(yahooArticles);
 
     if (!anthropic) {
       results[symbol] = normalizeCatalystFromApi({
-        summary: filtered.length > 0 ? "Catalyst unavailable" : "No news",
+        summary: yahooArticles.length > 0 ? "Catalyst unavailable" : "No news",
         category: "UNKNOWN",
         guidanceTone: null,
       });
       continue;
     }
 
-    const articlesBlock = filtered
-      .slice(0, 24)
-      .map((a, i) => {
-        const title = (a.title ?? "").replace(/\s+/g, " ").trim();
-        const desc = (a.text ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
-        const url = a.url && /^https?:\/\//i.test(a.url) ? a.url : "";
-        const src = (a.source ?? "").trim();
-        return `[${i + 1}] ${title}${src ? ` (${src})` : ""}\n    ${desc}\n    URL: ${url}`;
-      })
-      .join("\n\n");
-
-    const userPrompt = `Ticker: ${symbol}
-
-You are helping a trader understand why the stock may be gapping up in pre-market.
-
-**Allowed news dates (America/New_York calendar only):** ${priorYmd} and ${todayYmd}.
-The articles below have ALREADY been restricted to those two dates. Do not infer or use anything older.
-
-**Articles (only use these):**
-${articlesBlock}
-
-**Task:** Identify which item(s) — if any — plausibly explain a gap-up move for ${symbol}. If none are relevant, respond with summary exactly: No news
-
-**Category (pick exactly one):**
-EARNINGS — EPS/revenue beat or miss vs expectations
-GUIDANCE — forward outlook raised or lowered
-CONTRACT — new deal, government award, enterprise win
-CLINICAL — FDA, trial data, drug pipeline
-M_AND_A — acquisition, merger, buyout offer
-PARTNERSHIP — alliance, JV, licensing
-UPGRADE — analyst upgrade/initiation, PT raise
-MANAGEMENT — CEO change, board, activist
-UNKNOWN — only if none of the above fit
-
-For GUIDANCE only: set guidanceTone to "raised" or "lowered" when inferable; otherwise null.
-
-**Output rules:**
-- Return ONLY valid JSON: {"summary":"...","category":"...","guidanceTone":null or "raised" or "lowered"}
-- summary: 3–4 sentences, concise, professional.
-- When citing a source, include a markdown link: [publisher or short title](full_url) using ONLY URLs from the articles above.
-- If nothing is relevant: {"summary":"No news","category":"UNKNOWN","guidanceTone":null}
-- No prose outside the JSON object.`;
-
     try {
-      const msg = await anthropic.messages.create({
-        model: SONNET_MODEL,
-        max_tokens: 900,
-        messages: [{ role: "user", content: userPrompt }],
-      });
-      const block = msg.content[0];
-      const text = block && block.type === "text" ? block.text : "";
-      const parsed = parseModelJsonCatalyst(text);
-      results[symbol] = normalizeCatalystFromApi(parsed);
+      const entry = await runCatalystModel(anthropic, symbol, todayYmd, priorYmd, yahooBlock, true);
+      results[symbol] = normalizeCatalystFromApi(entry);
     } catch {
-      results[symbol] = normalizeCatalystFromApi({ summary: "No news" });
+      results[symbol] = normalizeCatalystFromApi({ summary: "No news", category: "UNKNOWN", guidanceTone: null });
     }
   }
 

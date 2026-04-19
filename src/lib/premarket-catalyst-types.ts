@@ -19,6 +19,8 @@ export type PremarketCatalystEntry = {
   summary: string;
   category: CatalystCategory;
   guidanceTone: GuidanceTone | null;
+  /** Markdown list (e.g. `- [title](url)`) shown below the narrative in SIP UI */
+  sourcesMarkdown?: string;
 };
 
 const CATEGORY_ALIASES: Record<string, CatalystCategory> = {
@@ -54,18 +56,31 @@ export function parseGuidanceTone(raw: unknown): GuidanceTone | null {
   return null;
 }
 
+export function parseSourcesMarkdown(raw: unknown): string | undefined {
+  if (raw == null) return undefined;
+  const s = String(raw).trim();
+  return s.length > 0 ? s : undefined;
+}
+
 export function normalizeCatalystFromApi(row: {
   summary?: unknown;
   category?: unknown;
   guidanceTone?: unknown;
+  sourcesMarkdown?: unknown;
 } | null): PremarketCatalystEntry {
   const summary = row?.summary != null ? String(row.summary).trim() : "";
   const s = summary.length > 0 ? summary : "No news";
-  return {
+  if (s === "No news") {
+    return { summary: "No news", category: "UNKNOWN", guidanceTone: null };
+  }
+  const sourcesMarkdown = parseSourcesMarkdown(row?.sourcesMarkdown);
+  const base: PremarketCatalystEntry = {
     summary: s,
     category: parseCatalystCategory(row?.category),
     guidanceTone: parseGuidanceTone(row?.guidanceTone),
   };
+  if (sourcesMarkdown != null) base.sourcesMarkdown = sourcesMarkdown;
+  return base;
 }
 
 export function legacySummaryToEntry(summary: string): PremarketCatalystEntry {
@@ -91,7 +106,10 @@ export function catalystEntryOrStringToEntry(
 export function catalystSummaryText(v: PremarketCatalystEntry | string | undefined | null): string {
   if (v == null) return "";
   if (typeof v === "string") return v;
-  return v.summary ?? "";
+  const sum = (v.summary ?? "").trim();
+  const src = (v.sourcesMarkdown ?? "").trim();
+  if (src.length > 0) return `${sum}\n\n${src}`;
+  return sum;
 }
 
 export function categoryBadgeLabel(category: CatalystCategory, guidanceTone: GuidanceTone | null): string {

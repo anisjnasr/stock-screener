@@ -436,6 +436,8 @@ function WorkspaceHeader({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const scanDDRef = useRef<HTMLDivElement>(null);
   const listDDRef = useRef<HTMLDivElement>(null);
+  const navOverflowRef = useRef<HTMLDivElement>(null);
+  const [navOverflowOpen, setNavOverflowOpen] = useState(false);
 
   useEffect(() => {
     if (!newListDraft) {
@@ -541,10 +543,26 @@ function WorkspaceHeader({
         setEditingListId(null);
         setEditingFlag(null);
       }
+      if (navOverflowRef.current && !navOverflowRef.current.contains(e.target as Node)) {
+        setNavOverflowOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!navOverflowOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOverflowOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOverflowOpen]);
+
+  useEffect(() => {
+    setNavOverflowOpen(false);
+  }, [section]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!suggestionsOpen || suggestions.length === 0) return;
@@ -590,6 +608,10 @@ function WorkspaceHeader({
 
   const sectionSupportsRail = section === "scans" || section === "lists";
   const padR = sectionSupportsRail && railWidthPx > 0 ? railWidthPx + 14 : 12;
+
+  const primaryNavSections = WORKSPACE_SECTIONS.slice(0, 3);
+  const overflowNavSections = WORKSPACE_SECTIONS.slice(3);
+  const overflowSectionActive = section === "lists" || section === "pre-market";
 
   return (
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
@@ -685,8 +707,11 @@ function WorkspaceHeader({
         </div>
 
         <div className="flex-1 flex items-center justify-center min-w-0 basis-full lg:basis-auto order-last lg:order-none">
-          <nav className="flex items-center gap-0.5 sm:gap-1 flex-wrap justify-center max-w-full">
-            {WORKSPACE_SECTIONS.map((s) => (
+          <nav
+            className="flex max-w-full flex-nowrap items-center justify-center gap-0.5 sm:gap-1"
+            aria-label="Main sections"
+          >
+            {primaryNavSections.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -706,6 +731,93 @@ function WorkspaceHeader({
                 {s.label}
               </button>
             ))}
+            {overflowNavSections.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onSectionChange(s.id)}
+                className={`hidden xl:inline-flex px-2 sm:px-3 md:px-4 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${section !== s.id ? "hover:bg-white/5" : ""}`}
+                aria-current={section === s.id ? "page" : undefined}
+                style={{
+                  background: section === s.id ? "rgba(255,255,255,0.06)" : undefined,
+                  borderBottom: section === s.id ? "2px solid var(--ws-cyan)" : "2px solid transparent",
+                  borderTop: "2px solid transparent",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  borderRadius: 0,
+                  color: section === s.id ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+            <div ref={navOverflowRef} className="relative shrink-0 xl:hidden">
+              <button
+                type="button"
+                onClick={() => setNavOverflowOpen((open) => !open)}
+                aria-expanded={navOverflowOpen}
+                aria-haspopup="menu"
+                aria-label="More sections: Lists, Pre-Market"
+                className={`inline-flex items-center gap-0.5 px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${!overflowSectionActive && !navOverflowOpen ? "hover:bg-white/5" : ""}`}
+                style={{
+                  background:
+                    overflowSectionActive || navOverflowOpen ? "rgba(255,255,255,0.06)" : undefined,
+                  borderBottom:
+                    overflowSectionActive || navOverflowOpen
+                      ? "2px solid var(--ws-cyan)"
+                      : "2px solid transparent",
+                  borderTop: "2px solid transparent",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  borderRadius: 0,
+                  color:
+                    overflowSectionActive || navOverflowOpen ? "var(--ws-cyan)" : "var(--ws-text-dim)",
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className={`h-4 w-4 shrink-0 transition-transform duration-200 ${navOverflowOpen ? "rotate-180" : ""}`}
+                  aria-hidden
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+              {navOverflowOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-[95] mt-1 min-w-[12.5rem] overflow-hidden rounded-lg py-1 shadow-lg"
+                  style={{
+                    background: "var(--ws-bg2)",
+                    border: "1px solid var(--ws-border-hover)",
+                  }}
+                >
+                  {overflowNavSections.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onSectionChange(s.id);
+                        setNavOverflowOpen(false);
+                      }}
+                      className={`flex w-full items-center px-3 py-2.5 text-left text-ws-title text-xs font-semibold uppercase tracking-wider transition-colors ws-focus-ring sm:text-sm ${section !== s.id ? "hover:bg-white/[0.06]" : ""}`}
+                      style={{
+                        background: section === s.id ? "rgba(0,229,204,0.12)" : undefined,
+                        color: section === s.id ? "var(--ws-cyan)" : "var(--ws-text)",
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
