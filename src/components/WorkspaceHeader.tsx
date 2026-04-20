@@ -124,21 +124,30 @@ type WorkspaceHeaderProps = {
   headerActionsSlotRef?: (el: HTMLDivElement | null) => void;
 };
 
+const ET_TZ = "America/New_York";
+
+/** e.g. "Mon Apr 20" + " 9:56:20 AM ET" (caller splits for styling). */
+function formatEtHeaderClockParts(now: Date): { datePart: string; timePart: string } {
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, weekday: "short" }).format(now);
+  const mon = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, month: "short" }).format(now);
+  const dayNum = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, day: "numeric" }).format(now);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(now);
+  return { datePart: `${wd} ${mon} ${dayNum}`, timePart: `${time} ET` };
+}
+
 function MarketStatusClock() {
   const [open, setOpen] = useState(() => isUSMarketOpen());
-  const [timeStr, setTimeStr] = useState("--:--");
+  const [parts, setParts] = useState<{ datePart: string; timePart: string }>(() => formatEtHeaderClockParts(new Date()));
 
   useEffect(() => {
     const updateNow = () => {
-      const now = new Date();
-      setTimeStr(
-        now.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "America/New_York",
-        })
-      );
+      setParts(formatEtHeaderClockParts(new Date()));
     };
     const check = () => setOpen(isUSMarketOpen());
     const idOpen = setInterval(check, 30_000);
@@ -153,7 +162,7 @@ function MarketStatusClock() {
 
   return (
     <div
-      className="flex items-center gap-2 shrink-0 text-sm font-medium select-none tabular-nums"
+      className="flex items-center gap-2 shrink-0 select-none font-mono text-[11px] tabular-nums leading-none"
       style={{ color: "var(--ws-text)" }}
     >
       <span
@@ -166,8 +175,9 @@ function MarketStatusClock() {
         }}
         aria-hidden
       />
-      <span>
-        {timeStr} ET
+      <span suppressHydrationWarning>
+        <span style={{ color: "var(--ws-text-dim)" }}>{parts.datePart}</span>
+        <span style={{ color: "var(--ws-cyan)" }}> {parts.timePart}</span>
       </span>
     </div>
   );
@@ -625,10 +635,14 @@ function WorkspaceHeader({
           alt="Stock Stalker"
           width={300}
           height={40}
-          className="h-8 w-auto sm:h-10 shrink-0 opacity-90 max-w-[min(48vw,200px)]"
+          priority
+          className="h-[26px] w-auto shrink-0 object-contain object-left opacity-90 max-w-[min(48vw,180px)] sm:h-[30px]"
         />
 
-        <div ref={searchContainerRef} className="relative shrink-0 w-36 min-[480px]:w-44 min-[900px]:w-56">
+        <div
+          ref={searchContainerRef}
+          className="relative w-24 shrink-0 min-[480px]:w-[7.33rem] min-[900px]:w-[9.33rem]"
+        >
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -645,8 +659,8 @@ function WorkspaceHeader({
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ width: 15, height: 15, color: "var(--ws-text-dim)" }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none h-3.5 w-3.5"
+                style={{ color: "var(--ws-text-dim)" }}
               >
                 <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
               </svg>
@@ -660,7 +674,7 @@ function WorkspaceHeader({
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Search"
-                className="w-full rounded pl-7 pr-2 py-1.5 text-sm"
+                className="w-full rounded py-1 pl-6 pr-2 text-xs leading-tight"
                 style={{
                   background: "var(--ws-bg3)",
                   color: "var(--ws-text)",
@@ -757,7 +771,7 @@ function WorkspaceHeader({
                 onClick={() => setNavOverflowOpen((open) => !open)}
                 aria-expanded={navOverflowOpen}
                 aria-haspopup="menu"
-                aria-label="More sections: Lists, Pre-Market"
+                aria-label="More sections: Lists, PRE-MARKET"
                 className={`inline-flex items-center gap-0.5 px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${!overflowSectionActive && !navOverflowOpen ? "hover:bg-white/5" : ""}`}
                 style={{
                   background:

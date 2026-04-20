@@ -333,13 +333,6 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.panel_mode !== undefined) s.setItem("stock-research-watchlist-panel", st.panel_mode as string);
   if (st.panel_height !== undefined) s.setItem("stock-research-watchlist-panel-height-px", String(st.panel_height));
   if (st.sidebar_width !== undefined) s.setItem("stock-research-watchlist-sidebar-width-px", String(st.sidebar_width));
-  if (st.premarket_thresholds !== undefined) {
-    try {
-      s.setItem("premarket-thresholds-v1", JSON.stringify(st.premarket_thresholds));
-    } catch {
-      /* ignore */
-    }
-  }
   if (st.layout_preferences !== undefined) {
     const lp = st.layout_preferences as Record<string, unknown>;
     if (lp.chartLeftPx !== undefined) s.setItem("ws-chart-left-px", String(lp.chartLeftPx));
@@ -390,7 +383,6 @@ export function pushLocalStorageToCloud(): void {
   } catch { /* skip */ }
 
   const settingKeys: [string, string][] = [
-    ["premarket-thresholds-v1", "premarket_thresholds"],
     ["stock-research-theme", "theme"],
     ["stock-research-chart-settings", "chart_settings"],
     ["stock-research-flag-names", "flag_names"],

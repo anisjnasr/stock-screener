@@ -75,8 +75,7 @@ import MarketLeftPanel from "@/components/MarketLeftPanel";
 import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
-import PreMarketWorkspace from "@/components/PreMarketWorkspace";
-
+import PreMarketShell from "@/components/PreMarketShell";
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -763,7 +762,7 @@ export default function Home() {
   }, [scanSymbols, symbol, handleSymbolSelect]);
 
   useKeyboardShortcuts(useMemo(() => [
-    { key: "5", description: "Go to Pre-Market", category: "navigation" as const, action: () => setSection("pre-market") },
+    { key: "5", description: "Go to PRE-MARKET", category: "navigation" as const, action: () => setSection("pre-market") },
     { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
       const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
       el?.focus(); el?.select();
@@ -897,6 +896,8 @@ export default function Home() {
     <PanelErrorBoundary name="RightPanel">
     {section === "market" ? (
       <MarketBreadthRail selectedSymbol={symbol} />
+    ) : section === "pre-market" ? (
+      <div className="h-full" aria-hidden />
     ) : railSupportedSection ? (
       <RightRail
         section={section}
@@ -1086,24 +1087,7 @@ export default function Home() {
         )}
         {section === "pre-market" ? (
           <PanelErrorBoundary name="PreMarket">
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
-              <PreMarketWorkspace
-                selectedSymbol={symbol}
-                onSymbolSelect={handleSymbolSelect}
-                candles={candles}
-                chartLoading={chartLoading}
-                onChartRetry={() => {
-                  setChartLoading(true);
-                  setChartReloadNonce((n) => n + 1);
-                }}
-                chartTimeframe={chartTimeframe}
-                onChartTimeframeChange={setChartTimeframe}
-                stockFlag={currentStockFlag}
-                onFlagChange={handleFlagChange}
-                watchlistPickerLists={watchlistPickerLists}
-                onWatchlistMembershipSave={handleWatchlistMembershipSave}
-              />
-            </div>
+            <PreMarketShell />
           </PanelErrorBoundary>
         ) : (
           <WorkspaceLayout
