@@ -1,0 +1,57 @@
+# Triggers production POST /api/cron/economic-calendar (Forex Factory → Supabase).
+# Operator guide: docs/ECONOMIC-CALENDAR-PRODUCTION.md
+#
+# Setup (repository Settings → Secrets and variables → Actions):
+#   APP_BASE_URL   — public origin only, e.g. https://your-service.onrender.com (no trailing slash)
+#   CRON_SECRET    — must match the production env CRON_SECRET on your host
+#
+# If secrets are missing, the job fails fast with a clear error (no accidental calls).
+
+name: Economic calendar ingest
+
+on:
+  schedule:
+    # Daily 06:30 UTC (~1:30am ET standard / 2:30am daylight — before RTH; weekly XML is idempotent)
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: economic-calendar-cron
+  cancel-in-progress: false
+
+jobs:
+  # Manual run: fail loudly if secrets were not configured.
+  require-secrets-on-dispatch:
+    if: github.event_name == 'workflow_dispatch' && (secrets.APP_BASE_URL == '' || secrets.CRON_SECRET == '')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing APP_BASE_URL or CRON_SECRET
+        run: |
+          echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
+          exit 1
+
+  ingest:
+    if: secrets.APP_BASE_URL != '' && secrets.CRON_SECRET != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/cron/economic-calendar
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/economic-calendar"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Expected HTTP 200, got $code"
+            exit 1
+          fi
+          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
