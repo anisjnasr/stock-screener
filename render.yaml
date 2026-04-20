@@ -17,6 +17,15 @@ services:
         value: production
       - key: MASSIVE_API_KEY
         sync: false
+      # Pre-market economic calendar (Supabase ingest + UI). Set in Render dashboard (Blueprint sync: false).
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
       # Point the app at the persistent disk so the DB survives deploys.
       # The app auto-detects /app/data as a fallback, but this is explicit.
       - key: SCREENER_DB_PATH
