@@ -1,0 +1,37 @@
+{
+  "totalCount": 2,
+  "data": [
+    {
+      "s": "NASDAQ:NKTR",
+      "d": [
+        "NKTR",
+        "Nektar Therapeutics",
+        104.345,
+        14.718359651190191,
+        562700,
+        3496280,
+        1076109.6888888888,
+        2993445571.560865,
+        "Health Technology",
+        "Pharmaceuticals: Major",
+        "NASDAQ"
+      ]
+    },
+    {
+      "s": "NYSE:BLD",
+      "d": [
+        "BLD",
+        "TopBuild Corp.",
+        482.995,
+        19.54375959640272,
+        12688,
+        2496454,
+        372805.5888888889,
+        13593959823.228363,
+        "Industrial Services",
+        "Engineering & Construction",
+        "NYSE"
+      ]
+    }
+  ]
+}

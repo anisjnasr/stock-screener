@@ -27,6 +27,7 @@ export default function CollapsibleSection({
 
   return (
     <section
+      data-premarket-section={id}
       className="min-w-0 rounded border transition-colors"
       style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
     >

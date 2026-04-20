@@ -293,9 +293,9 @@ export type SnapshotTickerRaw = {
 
 /**
  * Shared snapshot row parser (movers + full-market list use the same ticker shape).
- * When includeAvgVolume is false, avgVolume1m is always null (premarket scanner omits avg volume).
+ * When includeAvgVolume is false, avgVolume1m is always null.
  */
-export function parseSnapshotTickerToPremarketRow(
+export function parseSnapshotTickerRow(
   t: SnapshotTickerRaw,
   options?: { includeAvgVolume?: boolean }
 ): TopMoverSnapshotRow | null {
@@ -369,7 +369,7 @@ export async function fetchTopMarketMovers(direction: "gainers" | "losers"): Pro
   const raw = data.tickers ?? [];
   const out: TopMoverSnapshotRow[] = [];
   for (const t of raw) {
-    const row = parseSnapshotTickerToPremarketRow(t as SnapshotTickerRaw, { includeAvgVolume: true });
+    const row = parseSnapshotTickerRow(t as SnapshotTickerRaw, { includeAvgVolume: true });
     if (row) out.push(row);
   }
   return out;
@@ -405,7 +405,7 @@ export async function fetchFullMarketSnapshotRaw(init?: {
 }
 
 /** ~4k chars for tickers= param keeps total URL under typical proxy limits when chunking. */
-export const PREMARKET_TICKERS_PARAM_BUDGET_CHARS = 4000;
+export const SNAPSHOT_TICKERS_PARAM_BUDGET_CHARS = 4000;
 
 /**
  * Full market snapshot: GET /v2/snapshot/locale/us/markets/stocks/tickers
@@ -439,7 +439,7 @@ export async function fetchStockSnapshotsFullMarket(options: {
   const raw = data.tickers ?? [];
   const out: TopMoverSnapshotRow[] = [];
   for (const t of raw) {
-    const row = parseSnapshotTickerToPremarketRow(t, { includeAvgVolume: false });
+    const row = parseSnapshotTickerRow(t, { includeAvgVolume: false });
     if (row) out.push(row);
   }
   return out;
@@ -452,7 +452,7 @@ export async function fetchStockSnapshotsForSymbolList(
   symbols: string[],
   init?: { signal?: AbortSignal; includeOtc?: boolean; paramBudgetChars?: number }
 ): Promise<{ rows: TopMoverSnapshotRow[]; chunkCount: number }> {
-  const budget = init?.paramBudgetChars ?? PREMARKET_TICKERS_PARAM_BUDGET_CHARS;
+  const budget = init?.paramBudgetChars ?? SNAPSHOT_TICKERS_PARAM_BUDGET_CHARS;
   const unique = [...new Set(symbols.map((s) => String(s).trim().toUpperCase()).filter(Boolean))];
   const chunks: string[][] = [];
   let cur: string[] = [];

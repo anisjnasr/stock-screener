@@ -1,0 +1,88 @@
+# Production earnings pipeline: big_name_universe → Finnhub ingest → actuals backfill.
+# Deploy the app with these API routes before the workflow can succeed (otherwise POST returns 404).
+#
+# Setup (repository Settings → Secrets and variables → Actions):
+#   APP_BASE_URL   — public origin only, e.g. https://your-service.onrender.com (no trailing slash)
+#   CRON_SECRET    — must match the production env CRON_SECRET on your host
+#
+# Host env must include FINNHUB_API_KEY and Supabase service role (same as local cron docs).
+#
+# Schedules (UTC):
+#   1st of month 08:00  — refresh universe (~03:00 ET standard time)
+#   Mon–Fri 11:00       — forward window ingest (~06:00 ET)
+#   Mon–Fri 21:00       — actuals backfill (~16:00–17:00 ET)
+#
+# workflow_dispatch runs universe → ingest → actuals in order (bootstrap or catch-up).
+
+name: Earnings Calendar Crons
+
+on:
+  schedule:
+    - cron: "0 8 1 * *"
+    - cron: "0 11 * * 1-5"
+    - cron: "0 21 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: earnings-calendar-cron
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: POST earnings crons
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
+              exit 1
+            fi
+            exit 0
+          fi
+          BASE_TRIMMED="${BASE%/}"
+
+          post() {
+            local path="$1"
+            local url="${BASE_TRIMMED}${path}"
+            echo ""
+            echo "POST $url"
+            code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$url" \
+              -H "Authorization: Bearer ${SECRET}" \
+              -H "Accept: application/json")
+            echo "HTTP $code"
+            cat resp.json
+            echo
+            if [ "$code" != "200" ]; then
+              echo "::error::Expected HTTP 200 for $path, got $code"
+              exit 1
+            fi
+            python3 -c "import json; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+          }
+
+          EVENT="${{ github.event_name }}"
+          SCHEDULE="${{ github.event.schedule }}"
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            post /api/cron/earnings/universe
+            post /api/cron/earnings/ingest
+            post /api/cron/earnings/actuals
+            exit 0
+          fi
+
+          if [ "$SCHEDULE" = "0 8 1 * *" ]; then
+            post /api/cron/earnings/universe
+          elif [ "$SCHEDULE" = "0 11 * * 1-5" ]; then
+            post /api/cron/earnings/ingest
+          elif [ "$SCHEDULE" = "0 21 * * 1-5" ]; then
+            post /api/cron/earnings/actuals
+          else
+            echo "::warning::Unknown schedule payload: $SCHEDULE"
+            exit 1
+          fi

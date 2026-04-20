@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * One-off: fetch Polygon /v2/reference/news for a ticker and list items
- * that pass the same ET date window as /api/premarket/catalyst.
+ * that pass a simple ET "today + prior session" news window.
  *
  * Usage: node scripts/check-ticker-news-window.mjs CDNA
  * Loads MASSIVE_API_KEY from process.env or .env.local at repo root.
@@ -109,13 +109,13 @@ async function main() {
     });
 
   console.log("Symbol:", symbol);
-  console.log("Premarket window (ET dates): today =", todayYmd, "| prior session =", priorYmd);
+  console.log("ET window: today =", todayYmd, "| prior session =", priorYmd);
   console.log("Raw API result count (before ticker filter):", results.length);
   console.log("After ticker filter (same as massive.ts):", mapped.length);
   console.log("");
 
   const inWin = mapped.filter((a) => inWindow(a.published_utc, todayYmd, priorYmd));
-  console.log("In premarket window:", inWin.length);
+  console.log("In window:", inWin.length);
   console.log("---");
 
   for (const a of mapped.slice(0, 25)) {

@@ -1,8 +1,10 @@
 "use client";
 
 import CollapsibleSection from "./CollapsibleSection";
+import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
 import KeyEvents from "./KeyEvents";
+import PremarketGappers from "./PremarketGappers";
 import TopBar from "./TopBar";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
@@ -35,18 +37,18 @@ const SECTIONS: {
     id: "earnings",
     title: "Earnings",
     peekText: "YEST: NFLX +9.6 · IBM +8.1 · TODAY BMO: MS, GS, BAC, SCHW",
-    stub: "Big-name earnings buckets (yesterday / today / tomorrow) will load here after Phase 9.",
+    stub: "",
   },
   {
     id: "movers",
     title: "Top Movers + Policy",
     peekText: "15 gappers · $2B+ · 3 policy posts market-relevant",
-    stub: "Pre-market gappers and policy tape will load here after Phases 7 and 11.",
+    stub: "",
   },
 ];
 
 export default function PreMarketPage() {
-  const { collapsed, toggle, collapseAll, expandAll } = usePremarketLayout();
+  const { collapsed, toggle, setCollapsed, collapseAll, expandAll } = usePremarketLayout();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--ws-bg)" }}>
@@ -75,6 +77,34 @@ export default function PreMarketPage() {
                   </h3>
                   <KeyEvents />
                 </div>
+              </div>
+            ) : s.id === "earnings" ? (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                  Earnings calendar
+                </h3>
+                <EarningsCalendar />
+              </div>
+            ) : s.id === "movers" ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                    Pre-market gappers
+                  </h3>
+                  <PremarketGappers
+                    onJumpToEarnings={() => {
+                      setCollapsed("earnings", false);
+                      queueMicrotask(() => {
+                        document
+                          .querySelector("[data-premarket-section=\"earnings\"]")
+                          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                      });
+                    }}
+                  />
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+                  Policy tape (Truth Social) — Phase 7.
+                </p>
               </div>
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>

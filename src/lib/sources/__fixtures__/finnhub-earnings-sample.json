@@ -1,0 +1,38 @@
+{
+  "earningsCalendar": [
+    {
+      "date": "2026-04-21",
+      "symbol": "IBM",
+      "epsEstimate": 1.5,
+      "epsActual": 1.62,
+      "revenueEstimate": 15000000000,
+      "revenueActual": 15200000000,
+      "hour": "amc",
+      "quarter": 1,
+      "year": 2026,
+      "name": "International Business Machines"
+    },
+    {
+      "date": "2026-04-21",
+      "symbol": "ibm",
+      "epsEstimate": 1.5,
+      "epsActual": 1.62,
+      "quarter": 1,
+      "year": 2026
+    },
+    {
+      "date": "2026-04-22",
+      "symbol": "MSFT",
+      "epsEstimate": 2.8,
+      "hour": "bmo",
+      "quarter": 3,
+      "year": 2025
+    },
+    {
+      "date": "2026-04-22",
+      "symbol": "ZZZ",
+      "epsEstimate": 1,
+      "hour": "bmo"
+    }
+  ]
+}
