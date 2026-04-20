@@ -7,7 +7,7 @@
 #
 # Note: GitHub does not allow `secrets` in job-level `if:` — guards run inside the step below.
 
-name: Economic Calender Injest
+name: Economic Calendar Injest
 
 on:
   schedule:
