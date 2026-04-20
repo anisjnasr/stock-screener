@@ -97,3 +97,5 @@ Use this if you prefer everything on Render and do not want GitHub to call your 
 - **GitHub workflow skipped** — `APP_BASE_URL` or `CRON_SECRET` not set; add both secrets (Part B).
 
 For host-agnostic deployment notes, see [DEPLOY.md](DEPLOY.md) and the go-live checklist in [GO_LIVE.md](GO_LIVE.md).
+
+**Related:** Fed / Treasury / White House / USTR → `market_events` is documented in [MARKET-EVENTS-PRODUCTION.md](MARKET-EVENTS-PRODUCTION.md) (same `APP_BASE_URL` and `CRON_SECRET` secrets).

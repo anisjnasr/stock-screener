@@ -89,5 +89,6 @@ Use the URL Render or Railway gives you (e.g. `https://stock-scanner.onrender.co
 - [ ] Run `npm run go-live:check` locally or on host.
 - [ ] Confirm `GET /api/health` returns `status: "ok"` on the deployed site.
 - [ ] (Optional) Pre-market economic calendar: follow [ECONOMIC-CALENDAR-PRODUCTION.md](ECONOMIC-CALENDAR-PRODUCTION.md) (Render env, GitHub secrets, smoke with `npm run economic-calendar:trigger`).
+- [ ] (Optional) Policy / Fed market events: run `data/supabase-market-events.sql`, then [MARKET-EVENTS-PRODUCTION.md](MARKET-EVENTS-PRODUCTION.md) (workflow **Market Events Ingest**, smoke with `npm run market-events:trigger`).
 
 For more detail (Docker, VPS, cron examples), see [DEPLOY.md](DEPLOY.md).

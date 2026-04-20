@@ -53,17 +53,18 @@ To sync watchlists, scans, flags, and settings across devices, set up a free [Su
 1. Create a project at [supabase.com](https://supabase.com)
 2. Go to **SQL Editor** and run the schema in `data/supabase-schema.sql`
 3. For the pre-market economic calendar, run `data/supabase-economic-events.sql` (same SQL Editor)
-4. Go to **Settings > API** and copy the **Project URL** and **anon public** key
-5. Add them to `.env.local`:
+4. (Optional) For Fed / Treasury / White House / USTR policy events, run `data/supabase-market-events.sql`
+5. Go to **Settings > API** and copy the **Project URL** and **anon public** key
+6. Add them to `.env.local`:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-For **economic calendar cron** (`POST /api/cron/economic-calendar`), also set `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` in the server environment (see `.env.example`). You can reuse the same value as `ADMIN_SECRET` for `CRON_SECRET` if you prefer one shared secret.
+For **cron ingests** (economic calendar and market policy events), set `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` in the server environment (see `.env.example`). You can reuse the same value as `ADMIN_SECRET` for `CRON_SECRET` if you prefer one shared secret.
 
-**Production schedule:** Step-by-step checklist (Render env, GitHub Actions, optional Render Cron, smoke commands): **[docs/ECONOMIC-CALENDAR-PRODUCTION.md](docs/ECONOMIC-CALENDAR-PRODUCTION.md)**. Short version: set Actions secrets `APP_BASE_URL` and `CRON_SECRET` (same as production), then run workflow **Economic Calendar Injest** ([`.github/workflows/economic-calendar-cron.yml`](.github/workflows/economic-calendar-cron.yml)) manually once. From your machine: `npm run economic-calendar:trigger -- --url https://your-host`.
+**Production schedule:** **[docs/ECONOMIC-CALENDAR-PRODUCTION.md](docs/ECONOMIC-CALENDAR-PRODUCTION.md)** (econ ingest) and **[docs/MARKET-EVENTS-PRODUCTION.md](docs/MARKET-EVENTS-PRODUCTION.md)** (Fed / Treasury / WH / USTR). Same Actions secrets `APP_BASE_URL` and `CRON_SECRET`. Smoke from your machine: `npm run economic-calendar:trigger -- --url https://your-host` and `npm run market-events:trigger -- --url https://your-host`.
 
 Without these variables, the app works fully offline using localStorage.
 
