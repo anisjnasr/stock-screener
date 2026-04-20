@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       for (const mm of months) {
         const path = fedMonthPathSegment(mm.y, mm.m);
         const html = await fetchFedMonthlyHtml(path, { signal: request.signal });
-        rows.push(...parseFedMonthlyCalendarHtml(html));
+        if (html != null) rows.push(...parseFedMonthlyCalendarHtml(html));
       }
       return rows;
     },

@@ -140,13 +140,18 @@ export function parseFedMonthlyCalendarHtml(html: string): MarketEventInsert[] {
   return out;
 }
 
-export async function fetchFedMonthlyHtml(ymPath: string, init?: { signal?: AbortSignal }): Promise<string> {
+/**
+ * Fetches one Fed monthly calendar page. Returns `null` on HTTP 404 when that month
+ * is not published yet (common for “next month” around month boundaries).
+ */
+export async function fetchFedMonthlyHtml(ymPath: string, init?: { signal?: AbortSignal }): Promise<string | null> {
   const url = `${FED_CALENDAR_MONTHLY_BASE}/${ymPath}.htm`;
   const res = await fetch(url, {
     signal: init?.signal,
     headers: { Accept: "text/html", "User-Agent": UA },
     cache: "no-store",
   });
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Fed calendar HTTP ${res.status}: ${url}`);
   return await res.text();
 }
