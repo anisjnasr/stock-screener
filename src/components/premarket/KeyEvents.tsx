@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import EventRowFlag from "./EventRowFlag";
 import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 
 function formatTimeEt(hms: string | null): string {
@@ -118,13 +119,16 @@ export default function KeyEvents() {
               <th className="hidden px-2 py-1.5 font-semibold sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
                 Type
               </th>
+              <th className="w-8 px-1 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                <span className="sr-only">Flag</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {events.map((ev) => (
               <tr
                 key={ev.id}
-                className="border-t transition-colors hover:bg-[color:var(--ws-hover)]"
+                className="group border-t transition-colors hover:bg-[color:var(--ws-hover)]"
                 style={{ borderColor: "var(--ws-border)" }}
               >
                 <td className="whitespace-nowrap px-2 py-1.5 align-top tabular-nums" style={{ color: "var(--ws-text)" }}>
@@ -152,6 +156,13 @@ export default function KeyEvents() {
                 </td>
                 <td className="hidden whitespace-nowrap px-2 py-1.5 align-top capitalize sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
                   {categoryLabel(ev.event_category)}
+                </td>
+                <td className="w-8 align-top">
+                  <EventRowFlag
+                    eventType="market"
+                    eventId={ev.id}
+                    onFlagged={() => setEvents((prev) => (prev ? prev.filter((r) => r.id !== ev.id) : null))}
+                  />
                 </td>
               </tr>
             ))}

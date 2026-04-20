@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import EventRowFlag from "./EventRowFlag";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 
 function formatTimeEt(hms: string | null): string {
@@ -124,13 +125,16 @@ export default function EconomicCalendar() {
               <th className="hidden px-2 py-1.5 font-semibold md:table-cell" style={{ color: "var(--ws-text-dim)" }}>
                 Act
               </th>
+              <th className="w-8 px-1 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }}>
+                <span className="sr-only">Flag</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {events.map((ev) => (
               <tr
                 key={ev.id}
-                className="border-t transition-colors hover:bg-[color:var(--ws-hover)]"
+                className="group border-t transition-colors hover:bg-[color:var(--ws-hover)]"
                 style={{ borderColor: "var(--ws-border)" }}
               >
                 <td className="whitespace-nowrap px-2 py-1.5 align-top tabular-nums" style={{ color: "var(--ws-text)" }}>
@@ -154,6 +158,13 @@ export default function EconomicCalendar() {
                 </td>
                 <td className="hidden whitespace-pre-wrap px-2 py-1.5 align-top md:table-cell" style={{ color: "var(--ws-text-dim)" }}>
                   {dash(ev.actual)}
+                </td>
+                <td className="w-8 align-top">
+                  <EventRowFlag
+                    eventType="economic"
+                    eventId={ev.id}
+                    onFlagged={() => setEvents((prev) => (prev ? prev.filter((r) => r.id !== ev.id) : null))}
+                  />
                 </td>
               </tr>
             ))}

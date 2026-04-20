@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { loadFlaggedEventIds, readViewerKeyFromRequest } from "@/lib/calendar-flag-session";
 import { addCalendarDaysYmd, ymdInEt } from "@/lib/et-ymd";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, getSupabaseService } from "@/lib/supabase";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -63,12 +64,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const events = (data ?? []) as EconomicEventPublic[];
+  let events = (data ?? []) as EconomicEventPublic[];
+  const viewerKey = readViewerKeyFromRequest(request);
+  if (viewerKey) {
+    const svc = getSupabaseService();
+    if (svc) {
+      const hide = await loadFlaggedEventIds(svc, viewerKey, "economic");
+      events = events.filter((e) => !hide.has(e.id));
+    }
+  }
+
   const body: EconomicEventsResponse = { events, range: { from, to } };
 
   return NextResponse.json(body, {
     headers: {
-      "Cache-Control": "private, max-age=0, s-maxage=120, stale-while-revalidate=300",
+      "Cache-Control": "private, max-age=0, stale-while-revalidate=120",
+      Vary: "Cookie",
     },
   });
 }
