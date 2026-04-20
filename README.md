@@ -63,7 +63,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 For **economic calendar cron** (`POST /api/cron/economic-calendar`), also set `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` in the server environment (see `.env.example`). You can reuse the same value as `ADMIN_SECRET` for `CRON_SECRET` if you prefer one shared secret.
 
-**Production schedule:** Step-by-step checklist (Render env, GitHub Actions, optional Render Cron, smoke commands): **[docs/ECONOMIC-CALENDAR-PRODUCTION.md](docs/ECONOMIC-CALENDAR-PRODUCTION.md)**. Short version: set Actions secrets `APP_BASE_URL` and `CRON_SECRET` (same as production), then run workflow [`.github/workflows/economic-calendar-cron.yml`](.github/workflows/economic-calendar-cron.yml) manually once. From your machine: `npm run economic-calendar:trigger -- --url https://your-host`.
+**Production schedule:** Step-by-step checklist (Render env, GitHub Actions, optional Render Cron, smoke commands): **[docs/ECONOMIC-CALENDAR-PRODUCTION.md](docs/ECONOMIC-CALENDAR-PRODUCTION.md)**. Short version: set Actions secrets `APP_BASE_URL` and `CRON_SECRET` (same as production), then run workflow **Economic Calender Injest** ([`.github/workflows/economic-calendar-cron.yml`](.github/workflows/economic-calendar-cron.yml)) manually once. From your machine: `npm run economic-calendar:trigger -- --url https://your-host`.
 
 Without these variables, the app works fully offline using localStorage.
 

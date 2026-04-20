@@ -42,7 +42,7 @@ If you get **401**, the `CRON_SECRET` you passed does not match production. If *
 
 ## Part B — GitHub Actions (daily cron, no Render add-on)
 
-The workflow [`.github/workflows/economic-calendar-cron.yml`](../.github/workflows/economic-calendar-cron.yml) POSTs to your **public** app URL once per day (UTC). It does **nothing** until you add secrets (scheduled runs skip the job so forks do not fail daily).
+The workflow **Economic Calender Injest** ([`.github/workflows/economic-calendar-cron.yml`](../.github/workflows/economic-calendar-cron.yml)) POSTs to your **public** app URL once per day (UTC). Until you add secrets, **scheduled** runs exit successfully without calling your app; **manual** runs fail with a clear error.
 
 ### B1. Add repository secrets
 
@@ -53,7 +53,7 @@ The workflow [`.github/workflows/economic-calendar-cron.yml`](../.github/workflo
 
 ### B2. Confirm Actions can run
 
-1. Go to **Actions** → workflow **Economic calendar ingest**.
+1. Go to **Actions** → workflow **Economic Calender Injest**.
 2. Click **Run workflow** → **Run workflow**.
 3. Open the run → job **ingest** should succeed and print HTTP `200` and JSON in the log.
 
@@ -84,7 +84,7 @@ Use this if you prefer everything on Render and do not want GitHub to call your 
 |------|-------------------|
 | Local smoke (dev server on 3000) | `npm run economic-calendar:trigger` |
 | Smoke production from laptop | `npm run economic-calendar:trigger -- --url https://your-host` |
-| Manual cloud cron | GitHub **Actions** → **Economic calendar ingest** → **Run workflow** |
+| Manual cloud cron | GitHub **Actions** → **Economic Calender Injest** → **Run workflow** |
 | Read API (browser / app) | `GET /api/economic-events?impact=High` (uses anon key + RLS) |
 
 ---

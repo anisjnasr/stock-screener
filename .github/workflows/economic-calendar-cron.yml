@@ -5,9 +5,9 @@
 #   APP_BASE_URL   — public origin only, e.g. https://your-service.onrender.com (no trailing slash)
 #   CRON_SECRET    — must match the production env CRON_SECRET on your host
 #
-# If secrets are missing, the job fails fast with a clear error (no accidental calls).
+# Note: GitHub does not allow `secrets` in job-level `if:` — guards run inside the step below.
 
-name: Economic calendar ingest
+name: Economic Calender Injest
 
 on:
   schedule:
@@ -20,18 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Manual run: fail loudly if secrets were not configured.
-  require-secrets-on-dispatch:
-    if: github.event_name == 'workflow_dispatch' && (secrets.APP_BASE_URL == '' || secrets.CRON_SECRET == '')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Missing APP_BASE_URL or CRON_SECRET
-        run: |
-          echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
-          exit 1
-
   ingest:
-    if: secrets.APP_BASE_URL != '' && secrets.CRON_SECRET != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -41,6 +30,14 @@ jobs:
           SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::notice::Skipping ingest: APP_BASE_URL or CRON_SECRET is not set."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
+              exit 1
+            fi
+            exit 0
+          fi
           BASE_TRIMMED="${BASE%/}"
           URL="${BASE_TRIMMED}/api/cron/economic-calendar"
           echo "POST $URL"
