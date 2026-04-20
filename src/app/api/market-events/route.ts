@@ -1,28 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addCalendarDaysYmd, ymdInEt } from "@/lib/et-ymd";
 import { getSupabase } from "@/lib/supabase";
-import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
+import type { MarketEventCategory, MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-function parseImpactList(raw: string | null): EconomicEventPublic["impact"][] | null {
+const ALLOWED_CATEGORIES = new Set<MarketEventCategory>([
+  "fomc",
+  "fed_speech",
+  "fed_testimony",
+  "treasury_auction",
+  "treasury_press",
+  "white_house",
+  "ustr",
+  "theme_driven",
+  "manual",
+]);
+
+function parseImpactList(raw: string | null): MarketEventPublic["impact"][] | null {
   if (raw == null || raw.trim() === "") return null;
   const allowed = new Set(["High", "Medium", "Low"]);
   const parts = raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const out: EconomicEventPublic["impact"][] = [];
+  const out: MarketEventPublic["impact"][] = [];
   for (const p of parts) {
-    if (allowed.has(p)) out.push(p as EconomicEventPublic["impact"]);
+    if (allowed.has(p)) out.push(p as MarketEventPublic["impact"]);
+  }
+  return out.length ? out : null;
+}
+
+function parseCategoryList(raw: string | null): MarketEventCategory[] | null {
+  if (raw == null || raw.trim() === "") return null;
+  const out: MarketEventCategory[] = [];
+  for (const p of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+    if (ALLOWED_CATEGORIES.has(p as MarketEventCategory)) out.push(p as MarketEventCategory);
   }
   return out.length ? out : null;
 }
 
 /**
- * Read economic calendar rows from Supabase (anon + RLS SELECT).
+ * Read `market_events` from Supabase (anon + RLS SELECT).
  * Query: `from`, `to` (YYYY-MM-DD, inclusive). Defaults: today ET through +6 days.
- * Optional `impact` — comma list e.g. `High` or `High,Medium`.
+ * Optional `impact` — comma list. Optional `categories` — comma list of `event_category` values.
  */
 export async function GET(request: NextRequest) {
   const supabase = getSupabase();
@@ -43,10 +64,13 @@ export async function GET(request: NextRequest) {
   }
 
   const impactFilter = parseImpactList(searchParams.get("impact"));
+  const categoryFilter = parseCategoryList(searchParams.get("categories"));
 
   let q = supabase
-    .from("economic_events")
-    .select("id, event_date, event_time_et, event_name, country, impact, forecast, previous, actual")
+    .from("market_events")
+    .select(
+      "id, event_date, event_time_et, event_title, event_category, speaker, location, impact, source_url, source_type, description"
+    )
     .gte("event_date", from)
     .lte("event_date", to)
     .order("event_date", { ascending: true })
@@ -55,16 +79,19 @@ export async function GET(request: NextRequest) {
   if (impactFilter) {
     q = q.in("impact", impactFilter);
   }
+  if (categoryFilter) {
+    q = q.in("event_category", categoryFilter);
+  }
 
   const { data, error } = await q;
 
   if (error) {
-    console.error("[economic-events]", error.message);
+    console.error("[market-events]", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const events = (data ?? []) as EconomicEventPublic[];
-  const body: EconomicEventsResponse = { events, range: { from, to } };
+  const events = (data ?? []) as MarketEventPublic[];
+  const body: MarketEventsResponse = { events, range: { from, to } };
 
   return NextResponse.json(body, {
     headers: {

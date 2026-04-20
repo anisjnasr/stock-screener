@@ -61,6 +61,7 @@
     "@supabase/supabase-js": "^2.100.1",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
+    "cheerio": "^1.2.0",
     "fast-xml-parser": "^5.7.1",
     "framer-motion": "^12.38.0",
     "lightweight-charts": "^5.1.0",
