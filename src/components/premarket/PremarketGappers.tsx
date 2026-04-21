@@ -158,6 +158,8 @@ export default function PremarketGappers({
   const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
   const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
   const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
+  /** Wall time of the last completed `run()` (success or error), in seconds. */
+  const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
 
   const clearLargeNumberDrafts = useCallback(() => {
     setMcapMinDraft(null);
@@ -181,6 +183,7 @@ export default function PremarketGappers({
   }, [rows, sortKey, sortDir]);
 
   const run = useCallback(async (f: GapperFilterState) => {
+    const t0 = performance.now();
     setLoading(true);
     setError(null);
     try {
@@ -202,6 +205,7 @@ export default function PremarketGappers({
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
+      setLastRefreshSeconds((performance.now() - t0) / 1000);
     }
   }, []);
 
@@ -401,18 +405,29 @@ export default function PremarketGappers({
         >
           Apply filters
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            clearLargeNumberDrafts();
-            void run(filters);
-          }}
-          disabled={loading}
-          className="rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
-          style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
-        >
-          {loading ? "Loading…" : "Refresh"}
-        </button>
+        <div className="flex items-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              clearLargeNumberDrafts();
+              void run(filters);
+            }}
+            disabled={loading}
+            className="rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
+            style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+          {lastRefreshSeconds != null ? (
+            <span
+              className="shrink-0 pb-1 text-[11px] font-medium tabular-nums leading-none"
+              style={{ color: "var(--ws-text-dim)" }}
+              title="Duration of the last gappers / TradingView request"
+            >
+              {lastRefreshSeconds.toFixed(2)}s
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
