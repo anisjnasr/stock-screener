@@ -1,56 +1,14 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { GapperRow, GappersRequestBody, GappersResponse } from "@/types/gappers";
-
-const LS_FILTERS = "stockstalker-gapper-filters-v1";
-
-type CapPreset = "all" | "mid" | "large" | "mega" | "custom";
-
-const PRESET_MC: Record<Exclude<CapPreset, "custom">, { min: number; max: number }> = {
-  all: { min: 100_000_000, max: 10_000_000_000_000 },
-  mid: { min: 2_000_000_000, max: 10_000_000_000 },
-  large: { min: 10_000_000_000, max: 200_000_000_000 },
-  mega: { min: 200_000_000_000, max: 10_000_000_000_000 },
-};
-
-type FilterState = GappersRequestBody & { capPreset: CapPreset };
-
-const DEFAULT_FILTERS: FilterState = {
-  capPreset: "all",
-  minPrice: 5,
-  minMarketCap: 100_000_000,
-  maxMarketCap: 10_000_000_000_000,
-  minPmVolume: 0,
-  minAvgVolume: 0,
-  minGapPct: 1,
-  maxRows: 50,
-};
-
-function loadFilters(): FilterState {
-  if (typeof window === "undefined") return DEFAULT_FILTERS;
-  try {
-    const raw = localStorage.getItem(LS_FILTERS);
-    if (!raw) return DEFAULT_FILTERS;
-    const j = JSON.parse(raw) as Partial<FilterState>;
-    return { ...DEFAULT_FILTERS, ...j, capPreset: (j.capPreset as CapPreset) ?? "all" };
-  } catch {
-    return DEFAULT_FILTERS;
-  }
-}
-
-function saveFilters(f: FilterState) {
-  try {
-    localStorage.setItem(LS_FILTERS, JSON.stringify(f));
-  } catch {
-    /* ignore */
-  }
-}
-
-function toBody(f: FilterState): GappersRequestBody {
-  const { capPreset: _p, ...rest } = f;
-  return rest;
-}
+import {
+  GAPPER_CAP_PRESET_MC,
+  gapperFilterStateToRequestBody,
+  type GapperCapPreset,
+  type GapperFilterState,
+  saveGapperFiltersToStorage,
+} from "@/components/premarket/gapper-filters-storage";
 
 function fmtCompact(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -74,22 +32,31 @@ function numIn(v: string, fallback: number): number {
 
 type PremarketGappersProps = {
   onJumpToEarnings?: () => void;
+  filters: GapperFilterState;
+  setFilters: Dispatch<SetStateAction<GapperFilterState>>;
+  /** After parent hydrates gapper filters from localStorage, child runs one initial TV fetch. */
+  filtersHydrated: boolean;
 };
 
-export default function PremarketGappers({ onJumpToEarnings }: PremarketGappersProps) {
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+export default function PremarketGappers({
+  onJumpToEarnings,
+  filters,
+  setFilters,
+  filtersHydrated,
+}: PremarketGappersProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const initialFetchDone = useRef(false);
 
-  const run = useCallback(async (f: FilterState) => {
+  const run = useCallback(async (f: GapperFilterState) => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/movers/gappers", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(toBody(f)),
+        body: JSON.stringify(gapperFilterStateToRequestBody(f)),
         cache: "no-store",
       });
       const json = (await res.json()) as GappersResponse & { ok?: boolean; error?: string };
@@ -108,21 +75,21 @@ export default function PremarketGappers({ onJumpToEarnings }: PremarketGappersP
   }, []);
 
   useLayoutEffect(() => {
-    const f = loadFilters();
-    setFilters(f);
-    void run(f);
-  }, [run]);
+    if (!filtersHydrated || initialFetchDone.current) return;
+    initialFetchDone.current = true;
+    void run(filters);
+  }, [filtersHydrated, filters, run]);
 
   const applyFilters = () => {
-    saveFilters(filters);
+    saveGapperFiltersToStorage(filters);
     void run(filters);
   };
 
-  function applyPreset(p: Exclude<CapPreset, "custom">) {
-    const { min, max } = PRESET_MC[p];
+  function applyPreset(p: Exclude<GapperCapPreset, "custom">) {
+    const { min, max } = GAPPER_CAP_PRESET_MC[p];
     setFilters((prev) => {
       const next = { ...prev, capPreset: p, minMarketCap: min, maxMarketCap: max };
-      saveFilters(next);
+      saveGapperFiltersToStorage(next);
       queueMicrotask(() => run(next));
       return next;
     });
@@ -157,7 +124,7 @@ export default function PremarketGappers({ onJumpToEarnings }: PremarketGappersP
                 setFilters((p) => ({ ...p, capPreset: "custom" }));
                 return;
               }
-              applyPreset(v as Exclude<CapPreset, "custom">);
+              applyPreset(v as Exclude<GapperCapPreset, "custom">);
             }}
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}

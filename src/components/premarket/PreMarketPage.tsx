@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
@@ -8,6 +9,11 @@ import StocksInPlay from "./StocksInPlay";
 import TopBar from "./TopBar";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
+import {
+  DEFAULT_GAPPER_FILTER_STATE,
+  loadGapperFiltersFromStorage,
+  type GapperFilterState,
+} from "@/components/premarket/gapper-filters-storage";
 
 const SECTIONS: {
   id: PremarketSectionId;
@@ -50,6 +56,14 @@ const SECTIONS: {
 export default function PreMarketPage() {
   const { collapsed, toggle, setCollapsed, collapseAll, expandAll } = usePremarketLayout();
 
+  const [gapperFilters, setGapperFilters] = useState<GapperFilterState>(DEFAULT_GAPPER_FILTER_STATE);
+  const [gapperFiltersHydrated, setGapperFiltersHydrated] = useState(false);
+
+  useLayoutEffect(() => {
+    setGapperFilters(loadGapperFiltersFromStorage());
+    setGapperFiltersHydrated(true);
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--ws-bg)" }}>
       <TopBar onCollapseAll={collapseAll} onExpandAll={expandAll} />
@@ -78,7 +92,11 @@ export default function PreMarketPage() {
                 <EarningsCalendar />
               </div>
             ) : s.id === "sip" ? (
-              <StocksInPlay collapsed={collapsed.sip} />
+              <StocksInPlay
+                collapsed={collapsed.sip}
+                gapperFilters={gapperFilters}
+                filtersHydrated={gapperFiltersHydrated}
+              />
             ) : s.id === "movers" ? (
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -86,6 +104,9 @@ export default function PreMarketPage() {
                     Pre-market gappers
                   </h3>
                   <PremarketGappers
+                    filters={gapperFilters}
+                    setFilters={setGapperFilters}
+                    filtersHydrated={gapperFiltersHydrated}
                     onJumpToEarnings={() => {
                       setCollapsed("earnings", false);
                       queueMicrotask(() => {

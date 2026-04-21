@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { GapperRow } from "@/types/gappers";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { GapperRow, GappersRequestBody } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
+import { gapperFilterStateToRequestBody, type GapperFilterState } from "@/components/premarket/gapper-filters-storage";
 
 type StocksInPlayProps = {
   collapsed: boolean;
+  gapperFilters: GapperFilterState;
+  filtersHydrated: boolean;
 };
 
 function fmtPct(n: number): string {
@@ -57,15 +60,17 @@ function NewsList({ items }: { items: PythonNewsItem[] }) {
   );
 }
 
-export default function StocksInPlay({ collapsed }: StocksInPlayProps) {
+export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated }: StocksInPlayProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
   const [pythonConfigured, setPythonConfigured] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const filtersRef = useRef(gapperFilters);
+  filtersRef.current = gapperFilters;
 
-  const load = useCallback(async (signal: AbortSignal) => {
+  const load = useCallback(async (signal: AbortSignal, scanBody: GappersRequestBody) => {
     setLoading(true);
     setError(null);
     setNewsError(null);
@@ -73,7 +78,7 @@ export default function StocksInPlay({ collapsed }: StocksInPlayProps) {
       const res = await fetch("/api/premarket/stocks-in-play", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ maxRows: 24, minGapPct: 1.25 }),
+        body: JSON.stringify(scanBody),
         cache: "no-store",
         signal,
       });
@@ -100,11 +105,16 @@ export default function StocksInPlay({ collapsed }: StocksInPlayProps) {
   }, []);
 
   useEffect(() => {
-    if (collapsed) return;
+    if (collapsed || !filtersHydrated) return;
     const ac = new AbortController();
-    void load(ac.signal);
+    void load(ac.signal, gapperFilterStateToRequestBody(filtersRef.current));
     return () => ac.abort();
-  }, [collapsed, load]);
+  }, [collapsed, filtersHydrated, load]);
+
+  const refreshSip = useCallback(() => {
+    const ac = new AbortController();
+    void load(ac.signal, gapperFilterStateToRequestBody(filtersRef.current));
+  }, [load]);
 
   if (collapsed) {
     return null;
@@ -112,11 +122,30 @@ export default function StocksInPlay({ collapsed }: StocksInPlayProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[10px] leading-snug" style={{ color: "var(--ws-text-dim)" }}>
-        Top pre-market gappers (TradingView) with recent headlines from the Python yfinance service when{" "}
-        <code className="rounded bg-[color:var(--ws-bg)] px-0.5">PYTHON_SERVICE_URL</code> /{" "}
-        <code className="rounded bg-[color:var(--ws-bg)] px-0.5">PYTHON_SERVICE_KEY</code> are set on the server.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 text-[10px] leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+          Same TradingView scan as <strong style={{ color: "var(--ws-text)" }}>Pre-market gappers</strong> in Top Movers
+          (passive sync: collapse and reopen this section, or use Refresh SIP, after you change gappers filters). Headlines
+          need{" "}
+          <code className="rounded bg-[color:var(--ws-bg)] px-0.5">PYTHON_SERVICE_URL</code> /{" "}
+          <code className="rounded bg-[color:var(--ws-bg)] px-0.5">PYTHON_SERVICE_KEY</code> on the server.
+        </p>
+        <button
+          type="button"
+          onClick={refreshSip}
+          disabled={loading || !filtersHydrated}
+          className="shrink-0 rounded border px-2 py-1 text-[10px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
+          style={{ borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+        >
+          {loading ? "Loading…" : "Refresh SIP"}
+        </button>
+      </div>
+
+      {!filtersHydrated ? (
+        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>
+          Loading gapper filters…
+        </p>
+      ) : null}
 
       {!pythonConfigured ? (
         <p className="rounded border px-2 py-1.5 text-[11px] leading-snug" style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}>
