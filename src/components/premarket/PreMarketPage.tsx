@@ -3,7 +3,6 @@
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
-import KeyEvents from "./KeyEvents";
 import PremarketGappers from "./PremarketGappers";
 import TopBar from "./TopBar";
 import { usePremarketLayout } from "./usePremarketLayout";
@@ -29,8 +28,8 @@ const SECTIONS: {
   },
   {
     id: "calendars",
-    title: "Calendars",
-    peekText: "4 high-impact econ · Fed / Treasury / WH / USTR",
+    title: "Economic calendar",
+    peekText: "Today's high-impact releases · Fed / Treasury / WH / USTR",
     stub: "",
   },
   {
@@ -64,19 +63,11 @@ export default function PreMarketPage() {
             onToggle={() => toggle(s.id)}
           >
             {s.id === "calendars" ? (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    Economic calendar
-                  </h3>
-                  <EconomicCalendar />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    Policy & Fed
-                  </h3>
-                  <KeyEvents />
-                </div>
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                  Today
+                </h3>
+                <EconomicCalendar />
               </div>
             ) : s.id === "earnings" ? (
               <div className="space-y-2">

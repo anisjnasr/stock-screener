@@ -2,10 +2,27 @@
 
 import { useCallback, useEffect, useState } from "react";
 import EventRowFlag from "./EventRowFlag";
+import { ymdInEt } from "@/lib/et-ymd";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
+import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 
-function formatTimeEt(hms: string | null): string {
-  if (!hms) return "TBD";
+type CalendarKind = "economic" | "market";
+
+type MergedCalendarRow = {
+  kind: CalendarKind;
+  id: string;
+  sortKey: string;
+  event_date: string;
+  event_time_et: string | null;
+  title: string;
+  source_url: string | null;
+  actual: string | null;
+  forecast: string | null;
+  previous: string | null;
+};
+
+function formatTimeEt(kind: CalendarKind, hms: string | null): string {
+  if (!hms) return kind === "market" ? "All day" : "TBD";
   const [hs, ms] = hms.split(":");
   const h = Number(hs);
   const m = Number(ms);
@@ -20,9 +37,59 @@ function dash(v: string | null): string {
   return v;
 }
 
+function timeForSort(hms: string | null): string {
+  if (!hms || !hms.includes(":")) return "00:00:00";
+  const parts = hms.split(":");
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  const s = parts[2] != null ? Number(parts[2]) : 0;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "00:00:00";
+  const sec = Number.isFinite(s) ? s : 0;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function sortKeyFor(date: string, time: string | null): string {
+  return `${date}T${timeForSort(time)}`;
+}
+
+function toEconomicRows(events: EconomicEventPublic[]): MergedCalendarRow[] {
+  return events.map((ev) => ({
+    kind: "economic" as const,
+    id: ev.id,
+    sortKey: sortKeyFor(ev.event_date, ev.event_time_et),
+    event_date: ev.event_date,
+    event_time_et: ev.event_time_et,
+    title: ev.event_name,
+    source_url: null,
+    actual: ev.actual,
+    forecast: ev.forecast,
+    previous: ev.previous,
+  }));
+}
+
+function toMarketRows(events: MarketEventPublic[]): MergedCalendarRow[] {
+  return events.map((ev) => ({
+    kind: "market" as const,
+    id: ev.id,
+    sortKey: sortKeyFor(ev.event_date, ev.event_time_et),
+    event_date: ev.event_date,
+    event_time_et: ev.event_time_et,
+    title: ev.event_title,
+    source_url: ev.source_url,
+    actual: null,
+    forecast: null,
+    previous: null,
+  }));
+}
+
+function mergeSortToday(econ: EconomicEventPublic[], market: MarketEventPublic[], todayYmd: string): MergedCalendarRow[] {
+  const rows = [...toEconomicRows(econ), ...toMarketRows(market)].filter((r) => r.event_date === todayYmd);
+  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return rows;
+}
+
 export default function EconomicCalendar() {
-  const [events, setEvents] = useState<EconomicEventPublic[] | null>(null);
-  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const [rows, setRows] = useState<MergedCalendarRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,20 +97,38 @@ export default function EconomicCalendar() {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ impact: "High" });
-      const res = await fetch(`/api/economic-events?${qs.toString()}`, { cache: "no-store" });
-      const json = (await res.json()) as EconomicEventsResponse & { error?: string };
-      if (!res.ok) {
-        setEvents(null);
-        setRange(null);
-        setError(json.error ?? res.statusText);
+      const econQs = new URLSearchParams({ impact: "High" });
+      const mktQs = new URLSearchParams({ impact: "High,Medium" });
+      const [eRes, mRes] = await Promise.all([
+        fetch(`/api/economic-events?${econQs.toString()}`, { cache: "no-store" }),
+        fetch(`/api/market-events?${mktQs.toString()}`, { cache: "no-store" }),
+      ]);
+      const eJson = (await eRes.json()) as EconomicEventsResponse & { error?: string };
+      const mJson = (await mRes.json()) as MarketEventsResponse & { error?: string };
+
+      const econOk = eRes.ok;
+      const mktOk = mRes.ok;
+      const econEvents = econOk ? eJson.events ?? [] : [];
+      const mktEvents = mktOk ? mJson.events ?? [] : [];
+
+      if (!econOk && !mktOk) {
+        setRows(null);
+        setError(eJson.error ?? mJson.error ?? "Failed to load calendar");
         return;
       }
-      setEvents(json.events);
-      setRange(json.range);
+
+      if (!econOk) {
+        console.warn("[EconomicCalendar] economic-events:", eJson.error ?? eRes.statusText);
+      }
+      if (!mktOk) {
+        console.warn("[EconomicCalendar] market-events:", mJson.error ?? mRes.statusText);
+      }
+
+      const todayYmd = ymdInEt();
+      const merged = mergeSortToday(econEvents, mktEvents, todayYmd);
+      setRows(merged);
     } catch (e) {
-      setEvents(null);
-      setRange(null);
+      setRows(null);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -57,12 +142,12 @@ export default function EconomicCalendar() {
   if (loading) {
     return (
       <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
-        Loading economic calendar…
+        Loading calendar…
       </p>
     );
   }
 
-  if (error) {
+  if (error && !rows?.length) {
     return (
       <div className="space-y-2">
         <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
@@ -80,12 +165,11 @@ export default function EconomicCalendar() {
     );
   }
 
-  if (!events?.length) {
+  if (!rows?.length) {
     return (
       <div className="space-y-2">
         <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
-          No high-impact US events in this range
-          {range ? ` (${range.from} → ${range.to})` : ""}. Run the calendar cron to refresh data.
+          No economic or policy events for today (ET). Run the calendar crons to refresh data.
         </p>
         <button
           type="button"
@@ -101,11 +185,6 @@ export default function EconomicCalendar() {
 
   return (
     <div className="space-y-2">
-      {range ? (
-        <p className="text-[11px] uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-          High impact · {range.from} → {range.to} · ET
-        </p>
-      ) : null}
       <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
         <table className="w-full min-w-[28rem] border-collapse text-left text-xs">
           <thead>
@@ -117,13 +196,13 @@ export default function EconomicCalendar() {
                 Event
               </th>
               <th className="hidden px-2 py-1.5 font-semibold sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                Fcst
+                Actual
               </th>
               <th className="hidden px-2 py-1.5 font-semibold sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                Prev
+                Forecast
               </th>
-              <th className="hidden px-2 py-1.5 font-semibold md:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                Act
+              <th className="hidden px-2 py-1.5 font-semibold sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
+                Previous
               </th>
               <th className="w-8 px-1 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }}>
                 <span className="sr-only">Flag</span>
@@ -131,39 +210,50 @@ export default function EconomicCalendar() {
             </tr>
           </thead>
           <tbody>
-            {events.map((ev) => (
+            {rows.map((row) => (
               <tr
-                key={ev.id}
+                key={`${row.kind}:${row.id}`}
                 className="group border-t transition-colors hover:bg-[color:var(--ws-hover)]"
                 style={{ borderColor: "var(--ws-border)" }}
               >
                 <td className="whitespace-nowrap px-2 py-1.5 align-top tabular-nums" style={{ color: "var(--ws-text)" }}>
-                  <span className="block text-[11px]" style={{ color: "var(--ws-text-dim)" }}>
-                    {ev.event_date}
-                  </span>
-                  <span>{formatTimeEt(ev.event_time_et)}</span>
+                  {formatTimeEt(row.kind, row.event_time_et)}
                 </td>
                 <td className="px-2 py-1.5 align-top" style={{ color: "var(--ws-text)" }}>
-                  <span className="leading-snug">{ev.event_name}</span>
+                  {row.source_url ? (
+                    <a
+                      href={row.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="leading-snug underline decoration-[color:var(--ws-border)] underline-offset-2 hover:decoration-[color:var(--ws-text)]"
+                    >
+                      {row.title}
+                    </a>
+                  ) : (
+                    <span className="leading-snug">{row.title}</span>
+                  )}
                   <span className="mt-0.5 block text-[11px] sm:hidden" style={{ color: "var(--ws-text-dim)" }}>
-                    F {dash(ev.forecast)} · P {dash(ev.previous)}
-                    {ev.actual != null && String(ev.actual).trim() !== "" ? ` · A ${dash(ev.actual)}` : ""}
+                    A {dash(row.actual)} · F {dash(row.forecast)} · P {dash(row.previous)}
                   </span>
                 </td>
                 <td className="hidden whitespace-pre-wrap px-2 py-1.5 align-top sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                  {dash(ev.forecast)}
+                  {dash(row.actual)}
                 </td>
                 <td className="hidden whitespace-pre-wrap px-2 py-1.5 align-top sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                  {dash(ev.previous)}
+                  {dash(row.forecast)}
                 </td>
-                <td className="hidden whitespace-pre-wrap px-2 py-1.5 align-top md:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                  {dash(ev.actual)}
+                <td className="hidden whitespace-pre-wrap px-2 py-1.5 align-top sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
+                  {dash(row.previous)}
                 </td>
                 <td className="w-8 align-top">
                   <EventRowFlag
-                    eventType="economic"
-                    eventId={ev.id}
-                    onFlagged={() => setEvents((prev) => (prev ? prev.filter((r) => r.id !== ev.id) : null))}
+                    eventType={row.kind === "economic" ? "economic" : "market"}
+                    eventId={row.id}
+                    onFlagged={() =>
+                      setRows((prev) =>
+                        prev ? prev.filter((r) => !(r.kind === row.kind && r.id === row.id)) : null
+                      )
+                    }
                   />
                 </td>
               </tr>

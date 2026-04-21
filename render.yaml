@@ -1,6 +1,9 @@
-# Render Blueprint: Stock Scanner
-# Connect this repo in Render Dashboard (New > Blueprint) to create the web service.
+# Render Blueprint: Stock Scanner + Phase 12A Python microservice (monorepo).
+# Connect this repo in Render Dashboard (New > Blueprint) to create/update services.
 # Then add MASSIVE_API_KEY in the service Environment and run DB setup (see docs/DEPLOY.md).
+#
+# Python service: set INTERNAL_API_KEY in the dashboard. Next.js uses PYTHON_SERVICE_URL +
+# PYTHON_SERVICE_KEY (same secret) when Phase 12B calls /news.
 
 services:
   - type: web
@@ -26,6 +29,11 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      # Phase 12A/B — Python microservice (same secret as Python INTERNAL_API_KEY).
+      - key: PYTHON_SERVICE_URL
+        sync: false
+      - key: PYTHON_SERVICE_KEY
+        sync: false
       # Point the app at the persistent disk so the DB survives deploys.
       # The app auto-detects /app/data as a fallback, but this is explicit.
       - key: SCREENER_DB_PATH
@@ -41,3 +49,16 @@ services:
       mountPath: /app/data
       # Sync preflight needs roughly2x screener.db size + ~400MB margin on this volume.
       sizeGB: 20
+
+  # Phase 12A — yfinance news API for Stocks in Play (see stockstalker-python-service/README.md).
+  - type: web
+    name: stockstalker-python
+    runtime: python
+    region: oregon
+    plan: starter
+    rootDir: stockstalker-python-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: INTERNAL_API_KEY
+        sync: false

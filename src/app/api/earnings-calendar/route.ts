@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { addCalendarDaysYmd, ymdInEt } from "@/lib/et-ymd";
+import { attachPriorQuarterActuals } from "@/lib/premarket/earnings-calendar-prior";
 import { getSupabase } from "@/lib/supabase";
 import type { EarningsCalendarBucket, EarningsCalendarPublic, EarningsCalendarResponse } from "@/types/earnings-calendar";
 
@@ -29,6 +30,8 @@ function rowToPublic(r: Record<string, unknown>): EarningsCalendarPublic {
     revenue_estimate: r.revenue_estimate != null ? Number(r.revenue_estimate) : null,
     eps_actual: r.eps_actual != null ? Number(r.eps_actual) : null,
     revenue_actual: r.revenue_actual != null ? Number(r.revenue_actual) : null,
+    prior_eps_actual: null,
+    prior_revenue_actual: null,
     current_quarter_eps_surprise_pct:
       r.current_quarter_eps_surprise_pct != null ? Number(r.current_quarter_eps_surprise_pct) : null,
     current_quarter_rev_surprise_pct:
@@ -79,6 +82,9 @@ export async function GET() {
     else if (row.report_date === anchor) buckets.today.push(row);
     else if (row.report_date === tomorrow) buckets.tomorrow.push(row);
   }
+
+  const flat = [...buckets.yesterday, ...buckets.today, ...buckets.tomorrow];
+  await attachPriorQuarterActuals(supabase, flat);
 
   buckets.yesterday = sortBucket(buckets.yesterday);
   buckets.today = sortBucket(buckets.today);

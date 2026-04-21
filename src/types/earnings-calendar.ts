@@ -41,6 +41,10 @@ export type EarningsCalendarPublic = {
   revenue_estimate: number | null;
   eps_actual: number | null;
   revenue_actual: number | null;
+  /** Prior fiscal quarter EPS actual (from DB), for display only. */
+  prior_eps_actual: number | null;
+  /** Prior fiscal quarter revenue actual (from DB), for display only. */
+  prior_revenue_actual: number | null;
   current_quarter_eps_surprise_pct: number | null;
   current_quarter_rev_surprise_pct: number | null;
   prior_quarter_eps_surprise_pct: number | null;

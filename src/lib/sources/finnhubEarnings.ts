@@ -1,3 +1,4 @@
+import { addCalendarDaysYmd } from "@/lib/et-ymd";
 import type { EarningsCalendarInsert, ReportTimeBucket } from "@/types/earnings-calendar";
 
 const UA = "StockStalker/1.0 (earnings calendar; contact: local)";
@@ -118,7 +119,33 @@ export async function fetchFinnhubEarningsCalendar(
   return arr.map((row) => normalizeFinnhubCalendarRow(row as Record<string, unknown>));
 }
 
+/** Max inclusive calendar days per Finnhub `calendar/earnings` request (avoid oversized / rejected ranges). */
+const FINNHUB_EARNINGS_CALENDAR_CHUNK_DAYS = 30;
+
+/**
+ * Fetch Finnhub earnings for [fromYmd, toYmd] inclusive, splitting into chunks when the span is long.
+ */
+export async function fetchFinnhubEarningsCalendarWindow(
+  fromYmd: string,
+  toYmd: string,
+  init?: { signal?: AbortSignal }
+): Promise<FinnhubEarningsRaw[]> {
+  if (fromYmd.localeCompare(toYmd) > 0) return [];
+  const out: FinnhubEarningsRaw[] = [];
+  let cursor = fromYmd;
+  while (cursor.localeCompare(toYmd) <= 0) {
+    const chunkEnd = addCalendarDaysYmd(cursor, FINNHUB_EARNINGS_CALENDAR_CHUNK_DAYS - 1);
+    const end = chunkEnd.localeCompare(toYmd) > 0 ? toYmd : chunkEnd;
+    const chunk = await fetchFinnhubEarningsCalendar(cursor, end, init);
+    out.push(...chunk);
+    if (end === toYmd) break;
+    cursor = addCalendarDaysYmd(end, 1);
+  }
+  return out;
+}
+
 const PROFILE2 = "https://finnhub.io/api/v1/stock/profile2";
+const SEARCH = "https://finnhub.io/api/v1/search";
 
 /**
  * Company display name from Finnhub profile2 (calendar rows often omit `name` on free tier).
@@ -142,6 +169,46 @@ export async function fetchFinnhubCompanyProfileName(
     const j = JSON.parse(text) as { name?: string };
     const n = j.name != null ? String(j.name).trim() : "";
     return n || null;
+  } catch {
+    return null;
+  }
+}
+
+type FinnhubSearchHit = { description?: string; displaySymbol?: string; symbol?: string };
+
+/**
+ * Fallback display name via Finnhub symbol search (`/search?q=…`), when profile2 has no `name`.
+ */
+export async function fetchFinnhubCompanyNameFromSearch(
+  symbol: string,
+  init?: { signal?: AbortSignal }
+): Promise<string | null> {
+  const token = getFinnhubKey();
+  const sym = symbol.trim().toUpperCase();
+  if (!sym) return null;
+  const u = new URL(SEARCH);
+  u.searchParams.set("q", sym);
+  u.searchParams.set("token", token);
+  const res = await fetch(u.toString(), {
+    signal: init?.signal,
+    headers: { Accept: "application/json", "User-Agent": UA },
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) return null;
+  try {
+    const j = JSON.parse(text) as { result?: FinnhubSearchHit[] };
+    const results = Array.isArray(j.result) ? j.result : [];
+    const norm = (s: string) => s.trim().toUpperCase().split(".")[0] ?? "";
+    for (const r of results) {
+      const disp = norm(String(r.displaySymbol ?? ""));
+      const rawSym = norm(String(r.symbol ?? ""));
+      if (disp === sym || rawSym === sym) {
+        const d = r.description != null ? String(r.description).trim() : "";
+        if (d) return d;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -175,8 +242,12 @@ export async function enrichMissingCompanyNames(
   for (let i = 0; i < missing.length; i++) {
     const sym = missing[i]!;
     try {
-      const name = await fetchFinnhubCompanyProfileName(sym, init);
-      cache.set(sym, name);
+      let name = await fetchFinnhubCompanyProfileName(sym, init);
+      if (!name?.trim()) {
+        await profileThrottle(120, init?.signal);
+        name = await fetchFinnhubCompanyNameFromSearch(sym, init);
+      }
+      cache.set(sym, name?.trim() ? name : null);
     } catch {
       cache.set(sym, null);
     }

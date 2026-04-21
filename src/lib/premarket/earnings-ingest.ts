@@ -1,7 +1,7 @@
 import { upsertEarningsCalendar } from "@/lib/earnings-calendar-upsert";
 import {
   enrichMissingCompanyNames,
-  fetchFinnhubEarningsCalendar,
+  fetchFinnhubEarningsCalendarWindow,
   mapFinnhubToInserts,
   prevQuarter,
 } from "@/lib/sources/finnhubEarnings";
@@ -79,7 +79,7 @@ export async function ingestEarningsForWindow(
     return { upserted: 0, errors: ["big_name_universe is empty — run POST /api/cron/earnings/universe first"], parsed: 0 };
   }
 
-  const raw = await fetchFinnhubEarningsCalendar(fromYmd, toYmd, { signal: init?.signal });
+  const raw = await fetchFinnhubEarningsCalendarWindow(fromYmd, toYmd, { signal: init?.signal });
   const rows = mapFinnhubToInserts(raw, allowed);
   await enrichMissingCompanyNames(rows, { signal: init?.signal });
   await attachPriorQuarterSurprises(supabase, rows);

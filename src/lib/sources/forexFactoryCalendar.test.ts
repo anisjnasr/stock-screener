@@ -44,7 +44,7 @@ describe("parseForexFactoryHighImpactUsd", () => {
     expect(rows[0].forecast).toBe("180K");
     expect(rows[0].previous).toBe("175K");
     expect(rows[0].source).toBe("forex_factory");
-    expect(rows[0].actual).toBe(null);
+    expect(rows[0].actual).toBeUndefined();
     expect(rows[0].external_id).toMatch(/^ff:2026-04-20:/);
   });
 });

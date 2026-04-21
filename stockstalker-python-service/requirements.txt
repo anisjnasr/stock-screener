@@ -1,0 +1,5 @@
+# Phase 12A — FastAPI + yfinance news for Stocks in Play (master spec).
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.30.0,<1
+yfinance>=0.2.40,<1
+pydantic>=2.0,<3

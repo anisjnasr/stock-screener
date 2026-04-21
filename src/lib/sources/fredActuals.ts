@@ -303,8 +303,7 @@ export async function runFredActualsBackfill(
       const { error: upErr } = await supabase
         .from("economic_events")
         .update({ actual: actualStr, updated_at: new Date().toISOString() })
-        .eq("id", ev.id)
-        .is("actual", null);
+        .eq("id", ev.id);
 
       if (upErr) {
         errors.push(`${ev.event_name} ${ev.event_date}: ${upErr.message}`);

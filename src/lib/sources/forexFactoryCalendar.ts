@@ -11,7 +11,8 @@ export type EconomicEventInsert = {
   impact: "High" | "Medium" | "Low";
   forecast: string | null;
   previous: string | null;
-  actual: null;
+  /** Omit on upsert from Forex Factory so FRED-filled `actual` is not wiped on refresh. */
+  actual?: string | null;
   source: "forex_factory";
   external_id: string | null;
   updated_at: string;
@@ -173,7 +174,6 @@ export function parseForexFactoryHighImpactUsd(xml: string): EconomicEventInsert
       impact: "High",
       forecast,
       previous,
-      actual: null,
       source: "forex_factory",
       external_id: stableExternalId(eventDate, eventName),
       updated_at: nowIso,

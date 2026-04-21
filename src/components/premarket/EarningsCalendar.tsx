@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { formatEpsDollarPair, formatRevDollarPair } from "@/components/premarket/earnings-calendar-format";
 import type { EarningsCalendarBucket, EarningsCalendarPublic, EarningsCalendarResponse } from "@/types/earnings-calendar";
 
 function formatSurprise(pct: number | null): string {
@@ -55,7 +56,7 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
         {title}
       </h3>
       <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-        <table className="w-full min-w-[32rem] border-collapse text-left text-xs">
+        <table className="w-full min-w-[44rem] border-collapse text-left text-xs">
           <thead>
             <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
               <th className="px-2 py-1.5 font-semibold" style={{ color: "var(--ws-text-dim)" }}>
@@ -67,32 +68,42 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
               <th className="px-2 py-1.5 font-semibold" style={{ color: "var(--ws-text-dim)" }}>
                 When
               </th>
-              <th className="px-2 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                EPS Δ%
+              <th
+                className="hidden px-2 py-1.5 text-right font-semibold sm:table-cell"
+                style={{ color: "var(--ws-text-dim)" }}
+                title="Revenue actual: current quarter / prior quarter (when stored)"
+              >
+                Rev $
               </th>
-              <th className="px-2 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                Rev Δ%
+              <th className="px-2 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }} title="vs consensus estimate">
+                Rev Surprise
               </th>
-              <th className="hidden px-2 py-1.5 text-right font-semibold md:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                Prior EPS
+              <th
+                className="hidden px-2 py-1.5 text-right font-semibold sm:table-cell"
+                style={{ color: "var(--ws-text-dim)" }}
+                title="EPS actual: current quarter / prior quarter (when stored)"
+              >
+                EPS $
               </th>
-              <th className="hidden px-2 py-1.5 text-right font-semibold lg:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                Prior Rev
+              <th className="px-2 py-1.5 text-right font-semibold" style={{ color: "var(--ws-text-dim)" }} title="vs consensus estimate">
+                EPS Surprise
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const epsCell = formatDeltaPct(
+              const epsSurprise = formatDeltaPct(
                 r.current_quarter_eps_surprise_pct,
                 r.eps_estimate,
                 r.eps_actual
               );
-              const revCell = formatDeltaPct(
+              const revSurprise = formatDeltaPct(
                 r.current_quarter_rev_surprise_pct,
                 r.revenue_estimate,
                 r.revenue_actual
               );
+              const revDollars = formatRevDollarPair(r.revenue_actual, r.prior_revenue_actual);
+              const epsDollars = formatEpsDollarPair(r.eps_actual, r.prior_eps_actual);
               return (
               <tr key={r.id} style={{ borderBottom: "1px solid var(--ws-border)" }}>
                 <td className="px-2 py-1.5 font-medium" style={{ color: "var(--ws-text)" }}>
@@ -105,30 +116,30 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
                   {timeLabel(r.report_time)}
                 </td>
                 <td
-                  className="px-2 py-1.5 text-right tabular-nums"
-                  style={deltaCellStyle(r.current_quarter_eps_surprise_pct, epsCell.text)}
-                  title={epsCell.title}
+                  className="hidden whitespace-nowrap px-2 py-1.5 text-right tabular-nums sm:table-cell"
+                  style={{ color: "var(--ws-text)" }}
                 >
-                  {epsCell.text}
+                  {revDollars}
                 </td>
                 <td
                   className="px-2 py-1.5 text-right tabular-nums"
-                  style={deltaCellStyle(r.current_quarter_rev_surprise_pct, revCell.text)}
-                  title={revCell.title}
+                  style={deltaCellStyle(r.current_quarter_rev_surprise_pct, revSurprise.text)}
+                  title={revSurprise.title}
                 >
-                  {revCell.text}
+                  {revSurprise.text}
                 </td>
                 <td
-                  className="hidden px-2 py-1.5 text-right tabular-nums md:table-cell"
-                  style={surpriseStyle(r.prior_quarter_eps_surprise_pct)}
+                  className="hidden whitespace-nowrap px-2 py-1.5 text-right tabular-nums sm:table-cell"
+                  style={{ color: "var(--ws-text)" }}
                 >
-                  {formatSurprise(r.prior_quarter_eps_surprise_pct)}
+                  {epsDollars}
                 </td>
                 <td
-                  className="hidden px-2 py-1.5 text-right tabular-nums lg:table-cell"
-                  style={surpriseStyle(r.prior_quarter_rev_surprise_pct)}
+                  className="px-2 py-1.5 text-right tabular-nums"
+                  style={deltaCellStyle(r.current_quarter_eps_surprise_pct, epsSurprise.text)}
+                  title={epsSurprise.title}
                 >
-                  {formatSurprise(r.prior_quarter_rev_surprise_pct)}
+                  {epsSurprise.text}
                 </td>
               </tr>
               );

@@ -9,6 +9,7 @@ function unauthorized() {
 
 /**
  * Refetch a wider Finnhub window so EPS/revenue actuals and surprise % backfill after the print.
+ * Lookback includes prior fiscal quarter so UI can show cur / prior revenue and EPS.
  * POST — Bearer CRON_SECRET (e.g. weekday afternoons ET).
  */
 export async function POST(request: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const today = ymdInEt();
-    const from = addCalendarDaysYmd(today, -14);
+    const from = addCalendarDaysYmd(today, -130);
     const to = addCalendarDaysYmd(today, 2);
     const { upserted, errors, parsed } = await ingestEarningsForWindow(supabase, from, to, {
       signal: request.signal,

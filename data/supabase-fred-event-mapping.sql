@@ -20,6 +20,10 @@ INSERT INTO fred_event_mapping (event_name, fred_series_id, value_format, releas
   ('GDP QoQ', 'A191RL1Q225SBEA', 'percent', 0),
   ('Initial Jobless Claims', 'ICSA', 'thousands', 0),
   ('Retail Sales MoM', 'RSAFS', 'percent', 0),
+  -- Forex Factory weekly XML titles use "m/m" (must match `economic_events.event_name` exactly)
+  ('Retail Sales m/m', 'RSAFS', 'percent', 0),
+  -- Core retail: Census % change SA (ex motor vehicle & parts dealers)
+  ('Core Retail Sales m/m', 'MRTSMPCSM4400AUSS', 'percent', 0),
   -- ISM Manufacturing PMI (NAPM discontinued; NAPMPMI is common replacement)
   ('ISM Manufacturing PMI', 'NAPMPMI', 'raw', 0),
   ('Consumer Confidence', 'UMCSENT', 'raw', 0)
