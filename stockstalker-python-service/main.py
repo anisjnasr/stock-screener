@@ -16,6 +16,21 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="StockStalker Python", version="0.1.0")
 
+
+@app.get("/")
+def root() -> dict[str, object]:
+    """Root URL for browser checks — API lives under /health and /news."""
+    return {
+        "service": "stockstalker-python",
+        "version": app.version,
+        "endpoints": {
+            "GET /health": "Liveness (no auth)",
+            "POST /news": "Ticker news JSON (Bearer INTERNAL_API_KEY)",
+            "GET /docs": "OpenAPI / Swagger UI",
+        },
+    }
+
+
 MAX_TICKERS = 40
 MIN_HOURS_BACK = 1
 MAX_HOURS_BACK = 168
