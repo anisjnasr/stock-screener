@@ -4,6 +4,7 @@ import { useLayoutEffect, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
+import MacroWriteup from "./MacroWriteup";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
 import TopBar from "./TopBar";
@@ -25,7 +26,7 @@ const SECTIONS: {
     id: "context",
     title: "Macro & US equities brief",
     peekText: "3 macro · 4 industry themes · Fed, tariffs, AI capex…",
-    stub: "Daily macro writeup and themes will load here after Phases 4–5.",
+    stub: "",
   },
   {
     id: "sip",
@@ -119,6 +120,18 @@ export default function PreMarketPage() {
                 </div>
                 <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
                   Policy tape (Truth Social) — Phase 7.
+                </p>
+              </div>
+            ) : s.id === "context" ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                    Today&apos;s macro writeup
+                  </h3>
+                  <MacroWriteup />
+                </div>
+                <p className="max-w-prose text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+                  Daily US equities bullets and active themes will load here after Phases 4.5–5.
                 </p>
               </div>
             ) : (
