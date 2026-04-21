@@ -64,6 +64,30 @@ export type FinnhubEarningsRaw = {
   name?: string;
 };
 
+/** Finnhub sometimes omits company fields on calendar/earnings; merge camelCase + snake_case keys. */
+export function normalizeFinnhubCalendarRow(x: FinnhubEarningsRaw | Record<string, unknown>): FinnhubEarningsRaw {
+  const o = x as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = o[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+  return {
+    date: pick("date", "Date") as string | undefined,
+    symbol: pick("symbol", "Symbol") as string | undefined,
+    epsEstimate: pick("epsEstimate", "eps_estimate"),
+    epsActual: pick("epsActual", "eps_actual"),
+    revenueEstimate: pick("revenueEstimate", "revenue_estimate"),
+    revenueActual: pick("revenueActual", "revenue_actual"),
+    hour: pick("hour", "Hour"),
+    quarter: pick("quarter", "Quarter"),
+    year: pick("year", "Year"),
+    name: pick("name", "companyName", "company_name", "Name") as string | undefined,
+  };
+}
+
 /**
  * Fetch Finnhub `calendar/earnings` for [from, to] inclusive (YYYY-MM-DD).
  */
@@ -90,7 +114,80 @@ export async function fetchFinnhubEarningsCalendar(
   } catch {
     throw new Error("Finnhub earnings: invalid JSON");
   }
-  return Array.isArray(data.earningsCalendar) ? data.earningsCalendar : [];
+  const arr = Array.isArray(data.earningsCalendar) ? data.earningsCalendar : [];
+  return arr.map((row) => normalizeFinnhubCalendarRow(row as Record<string, unknown>));
+}
+
+const PROFILE2 = "https://finnhub.io/api/v1/stock/profile2";
+
+/**
+ * Company display name from Finnhub profile2 (calendar rows often omit `name` on free tier).
+ */
+export async function fetchFinnhubCompanyProfileName(
+  symbol: string,
+  init?: { signal?: AbortSignal }
+): Promise<string | null> {
+  const token = getFinnhubKey();
+  const u = new URL(PROFILE2);
+  u.searchParams.set("symbol", symbol.trim().toUpperCase());
+  u.searchParams.set("token", token);
+  const res = await fetch(u.toString(), {
+    signal: init?.signal,
+    headers: { Accept: "application/json", "User-Agent": UA },
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) return null;
+  try {
+    const j = JSON.parse(text) as { name?: string };
+    const n = j.name != null ? String(j.name).trim() : "";
+    return n || null;
+  } catch {
+    return null;
+  }
+}
+
+function profileThrottle(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("Aborted"));
+      return;
+    }
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        reject(new Error("Aborted"));
+      },
+      { once: true }
+    );
+  });
+}
+
+/** Fill `company_name` via profile2 when missing (sequential; ~350ms between calls for rate limits). */
+export async function enrichMissingCompanyNames(
+  rows: EarningsCalendarInsert[],
+  init?: { signal?: AbortSignal }
+): Promise<void> {
+  const missing = [...new Set(rows.filter((r) => !r.company_name?.trim()).map((r) => r.ticker))];
+  const cache = new Map<string, string | null>();
+  for (let i = 0; i < missing.length; i++) {
+    const sym = missing[i]!;
+    try {
+      const name = await fetchFinnhubCompanyProfileName(sym, init);
+      cache.set(sym, name);
+    } catch {
+      cache.set(sym, null);
+    }
+    if (i < missing.length - 1) await profileThrottle(350, init?.signal);
+  }
+  for (const r of rows) {
+    if (!r.company_name?.trim()) {
+      const hit = cache.get(r.ticker);
+      if (hit) r.company_name = hit;
+    }
+  }
 }
 
 function rowRichness(row: EarningsCalendarInsert): number {
@@ -110,7 +207,8 @@ function rowRichness(row: EarningsCalendarInsert): number {
 export function mapFinnhubToInserts(raw: FinnhubEarningsRaw[], allowed: Set<string>): EarningsCalendarInsert[] {
   const now = new Date().toISOString();
   const byKey = new Map<string, EarningsCalendarInsert>();
-  for (const r of raw) {
+  for (const rawRow of raw) {
+    const r = normalizeFinnhubCalendarRow(rawRow as FinnhubEarningsRaw);
     const ticker = String(r.symbol ?? "")
       .trim()
       .toUpperCase();

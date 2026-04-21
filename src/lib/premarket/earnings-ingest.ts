@@ -1,5 +1,6 @@
 import { upsertEarningsCalendar } from "@/lib/earnings-calendar-upsert";
 import {
+  enrichMissingCompanyNames,
   fetchFinnhubEarningsCalendar,
   mapFinnhubToInserts,
   prevQuarter,
@@ -80,6 +81,7 @@ export async function ingestEarningsForWindow(
 
   const raw = await fetchFinnhubEarningsCalendar(fromYmd, toYmd, { signal: init?.signal });
   const rows = mapFinnhubToInserts(raw, allowed);
+  await enrichMissingCompanyNames(rows, { signal: init?.signal });
   await attachPriorQuarterSurprises(supabase, rows);
   const { upserted, errors } = await upsertEarningsCalendar(supabase, rows);
   return { upserted, errors, parsed: rows.length };

@@ -51,6 +51,7 @@
     "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
     "economic-calendar:trigger": "node scripts/trigger-economic-calendar.mjs",
     "earnings:trigger": "node scripts/trigger-earnings-crons.mjs",
+    "fred-actuals:trigger": "node scripts/trigger-fred-actuals.mjs",
     "market-events:trigger": "node scripts/trigger-market-events.mjs",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
     "market-monitor:stats": "node scripts/market-monitor-stats.mjs",

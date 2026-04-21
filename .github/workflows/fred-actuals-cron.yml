@@ -1,0 +1,55 @@
+# POST /api/cron/fred-actuals — FRED series → economic_events.actual (Phase 2.5).
+#
+# Master spec: every 30 minutes, 08:00–17:59 ET, weekdays. GitHub Actions cron is UTC.
+# This workflow uses 12:00–22:30 UTC Mon–Fri at :00 and :30 (covers ET 8–18 across EST/EDT).
+#
+# Setup (repository Settings → Secrets and variables → Actions):
+#   APP_BASE_URL   — public origin only (no trailing slash)
+#   CRON_SECRET    — must match production CRON_SECRET
+#
+# Host env: FRED_API_KEY, SUPABASE_SERVICE_ROLE_KEY. Run data/supabase-fred-event-mapping.sql once.
+
+name: FRED Actuals Backfill
+
+on:
+  schedule:
+    - cron: "0,30 12-22 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: fred-actuals-cron
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: POST /api/cron/fred-actuals
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET."
+              exit 1
+            fi
+            exit 0
+          fi
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/fred-actuals"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Expected HTTP 200, got $code"
+            exit 1
+          fi
+          python3 -c "import json; j=json.load(open('resp.json')); assert j.get('ok') is True, j"

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { FinnhubEarningsRaw } from "./finnhubEarnings";
 import {
   mapFinnhubToInserts,
+  normalizeFinnhubCalendarRow,
   normalizeReportTime,
   quarterYearFromDate,
   surprisePct,
@@ -26,6 +27,20 @@ describe("finnhubEarnings helpers", () => {
   it("derives calendar quarter from report date", () => {
     expect(quarterYearFromDate("2026-04-20")).toEqual({ quarter: 2, year: 2026 });
     expect(quarterYearFromDate("2026-01-03")).toEqual({ quarter: 1, year: 2026 });
+  });
+
+  it("normalizes snake_case Finnhub rows", () => {
+    const r = normalizeFinnhubCalendarRow({
+      date: "2026-05-01",
+      symbol: "xom",
+      eps_estimate: 1.2,
+      eps_actual: null,
+      company_name: "Exxon Mobil",
+      hour: "bmo",
+    });
+    expect(r.symbol).toBe("xom");
+    expect(r.epsEstimate).toBe(1.2);
+    expect(r.name).toBe("Exxon Mobil");
   });
 
   it("maps fixture rows, filters universe, and dedupes", () => {

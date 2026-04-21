@@ -10,10 +10,28 @@ function formatSurprise(pct: number | null): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
+/** Surprise % when actual exists; otherwise short hint when only estimates exist (pre-release). */
+function formatDeltaPct(
+  surprise: number | null,
+  estimate: number | null,
+  actual: number | null
+): { text: string; title?: string } {
+  if (surprise != null && Number.isFinite(surprise)) return { text: formatSurprise(surprise) };
+  if (estimate != null && Number.isFinite(estimate) && (actual == null || !Number.isFinite(actual))) {
+    return { text: "Pre", title: `Estimate ${estimate}; actual after release` };
+  }
+  return { text: "—" };
+}
+
 function surpriseStyle(pct: number | null): CSSProperties {
   if (pct == null || !Number.isFinite(pct)) return { color: "var(--ws-text-dim)" };
   if (pct >= 0) return { color: "var(--ws-green)" };
   return { color: "var(--ws-red)" };
+}
+
+function deltaCellStyle(surprise: number | null, label: string): CSSProperties {
+  if (label === "Pre") return { color: "var(--ws-text-dim)" };
+  return surpriseStyle(surprise);
 }
 
 function timeLabel(t: string | null): string {
@@ -64,7 +82,18 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const epsCell = formatDeltaPct(
+                r.current_quarter_eps_surprise_pct,
+                r.eps_estimate,
+                r.eps_actual
+              );
+              const revCell = formatDeltaPct(
+                r.current_quarter_rev_surprise_pct,
+                r.revenue_estimate,
+                r.revenue_actual
+              );
+              return (
               <tr key={r.id} style={{ borderBottom: "1px solid var(--ws-border)" }}>
                 <td className="px-2 py-1.5 font-medium" style={{ color: "var(--ws-text)" }}>
                   {r.ticker}
@@ -75,11 +104,19 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
                 <td className="px-2 py-1.5" style={{ color: "var(--ws-text-dim)" }}>
                   {timeLabel(r.report_time)}
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums" style={surpriseStyle(r.current_quarter_eps_surprise_pct)}>
-                  {formatSurprise(r.current_quarter_eps_surprise_pct)}
+                <td
+                  className="px-2 py-1.5 text-right tabular-nums"
+                  style={deltaCellStyle(r.current_quarter_eps_surprise_pct, epsCell.text)}
+                  title={epsCell.title}
+                >
+                  {epsCell.text}
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums" style={surpriseStyle(r.current_quarter_rev_surprise_pct)}>
-                  {formatSurprise(r.current_quarter_rev_surprise_pct)}
+                <td
+                  className="px-2 py-1.5 text-right tabular-nums"
+                  style={deltaCellStyle(r.current_quarter_rev_surprise_pct, revCell.text)}
+                  title={revCell.title}
+                >
+                  {revCell.text}
                 </td>
                 <td
                   className="hidden px-2 py-1.5 text-right tabular-nums md:table-cell"
@@ -94,7 +131,8 @@ function BucketTable({ title, rows }: { title: string; rows: EarningsCalendarPub
                   {formatSurprise(r.prior_quarter_rev_surprise_pct)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
