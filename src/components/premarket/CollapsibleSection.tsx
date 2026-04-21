@@ -63,8 +63,8 @@ export default function CollapsibleSection({
             </span>
             {collapsed && peekText ? (
               <span
-                className="min-w-0 flex-1 truncate text-right text-[11px] leading-snug transition-opacity duration-300 ease-out"
-                style={{ color: "var(--ws-text-vdim)" }}
+                className="min-w-0 flex-1 truncate text-right text-sm font-medium leading-snug transition-opacity duration-300 ease-out"
+                style={{ color: "var(--ws-text-dim)" }}
               >
                 {peekText}
               </span>

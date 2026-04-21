@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import type { GapperRow, GappersRequestBody, GappersResponse } from "@/types/gappers";
@@ -17,16 +18,12 @@ import {
   type GapperFilterState,
   saveGapperFiltersToStorage,
 } from "@/components/premarket/gapper-filters-storage";
-
-function fmtCompact(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const x = Math.abs(n);
-  if (x >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (x >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (x >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (x >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.round(n));
-}
+import {
+  abbreviateUsdFilterDisplay,
+  formatScreenerCompact,
+  formatUsdIntInputDisplay,
+  parseFlexibleFilterNumber,
+} from "@/components/premarket/premarket-number-display";
 
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
@@ -36,19 +33,6 @@ function fmtPct(n: number): string {
 function numIn(v: string, fallback: number): number {
   const x = Number(v);
   return Number.isFinite(x) ? x : fallback;
-}
-
-/** Display full USD integers with thousands separators (filter inputs). */
-function formatUsdInt(n: number | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  return Math.round(n).toLocaleString("en-US");
-}
-
-function parseUsdIntInput(s: string): number | null {
-  const cleaned = s.replace(/,/g, "").replace(/\s/g, "").trim();
-  if (cleaned === "") return null;
-  const x = Number(cleaned);
-  return Number.isFinite(x) ? x : null;
 }
 
 type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "marketCap" | "sector";
@@ -116,7 +100,7 @@ function GapperSortTh({
   onSort,
   align,
 }: {
-  label: string;
+  label: ReactNode;
   col: GapperSortKey;
   sortKey: GapperSortKey;
   sortDir: SortDir;
@@ -170,6 +154,16 @@ export default function PremarketGappers({
   const initialFetchDone = useRef(false);
   const [sortKey, setSortKey] = useState<GapperSortKey>("gapPct");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  /** Local string while editing large-number filters; `null` = show abbreviated/blurred display. */
+  const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
+  const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
+  const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
+
+  const clearLargeNumberDrafts = useCallback(() => {
+    setMcapMinDraft(null);
+    setMcapMaxDraft(null);
+    setMinAvgVolDraft(null);
+  }, []);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
     if (sortKey === key) {
@@ -218,11 +212,13 @@ export default function PremarketGappers({
   }, [filtersHydrated, filters, run]);
 
   const applyFilters = () => {
+    clearLargeNumberDrafts();
     saveGapperFiltersToStorage(filters);
     void run(filters);
   };
 
   function applyPreset(p: Exclude<GapperCapPreset, "custom">) {
+    clearLargeNumberDrafts();
     const { min, max } = GAPPER_CAP_PRESET_MC[p];
     setFilters((prev) => {
       const next = { ...prev, capPreset: p, minMarketCap: min, maxMarketCap: max };
@@ -237,9 +233,12 @@ export default function PremarketGappers({
   }
 
   const inputClsBase =
-    "min-w-0 rounded border px-2 py-1 tabular-nums outline-none ws-focus-ring bg-[color:var(--ws-bg)] text-[var(--ws-text)]";
+    "min-w-0 rounded border px-2 py-1 text-right tabular-nums outline-none ws-focus-ring bg-[color:var(--ws-bg)] text-[var(--ws-text)]";
   const inputCls = `w-full ${inputClsBase} max-w-[7.5rem] sm:max-w-[7.5rem]`;
   const inputClsNarrow = `w-full ${inputClsBase} max-w-[4.25rem] sm:max-w-[4.25rem]`;
+  const filterLabelCls = "flex min-w-0 flex-col items-end gap-0.5";
+  const filterLabelSpanCls =
+    "block w-full text-right text-[10px] font-medium uppercase tracking-wide";
 
   return (
     <div className="space-y-3">
@@ -250,8 +249,8 @@ export default function PremarketGappers({
       </p>
 
       <div className="flex flex-wrap items-end gap-2 gap-y-2">
-        <label className="flex min-w-[5.5rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Cap preset
           </span>
           <select
@@ -264,7 +263,7 @@ export default function PremarketGappers({
               }
               applyPreset(v as Exclude<GapperCapPreset, "custom">);
             }}
-            className={inputCls}
+            className={`${inputCls} text-right`}
             style={{ borderColor: "var(--ws-border)" }}
           >
             <option value="all">All (min $100M)</option>
@@ -274,8 +273,8 @@ export default function PremarketGappers({
             <option value="custom">Custom</option>
           </select>
         </label>
-        <label className="flex min-w-[6.5rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Min mcap USD
           </span>
           <input
@@ -283,16 +282,24 @@ export default function PremarketGappers({
             inputMode="numeric"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={formatUsdInt(filters.minMarketCap)}
-            onChange={(e) => {
-              const p = parseUsdIntInput(e.target.value);
-              if (p === null) return;
-              setCustomField("minMarketCap", Math.min(p, filters.maxMarketCap ?? 10_000_000_000_000));
+            value={mcapMinDraft ?? abbreviateUsdFilterDisplay(filters.minMarketCap ?? 0)}
+            onFocus={() => setMcapMinDraft(formatUsdIntInputDisplay(filters.minMarketCap))}
+            onChange={(e) => setMcapMinDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMcapMinDraft(null);
+              const p = parseFlexibleFilterNumber(raw);
+              if (p == null) return;
+              setFilters((prev) => ({
+                ...prev,
+                minMarketCap: Math.min(p, prev.maxMarketCap ?? 10_000_000_000_000),
+                capPreset: "custom",
+              }));
             }}
           />
         </label>
-        <label className="flex min-w-[6.5rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Max mcap USD
           </span>
           <input
@@ -300,16 +307,24 @@ export default function PremarketGappers({
             inputMode="numeric"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={formatUsdInt(filters.maxMarketCap)}
-            onChange={(e) => {
-              const p = parseUsdIntInput(e.target.value);
-              if (p === null) return;
-              setCustomField("maxMarketCap", Math.max(p, filters.minMarketCap ?? 100_000_000));
+            value={mcapMaxDraft ?? abbreviateUsdFilterDisplay(filters.maxMarketCap ?? 0)}
+            onFocus={() => setMcapMaxDraft(formatUsdIntInputDisplay(filters.maxMarketCap))}
+            onChange={(e) => setMcapMaxDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMcapMaxDraft(null);
+              const p = parseFlexibleFilterNumber(raw);
+              if (p == null) return;
+              setFilters((prev) => ({
+                ...prev,
+                maxMarketCap: Math.max(p, prev.minMarketCap ?? 100_000_000),
+                capPreset: "custom",
+              }));
             }}
           />
         </label>
-        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Min price
           </span>
           <input
@@ -320,8 +335,8 @@ export default function PremarketGappers({
             onChange={(e) => setCustomField("minPrice", numIn(e.target.value, 5))}
           />
         </label>
-        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Min gap %
           </span>
           <input
@@ -332,8 +347,8 @@ export default function PremarketGappers({
             onChange={(e) => setCustomField("minGapPct", numIn(e.target.value, 1))}
           />
         </label>
-        <label className="flex min-w-[4rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[4rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Min PM vol
           </span>
           <input
@@ -344,20 +359,29 @@ export default function PremarketGappers({
             onChange={(e) => setCustomField("minPmVolume", numIn(e.target.value, 0))}
           />
         </label>
-        <label className="flex min-w-[4rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[5rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Min avg vol
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.minAvgVolume}
-            onChange={(e) => setCustomField("minAvgVolume", numIn(e.target.value, 0))}
+            value={minAvgVolDraft ?? abbreviateUsdFilterDisplay(filters.minAvgVolume ?? 0)}
+            onFocus={() => setMinAvgVolDraft(formatUsdIntInputDisplay(filters.minAvgVolume))}
+            onChange={(e) => setMinAvgVolDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMinAvgVolDraft(null);
+              const p = parseFlexibleFilterNumber(raw);
+              if (p == null) return;
+              setCustomField("minAvgVolume", Math.max(0, Math.round(p)));
+            }}
           />
         </label>
-        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
+          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
             Max rows
           </span>
           <input
@@ -379,7 +403,10 @@ export default function PremarketGappers({
         </button>
         <button
           type="button"
-          onClick={() => void run(filters)}
+          onClick={() => {
+            clearLargeNumberDrafts();
+            void run(filters);
+          }}
           disabled={loading}
           className="rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
           style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
@@ -460,7 +487,7 @@ export default function PremarketGappers({
                   align="right"
                 />
                 <GapperSortTh
-                  label="Avg 90d"
+                  label="Avg Vol (3M)"
                   col="avgVolume90d"
                   sortKey={sortKey}
                   sortDir={sortDir}
@@ -539,19 +566,19 @@ export default function PremarketGappers({
                     className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
                     style={{ color: "var(--ws-text-dim)" }}
                   >
-                    {fmtCompact(r.pmVolume)}
+                    {formatScreenerCompact(r.pmVolume)}
                   </td>
                   <td
                     className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
                     style={{ color: "var(--ws-text-dim)" }}
                   >
-                    {fmtCompact(r.avgVolume90d)}
+                    {formatScreenerCompact(r.avgVolume90d)}
                   </td>
                   <td
                     className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
                     style={{ color: "var(--ws-text-dim)" }}
                   >
-                    {fmtCompact(r.marketCap)}
+                    {formatScreenerCompact(r.marketCap)}
                   </td>
                   <td className="max-w-[8rem] truncate px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
                     {r.sector ?? "—"}

@@ -5,6 +5,7 @@ import type { GapperRow, GappersRequestBody } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 import { gapperFilterStateToRequestBody, type GapperFilterState } from "@/components/premarket/gapper-filters-storage";
+import { formatScreenerCompact } from "@/components/premarket/premarket-number-display";
 
 type StocksInPlayProps = {
   collapsed: boolean;
@@ -15,16 +16,6 @@ type StocksInPlayProps = {
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
-}
-
-function fmtCompact(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const x = Math.abs(n);
-  if (x >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (x >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (x >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (x >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.round(n));
 }
 
 function NewsList({ items }: { items: PythonNewsItem[] }) {
@@ -206,7 +197,7 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
                   {fmtPct(r.gapPct)}
                 </span>
                 <span className="text-[11px]" style={{ color: "var(--ws-text-dim)" }}>
-                  {r.companyName ?? "—"} · PM vol {fmtCompact(r.pmVolume)} · M cap {fmtCompact(r.marketCap)}
+                  {r.companyName ?? "—"} · PM vol {formatScreenerCompact(r.pmVolume)} · M cap {formatScreenerCompact(r.marketCap)}
                 </span>
                 {r.earningsRecent24h ? (
                   <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#c4a7e7" }}>
