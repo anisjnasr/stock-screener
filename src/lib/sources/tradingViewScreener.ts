@@ -50,10 +50,11 @@ export function buildTradingViewScanPayload(p: TradingViewScanParams): Record<st
       { left: "market_cap_basic", operation: "eless", right: p.maxMarketCap },
       { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
       { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
-      { left: "premarket_change_abs", operation: "egreater", right: p.minGapPct },
+      // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
+      { left: "premarket_change", operation: "egreater", right: p.minGapPct },
     ],
     columns: [...SCAN_COLUMNS],
-    sort: { sortBy: "premarket_change_abs", sortOrder: "desc" },
+    sort: { sortBy: "premarket_change", sortOrder: "desc" },
     range: [0, Math.min(150, Math.max(1, Math.floor(p.maxRows)))],
     markets: ["america"],
     options: { lang: "en" },
