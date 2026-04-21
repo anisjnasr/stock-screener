@@ -26,8 +26,7 @@ export async function upsertEconomicEvents(
     if (error) {
       errors.push(`chunk ${i}-${i + slice.length}: ${error.message}`);
       for (const row of slice) {
-        const { actual: _o, ...rest } = row;
-        const { error: oneErr } = await supabase.from("economic_events").upsert(rest, {
+        const { error: oneErr } = await supabase.from("economic_events").upsert(row, {
           onConflict: "event_date,event_name,country",
         });
         if (oneErr) errors.push(`${row.event_date} ${row.event_name}: ${oneErr.message}`);
