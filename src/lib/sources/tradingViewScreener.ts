@@ -26,8 +26,10 @@ export type TradingViewScanParams = {
   minPmVolume: number;
   minAvgVolume: number;
   minGapPct: number;
-  maxRows: number;
 };
+
+/** TV `range` end (exclusive-style upper bound); capped at 150 per request. */
+export const TRADINGVIEW_GAP_SCAN_ROW_CAP = 150;
 
 export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minPrice: 5,
@@ -36,11 +38,14 @@ export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minPmVolume: 0,
   minAvgVolume: 0,
   minGapPct: 1,
-  maxRows: 50,
 };
 
 /** TV scanner uses `egreater` / `eless` for numeric comparisons (not `greater_equal`). */
-export function buildTradingViewScanPayload(p: TradingViewScanParams): Record<string, unknown> {
+export function buildTradingViewScanPayload(
+  p: TradingViewScanParams,
+  rowLimit: number = TRADINGVIEW_GAP_SCAN_ROW_CAP
+): Record<string, unknown> {
+  const rangeEnd = Math.min(TRADINGVIEW_GAP_SCAN_ROW_CAP, Math.max(1, Math.floor(rowLimit)));
   return {
     filter: [
       { left: "type", operation: "equal", right: "stock" },
@@ -55,7 +60,7 @@ export function buildTradingViewScanPayload(p: TradingViewScanParams): Record<st
     ],
     columns: [...SCAN_COLUMNS],
     sort: { sortBy: "premarket_change", sortOrder: "desc" },
-    range: [0, Math.min(150, Math.max(1, Math.floor(p.maxRows)))],
+    range: [0, rangeEnd],
     markets: ["america"],
     options: { lang: "en" },
   };
@@ -139,9 +144,9 @@ function cookieHeaderFromEnv(): string | undefined {
 
 export async function fetchTradingViewGappers(
   params: TradingViewScanParams,
-  init?: { signal?: AbortSignal }
+  init?: { signal?: AbortSignal; rowLimit?: number }
 ): Promise<Omit<GapperRow, "earningsRecent24h">[]> {
-  const body = buildTradingViewScanPayload(params);
+  const body = buildTradingViewScanPayload(params, init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP);
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",

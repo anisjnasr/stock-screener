@@ -1,6 +1,7 @@
 import {
   DEFAULT_TRADINGVIEW_SCAN,
   fetchTradingViewGappers,
+  TRADINGVIEW_GAP_SCAN_ROW_CAP,
   type TradingViewScanParams,
 } from "@/lib/sources/tradingViewScreener";
 import type { GapperRow } from "@/types/gappers";
@@ -18,10 +19,13 @@ function applyMcapFilter(rows: Omit<GapperRow, "earningsRecent24h">[], minCap: n
  */
 export async function loadGappersScanOnly(
   scan: TradingViewScanParams,
-  init?: { signal?: AbortSignal }
+  init?: { signal?: AbortSignal; rowLimit?: number }
 ): Promise<{ source: "tradingview"; rows: Omit<GapperRow, "earningsRecent24h">[] }> {
   try {
-    const raw = await fetchTradingViewGappers(scan, { signal: init?.signal });
+    const raw = await fetchTradingViewGappers(scan, {
+      signal: init?.signal,
+      rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
+    });
     const rows = applyMcapFilter(raw, scan.minMarketCap, scan.maxMarketCap);
     return { source: "tradingview", rows };
   } catch (e) {
@@ -53,7 +57,6 @@ export function normalizeGappersScanBody(raw: unknown): TradingViewScanParams {
   const minPmVolume = Math.max(0, n(b.minPmVolume, D.minPmVolume));
   const minAvgVolume = Math.max(0, n(b.minAvgVolume, D.minAvgVolume));
   const minGapPct = clamp(n(b.minGapPct, D.minGapPct), 0, 100);
-  const maxRows = clamp(Math.floor(n(b.maxRows, D.maxRows)), 1, 150);
 
   return {
     minPrice,
@@ -62,6 +65,5 @@ export function normalizeGappersScanBody(raw: unknown): TradingViewScanParams {
     minPmVolume,
     minAvgVolume,
     minGapPct,
-    maxRows,
   };
 }

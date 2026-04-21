@@ -21,7 +21,6 @@ export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   minPmVolume: 0,
   minAvgVolume: 0,
   minGapPct: 1,
-  maxRows: 50,
 };
 
 export function loadGapperFiltersFromStorage(): GapperFilterState {
@@ -49,6 +48,6 @@ export function saveGapperFiltersToStorage(f: GapperFilterState): void {
 }
 
 export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersRequestBody {
-  const { capPreset: _p, ...rest } = f;
-  return rest;
+  const { capPreset: _p, minPrice, minMarketCap, maxMarketCap, minPmVolume, minAvgVolume, minGapPct } = f;
+  return { minPrice, minMarketCap, maxMarketCap, minPmVolume, minAvgVolume, minGapPct };
 }

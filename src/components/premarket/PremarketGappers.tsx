@@ -165,7 +165,6 @@ export default function PremarketGappers({
   const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
   const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
-  const [maxRowsDraft, setMaxRowsDraft] = useState<string | null>(null);
   /** Wall time of the last completed `run()` (success or error), in seconds. */
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
 
@@ -176,7 +175,6 @@ export default function PremarketGappers({
     setMinPriceDraft(null);
     setMinGapDraft(null);
     setMinPmVolDraft(null);
-    setMaxRowsDraft(null);
   }, []);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
@@ -426,28 +424,6 @@ export default function PremarketGappers({
               const p = parseFlexibleFilterNumber(raw);
               if (p == null) return;
               setCustomField("minAvgVolume", Math.max(0, Math.round(p)));
-            }}
-          />
-        </label>
-        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Max rows
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            className={inputClsNarrow}
-            style={{ borderColor: "var(--ws-border)" }}
-            value={maxRowsDraft === null ? String(filters.maxRows) : maxRowsDraft}
-            onFocus={() => setMaxRowsDraft(String(filters.maxRows))}
-            onChange={(e) => setMaxRowsDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMaxRowsDraft(null);
-              const p = parseDecimalBlur(raw);
-              if (p == null) return;
-              setCustomField("maxRows", Math.min(150, Math.max(1, Math.round(p))));
             }}
           />
         </label>

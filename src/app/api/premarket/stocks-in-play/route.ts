@@ -15,7 +15,6 @@ function sipScanFromBody(body: unknown): TradingViewScanParams {
     ...n,
     minPrice: Math.max(3, n.minPrice),
     minMarketCap: Math.max(250_000_000, n.minMarketCap),
-    maxRows: Math.min(30, Math.max(1, n.maxRows)),
     minGapPct: Math.max(1, n.minGapPct),
   };
 }
@@ -37,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const base = await unstable_cache(
-      async () => loadGappersScanOnly(scan),
+      async () => loadGappersScanOnly(scan, { rowLimit: 30 }),
       ["premarket-sip-gappers", cacheKey],
       { revalidate: 30 }
     )();

@@ -6,7 +6,6 @@ export type GappersRequestBody = {
   minPmVolume?: number;
   minAvgVolume?: number;
   minGapPct?: number;
-  maxRows?: number;
 };
 
 export type GapperSource = "tradingview";
