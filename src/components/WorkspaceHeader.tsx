@@ -143,7 +143,8 @@ function formatEtHeaderClockParts(now: Date): { datePart: string; timePart: stri
 
 function MarketStatusClock() {
   const [open, setOpen] = useState(() => isUSMarketOpen());
-  const [parts, setParts] = useState<{ datePart: string; timePart: string }>(() => formatEtHeaderClockParts(new Date()));
+  /** `null` until mount so SSR and hydration paint the same placeholder (avoid Date() mismatch). */
+  const [parts, setParts] = useState<{ datePart: string; timePart: string } | null>(null);
 
   useEffect(() => {
     const updateNow = () => {
@@ -175,9 +176,9 @@ function MarketStatusClock() {
         }}
         aria-hidden
       />
-      <span suppressHydrationWarning>
-        <span style={{ color: "var(--ws-text-dim)" }}>{parts.datePart}</span>
-        <span style={{ color: "var(--ws-cyan)" }}> {parts.timePart}</span>
+      <span className="inline-flex min-w-[10.5rem] justify-end">
+        <span style={{ color: "var(--ws-text-dim)" }}>{parts?.datePart ?? "…"}</span>
+        <span style={{ color: "var(--ws-cyan)" }}>{parts ? ` ${parts.timePart}` : ""}</span>
       </span>
     </div>
   );
