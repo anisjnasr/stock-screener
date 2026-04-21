@@ -30,9 +30,12 @@ function fmtPct(n: number): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-function numIn(v: string, fallback: number): number {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : fallback;
+/** Parse a plain decimal from a filter field on blur; empty = cancel edit (revert). */
+function parseDecimalBlur(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  const x = Number(t);
+  return Number.isFinite(x) ? x : null;
 }
 
 type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "marketCap" | "sector";
@@ -158,13 +161,22 @@ export default function PremarketGappers({
   const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
   const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
   const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
+  /** Draft strings for numeric filters so the user can clear the field while typing (controlled `type="number"` cannot). */
+  const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
+  const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
+  const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
+  const [maxRowsDraft, setMaxRowsDraft] = useState<string | null>(null);
   /** Wall time of the last completed `run()` (success or error), in seconds. */
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
 
-  const clearLargeNumberDrafts = useCallback(() => {
+  const clearFilterInputDrafts = useCallback(() => {
     setMcapMinDraft(null);
     setMcapMaxDraft(null);
     setMinAvgVolDraft(null);
+    setMinPriceDraft(null);
+    setMinGapDraft(null);
+    setMinPmVolDraft(null);
+    setMaxRowsDraft(null);
   }, []);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
@@ -216,13 +228,13 @@ export default function PremarketGappers({
   }, [filtersHydrated, filters, run]);
 
   const applyFilters = () => {
-    clearLargeNumberDrafts();
+    clearFilterInputDrafts();
     saveGapperFiltersToStorage(filters);
     void run(filters);
   };
 
   function applyPreset(p: Exclude<GapperCapPreset, "custom">) {
-    clearLargeNumberDrafts();
+    clearFilterInputDrafts();
     const { min, max } = GAPPER_CAP_PRESET_MC[p];
     setFilters((prev) => {
       const next = { ...prev, capPreset: p, minMarketCap: min, maxMarketCap: max };
@@ -284,6 +296,7 @@ export default function PremarketGappers({
           <input
             type="text"
             inputMode="numeric"
+            autoComplete="off"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
             value={mcapMinDraft ?? abbreviateUsdFilterDisplay(filters.minMarketCap ?? 0)}
@@ -309,6 +322,7 @@ export default function PremarketGappers({
           <input
             type="text"
             inputMode="numeric"
+            autoComplete="off"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
             value={mcapMaxDraft ?? abbreviateUsdFilterDisplay(filters.maxMarketCap ?? 0)}
@@ -332,11 +346,21 @@ export default function PremarketGappers({
             Min price
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.minPrice}
-            onChange={(e) => setCustomField("minPrice", numIn(e.target.value, 5))}
+            value={minPriceDraft === null ? String(filters.minPrice) : minPriceDraft}
+            onFocus={() => setMinPriceDraft(String(filters.minPrice))}
+            onChange={(e) => setMinPriceDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMinPriceDraft(null);
+              const p = parseDecimalBlur(raw);
+              if (p == null) return;
+              setCustomField("minPrice", Math.max(0.01, p));
+            }}
           />
         </label>
         <label className={`${filterLabelCls} min-w-[3.25rem]`}>
@@ -344,11 +368,21 @@ export default function PremarketGappers({
             Min gap %
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.minGapPct}
-            onChange={(e) => setCustomField("minGapPct", numIn(e.target.value, 1))}
+            value={minGapDraft === null ? String(filters.minGapPct) : minGapDraft}
+            onFocus={() => setMinGapDraft(String(filters.minGapPct))}
+            onChange={(e) => setMinGapDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMinGapDraft(null);
+              const p = parseDecimalBlur(raw);
+              if (p == null) return;
+              setCustomField("minGapPct", Math.max(0, p));
+            }}
           />
         </label>
         <label className={`${filterLabelCls} min-w-[4rem]`}>
@@ -356,11 +390,21 @@ export default function PremarketGappers({
             Min PM vol
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.minPmVolume}
-            onChange={(e) => setCustomField("minPmVolume", numIn(e.target.value, 0))}
+            value={minPmVolDraft === null ? String(filters.minPmVolume) : minPmVolDraft}
+            onFocus={() => setMinPmVolDraft(String(filters.minPmVolume))}
+            onChange={(e) => setMinPmVolDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMinPmVolDraft(null);
+              const p = parseDecimalBlur(raw);
+              if (p == null) return;
+              setCustomField("minPmVolume", Math.max(0, Math.round(p)));
+            }}
           />
         </label>
         <label className={`${filterLabelCls} min-w-[5rem]`}>
@@ -370,6 +414,7 @@ export default function PremarketGappers({
           <input
             type="text"
             inputMode="numeric"
+            autoComplete="off"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
             value={minAvgVolDraft ?? abbreviateUsdFilterDisplay(filters.minAvgVolume ?? 0)}
@@ -389,11 +434,21 @@ export default function PremarketGappers({
             Max rows
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
             className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.maxRows}
-            onChange={(e) => setCustomField("maxRows", Math.min(150, Math.max(1, numIn(e.target.value, 50))))}
+            value={maxRowsDraft === null ? String(filters.maxRows) : maxRowsDraft}
+            onFocus={() => setMaxRowsDraft(String(filters.maxRows))}
+            onChange={(e) => setMaxRowsDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMaxRowsDraft(null);
+              const p = parseDecimalBlur(raw);
+              if (p == null) return;
+              setCustomField("maxRows", Math.min(150, Math.max(1, Math.round(p))));
+            }}
           />
         </label>
         <button
@@ -409,7 +464,7 @@ export default function PremarketGappers({
           <button
             type="button"
             onClick={() => {
-              clearLargeNumberDrafts();
+              clearFilterInputDrafts();
               void run(filters);
             }}
             disabled={loading}
