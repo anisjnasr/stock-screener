@@ -4,6 +4,7 @@ import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
 import PremarketGappers from "./PremarketGappers";
+import StocksInPlay from "./StocksInPlay";
 import TopBar from "./TopBar";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
@@ -23,8 +24,8 @@ const SECTIONS: {
   {
     id: "sip",
     title: "Stocks in Play",
-    peekText: "NVDA +4.8 · MU +6.2 · CCJ +4.1 · CAVA +5.1 · LULU −8.1",
-    stub: "High-significance catalyst names will appear here after Phase 12.",
+    peekText: "Gappers + yfinance headlines (Python service)",
+    stub: "",
   },
   {
     id: "calendars",
@@ -76,6 +77,8 @@ export default function PreMarketPage() {
                 </h3>
                 <EarningsCalendar />
               </div>
+            ) : s.id === "sip" ? (
+              <StocksInPlay collapsed={collapsed.sip} />
             ) : s.id === "movers" ? (
               <div className="space-y-4">
                 <div className="space-y-2">
