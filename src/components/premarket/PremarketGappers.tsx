@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type { GapperRow, GappersRequestBody, GappersResponse } from "@/types/gappers";
 import {
   GAPPER_CAP_PRESET_MC,
@@ -30,6 +38,118 @@ function numIn(v: string, fallback: number): number {
   return Number.isFinite(x) ? x : fallback;
 }
 
+/** Display full USD integers with thousands separators (filter inputs). */
+function formatUsdInt(n: number | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "";
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function parseUsdIntInput(s: string): number | null {
+  const cleaned = s.replace(/,/g, "").replace(/\s/g, "").trim();
+  if (cleaned === "") return null;
+  const x = Number(cleaned);
+  return Number.isFinite(x) ? x : null;
+}
+
+type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "marketCap" | "sector";
+type SortDir = "asc" | "desc";
+
+function defaultSortDir(key: GapperSortKey): SortDir {
+  return key === "ticker" || key === "companyName" || key === "sector" ? "asc" : "desc";
+}
+
+function cmpNum(a: number | null, b: number | null, asc: boolean): number {
+  const aOk = a != null && Number.isFinite(a);
+  const bOk = b != null && Number.isFinite(b);
+  if (!aOk && !bOk) return 0;
+  if (!aOk) return 1;
+  if (!bOk) return -1;
+  return asc ? a - b : b - a;
+}
+
+function cmpStr(a: string | null, b: string | null, asc: boolean): number {
+  const as = (a ?? "").toLowerCase();
+  const bs = (b ?? "").toLowerCase();
+  const c = as.localeCompare(bs);
+  return asc ? c : -c;
+}
+
+function compareGapperRows(a: GapperRow, b: GapperRow, key: GapperSortKey, asc: boolean): number {
+  switch (key) {
+    case "ticker":
+      return cmpStr(a.ticker, b.ticker, asc);
+    case "companyName":
+      return cmpStr(a.companyName, b.companyName, asc);
+    case "gapPct":
+      return asc ? a.gapPct - b.gapPct : b.gapPct - a.gapPct;
+    case "lastPrice":
+      return asc ? a.lastPrice - b.lastPrice : b.lastPrice - a.lastPrice;
+    case "pmVolume":
+      return asc ? a.pmVolume - b.pmVolume : b.pmVolume - a.pmVolume;
+    case "avgVolume90d":
+      return cmpNum(a.avgVolume90d, b.avgVolume90d, asc);
+    case "marketCap":
+      return cmpNum(a.marketCap, b.marketCap, asc);
+    case "sector":
+      return cmpStr(a.sector, b.sector, asc);
+    default:
+      return 0;
+  }
+}
+
+function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDesc: boolean }) {
+  const dim = "var(--ws-text-vdim)";
+  const hi = "var(--ws-text)";
+  return (
+    <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
+      <span style={{ fontSize: "7px", color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ fontSize: "7px", color: activeDesc ? hi : dim }}>▼</span>
+    </span>
+  );
+}
+
+function GapperSortTh({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+  align,
+}: {
+  label: string;
+  col: GapperSortKey;
+  sortKey: GapperSortKey;
+  sortDir: SortDir;
+  onSort: (k: GapperSortKey) => void;
+  align: "left" | "right";
+}) {
+  const active = sortKey === col;
+  return (
+    <th
+      scope="col"
+      className={`cursor-pointer select-none whitespace-nowrap px-2 py-1.5 font-semibold ${align === "right" ? "text-right" : "text-left"}`}
+      style={{ color: "var(--ws-text-dim)" }}
+      onClick={() => onSort(col)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSort(col);
+        }
+      }}
+      tabIndex={0}
+      role="columnheader"
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <span
+        className={`inline-flex w-full items-center gap-0.5 ${align === "right" ? "justify-end" : "justify-start"}`}
+      >
+        <span>{label}</span>
+        <SortChevrons activeAsc={active && sortDir === "asc"} activeDesc={active && sortDir === "desc"} />
+      </span>
+    </th>
+  );
+}
+
 type PremarketGappersProps = {
   onJumpToEarnings?: () => void;
   filters: GapperFilterState;
@@ -48,6 +168,23 @@ export default function PremarketGappers({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const initialFetchDone = useRef(false);
+  const [sortKey, setSortKey] = useState<GapperSortKey>("gapPct");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const onSortHeaderClick = useCallback((key: GapperSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(defaultSortDir(key));
+    }
+  }, [sortKey]);
+
+  const sortedRows = useMemo(() => {
+    if (!rows?.length) return rows;
+    const asc = sortDir === "asc";
+    return [...rows].sort((a, b) => compareGapperRows(a, b, sortKey, asc));
+  }, [rows, sortKey, sortDir]);
 
   const run = useCallback(async (f: GapperFilterState) => {
     setLoading(true);
@@ -99,9 +236,10 @@ export default function PremarketGappers({
     setFilters((prev) => ({ ...prev, [key]: value, capPreset: "custom" }));
   }
 
-  const inputCls =
-    "w-full min-w-0 rounded border px-2 py-1 tabular-nums outline-none ws-focus-ring sm:max-w-[7.5rem]" +
-    " bg-[color:var(--ws-bg)] text-[var(--ws-text)]";
+  const inputClsBase =
+    "min-w-0 rounded border px-2 py-1 tabular-nums outline-none ws-focus-ring bg-[color:var(--ws-bg)] text-[var(--ws-text)]";
+  const inputCls = `w-full ${inputClsBase} max-w-[7.5rem] sm:max-w-[7.5rem]`;
+  const inputClsNarrow = `w-full ${inputClsBase} max-w-[4.25rem] sm:max-w-[4.25rem]`;
 
   return (
     <div className="space-y-3">
@@ -136,49 +274,59 @@ export default function PremarketGappers({
             <option value="custom">Custom</option>
           </select>
         </label>
-        <label className="flex min-w-[6rem] flex-col gap-0.5">
+        <label className="flex min-w-[6.5rem] flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             Min mcap USD
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.minMarketCap}
-            onChange={(e) => setCustomField("minMarketCap", numIn(e.target.value, 100_000_000))}
+            value={formatUsdInt(filters.minMarketCap)}
+            onChange={(e) => {
+              const p = parseUsdIntInput(e.target.value);
+              if (p === null) return;
+              setCustomField("minMarketCap", Math.min(p, filters.maxMarketCap ?? 10_000_000_000_000));
+            }}
           />
         </label>
-        <label className="flex min-w-[6rem] flex-col gap-0.5">
+        <label className="flex min-w-[6.5rem] flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             Max mcap USD
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className={inputCls}
             style={{ borderColor: "var(--ws-border)" }}
-            value={filters.maxMarketCap}
-            onChange={(e) => setCustomField("maxMarketCap", numIn(e.target.value, 10_000_000_000_000))}
+            value={formatUsdInt(filters.maxMarketCap)}
+            onChange={(e) => {
+              const p = parseUsdIntInput(e.target.value);
+              if (p === null) return;
+              setCustomField("maxMarketCap", Math.max(p, filters.minMarketCap ?? 100_000_000));
+            }}
           />
         </label>
-        <label className="flex min-w-[3.5rem] flex-col gap-0.5">
+        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             Min price
           </span>
           <input
             type="number"
-            className={inputCls}
+            className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
             value={filters.minPrice}
             onChange={(e) => setCustomField("minPrice", numIn(e.target.value, 5))}
           />
         </label>
-        <label className="flex min-w-[3.5rem] flex-col gap-0.5">
+        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             Min gap %
           </span>
           <input
             type="number"
-            className={inputCls}
+            className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
             value={filters.minGapPct}
             onChange={(e) => setCustomField("minGapPct", numIn(e.target.value, 1))}
@@ -208,13 +356,13 @@ export default function PremarketGappers({
             onChange={(e) => setCustomField("minAvgVolume", numIn(e.target.value, 0))}
           />
         </label>
-        <label className="flex min-w-[3.5rem] flex-col gap-0.5">
+        <label className="flex min-w-[3.25rem] flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
             Max rows
           </span>
           <input
             type="number"
-            className={inputCls}
+            className={inputClsNarrow}
             style={{ borderColor: "var(--ws-border)" }}
             value={filters.maxRows}
             onChange={(e) => setCustomField("maxRows", Math.min(150, Math.max(1, numIn(e.target.value, 50))))}
@@ -261,20 +409,84 @@ export default function PremarketGappers({
         </p>
       ) : null}
 
-      {rows && rows.length > 0 ? (
+      {sortedRows && sortedRows.length > 0 ? (
         <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-          <table className="w-full min-w-[36rem] border-collapse text-left text-xs">
+          <table className="w-full min-w-[36rem] border-collapse text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
-                {["", "Ticker", "Company", "Gap", "Last", "PM vol", "Avg 90d", "M cap", "Sector"].map((h) => (
-                  <th key={h || "earn"} className="px-2 py-1.5 font-semibold" style={{ color: "var(--ws-text-dim)" }}>
-                    {h}
-                  </th>
-                ))}
+                <th
+                  className="w-8 px-1 py-1.5 text-center font-semibold"
+                  style={{ color: "var(--ws-text-dim)" }}
+                  aria-label="Earnings"
+                />
+                <GapperSortTh
+                  label="Ticker"
+                  col="ticker"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="left"
+                />
+                <GapperSortTh
+                  label="Company"
+                  col="companyName"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="left"
+                />
+                <GapperSortTh
+                  label="Gap"
+                  col="gapPct"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="Last"
+                  col="lastPrice"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="PM Vol"
+                  col="pmVolume"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="Avg 90d"
+                  col="avgVolume90d"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="Mkt Cap"
+                  col="marketCap"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="Sector"
+                  col="sector"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="left"
+                />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {sortedRows.map((r) => (
                 <tr
                   key={r.ticker}
                   className="border-t transition-colors hover:bg-[color:var(--ws-hover)]"
@@ -302,31 +514,46 @@ export default function PremarketGappers({
                       <span className="inline-block w-6" aria-hidden />
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-mono font-semibold" style={{ color: "var(--ws-text)" }}>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-left font-mono font-semibold"
+                    style={{ color: "var(--ws-text)" }}
+                  >
                     {r.ticker}
                   </td>
-                  <td className="max-w-[12rem] truncate px-2 py-1.5" style={{ color: "var(--ws-text-dim)" }}>
+                  <td className="max-w-[12rem] truncate px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
                     {r.companyName ?? "—"}
                   </td>
                   <td
-                    className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums"
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
                     style={{ color: r.gapPct >= 0 ? "#5bbd6e" : "#e05a5a" }}
                   >
                     {fmtPct(r.gapPct)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
+                    style={{ color: "var(--ws-text)" }}
+                  >
                     {r.lastPrice.toFixed(2)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
+                    style={{ color: "var(--ws-text-dim)" }}
+                  >
                     {fmtCompact(r.pmVolume)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
+                    style={{ color: "var(--ws-text-dim)" }}
+                  >
                     {fmtCompact(r.avgVolume90d)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
+                    style={{ color: "var(--ws-text-dim)" }}
+                  >
                     {fmtCompact(r.marketCap)}
                   </td>
-                  <td className="max-w-[8rem] truncate px-2 py-1.5" style={{ color: "var(--ws-text-dim)" }}>
+                  <td className="max-w-[8rem] truncate px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
                     {r.sector ?? "—"}
                   </td>
                 </tr>

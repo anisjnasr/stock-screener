@@ -23,7 +23,7 @@ const SECTIONS: {
 }[] = [
   {
     id: "context",
-    title: "Context",
+    title: "Macro & US equities brief",
     peekText: "3 macro · 4 industry themes · Fed, tariffs, AI capex…",
     stub: "Daily macro writeup and themes will load here after Phases 4–5.",
   },
@@ -47,7 +47,7 @@ const SECTIONS: {
   },
   {
     id: "movers",
-    title: "Top Movers + Policy",
+    title: "Top movers",
     peekText: "15 gappers · $2B+ · 3 policy posts market-relevant",
     stub: "",
   },

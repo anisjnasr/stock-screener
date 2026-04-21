@@ -54,13 +54,16 @@ export default function CollapsibleSection({
               />
             </svg>
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ws-text)" }}>
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span
+              className="shrink-0 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--ws-text)" }}
+            >
               {title}
             </span>
             {collapsed && peekText ? (
               <span
-                className="mt-0.5 block truncate text-[11px] leading-snug transition-opacity duration-300 ease-out"
+                className="min-w-0 flex-1 truncate text-right text-[11px] leading-snug transition-opacity duration-300 ease-out"
                 style={{ color: "var(--ws-text-vdim)" }}
               >
                 {peekText}
