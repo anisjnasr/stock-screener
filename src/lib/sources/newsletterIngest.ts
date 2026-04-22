@@ -122,13 +122,19 @@ export async function ingestMorningNewslettersForDate(
     return { ok: false, error: e instanceof Error ? e.message : "Gmail client error" };
   }
 
-  const list = await gmail.users.messages.list({
-    userId: "me",
-    maxResults: 120,
-    q: "newer_than:2d",
-  });
+  let ids: string[];
+  try {
+    const list = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: 120,
+      q: "newer_than:2d",
+    });
+    ids = list.data.messages?.map((m) => m.id).filter(Boolean) as string[];
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Gmail messages.list failed: ${msg}` };
+  }
 
-  const ids = list.data.messages?.map((m) => m.id).filter(Boolean) as string[];
   if (!ids?.length) {
     return { ok: true, inserted: 0, examined: 0, inMorningWindow: 0 };
   }
@@ -138,29 +144,35 @@ export async function ingestMorningNewslettersForDate(
   let inMorningWindow = 0;
 
   for (const id of ids) {
-    const full = await gmail.users.messages.get({
-      userId: "me",
-      id,
-      format: "full",
-    });
-    const msg = full.data;
-    if (!msg.id) continue;
+    let full;
+    try {
+      full = await gmail.users.messages.get({
+        userId: "me",
+        id,
+        format: "full",
+      });
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: `Gmail messages.get(${id}) failed: ${err}` };
+    }
+    const gmsg = full.data;
+    if (!gmsg.id) continue;
     examined += 1;
-    const internal = Number(msg.internalDate);
+    const internal = Number(gmsg.internalDate);
     if (!Number.isFinite(internal) || internal < startMs || internal >= endMs) continue;
     inMorningWindow += 1;
 
-    const headers = headerMap(msg);
+    const headers = headerMap(gmsg);
     const from = headers["from"] ?? "";
     const sender = parseEmailAddressFromFromHeader(from);
     if (!sender || !allow.has(sender)) continue;
 
     const subject = headers["subject"] ?? null;
-    const body = extractEmailBodyText(msg);
+    const body = extractEmailBodyText(gmsg);
     const receivedAt = new Date(internal).toISOString();
 
     const row = {
-      gmail_message_id: msg.id,
+      gmail_message_id: gmsg.id,
       received_at: receivedAt,
       sender_email: sender,
       subject,

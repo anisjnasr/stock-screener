@@ -39,6 +39,7 @@ jobs:
           echo
           if [ "$code" != "200" ]; then
             echo "::error::Ingest expected HTTP 200, got $code"
+            python3 -c "import json; d=json.load(open('resp-ingest.json')); print('error:', d.get('error', d))" || true
             exit 1
           fi
           python3 -c "import json; j=json.load(open('resp-ingest.json')); assert j.get('ok') is True, j"
@@ -53,6 +54,7 @@ jobs:
           echo
           if [ "$code2" != "200" ]; then
             echo "::error::Macro expected HTTP 200, got $code2"
+            python3 -c "import json; d=json.load(open('resp-macro.json')); print('error:', d.get('error', d))" || true
             exit 1
           fi
           python3 -c "import json; j=json.load(open('resp-macro.json')); assert j.get('ok') is True, j"

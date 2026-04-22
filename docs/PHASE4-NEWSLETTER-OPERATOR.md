@@ -24,6 +24,8 @@ This creates `newsletter_archive` (service role only) and `daily_macro_writeup` 
 
 Approved senders live in `config/newsletters-for-writeups.txt` (one email per line). Edit in git when your subscriptions change.
 
+**Render / standalone builds:** the runtime bundle may not include that file path. The app **falls back to an embedded copy** of the same list (see `src/lib/premarket/newsletter-allowlist.ts`) so ingest still works. After you edit the text file, update the embedded string in that source file too (or set optional env **`NEWSLETTER_ALLOWLIST`** as comma-separated emails).
+
 ## 4. Anthropic + cron auth
 
 - `ANTHROPIC_API_KEY` — already used elsewhere; required for macro generation.
