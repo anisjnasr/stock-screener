@@ -271,10 +271,10 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
 
   const peeks: PremarketPeeks = useMemo(() => {
     const macroText = macroRow?.writeup_text?.trim() ?? "";
-    const macroKw = macroText ? deriveMacroPeekKeywords(macroText) : null;
-    const firstEq = equitiesRow?.bullets?.map((b) => b.trim()).find(Boolean) ?? null;
-    const eqPeek =
-      firstEq != null ? (firstEq.length > 72 ? `${firstEq.slice(0, 69)}…` : firstEq) : null;
+    const macroKw = macroText ? deriveMacroPeekKeywords(macroText, 2) : null;
+    const eqBullets = equitiesRow?.bullets?.map((b) => b.trim()).filter(Boolean) ?? [];
+    const eqPeekParts = eqBullets.slice(0, 2).map((b) => (b.length > 48 ? `${b.slice(0, 45)}…` : b));
+    const eqPeek = eqPeekParts.length ? eqPeekParts.join(" · ") : null;
 
     const stillLoading = macroLoading || equitiesLoading;
     const hasPartial = Boolean(macroKw || eqPeek);

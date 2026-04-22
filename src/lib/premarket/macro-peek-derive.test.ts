@@ -17,4 +17,12 @@ describe("deriveMacroPeekKeywords", () => {
     expect(p).not.toMatch(/Indefinitely Extended/i);
     expect(p).toMatch(/Trump|Iran/i);
   });
+
+  it("limits to two topic chunks when maxTopics is 2", () => {
+    const s =
+      "Oil spiked on tensions. The Fed signaled patience. Earnings breadth improved. Dollar weakened.";
+    const p = deriveMacroPeekKeywords(s, 2);
+    expect(p.split(" - ").length).toBeLessThanOrEqual(2);
+    expect(p.length).toBeLessThanOrEqual(73);
+  });
 });

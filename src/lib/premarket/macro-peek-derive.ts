@@ -1,6 +1,8 @@
 /**
- * Collapsed-header peek for macro: 3–4 short topic keywords (not sentence fragments), e.g.
+ * Collapsed-header peek for macro: short topic keywords (not sentence fragments), e.g.
  * "Trump - Fed Chair Nominee - Markets Slowed".
+ *
+ * @param maxTopics — max distinct topic chunks (default 4). Use 2 for the Macro & US Equities Brief row peek.
  */
 
 const LEADING_STOPS = new Set([
@@ -204,9 +206,11 @@ function topicFromSentence(sentence: string): string {
   return titleCaseChunk(t || s.slice(0, 24).trim());
 }
 
-export function deriveMacroPeekKeywords(writeup: string): string {
+export function deriveMacroPeekKeywords(writeup: string, maxTopics: number = 4): string {
   const text = writeup.replace(/\s+/g, " ").trim();
   if (!text) return "";
+
+  const cap = Number.isFinite(maxTopics) && maxTopics >= 1 ? Math.min(8, Math.floor(maxTopics)) : 4;
 
   const sentences = text
     .split(/(?<=[.!?])\s+/)
@@ -215,13 +219,14 @@ export function deriveMacroPeekKeywords(writeup: string): string {
 
   const chunks: string[] = [];
   for (const sent of sentences) {
-    if (chunks.length >= 4) break;
+    if (chunks.length >= cap) break;
     const topic = topicFromSentence(sent);
     if (!topic) continue;
     if (chunks.length && chunks[chunks.length - 1] === topic) continue;
     chunks.push(topic);
   }
 
+  const maxLen = cap <= 2 ? 72 : 140;
   const out = chunks.join(" - ");
-  return out.length > 140 ? `${out.slice(0, 137)}…` : out;
+  return out.length > maxLen ? `${out.slice(0, maxLen - 1)}…` : out;
 }

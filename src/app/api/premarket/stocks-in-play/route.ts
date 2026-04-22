@@ -1,5 +1,7 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 import { unstable_cache } from "next/cache";
+import { generateSipCatalystMap } from "@/lib/ai/sipCatalyst";
 import { getTickersWithEarningsInLast24Hours } from "@/lib/premarket/earnings-recent";
 import { loadGappersScanOnly, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
 import { fetchPythonTickerNews, isPythonServiceConfigured } from "@/lib/python-service";
@@ -7,6 +9,9 @@ import type { TradingViewScanParams } from "@/lib/sources/tradingViewScreener";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 
 export const dynamic = "force-dynamic";
+
+/** Hard cap on SIP list size (news + catalyst cost control). */
+const SIP_MAX_TICKERS = 8;
 
 /** SIP scan: slightly tighter than generic gappers defaults; body still overrides within clamps. */
 function sipScanFromBody(body: unknown): TradingViewScanParams {
@@ -42,10 +47,17 @@ export async function POST(request: NextRequest) {
     )();
 
     const earnings = await getTickersWithEarningsInLast24Hours();
-    const rows = base.rows.map((r) => ({
+    const merged = base.rows.map((r) => ({
       ...r,
       earningsRecent24h: earnings.has(r.ticker),
     }));
+    const rows = [...merged]
+      .sort((a, b) => {
+        const d = b.gapPct - a.gapPct;
+        if (d !== 0) return d;
+        return a.ticker.localeCompare(b.ticker);
+      })
+      .slice(0, SIP_MAX_TICKERS);
 
     const tickers = rows.map((r) => r.ticker);
     let news: StocksInPlaySuccess["news"] = null;
@@ -64,6 +76,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let catalyst: StocksInPlaySuccess["catalyst"] = null;
+    let catalystError: string | null = null;
+    let catalystSkipped = false;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+    if (rows.length > 0) {
+      if (!anthropicKey) {
+        catalystSkipped = true;
+      } else {
+        try {
+          const anthropic = new Anthropic({ apiKey: anthropicKey });
+          catalyst = await generateSipCatalystMap(anthropic, rows, news);
+        } catch (e) {
+          catalystError = e instanceof Error ? e.message : "Catalyst generation failed";
+          catalyst = null;
+        }
+      }
+    }
+
     const out: StocksInPlaySuccess = {
       ok: true,
       source: base.source,
@@ -71,6 +101,9 @@ export async function POST(request: NextRequest) {
       pythonConfigured: isPythonServiceConfigured(),
       news,
       newsError,
+      catalyst,
+      catalystError,
+      catalystSkipped,
     };
 
     return NextResponse.json(out, {
