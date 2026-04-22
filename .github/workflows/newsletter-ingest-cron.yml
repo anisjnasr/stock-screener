@@ -2,7 +2,7 @@
 #
 # Secrets: APP_BASE_URL, CRON_SECRET (see workflow header in economic-calendar-cron.yml)
 #
-# 11:00 UTC ≈ 7:00 AM US Eastern during daylight saving (EDT). Adjust for standard time if needed.
+# 11:00 UTC ≈ 7:00 AM US Eastern during EDT. Run before `premarket-brief-pipeline.yml` (11:12 UTC).
 
 name: Newsletter ingest
 

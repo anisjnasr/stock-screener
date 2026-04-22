@@ -1,0 +1,118 @@
+# Sequential morning pipeline: macro → equities → themes → theme calendar events.
+# Run after Newsletter ingest so `newsletter_archive` has the 4–7 AM ET window.
+#
+# Schedule (UTC, Mon–Fri only):
+#   11:00 — Newsletter ingest (newsletter-ingest-cron.yml)
+#   11:12 — This pipeline starts (~7:12 AM Eastern during EDT; ~6:12 AM during EST)
+#
+# Secrets: APP_BASE_URL, CRON_SECRET
+#
+# Individual POST routes remain available via workflow_dispatch on each cron workflow.
+
+name: Premarket brief pipeline
+
+on:
+  schedule:
+    - cron: "12 11 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: premarket-brief-pipeline
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Env check
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "BASE_OK=1" >> "$GITHUB_ENV"
+
+      - name: POST /api/cron/macro-writeup
+        if: env.BASE_OK == '1'
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/macro-writeup"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          test "$code" = "200"
+          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+
+      - name: POST /api/cron/equities-writeup
+        if: env.BASE_OK == '1'
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/equities-writeup"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          test "$code" = "200"
+          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+
+      - name: POST /api/cron/theme-extraction
+        if: env.BASE_OK == '1'
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/theme-extraction"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          test "$code" = "200"
+          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+
+      - name: POST /api/cron/theme-event-search
+        if: env.BASE_OK == '1'
+        env:
+          BASE: ${{ secrets.APP_BASE_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_TRIMMED="${BASE%/}"
+          URL="${BASE_TRIMMED}/api/cron/theme-event-search"
+          echo "POST $URL"
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H "Accept: application/json")
+          echo "HTTP $code"
+          cat resp.json
+          echo
+          test "$code" = "200"
+          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"

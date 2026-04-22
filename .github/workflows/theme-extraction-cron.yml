@@ -2,13 +2,11 @@
 #
 # Secrets: APP_BASE_URL, CRON_SECRET
 #
-# 11:22 UTC ≈ 7:22 AM US Eastern during EDT (after equities writeup).
+# Scheduled runs: `premarket-brief-pipeline.yml` (after macro + equities).
 
 name: Theme extraction
 
 on:
-  schedule:
-    - cron: "22 11 * * 1-5"
   workflow_dispatch:
 
 concurrency:
