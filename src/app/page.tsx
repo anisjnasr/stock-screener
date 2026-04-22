@@ -1087,7 +1087,7 @@ export default function Home() {
         )}
         {section === "pre-market" ? (
           <PanelErrorBoundary name="PreMarket">
-            <PreMarketShell />
+            <PreMarketShell onOpenTickerInLists={handleMarketMonitorSymbolSelect} />
           </PanelErrorBoundary>
         ) : (
           <WorkspaceLayout

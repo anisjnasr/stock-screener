@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   let q = supabase
     .from("market_events")
     .select(
-      "id, event_date, event_time_et, event_title, event_category, speaker, location, impact, source_url, source_type, description"
+      "id, event_date, event_time_et, event_title, event_category, speaker, location, impact, source_url, source_type, description, theme_tag, theme_type, theme_rank"
     )
     .gte("event_date", from)
     .lte("event_date", to)

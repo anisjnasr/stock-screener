@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, IBM_Plex_Mono, Barlow_Condensed, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import ProfileProviderWrapper from "@/components/ProfileProviderWrapper";
@@ -14,6 +14,20 @@ const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const barlowCondensed = Barlow_Condensed({
+  variable: "--font-premarket-barlow",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-premarket-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -83,7 +97,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem("stock-research-theme");if(t==="light"){document.documentElement.classList.remove("dark");document.documentElement.classList.add("light")}else if(t==="dark"||!t){document.documentElement.classList.add("dark");document.documentElement.classList.remove("light")}else{var m=window.matchMedia("(prefers-color-scheme:dark)").matches;document.documentElement.classList.toggle("dark",m);document.documentElement.classList.toggle("light",!m)}}catch(e){}})()` }} />
       </head>
       <body
-        className={`${plusJakarta.variable} ${ibmPlexMono.variable} antialiased`}
+        className={`${plusJakarta.variable} ${ibmPlexMono.variable} ${barlowCondensed.variable} ${jetbrainsMono.variable} antialiased`}
       >
         <ProfileProviderWrapper>
           {children}

@@ -1,49 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import type { DailyMacroWriteupRow } from "@/types/newsletter-macro";
 
-type ApiOk = { ok: true; ymd: string; row: DailyMacroWriteupRow | null };
-type ApiErr = { ok: false; error: string };
+export type MacroWriteupProps = {
+  loading: boolean;
+  error: string | null;
+  row: DailyMacroWriteupRow | null;
+  ymd: string | null;
+};
 
-export default function MacroWriteup() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [row, setRow] = useState<DailyMacroWriteupRow | null>(null);
-  const [ymd, setYmd] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/premarket/macro-writeup", { cache: "no-store" });
-        const json = (await res.json()) as ApiOk | ApiErr;
-        if (cancelled) return;
-        if (!res.ok || !json.ok) {
-          setRow(null);
-          setYmd(null);
-          setError(!json.ok ? json.error : res.statusText);
-          return;
-        }
-        setYmd(json.ymd);
-        setRow(json.row);
-      } catch (e) {
-        if (!cancelled) {
-          setRow(null);
-          setYmd(null);
-          setError(e instanceof Error ? e.message : "Failed to load macro writeup");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+export default function MacroWriteup({ loading, error, row, ymd }: MacroWriteupProps) {
   if (loading) {
     return (
       <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>

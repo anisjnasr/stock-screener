@@ -4,6 +4,8 @@ import { useLayoutEffect, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
+import DailyThemesPanel from "./DailyThemesPanel";
+import EquitiesWriteup from "./EquitiesWriteup";
 import MacroWriteup from "./MacroWriteup";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
@@ -15,46 +17,45 @@ import {
   loadGapperFiltersFromStorage,
   type GapperFilterState,
 } from "@/components/premarket/gapper-filters-storage";
+import { usePremarketPeeks } from "@/hooks/usePremarketPeeks";
 
 const SECTIONS: {
   id: PremarketSectionId;
   title: string;
-  peekText: string;
   stub: string;
 }[] = [
   {
     id: "context",
     title: "Macro & US equities brief",
-    peekText: "3 macro · 4 industry themes · Fed, tariffs, AI capex…",
     stub: "",
   },
   {
     id: "sip",
     title: "Stocks in Play",
-    peekText: "Gappers + yfinance headlines (Python service)",
     stub: "",
   },
   {
     id: "calendars",
     title: "Economic calendar",
-    peekText: "Today's high-impact releases · Fed / Treasury / WH / USTR",
     stub: "",
   },
   {
     id: "earnings",
     title: "Earnings",
-    peekText: "YEST: NFLX +9.6 · IBM +8.1 · TODAY BMO: MS, GS, BAC, SCHW",
     stub: "",
   },
   {
     id: "movers",
     title: "Top movers",
-    peekText: "15 gappers · $2B+ · 3 policy posts market-relevant",
     stub: "",
   },
 ];
 
-export default function PreMarketPage() {
+type PreMarketPageProps = {
+  onOpenTickerInLists?: (sym: string) => void;
+};
+
+export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProps) {
   const { collapsed, toggle, setCollapsed, collapseAll, expandAll } = usePremarketLayout();
 
   const [gapperFilters, setGapperFilters] = useState<GapperFilterState>(DEFAULT_GAPPER_FILTER_STATE);
@@ -65,6 +66,19 @@ export default function PreMarketPage() {
     setGapperFiltersHydrated(true);
   }, []);
 
+  const {
+    peeks,
+    macroRow,
+    macroYmd,
+    macroLoading,
+    macroError,
+    equitiesRow,
+    equitiesYmd,
+    equitiesLoading,
+    equitiesError,
+    equitiesSetupHint,
+  } = usePremarketPeeks(gapperFilters, gapperFiltersHydrated);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--ws-bg)" }}>
       <TopBar onCollapseAll={collapseAll} onExpandAll={expandAll} />
@@ -74,7 +88,7 @@ export default function PreMarketPage() {
             key={s.id}
             id={s.id}
             title={s.title}
-            peekText={s.peekText}
+            peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}
             onToggle={() => toggle(s.id)}
           >
@@ -90,13 +104,14 @@ export default function PreMarketPage() {
                 <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
                   Earnings calendar
                 </h3>
-                <EarningsCalendar />
+                <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
               </div>
             ) : s.id === "sip" ? (
               <StocksInPlay
                 collapsed={collapsed.sip}
                 gapperFilters={gapperFilters}
                 filtersHydrated={gapperFiltersHydrated}
+                onOpenTickerInLists={onOpenTickerInLists}
               />
             ) : s.id === "movers" ? (
               <div className="space-y-4">
@@ -108,6 +123,7 @@ export default function PreMarketPage() {
                     filters={gapperFilters}
                     setFilters={setGapperFilters}
                     filtersHydrated={gapperFiltersHydrated}
+                    onOpenTickerInLists={onOpenTickerInLists}
                     onJumpToEarnings={() => {
                       setCollapsed("earnings", false);
                       queueMicrotask(() => {
@@ -128,11 +144,26 @@ export default function PreMarketPage() {
                   <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
                     Today&apos;s macro writeup
                   </h3>
-                  <MacroWriteup />
+                  <MacroWriteup loading={macroLoading} error={macroError} row={macroRow} ymd={macroYmd} />
                 </div>
-                <p className="max-w-prose text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
-                  Daily US equities bullets and active themes will load here after Phases 4.5–5.
-                </p>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                    US equities writeup
+                  </h3>
+                  <EquitiesWriteup
+                    loading={equitiesLoading}
+                    error={equitiesError}
+                    row={equitiesRow}
+                    ymd={equitiesYmd}
+                    setupHint={equitiesSetupHint}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                    Daily themes
+                  </h3>
+                  <DailyThemesPanel />
+                </div>
               </div>
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>

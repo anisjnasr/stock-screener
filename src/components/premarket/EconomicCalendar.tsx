@@ -19,6 +19,9 @@ type MergedCalendarRow = {
   actual: string | null;
   forecast: string | null;
   previous: string | null;
+  /** Market rows only: theme-driven discovery */
+  event_category?: string | null;
+  theme_tag?: string | null;
 };
 
 function formatTimeEt(kind: CalendarKind, hms: string | null): string {
@@ -79,6 +82,8 @@ function toMarketRows(events: MarketEventPublic[]): MergedCalendarRow[] {
     actual: null,
     forecast: null,
     previous: null,
+    event_category: ev.event_category,
+    theme_tag: ev.theme_tag ?? null,
   }));
 }
 
@@ -232,6 +237,18 @@ export default function EconomicCalendar() {
                   ) : (
                     <span className="leading-snug">{row.title}</span>
                   )}
+                  {row.kind === "market" && row.event_category === "theme_driven" ? (
+                    <span
+                      className="mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                      style={{
+                        background: "rgba(168, 85, 247, 0.12)",
+                        color: "#c084fc",
+                      }}
+                      title={row.theme_tag ? `Theme: ${row.theme_tag}` : "Theme-driven (web discovery)"}
+                    >
+                      Theme
+                    </span>
+                  ) : null}
                   <span className="mt-0.5 block text-[11px] sm:hidden" style={{ color: "var(--ws-text-dim)" }}>
                     A {dash(row.actual)} · F {dash(row.forecast)} · P {dash(row.previous)}
                   </span>

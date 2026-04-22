@@ -25,6 +25,10 @@ export type MarketEventInsert = {
   external_id: string | null;
   description: string | null;
   updated_at: string;
+  /** Phase 6 theme-driven rows */
+  theme_tag?: string | null;
+  theme_type?: "macro" | "industry" | null;
+  theme_rank?: number | null;
 };
 
 export type MarketEventPublic = {
@@ -39,6 +43,9 @@ export type MarketEventPublic = {
   source_url: string | null;
   source_type: string;
   description: string | null;
+  theme_tag?: string | null;
+  theme_type?: string | null;
+  theme_rank?: number | null;
 };
 
 export type MarketEventsResponse = {

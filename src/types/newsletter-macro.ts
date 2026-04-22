@@ -21,3 +21,15 @@ export type DailyMacroWriteupRow = {
   generated_at: string;
   is_flagged: boolean;
 };
+
+/** One row in `daily_equities_writeup` (Phase 4.5). */
+export type DailyEquitiesWriteupRow = {
+  id: string;
+  writeup_date: string;
+  bullets: string[];
+  source_newsletter_ids: string[] | null;
+  model_used: string;
+  fallback_used: boolean;
+  generated_at: string;
+  is_flagged: boolean;
+};

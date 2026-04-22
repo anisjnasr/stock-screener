@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
@@ -29,6 +30,9 @@ function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
+
+const GAPPER_SCAN_INFO =
+  "Market cap values are full USD (not millions). Optional TV cookies: TRADINGVIEW_SESSIONID, TRADINGVIEW_SESSIONID_SIGN on the server.";
 
 /** Parse a plain decimal from a filter field on blur; empty = cancel edit (revert). */
 function parseDecimalBlur(raw: string): number | null {
@@ -138,6 +142,7 @@ function GapperSortTh({
 }
 
 type PremarketGappersProps = {
+  onOpenTickerInLists?: (sym: string) => void;
   onJumpToEarnings?: () => void;
   filters: GapperFilterState;
   setFilters: Dispatch<SetStateAction<GapperFilterState>>;
@@ -146,6 +151,7 @@ type PremarketGappersProps = {
 };
 
 export default function PremarketGappers({
+  onOpenTickerInLists,
   onJumpToEarnings,
   filters,
   setFilters,
@@ -167,6 +173,8 @@ export default function PremarketGappers({
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
   /** Wall time of the last completed `run()` (success or error), in seconds. */
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
+  /** Row count from last successful scan (updates on Apply + Refresh). */
+  const [resultsCount, setResultsCount] = useState<number | null>(null);
 
   const clearFilterInputDrafts = useCallback(() => {
     setMcapMinDraft(null);
@@ -206,12 +214,15 @@ export default function PremarketGappers({
       const json = (await res.json()) as GappersResponse & { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
         setRows(null);
+        setResultsCount(null);
         setError(json.error ?? res.statusText);
         return;
       }
       setRows(json.rows);
+      setResultsCount(json.rows?.length ?? 0);
     } catch (e) {
       setRows(null);
+      setResultsCount(null);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -246,27 +257,50 @@ export default function PremarketGappers({
     setFilters((prev) => ({ ...prev, [key]: value, capPreset: "custom" }));
   }
 
-  const inputClsBase =
-    "min-w-0 rounded border px-2 py-1 text-right tabular-nums outline-none ws-focus-ring bg-[color:var(--ws-bg)] text-[var(--ws-text)]";
-  const inputCls = `w-full ${inputClsBase} max-w-[7.5rem] sm:max-w-[7.5rem]`;
-  const inputClsNarrow = `w-full ${inputClsBase} max-w-[4.25rem] sm:max-w-[4.25rem]`;
-  const filterLabelCls = "flex min-w-0 flex-col items-end gap-0.5";
-  const filterLabelSpanCls =
-    "block w-full text-right text-[10px] font-medium uppercase tracking-wide";
+  const gapFilterLabelStyle: CSSProperties = {
+    fontFamily: "var(--font-premarket-barlow), sans-serif",
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: "0.8px",
+    textTransform: "uppercase",
+    color: "#8a8a8a",
+    whiteSpace: "nowrap",
+  };
+  const gapFilterInputStyle: CSSProperties = {
+    height: 26,
+    padding: "4px 7px",
+    fontFamily: "var(--font-premarket-mono), monospace",
+    fontSize: 12,
+    background: "#1c1c1c",
+    border: "1px solid #333",
+    borderRadius: 3,
+    color: "#e5e5e5",
+    boxSizing: "border-box",
+  };
 
   return (
     <div className="space-y-3">
-      <p className="text-[10px] leading-snug" style={{ color: "var(--ws-text-dim)" }}>
-        Market cap values are full USD (not millions). Optional TV cookies:{" "}
-        <code className="rounded bg-[color:var(--ws-bg)] px-0.5">TRADINGVIEW_SESSIONID</code>,{" "}
-        <code className="rounded bg-[color:var(--ws-bg)] px-0.5">TRADINGVIEW_SESSIONID_SIGN</code> on the server.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+          Results: {resultsCount === null ? "—" : resultsCount}
+        </span>
+        <button
+          type="button"
+          className="ws-focus-ring rounded px-0.5 leading-none"
+          style={{ color: "var(--ws-text-dim)", fontSize: 14, background: "none", border: "none", cursor: "help" }}
+          title={GAPPER_SCAN_INFO}
+          aria-label={GAPPER_SCAN_INFO}
+        >
+          ⓘ
+        </button>
+      </div>
 
-      <div className="flex flex-wrap items-end gap-2 gap-y-2">
-        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Cap preset
-          </span>
+      <div
+        className="flex flex-wrap items-center gap-[14px] px-[14px] py-[10px]"
+        style={{ alignItems: "center", fontFamily: "var(--font-premarket-barlow), sans-serif" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>Preset</span>
           <select
             value={filters.capPreset === "custom" ? "custom" : filters.capPreset}
             onChange={(e) => {
@@ -277,8 +311,8 @@ export default function PremarketGappers({
               }
               applyPreset(v as Exclude<GapperCapPreset, "custom">);
             }}
-            className={`${inputCls} text-right`}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="tabular-nums outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 110 }}
           >
             <option value="all">All (min $100M)</option>
             <option value="mid">Mid ($2B–$10B)</option>
@@ -286,17 +320,18 @@ export default function PremarketGappers({
             <option value="mega">Mega ($200B+)</option>
             <option value="custom">Custom</option>
           </select>
-        </label>
-        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Min mcap USD
-          </span>
+        </div>
+
+        <div className="h-5 w-px shrink-0 bg-[#333]" aria-hidden />
+
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>MCap</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            className={inputCls}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 60 }}
             value={mcapMinDraft ?? abbreviateUsdFilterDisplay(filters.minMarketCap ?? 0)}
             onFocus={() => setMcapMinDraft(formatUsdIntInputDisplay(filters.minMarketCap))}
             onChange={(e) => setMcapMinDraft(e.target.value)}
@@ -312,17 +347,13 @@ export default function PremarketGappers({
               }));
             }}
           />
-        </label>
-        <label className={`${filterLabelCls} min-w-[5.5rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Max mcap USD
-          </span>
+          <span style={{ color: "#8a8a8a", fontSize: 12 }}>–</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            className={inputCls}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 60 }}
             value={mcapMaxDraft ?? abbreviateUsdFilterDisplay(filters.maxMarketCap ?? 0)}
             onFocus={() => setMcapMaxDraft(formatUsdIntInputDisplay(filters.maxMarketCap))}
             onChange={(e) => setMcapMaxDraft(e.target.value)}
@@ -338,17 +369,16 @@ export default function PremarketGappers({
               }));
             }}
           />
-        </label>
-        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Min price
-          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>Price ≥</span>
           <input
             type="text"
             inputMode="decimal"
             autoComplete="off"
-            className={inputClsNarrow}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 50 }}
             value={minPriceDraft === null ? String(filters.minPrice) : minPriceDraft}
             onFocus={() => setMinPriceDraft(String(filters.minPrice))}
             onChange={(e) => setMinPriceDraft(e.target.value)}
@@ -360,17 +390,16 @@ export default function PremarketGappers({
               setCustomField("minPrice", Math.max(0.01, p));
             }}
           />
-        </label>
-        <label className={`${filterLabelCls} min-w-[3.25rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Min gap %
-          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>Gap % ≥</span>
           <input
             type="text"
             inputMode="decimal"
             autoComplete="off"
-            className={inputClsNarrow}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 50 }}
             value={minGapDraft === null ? String(filters.minGapPct) : minGapDraft}
             onFocus={() => setMinGapDraft(String(filters.minGapPct))}
             onChange={(e) => setMinGapDraft(e.target.value)}
@@ -382,17 +411,16 @@ export default function PremarketGappers({
               setCustomField("minGapPct", Math.max(0, p));
             }}
           />
-        </label>
-        <label className={`${filterLabelCls} min-w-[4rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Min PM vol
-          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>PM Vol ≥</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            className={inputCls}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 60 }}
             value={minPmVolDraft === null ? String(filters.minPmVolume) : minPmVolDraft}
             onFocus={() => setMinPmVolDraft(String(filters.minPmVolume))}
             onChange={(e) => setMinPmVolDraft(e.target.value)}
@@ -404,17 +432,16 @@ export default function PremarketGappers({
               setCustomField("minPmVolume", Math.max(0, Math.round(p)));
             }}
           />
-        </label>
-        <label className={`${filterLabelCls} min-w-[5rem]`}>
-          <span className={filterLabelSpanCls} style={{ color: "var(--ws-text-dim)" }}>
-            Min avg vol
-          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>Avg Vol ≥</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            className={inputCls}
-            style={{ borderColor: "var(--ws-border)" }}
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 60 }}
             value={minAvgVolDraft ?? abbreviateUsdFilterDisplay(filters.minAvgVolume ?? 0)}
             onFocus={() => setMinAvgVolDraft(formatUsdIntInputDisplay(filters.minAvgVolume))}
             onChange={(e) => setMinAvgVolDraft(e.target.value)}
@@ -426,39 +453,63 @@ export default function PremarketGappers({
               setCustomField("minAvgVolume", Math.max(0, Math.round(p)));
             }}
           />
-        </label>
+        </div>
+
+        <div className="min-w-2 flex-1" aria-hidden />
+
         <button
           type="button"
           onClick={applyFilters}
           disabled={loading}
-          className="rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
-          style={{ borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+          className="shrink-0 rounded font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
+          style={{
+            height: 26,
+            padding: "3px 10px",
+            fontSize: 10,
+            border: "1px solid var(--ws-cyan)",
+            color: "var(--ws-cyan)",
+            background: "rgba(59, 191, 207, 0.08)",
+          }}
         >
-          Apply filters
+          Apply
         </button>
-        <div className="flex items-end gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              clearFilterInputDrafts();
-              void run(filters);
+
+        <button
+          type="button"
+          onClick={() => {
+            clearFilterInputDrafts();
+            void run(filters);
+          }}
+          disabled={loading}
+          className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
+          style={{
+            height: 26,
+            padding: "3px 10px",
+            fontSize: 14,
+            lineHeight: 1,
+            border: "1px solid var(--ws-border)",
+            color: "var(--ws-text-dim)",
+            background: "var(--ws-bg)",
+          }}
+          title="Refresh scan"
+          aria-label="Refresh scan"
+        >
+          ↻
+        </button>
+
+        {lastRefreshSeconds != null ? (
+          <span
+            className="shrink-0 tabular-nums"
+            style={{
+              fontFamily: "var(--font-premarket-mono), monospace",
+              fontSize: 11,
+              color: "#8a8a8a",
             }}
-            disabled={loading}
-            className="rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
-            style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+            title="Duration of the last gappers / TradingView request"
           >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          {lastRefreshSeconds != null ? (
-            <span
-              className="shrink-0 pb-1 text-[11px] font-medium tabular-nums leading-none"
-              style={{ color: "var(--ws-text-dim)" }}
-              title="Duration of the last gappers / TradingView request"
-            >
-              {lastRefreshSeconds.toFixed(2)}s
-            </span>
-          ) : null}
-        </div>
+            {lastRefreshSeconds.toFixed(2)}s
+          </span>
+        ) : null}
       </div>
 
       {error ? (
@@ -587,11 +638,19 @@ export default function PremarketGappers({
                       <span className="inline-block w-6" aria-hidden />
                     )}
                   </td>
-                  <td
-                    className="whitespace-nowrap px-2 py-1.5 text-left font-mono font-semibold"
-                    style={{ color: "var(--ws-text)" }}
-                  >
-                    {r.ticker}
+                  <td className="whitespace-nowrap px-2 py-1.5 text-left font-mono font-semibold">
+                    {onOpenTickerInLists ? (
+                      <button
+                        type="button"
+                        className="ws-focus-ring rounded underline-offset-2 hover:underline"
+                        style={{ color: "var(--ws-text)", font: "inherit", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                        onClick={() => onOpenTickerInLists(r.ticker)}
+                      >
+                        {r.ticker}
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--ws-text)" }}>{r.ticker}</span>
+                    )}
                   </td>
                   <td className="max-w-[12rem] truncate px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
                     {r.companyName ?? "—"}

@@ -5,9 +5,13 @@ import { getSupabase } from "@/lib/supabase";
 import type { EarningsCalendarBucket, EarningsCalendarPublic, EarningsCalendarResponse } from "@/types/earnings-calendar";
 
 const TIME_ORDER: Record<string, number> = { bmo: 0, dmh: 1, amc: 2 };
+const FIFTY_B_USD = 50_000_000_000;
 
-function sortBucket(rows: EarningsCalendarPublic[]): EarningsCalendarPublic[] {
+function sortBucketByMcap(rows: EarningsCalendarPublic[], mcapByTicker: Map<string, number>): EarningsCalendarPublic[] {
   return [...rows].sort((a, b) => {
+    const ma = mcapByTicker.get(a.ticker) ?? 0;
+    const mb = mcapByTicker.get(b.ticker) ?? 0;
+    if (ma !== mb) return mb - ma;
     const ta = a.report_time ?? "dmh";
     const tb = b.report_time ?? "dmh";
     const oa = TIME_ORDER[ta] ?? 1;
@@ -43,13 +47,40 @@ function rowToPublic(r: Record<string, unknown>): EarningsCalendarPublic {
   };
 }
 
+async function loadMcapOver50b(supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from("big_name_universe")
+    .select("ticker, market_cap_usd")
+    .gt("market_cap_usd", FIFTY_B_USD);
+
+  if (error) {
+    console.error("[earnings-calendar] big_name_universe:", error.message);
+    return new Map();
+  }
+
+  const m = new Map<string, number>();
+  for (const raw of data ?? []) {
+    const row = raw as { ticker?: string; market_cap_usd?: unknown };
+    const t = String(row.ticker ?? "").toUpperCase();
+    const mc = row.market_cap_usd != null ? Number(row.market_cap_usd) : NaN;
+    if (t && Number.isFinite(mc)) m.set(t, mc);
+  }
+  return m;
+}
+
 /**
  * Big-name earnings for ET yesterday / today / tomorrow (anon + RLS SELECT).
+ * Eligibility: tickers with market cap &gt; $50B in `big_name_universe`. Sorted by market cap desc per day bucket.
  */
 export async function GET() {
   const supabase = getSupabase();
   if (!supabase) {
     return NextResponse.json({ error: "Supabase is not configured" }, { status: 503 });
+  }
+
+  const mcapByTicker = await loadMcapOver50b(supabase);
+  if (mcapByTicker.size === 0) {
+    console.warn("[earnings-calendar] no tickers over $50B in big_name_universe — check universe refresh");
   }
 
   const anchor = ymdInEt();
@@ -78,6 +109,7 @@ export async function GET() {
   for (const raw of data ?? []) {
     const row = rowToPublic(raw as Record<string, unknown>);
     if (!row.id || !row.ticker) continue;
+    if (!mcapByTicker.has(row.ticker)) continue;
     if (row.report_date === yesterday) buckets.yesterday.push(row);
     else if (row.report_date === anchor) buckets.today.push(row);
     else if (row.report_date === tomorrow) buckets.tomorrow.push(row);
@@ -86,9 +118,9 @@ export async function GET() {
   const flat = [...buckets.yesterday, ...buckets.today, ...buckets.tomorrow];
   await attachPriorQuarterActuals(supabase, flat);
 
-  buckets.yesterday = sortBucket(buckets.yesterday);
-  buckets.today = sortBucket(buckets.today);
-  buckets.tomorrow = sortBucket(buckets.tomorrow);
+  buckets.yesterday = sortBucketByMcap(buckets.yesterday, mcapByTicker);
+  buckets.today = sortBucketByMcap(buckets.today, mcapByTicker);
+  buckets.tomorrow = sortBucketByMcap(buckets.tomorrow, mcapByTicker);
 
   const body: EarningsCalendarResponse = { anchor, buckets };
 

@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PREMARKET_CLAUDE_MODEL, streamClaudeText } from "@/lib/ai/claudeStream";
+import { addCalendarDaysYmd } from "@/lib/et-ymd";
+import { summarizeThemesForMacroPrompt, fetchDailyThemesForDate } from "@/lib/premarket/dailyThemesRead";
 import { etMorningNewsletterWindow } from "@/lib/premarket/et-morning-window";
 import type { NewsletterArchiveRow } from "@/types/newsletter-macro";
-
-const MACRO_MODEL = "claude-sonnet-4-20250514";
 
 function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject: string | null; text: string }[]; yesterdayThemes: string }): string {
   const n = params.bodies.length;
@@ -24,7 +25,7 @@ function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject:
     blocks,
     "",
     "Yesterday's themes (for continuity):",
-    params.yesterdayThemes || "(No theme history yet — Phase 5 not built.)",
+    params.yesterdayThemes || "(No themes recorded for the prior session.)",
     "",
     "Focus on:",
     "- Fed / monetary policy developments",
@@ -41,37 +42,13 @@ function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject:
   ].join("\n");
 }
 
-async function collectStreamText(
-  anthropic: Anthropic,
-  params: {
-    system: string;
-    user: string;
-    tools?: Anthropic.Messages.MessageCreateParams["tools"];
-    toolChoice?: Anthropic.Messages.MessageCreateParams["tool_choice"];
-    maxTokens?: number;
-  }
-): Promise<string> {
-  const stream = anthropic.messages.stream({
-    model: MACRO_MODEL,
-    max_tokens: params.maxTokens ?? 1400,
-    temperature: 0.2,
-    system: params.system,
-    messages: [{ role: "user", content: params.user }],
-    ...(params.tools ? { tools: params.tools, tool_choice: params.toolChoice ?? { type: "auto" } } : {}),
-  });
-  let text = "";
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      text += event.delta.text;
-    }
-  }
-  return text.trim();
-}
-
-async function macroFromWebSearchFallback(anthropic: Anthropic, ymd: string): Promise<string> {
+async function macroFromWebSearchFallback(anthropic: Anthropic, ymd: string, yesterdayThemes: string): Promise<string> {
   const user = [
     "No trusted morning newsletters were ingested for today (empty mailbox, filters, or Gmail outage).",
     `Today's calendar date (US Eastern) is ${ymd}.`,
+    "",
+    "Yesterday's themes (for continuity):",
+    yesterdayThemes || "(No themes recorded for the prior session.)",
     "",
     "Use the web_search tool to gather **current** overnight information relevant to **US macro markets** (Fed, data, geopolitics, policy, cross-asset drivers).",
     "Then write a **3-5 sentence** macro briefing in the same style as a buy-side morning note: terse, causal, specific.",
@@ -79,7 +56,7 @@ async function macroFromWebSearchFallback(anthropic: Anthropic, ymd: string): Pr
     "Output ONLY the 3-5 sentence paragraph. No preamble, no headers.",
   ].join("\n");
 
-  return collectStreamText(anthropic, {
+  return streamClaudeText(anthropic, {
     system:
       "You produce factual US macro briefings. Prefer primary sources surfaced by web_search. If the web is inconclusive, say what is uncertain instead of inventing specifics.",
     user,
@@ -90,7 +67,7 @@ async function macroFromWebSearchFallback(anthropic: Anthropic, ymd: string): Pr
 }
 
 async function macroFromNewsletters(anthropic: Anthropic, prompt: string): Promise<string> {
-  return collectStreamText(anthropic, {
+  return streamClaudeText(anthropic, {
     system:
       "You synthesize macro research accurately. Never quote sources verbatim; paraphrase. If inputs conflict, briefly reflect the tension.",
     user: prompt,
@@ -135,10 +112,14 @@ export async function generateAndStoreDailyMacroWriteup(
   let fallbackUsed: boolean;
   const sourceIds: string[] = [];
 
+  const priorYmd = addCalendarDaysYmd(ymd, -1);
+  const priorThemes = await fetchDailyThemesForDate(supabase, priorYmd);
+  const yesterdayThemes = summarizeThemesForMacroPrompt(priorThemes);
+
   if (archives.length === 0) {
     fallbackUsed = true;
     try {
-      writeupText = await macroFromWebSearchFallback(anthropic, ymd);
+      writeupText = await macroFromWebSearchFallback(anthropic, ymd, yesterdayThemes);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Web-search macro failed" };
     }
@@ -150,7 +131,7 @@ export async function generateAndStoreDailyMacroWriteup(
       text: r.body_text,
     }));
     for (const r of archives) sourceIds.push(r.id);
-    const prompt = buildNewsletterMacroPrompt({ bodies, yesterdayThemes: "" });
+    const prompt = buildNewsletterMacroPrompt({ bodies, yesterdayThemes });
     try {
       writeupText = await macroFromNewsletters(anthropic, prompt);
     } catch (e) {
@@ -163,7 +144,7 @@ export async function generateAndStoreDailyMacroWriteup(
       writeup_date: ymd,
       writeup_text: writeupText,
       source_newsletter_ids: sourceIds.length ? sourceIds : null,
-      model_used: MACRO_MODEL,
+      model_used: PREMARKET_CLAUDE_MODEL,
       fallback_used: fallbackUsed,
       generated_at: new Date().toISOString(),
       is_flagged: false,

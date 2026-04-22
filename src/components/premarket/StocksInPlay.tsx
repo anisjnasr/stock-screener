@@ -11,6 +11,7 @@ type StocksInPlayProps = {
   collapsed: boolean;
   gapperFilters: GapperFilterState;
   filtersHydrated: boolean;
+  onOpenTickerInLists?: (sym: string) => void;
 };
 
 function fmtPct(n: number): string {
@@ -51,7 +52,7 @@ function NewsList({ items }: { items: PythonNewsItem[] }) {
   );
 }
 
-export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated }: StocksInPlayProps) {
+export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated, onOpenTickerInLists }: StocksInPlayProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
   const [pythonConfigured, setPythonConfigured] = useState(false);
@@ -190,9 +191,20 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
               }}
             >
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="font-mono text-sm font-semibold" style={{ color: "var(--ws-text)" }}>
-                  {r.ticker}
-                </span>
+                {onOpenTickerInLists ? (
+                  <button
+                    type="button"
+                    className="font-mono text-sm font-semibold ws-focus-ring rounded underline-offset-2 hover:underline"
+                    style={{ color: "var(--ws-text)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                    onClick={() => onOpenTickerInLists(r.ticker)}
+                  >
+                    {r.ticker}
+                  </button>
+                ) : (
+                  <span className="font-mono text-sm font-semibold" style={{ color: "var(--ws-text)" }}>
+                    {r.ticker}
+                  </span>
+                )}
                 <span className="font-mono text-xs tabular-nums" style={{ color: r.gapPct >= 0 ? "#5bbd6e" : "#e05a5a" }}>
                   {fmtPct(r.gapPct)}
                 </span>

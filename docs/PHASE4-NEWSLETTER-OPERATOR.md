@@ -12,8 +12,8 @@ This creates `newsletter_archive` (service role only) and `daily_macro_writeup` 
 
 1. Create a Google Cloud project → enable **Gmail API**.
 2. Configure **OAuth consent** (External / Testing) and add yourself as a test user.
-3. Create **OAuth client ID** → type **Web application**; add redirect URI **`https://developers.google.com/oauthplayground`** (used only to mint tokens).
-4. In **[OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)** (gear → use your own credentials), authorize **`https://www.googleapis.com/auth/gmail.readonly`**, exchange code, copy **refresh token**.
+3. Create **OAuth client ID** → type **Web application**; add redirect URI `**https://developers.google.com/oauthplayground`** (used only to mint tokens).
+4. In **[OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)** (gear → use your own credentials), authorize `**https://www.googleapis.com/auth/gmail.readonly`**, exchange code, copy **refresh token**.
 5. Store in production (and `.env.local` for dev):
 
 - `GOOGLE_CLIENT_ID`
@@ -24,7 +24,7 @@ This creates `newsletter_archive` (service role only) and `daily_macro_writeup` 
 
 Approved senders live in `config/newsletters-for-writeups.txt` (one email per line). Edit in git when your subscriptions change.
 
-**Render / standalone builds:** the runtime bundle may not include that file path. The app **falls back to an embedded copy** of the same list (see `src/lib/premarket/newsletter-allowlist.ts`) so ingest still works. After you edit the text file, update the embedded string in that source file too (or set optional env **`NEWSLETTER_ALLOWLIST`** as comma-separated emails).
+**Render / standalone builds:** the runtime bundle may not include that file path. The app **falls back to an embedded copy** of the same list (see `src/lib/premarket/newsletter-allowlist.ts`) so ingest still works. After you edit the text file, update the embedded string in that source file too (or set optional env `**NEWSLETTER_ALLOWLIST`** as comma-separated emails).
 
 ## 4. Anthropic + cron auth
 
@@ -71,7 +71,7 @@ Optional body override (advanced): POST JSON `{"ymd":"2026-04-20"}` on each cron
 
 ## 6b. GitHub verify (step 4)
 
-1. Repo **Settings → Secrets and variables → Actions**: set **`APP_BASE_URL`**, **`CRON_SECRET`** (same values as production).
+1. Repo **Settings → Secrets and variables → Actions**: set `**APP_BASE_URL`**, `**CRON_SECRET**` (same values as production).
 2. **Actions → Phase 4 newsletter verify → Run workflow**.
 3. Confirm green; check Pre-market **Today’s macro writeup** on the site.
 

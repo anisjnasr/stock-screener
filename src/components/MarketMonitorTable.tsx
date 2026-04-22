@@ -199,7 +199,7 @@ export default function MarketMonitorTable({
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible px-2 sm:px-4 py-3 sm:py-4" style={{ background: "var(--ws-bg2)" }}>
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible px-1 sm:px-2 py-2 sm:py-3" style={{ background: "var(--ws-bg2)" }}>
       {mmModal && onSymbolSelect && (
         <MarketMonitorConstituentsModal
           open
@@ -231,10 +231,10 @@ export default function MarketMonitorTable({
         <table className="min-w-max whitespace-nowrap text-ws-body text-center border-collapse">
           <thead>
             <tr>
-              <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th scope="col" className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-r" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
               <th
                 scope="colgroup"
-                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 text-sm font-bold tracking-wide"
+                className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 text-xs font-bold tracking-wide"
                 colSpan={6}
                 style={{ background: "var(--ws-mm-header-gold)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
@@ -242,13 +242,13 @@ export default function MarketMonitorTable({
               </th>
               <th
                 scope="colgroup"
-                className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l text-sm font-bold tracking-wide"
+                className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-l text-xs font-bold tracking-wide"
                 colSpan={8}
                 style={{ background: "var(--ws-mm-header-green)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Secondary Breadth Indicators
               </th>
-              <th scope="col" className="sticky top-0 z-10 px-3 py-2.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th scope="col" className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-l" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
               {[
@@ -280,7 +280,7 @@ export default function MarketMonitorTable({
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.375rem] z-10 px-3 py-1 border-b text-xs font-bold${edge}`}
+                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b text-[11px] font-bold${edge}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -289,7 +289,7 @@ export default function MarketMonitorTable({
               })}
               <th
                 scope="col"
-                className="sticky top-[2.375rem] z-10 px-3 py-1 border-b border-l text-xs font-bold"
+                className="sticky top-[2.125rem] z-10 px-1 py-0.5 border-b border-l text-[11px] font-bold"
                 style={{ background: "var(--ws-mm-header-gold)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Stock Universe
@@ -306,139 +306,139 @@ export default function MarketMonitorTable({
               const pair52w = getPairCellClassFull(row.nnh52wHighs ?? 0, row.nnh52wLows ?? 0);
               return (
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
-                <td className="pl-3 pr-7 py-1.5 whitespace-nowrap text-right tabular-nums border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
+                <td className="pl-1 pr-1.5 py-1 whitespace-nowrap text-right tabular-nums border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
                   {formatDateDmy(row.date)}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair4}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up4pct", row.date)}
                     >
                       {fmtInt(row.up4pct)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair4}`}>{fmtInt(row.up4pct)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pair4}`}>{fmtInt(row.up4pct)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair4}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair4}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down4pct", row.date)}
                     >
                       {fmtInt(row.down4pct)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair4}`}>{fmtInt(row.down4pct)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pair4}`}>{fmtInt(row.down4pct)}</span>
                   )}
                 </td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
+                <td className={`pl-1 pr-1.5 py-1 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
                   {fmtRatio(row.ratio5d)}
                 </td>
-                <td className={`pl-3 pr-7 py-1.5 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
+                <td className={`pl-1 pr-1.5 py-1 text-right tabular-nums ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
                   {fmtRatio(row.ratio10d)}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pairQ}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_qtr", row.date)}
                     >
                       {fmtInt(row.up25pct_qtr)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairQ}`}>{fmtInt(row.up25pct_qtr)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pairQ}`}>{fmtInt(row.up25pct_qtr)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairQ}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pairQ}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_qtr", row.date)}
                     >
                       {fmtInt(row.down25pct_qtr)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairQ}`}>{fmtInt(row.down25pct_qtr)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pairQ}`}>{fmtInt(row.down25pct_qtr)}</span>
                   )}
                 </td>
                 <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pairM}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_month", row.date)}
                     >
                       {fmtInt(row.up25pct_month)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairM}`}>{fmtInt(row.up25pct_month)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pairM}`}>{fmtInt(row.up25pct_month)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pairM}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pairM}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_month", row.date)}
                     >
                       {fmtInt(row.down25pct_month)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pairM}`}>{fmtInt(row.down25pct_month)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pairM}`}>{fmtInt(row.down25pct_month)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair50}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up50pct_month", row.date)}
                     >
                       {fmtInt(row.up50pct_month)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair50}`}>{fmtInt(row.up50pct_month)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pair50}`}>{fmtInt(row.up50pct_month)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair50}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair50}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down50pct_month", row.date)}
                     >
                       {fmtInt(row.down50pct_month)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair50}`}>{fmtInt(row.down50pct_month)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pair50}`}>{fmtInt(row.down50pct_month)}</span>
                   )}
                 </td>
                 <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair52w}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair52w}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_highs", row.date)}
                     >
                       {fmtInt(row.nnh52wHighs ?? 0)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums border-l ${pair52w}`} style={{ borderColor: "var(--ws-border)" }}>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums border-l ${pair52w}`} style={{ borderColor: "var(--ws-border)" }}>
                       {fmtInt(row.nnh52wHighs ?? 0)}
                     </span>
                   )}
@@ -447,28 +447,28 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit ${pair52w}`}
+                      className={`ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit ${pair52w}`}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_lows", row.date)}
                     >
                       {fmtInt(row.nnh52wLows ?? 0)}
                     </button>
                   ) : (
-                    <span className={`block pl-3 pr-7 py-1.5 text-right tabular-nums ${pair52w}`}>{fmtInt(row.nnh52wLows ?? 0)}</span>
+                    <span className={`block pl-1 pr-1.5 py-1 text-right tabular-nums ${pair52w}`}>{fmtInt(row.nnh52wLows ?? 0)}</span>
                   )}
                 </td>
                 <td className="p-0">
                   {drillable ? (
                     <button
                       type="button"
-                      className="ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit"
+                      className="ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit"
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("universe_above_50d", row.date)}
                     >
                       {fmtUniverseBreadthPct(row.universePctAbove50d)}
                     </button>
                   ) : (
-                    <span className="block pl-3 pr-7 py-1.5 text-right tabular-nums">
+                    <span className="block pl-1 pr-1.5 py-1 text-right tabular-nums">
                       {fmtUniverseBreadthPct(row.universePctAbove50d)}
                     </span>
                   )}
@@ -477,19 +477,19 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className="ws-mm-cell-drill w-full pl-3 pr-7 py-1.5 text-right tabular-nums text-inherit"
+                      className="ws-mm-cell-drill w-full pl-1 pr-1.5 py-1 text-right tabular-nums text-inherit"
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("universe_above_200d", row.date)}
                     >
                       {fmtUniverseBreadthPct(row.universePctAbove200d)}
                     </button>
                   ) : (
-                    <span className="block pl-3 pr-7 py-1.5 text-right tabular-nums">
+                    <span className="block pl-1 pr-1.5 py-1 text-right tabular-nums">
                       {fmtUniverseBreadthPct(row.universePctAbove200d)}
                     </span>
                   )}
                 </td>
-                <td className="pl-3 pr-7 py-1.5 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>
+                <td className="pl-1 pr-1.5 py-1 text-right tabular-nums border-l" style={{ borderColor: "var(--ws-border)" }}>{fmtInt(row.universe)}</td>
               </tr>
               );
             })}
