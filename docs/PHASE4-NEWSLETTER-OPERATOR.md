@@ -12,8 +12,8 @@ This creates `newsletter_archive` (service role only) and `daily_macro_writeup` 
 
 1. Create a Google Cloud project → enable **Gmail API**.
 2. Configure **OAuth consent** (External / Testing) and add yourself as a test user.
-3. Create **OAuth client ID** → type **Desktop** (or Web with `http://localhost` redirect if you prefer).
-4. Run a one-time OAuth flow on your machine to obtain a **refresh token** for your Gmail account. (Use Google’s OAuth playground or a small local script with `googleapis` — many guides exist for “Gmail API refresh token desktop app”.)
+3. Create **OAuth client ID** → type **Web application**; add redirect URI **`https://developers.google.com/oauthplayground`** (used only to mint tokens).
+4. In **[OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)** (gear → use your own credentials), authorize **`https://www.googleapis.com/auth/gmail.readonly`**, exchange code, copy **refresh token**.
 5. Store in production (and `.env.local` for dev):
 
 - `GOOGLE_CLIENT_ID`
@@ -31,10 +31,15 @@ Approved senders live in `config/newsletters-for-writeups.txt` (one email per li
 
 ## 5. GitHub Actions
 
-Workflows:
+**One-click verify (after `APP_BASE_URL` + `CRON_SECRET` repo secrets exist):**
 
-- `.github/workflows/newsletter-ingest-cron.yml` — weekdays **11:00 UTC** (~7:00 AM Eastern during **EDT**).
-- `.github/workflows/macro-writeup-cron.yml` — weekdays **11:05 UTC** (~7:05 AM Eastern during **EDT**).
+- GitHub → **Actions** → workflow **“Phase 4 newsletter verify”** → **Run workflow**  
+- Runs **ingest** then **macro** in one job: `.github/workflows/newsletter-phase4-verify.yml`
+
+**Scheduled weekday crons:**
+
+- `.github/workflows/newsletter-ingest-cron.yml` — **11:00 UTC** (~7:00 AM Eastern during **EDT**).
+- `.github/workflows/macro-writeup-cron.yml` — **11:05 UTC** (~7:05 AM Eastern during **EDT**).
 
 **DST note:** US Eastern toggles between UTC−5 and UTC−4. If jobs drift relative to 7:00 AM ET, adjust cron hours seasonally (e.g. use `12` UTC instead of `11` during standard time) or switch to a runner that schedules in `America/New_York`.
 
@@ -43,16 +48,30 @@ Repository secrets (same pattern as `economic-calendar-cron.yml`):
 - `APP_BASE_URL` — production origin, no trailing slash
 - `CRON_SECRET` — matches server env
 
-## 6. Local smoke test
+## 6. Local smoke test (step 3)
 
-With `.env.local` filled and `npm run dev`:
+With `.env.local` containing `CRON_SECRET`, `APP_BASE_URL` (production origin recommended), Gmail + Anthropic + Supabase service role on the **deployed** host:
+
+```bash
+npm run newsletter:pipeline:trigger
+```
+
+Same as running **ingest** then **macro** in order:
 
 ```bash
 npm run newsletter:ingest:trigger
 npm run newsletter:macro:trigger
 ```
 
-Optional body override (advanced): POST JSON `{"ymd":"2026-04-20"}` to re-run for a specific ET calendar date.
+Optional: `npm run newsletter:pipeline:trigger -- --url https://your-host.example.com` overrides `APP_BASE_URL`.
+
+Optional body override (advanced): POST JSON `{"ymd":"2026-04-20"}` on each cron for a specific ET calendar date.
+
+## 6b. GitHub verify (step 4)
+
+1. Repo **Settings → Secrets and variables → Actions**: set **`APP_BASE_URL`**, **`CRON_SECRET`** (same values as production).
+2. **Actions → Phase 4 newsletter verify → Run workflow**.
+3. Confirm green; check Pre-market **Today’s macro writeup** on the site.
 
 ## 7. Ingest window
 
