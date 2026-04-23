@@ -18,7 +18,7 @@ const MAX_CHARS = 220;
 export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }: EquitiesWriteupProps) {
   if (loading) {
     return (
-      <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+      <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
         Loading US equities writeup…
       </p>
     );
@@ -26,7 +26,7 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
 
   if (error) {
     return (
-      <p role="alert" style={{ color: "var(--warning)", fontSize: "var(--fs-11)" }}>
+      <p className="pm-site-prose" role="alert" style={{ color: "var(--warning)" }}>
         {error}
       </p>
     );
@@ -39,13 +39,12 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
       <div className="space-y-2">
         {setupHint ? (
           <p
-            className="rounded border px-2 py-1.5"
+            className="pm-site-caption rounded border px-2 py-1.5"
             role="note"
             style={{
               borderColor: "rgba(251, 191, 36, 0.35)",
               background: "var(--accent-amber-muted)",
               color: "var(--accent-amber)",
-              fontSize: "var(--fs-10)",
             }}
           >
             {setupHint}
@@ -60,14 +59,14 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
           }}
         >
           <div className="mb-1">
-            <span className="font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-amber)" }}>
+            <span className="pm-section-label" style={{ color: "var(--accent-amber)" }}>
               US equities
             </span>
           </div>
-          <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+          <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
             No US equities writeup for {ymd ? formatYmdDisplay(ymd) : "today"} yet.
           </p>
-          <p className="mt-1" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-9)" }}>
+          <p className="pm-site-caption mt-1" style={{ color: "var(--text-tertiary)" }}>
             Runs after morning newsletters (or web-search fallback).
           </p>
         </div>
@@ -79,12 +78,11 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
     <div className="space-y-2">
       {row?.fallback_used ? (
         <p
-          className="rounded border px-2 py-1.5"
+          className="pm-site-caption rounded border px-2 py-1.5"
           style={{
             borderColor: "rgba(251, 191, 36, 0.35)",
             background: "var(--accent-amber-muted)",
             color: "var(--accent-amber)",
-            fontSize: "var(--fs-10)",
           }}
         >
           Web search fallback (no morning newsletters in the 4–7 AM ET window).
@@ -99,11 +97,11 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
         }}
       >
         <div className="mb-1.5">
-          <span className="font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-amber)" }}>
+          <span className="pm-section-label" style={{ color: "var(--accent-amber)" }}>
             US equities
           </span>
         </div>
-        <ul className="list-disc space-y-1 pl-4" style={{ color: "var(--text-primary)", fontSize: "var(--fs-11)" }}>
+        <ul className="pm-site-prose list-disc space-y-1 pl-4" style={{ color: "var(--text-primary)" }}>
           {bullets.slice(0, MAX_BULLETS).map((b, i) => {
             const t = b.trim();
             const short = t.length > MAX_CHARS ? `${t.slice(0, MAX_CHARS)}…` : t;

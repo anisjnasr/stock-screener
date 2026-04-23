@@ -93,8 +93,8 @@ function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDes
   const hi = "var(--ws-text)";
   return (
     <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
-      <span style={{ fontSize: "var(--fs-75)", color: activeAsc ? hi : dim }}>▲</span>
-      <span style={{ fontSize: "var(--fs-75)", color: activeDesc ? hi : dim }}>▼</span>
+      <span style={{ fontSize: "10px", color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ fontSize: "10px", color: activeDesc ? hi : dim }}>▼</span>
     </span>
   );
 }
@@ -118,7 +118,7 @@ function GapperSortTh({
   return (
     <th
       scope="col"
-      className={`cursor-pointer select-none whitespace-nowrap px-2 py-1.5 font-semibold ${align === "right" ? "text-right" : "text-left"}`}
+      className={`pm-sip-col-head cursor-pointer select-none whitespace-nowrap px-2 py-1.5 ${align === "right" ? "text-right" : "text-left"}`}
       style={{ color: "var(--ws-text-dim)" }}
       onClick={() => onSort(col)}
       onKeyDown={(e) => {
@@ -258,10 +258,10 @@ export default function PremarketGappers({
   }
 
   const gapFilterLabelStyle: CSSProperties = {
-    fontFamily: "var(--font-premarket-barlow), sans-serif",
-    fontSize: "var(--fs-10)",
-    fontWeight: 500,
-    letterSpacing: "0.8px",
+    fontFamily: "var(--ws-font-sans)",
+    fontSize: "var(--ws-fs-caption)",
+    fontWeight: 600,
+    letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: "#8a8a8a",
     whiteSpace: "nowrap",
@@ -269,8 +269,8 @@ export default function PremarketGappers({
   const gapFilterInputStyle: CSSProperties = {
     height: 30,
     padding: "5px 9px",
-    fontFamily: "var(--font-premarket-mono), monospace",
-    fontSize: "var(--fs-11)",
+    fontFamily: "var(--ws-font-mono)",
+    fontSize: "var(--ws-fs-body)",
     background: "#1c1c1c",
     border: "1px solid #333",
     borderRadius: 3,
@@ -285,13 +285,13 @@ export default function PremarketGappers({
     >
       <div className="space-y-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="tabular-nums" style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-10)" }}>
+        <span className="pm-site-caption tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
           Results: {resultsCount === null ? "—" : resultsCount}
         </span>
         <button
           type="button"
           className="ws-focus-ring rounded px-0.5 leading-none"
-          style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-12)", background: "none", border: "none", cursor: "help" }}
+          style={{ color: "var(--ws-text-dim)", fontSize: "var(--ws-fs-title)", background: "none", border: "none", cursor: "help" }}
           title={GAPPER_SCAN_INFO}
           aria-label={GAPPER_SCAN_INFO}
         >
@@ -299,10 +299,7 @@ export default function PremarketGappers({
         </button>
       </div>
 
-      <div
-        className="flex flex-wrap items-center gap-[14px] px-[14px] py-[10px]"
-        style={{ alignItems: "center", fontFamily: "var(--font-premarket-barlow), sans-serif" }}
-      >
+      <div className="flex flex-wrap items-center gap-[14px] px-[14px] py-[10px]" style={{ alignItems: "center" }}>
         <div className="flex items-center gap-1.5">
           <span style={gapFilterLabelStyle}>Preset</span>
           <select
@@ -351,7 +348,9 @@ export default function PremarketGappers({
               }));
             }}
           />
-          <span style={{ color: "#8a8a8a", fontSize: "var(--fs-11)" }}>–</span>
+          <span className="pm-mono" style={{ color: "#8a8a8a", fontSize: "var(--ws-fs-body)" }}>
+            –
+          </span>
           <input
             type="text"
             inputMode="numeric"
@@ -465,11 +464,12 @@ export default function PremarketGappers({
           type="button"
           onClick={applyFilters}
           disabled={loading}
-          className="shrink-0 rounded font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
+          className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
           style={{
             height: 30,
             padding: "4px 12px",
-            fontSize: "var(--fs-8)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
             border: "1px solid var(--ws-cyan)",
             color: "var(--ws-cyan)",
             background: "rgba(59, 191, 207, 0.08)",
@@ -489,7 +489,8 @@ export default function PremarketGappers({
           style={{
             height: 30,
             padding: "4px 12px",
-            fontSize: "var(--fs-12)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-title)",
             lineHeight: 1,
             border: "1px solid var(--ws-border)",
             color: "var(--ws-text-dim)",
@@ -505,8 +506,8 @@ export default function PremarketGappers({
           <span
             className="shrink-0 tabular-nums"
             style={{
-              fontFamily: "var(--font-premarket-mono), monospace",
-              fontSize: "var(--fs-10)",
+              fontFamily: "var(--ws-font-mono)",
+              fontSize: "var(--ws-fs-caption)",
               color: "#8a8a8a",
             }}
             title="Duration of the last gappers / TradingView request"
@@ -518,32 +519,32 @@ export default function PremarketGappers({
 
       {error ? (
         <div
-          className="rounded border px-3 py-2.5 leading-relaxed"
+          className="pm-site-prose rounded border px-3 py-2.5 leading-relaxed"
           role="alert"
-          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)", fontSize: "var(--fs-11)" }}
+          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
         >
           <p className="font-semibold" style={{ color: "var(--ws-text)" }}>
             TradingView screener failed
           </p>
-          <p className="mt-1" style={{ color: "var(--ws-text-dim)" }}>
+          <p className="pm-site-caption mt-1" style={{ color: "var(--ws-text-dim)" }}>
             {error}
           </p>
         </div>
       ) : null}
 
       {!error && rows && rows.length === 0 && !loading ? (
-        <p style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--ws-text-dim)" }}>
           No rows match these filters (or market is closed / no pre-market data).
         </p>
       ) : null}
 
       {sortedRows && sortedRows.length > 0 ? (
         <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-          <table className="w-full min-w-[36rem] border-collapse" style={{ fontSize: "var(--fs-10)" }}>
+          <table className="pm-site-caption w-full min-w-[36rem] border-collapse">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
                 <th
-                  className="w-8 px-1 py-1.5 text-center font-semibold"
+                  className="pm-sip-col-head w-8 px-1 py-1.5 text-center"
                   style={{ color: "var(--ws-text-dim)" }}
                   aria-label="Earnings"
                 />
@@ -631,7 +632,8 @@ export default function PremarketGappers({
                         onClick={() => onJumpToEarnings?.()}
                         className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded border font-bold uppercase tracking-tight ws-focus-ring"
                         style={{
-                          fontSize: "var(--fs-8)",
+                          fontFamily: "var(--ws-font-sans)",
+                          fontSize: "var(--ws-fs-caption)",
                           borderColor: "var(--ws-border)",
                           color: "#c4a7e7",
                           background: "var(--ws-bg)",
@@ -701,7 +703,7 @@ export default function PremarketGappers({
       ) : null}
 
       {loading && !rows?.length ? (
-        <p style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--ws-text-dim)" }}>
           Loading gappers…
         </p>
       ) : null}

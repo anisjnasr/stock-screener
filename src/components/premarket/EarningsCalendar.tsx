@@ -47,8 +47,8 @@ function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDes
   const hi = "var(--text-primary)";
   return (
     <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
-      <span style={{ fontSize: "var(--fs-75)", color: activeAsc ? hi : dim }}>▲</span>
-      <span style={{ fontSize: "var(--fs-75)", color: activeDesc ? hi : dim }}>▼</span>
+      <span style={{ fontSize: "10px", color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ fontSize: "10px", color: activeDesc ? hi : dim }}>▼</span>
     </span>
   );
 }
@@ -74,9 +74,7 @@ function EarningsSortTh({
   return (
     <th
       scope="col"
-      className={`cursor-pointer select-none py-0.5 font-semibold uppercase tracking-[var(--letter-tight)] ${
-        align === "right" ? "pl-1 text-right" : "pr-1 text-left"
-      } ${thClass ?? ""}`}
+      className={`pm-sip-col-head cursor-pointer select-none py-0.5 ${align === "right" ? "pl-1 text-right" : "pr-1 text-left"} ${thClass ?? ""}`}
       style={{ color: "var(--text-tertiary)" }}
       onClick={() => onSort(col)}
       onKeyDown={(e) => {
@@ -175,7 +173,7 @@ function TickerPillButton({
     <>
       <span className="pm-mono font-semibold">{row.ticker}</span>
       {showSlotTag ? (
-        <span className="ml-1 opacity-80" style={{ fontSize: "var(--fs-75)" }}>
+        <span className="pm-site-caption ml-1 opacity-80">
           {slot}
         </span>
       ) : null}
@@ -186,7 +184,7 @@ function TickerPillButton({
       <button
         type="button"
         className={`pm-focus inline-flex max-w-full min-w-0 items-center rounded-full px-1.5 py-px ${cls}`}
-        style={{ fontSize: "var(--fs-8)" }}
+        style={{ fontSize: "var(--ws-fs-caption)", fontFamily: "var(--ws-font-sans)" }}
         onClick={() => onOpenTickerInLists(row.ticker)}
       >
         {inner}
@@ -194,7 +192,10 @@ function TickerPillButton({
     );
   }
   return (
-    <span className={`inline-flex max-w-full min-w-0 items-center rounded-full px-1.5 py-px ${cls}`} style={{ fontSize: "var(--fs-8)" }}>
+    <span
+      className={`inline-flex max-w-full min-w-0 items-center rounded-full px-1.5 py-px ${cls}`}
+      style={{ fontSize: "var(--ws-fs-caption)", fontFamily: "var(--ws-font-sans)" }}
+    >
       {inner}
     </span>
   );
@@ -232,7 +233,7 @@ function CompactEarningsTable({
 
   if (!rows.length) {
     return (
-      <p className="m-0 py-1" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-8)" }}>
+      <p className="pm-site-caption m-0 py-1" style={{ color: "var(--text-tertiary)" }}>
         No names
       </p>
     );
@@ -240,10 +241,7 @@ function CompactEarningsTable({
 
   return (
     <div className="min-w-0 overflow-x-auto">
-      <table
-        className="w-full min-w-0 border-collapse"
-        style={{ fontSize: "var(--fs-8)", color: "var(--text-secondary)" }}
-      >
+      <table className="pm-site-caption w-full min-w-0 border-collapse" style={{ color: "var(--text-secondary)" }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border-default)" }}>
             <EarningsSortTh label="Ticker" col="ticker" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="left" />
@@ -267,7 +265,7 @@ function CompactEarningsTable({
                 <TickerPillButton row={r} showSlotTag={showSlotTag} onOpenTickerInLists={onOpenTickerInLists} />
               </td>
               <td
-                className="max-w-[7rem] truncate py-0.5 pr-1 align-middle"
+                className="pm-site-caption max-w-[7rem] truncate py-0.5 pr-1 align-middle"
                 style={{ color: "var(--text-secondary)" }}
                 title={r.company_name ?? undefined}
               >
@@ -320,18 +318,18 @@ function DayBucketBlock({
       className="rounded border px-2 py-2"
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
-      <h3 className="mb-2 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-10)", color: "var(--text-primary)" }}>
+      <h3 className="pm-section-label mb-2" style={{ color: "var(--text-primary)" }}>
         {BUCKET_TITLE[bucket]}
       </h3>
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <div className="min-w-0 space-y-2">
-          <p className="m-0 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+          <p className="pm-sip-col-head m-0" style={{ color: "var(--text-tertiary)" }}>
             Before market open
           </p>
           <CompactEarningsTable rows={bmo} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
           {dmh.length > 0 ? (
             <div className="border-t pt-2" style={{ borderColor: "var(--border-default)" }}>
-              <p className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+              <p className="pm-sip-col-head mb-1" style={{ color: "var(--text-tertiary)" }}>
                 During market
               </p>
               <CompactEarningsTable rows={dmh} showSlotTag onOpenTickerInLists={onOpenTickerInLists} />
@@ -339,7 +337,7 @@ function DayBucketBlock({
           ) : null}
         </div>
         <div className="min-w-0">
-          <p className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+          <p className="pm-sip-col-head mb-1" style={{ color: "var(--text-tertiary)" }}>
             After market close
           </p>
           <CompactEarningsTable rows={amc} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
@@ -384,7 +382,7 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   if (loading) {
     return (
-      <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+      <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
         Loading earnings…
       </p>
     );
@@ -393,14 +391,19 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
   if (error) {
     return (
       <div className="space-y-2">
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           {error}
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--fs-9)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Retry
         </button>
@@ -414,11 +417,14 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   return (
     <div className="space-y-3">
-      <p className="font-medium uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}>
+      <p className="pm-site-caption font-medium" style={{ color: "var(--text-tertiary)" }}>
         Big names (&gt;$50B mcap) · anchor {data.anchor} ET · EPS &amp; revenue surprise vs consensus when reported
       </p>
 
-      <div className="flex flex-wrap gap-2 rounded border px-2 py-1.5" style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)", fontSize: "var(--fs-8)" }}>
+      <div
+        className="pm-site-caption flex flex-wrap gap-2 rounded border px-2 py-1.5"
+        style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)" }}
+      >
         <span className="earn-pill-beat rounded-full px-2 py-0.5">Beat</span>
         <span className="earn-pill-miss rounded-full px-2 py-0.5">Miss</span>
         <span className="earn-pill-mixed rounded-full px-2 py-0.5">Mixed</span>
@@ -432,8 +438,8 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
       </div>
 
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"
-        style={{ borderColor: "var(--border-default)", fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
+        className="pm-site-caption flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+        style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
         <span>
           {total} name{total === 1 ? "" : "s"} across days
@@ -441,8 +447,13 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-secondary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Refresh
         </button>

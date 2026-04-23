@@ -117,7 +117,7 @@ export default function EconomicCalendar() {
 
   if (loading) {
     return (
-      <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+      <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
         Loading calendar…
       </p>
     );
@@ -126,14 +126,19 @@ export default function EconomicCalendar() {
   if (error && total === 0) {
     return (
       <div className="space-y-2">
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           {error}
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--fs-9)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Retry
         </button>
@@ -144,14 +149,19 @@ export default function EconomicCalendar() {
   if (total === 0) {
     return (
       <div className="space-y-2">
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           No economic or key events for today (ET). Run calendar crons to refresh.
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--fs-9)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Refresh
         </button>
@@ -165,34 +175,34 @@ export default function EconomicCalendar() {
     <div className="space-y-3">
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="min-w-0">
-          <h3 className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-cyan)" }}>
+          <h3 className="pm-section-label mb-1" style={{ color: "var(--accent-cyan)" }}>
             Economic
           </h3>
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
             {econToday.length === 0 ? (
-              <p className="px-2 py-2" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-10)" }}>
+              <p className="pm-site-caption px-2 py-2" style={{ color: "var(--text-tertiary)" }}>
                 No high-impact releases today.
               </p>
             ) : (
-              <table className="w-full min-w-[18rem] border-collapse text-left" style={{ fontSize: "var(--fs-10)" }}>
+              <table className="w-full min-w-[18rem] border-collapse text-left">
                 <thead>
                   <tr style={tableHeadStyle}>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       When
                     </th>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       Impact
                     </th>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       Event
                     </th>
-                    <th className="hidden px-2 py-1 font-semibold sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head hidden px-2 py-1 sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
                       Fcst
                     </th>
-                    <th className="hidden px-2 py-1 font-semibold sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head hidden px-2 py-1 sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
                       Act
                     </th>
-                    <th className="w-6 px-1 py-1 text-right font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head w-6 px-1 py-1 text-right" style={{ color: "var(--text-tertiary)" }}>
                       <span className="sr-only">Flag</span>
                     </th>
                   </tr>
@@ -200,22 +210,25 @@ export default function EconomicCalendar() {
                 <tbody>
                   {econToday.map((row) => (
                     <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-default)" }}>
-                      <td className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono" style={{ color: "var(--text-primary)" }}>
+                      <td
+                        className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
+                        style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
+                      >
                         {formatTimeEt(row.event_time_et)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
                       </td>
-                      <td className="px-2 py-1 align-top leading-snug" style={{ color: "var(--text-primary)" }}>
+                      <td className="pm-site-prose px-2 py-1 align-top leading-snug" style={{ color: "var(--text-primary)" }}>
                         {row.event_name}
-                        <span className="mt-0.5 block sm:hidden" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-9)" }}>
+                        <span className="pm-site-caption mt-0.5 block sm:hidden" style={{ color: "var(--text-tertiary)" }}>
                           F {dash(row.forecast)} · A {dash(row.actual)}
                         </span>
                       </td>
-                      <td className="hidden whitespace-pre-wrap px-2 py-1 align-top sm:table-cell" style={{ color: "var(--text-secondary)" }}>
+                      <td className="pm-site-caption hidden whitespace-pre-wrap px-2 py-1 align-top sm:table-cell" style={{ color: "var(--text-secondary)" }}>
                         {dash(row.forecast)}
                       </td>
-                      <td className="hidden whitespace-pre-wrap px-2 py-1 align-top sm:table-cell" style={{ color: "var(--text-secondary)" }}>
+                      <td className="pm-site-caption hidden whitespace-pre-wrap px-2 py-1 align-top sm:table-cell" style={{ color: "var(--text-secondary)" }}>
                         {dash(row.actual)}
                       </td>
                       <td className="align-top">
@@ -234,28 +247,28 @@ export default function EconomicCalendar() {
         </div>
 
         <div className="min-w-0">
-          <h3 className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-amber)" }}>
+          <h3 className="pm-section-label mb-1" style={{ color: "var(--accent-amber)" }}>
             Key events
           </h3>
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
             {mktToday.length === 0 ? (
-              <p className="px-2 py-2" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-10)" }}>
+              <p className="pm-site-caption px-2 py-2" style={{ color: "var(--text-tertiary)" }}>
                 No key policy events today.
               </p>
             ) : (
-              <table className="w-full min-w-[18rem] border-collapse text-left" style={{ fontSize: "var(--fs-10)" }}>
+              <table className="w-full min-w-[18rem] border-collapse text-left">
                 <thead>
                   <tr style={tableHeadStyle}>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       When
                     </th>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       Impact
                     </th>
-                    <th className="px-2 py-1 font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
                       Event
                     </th>
-                    <th className="w-6 px-1 py-1 text-right font-semibold" style={{ color: "var(--text-tertiary)" }}>
+                    <th className="pm-sip-col-head w-6 px-1 py-1 text-right" style={{ color: "var(--text-tertiary)" }}>
                       <span className="sr-only">Flag</span>
                     </th>
                   </tr>
@@ -263,13 +276,16 @@ export default function EconomicCalendar() {
                 <tbody>
                   {mktToday.map((row) => (
                     <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-default)" }}>
-                      <td className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono" style={{ color: "var(--text-primary)" }}>
+                      <td
+                        className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
+                        style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
+                      >
                         {formatTimeEt(row.event_time_et)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
                       </td>
-                      <td className="px-2 py-1 align-top leading-snug" style={{ color: "var(--text-primary)" }}>
+                      <td className="pm-site-prose px-2 py-1 align-top leading-snug" style={{ color: "var(--text-primary)" }}>
                         {row.source_url ? (
                           <a
                             href={row.source_url}
@@ -285,9 +301,8 @@ export default function EconomicCalendar() {
                         )}
                         {row.event_category === "theme_driven" ? (
                           <span
-                            className="mt-0.5 ml-1 inline-block rounded px-1 py-px uppercase"
+                            className="pm-site-caption mt-0.5 ml-1 inline-block rounded px-1 py-px uppercase"
                             style={{
-                              fontSize: "var(--fs-8)",
                               background: "rgba(192, 132, 252, 0.14)",
                               color: "var(--accent-purple)",
                             }}
@@ -314,8 +329,8 @@ export default function EconomicCalendar() {
       </div>
 
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"
-        style={{ borderColor: "var(--border-default)", fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
+        className="pm-site-caption flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+        style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
         <span className="pm-mono tabular-nums">
           {econToday.length} econ · {mktToday.length} key · {todayYmd} ET
@@ -323,8 +338,13 @@ export default function EconomicCalendar() {
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-secondary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Refresh
         </button>

@@ -82,19 +82,19 @@ export default function TopBar({ anySectionExpanded, onToggleAllSections }: TopB
       style={{ borderColor: "var(--border-default)", background: "var(--bg-elevated)" }}
     >
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
-        <div className="min-w-0 shrink-0 leading-tight">
-          <span className="font-semibold" style={{ fontSize: "var(--fs-12)", color: "var(--accent-cyan)" }}>
+        <div className="min-w-0 shrink-0 leading-tight" style={{ fontFamily: "var(--ws-font-sans)" }}>
+          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--accent-cyan)" }}>
             Stock
           </span>
-          <span className="font-semibold" style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)" }}>
+          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--text-secondary)" }}>
             Stalker
           </span>
-          <span className="font-semibold" style={{ fontSize: "var(--fs-12)", color: "var(--accent-cyan)" }}>
+          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--accent-cyan)" }}>
             {" "}
             / Pre-Market
           </span>
         </div>
-        <div className="pm-mono min-w-0 tabular-nums" style={{ fontSize: "var(--fs-10)", color: "var(--text-secondary)" }}>
+        <div className="pm-mono min-w-0 tabular-nums" style={{ fontSize: "var(--ws-fs-caption)", color: "var(--text-secondary)" }}>
           <span>{dateLine}</span>
           <span className="mx-2" style={{ color: "var(--border-strong)" }}>
             ·
@@ -106,10 +106,7 @@ export default function TopBar({ anySectionExpanded, onToggleAllSections }: TopB
         </div>
         <div className="flex items-center gap-2">
           <span className="pm-pulse-dot shrink-0" style={{ color: dotColor }} aria-hidden />
-          <span
-            className="font-semibold uppercase tracking-[var(--letter-label)]"
-            style={{ fontSize: "var(--fs-9)", color: "var(--text-secondary)" }}
-          >
+          <span className="pm-sip-col-head" style={{ color: "var(--text-secondary)" }}>
             {phase}
           </span>
         </div>
@@ -117,11 +114,12 @@ export default function TopBar({ anySectionExpanded, onToggleAllSections }: TopB
       <button
         type="button"
         onClick={onToggleAllSections}
-        className="pm-focus shrink-0 rounded border px-2.5 py-1 font-medium uppercase tracking-[var(--letter-label)] transition-colors hover:bg-[color:var(--bg-panel)]"
+        className="pm-focus shrink-0 rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-panel)]"
         style={{
           borderColor: "var(--border-default)",
           color: "var(--text-secondary)",
-          fontSize: "var(--fs-9)",
+          fontFamily: "var(--ws-font-sans)",
+          fontSize: "var(--ws-fs-label)",
         }}
         aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
       >

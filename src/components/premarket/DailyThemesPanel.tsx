@@ -42,16 +42,16 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
       <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-1.5">
         <span
           className="col-start-1 row-start-1 pm-mono tabular-nums"
-          style={{ fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
+          style={{ fontSize: "var(--ws-fs-caption)", color: "var(--text-tertiary)" }}
         >
           #{t.theme_rank}
         </span>
         <div className="col-start-2 row-start-1 flex min-w-0 items-baseline gap-1.5">
-          <span className="min-w-0 flex-1 font-semibold leading-tight" style={{ fontSize: "var(--fs-10)", color: "var(--text-primary)" }}>
+          <span className="pm-site-prose min-w-0 flex-1 font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
             {t.theme_title}
           </span>
           {t.is_new ? (
-            <span className="shrink-0" style={{ fontSize: "var(--fs-8)", color: "var(--positive)", fontWeight: 600 }}>
+            <span className="pm-site-caption shrink-0 font-semibold" style={{ color: "var(--positive)" }}>
               NEW
             </span>
           ) : null}
@@ -63,7 +63,7 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
                   <span
                     key={sym}
                     className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-px pm-mono font-semibold tabular-nums ${pillClass}`}
-                    style={{ fontSize: "var(--fs-8)" }}
+                    style={{ fontSize: "var(--ws-fs-caption)" }}
                     title={industryKey ? `${industryKey} · ${sym}` : sym}
                   >
                     {sym}
@@ -72,8 +72,7 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
               : industryKey
                 ? (
                     <span
-                      className={`inline-flex max-w-full min-w-0 items-center truncate rounded-full px-1.5 py-px font-semibold ${pillClass}`}
-                      style={{ fontSize: "var(--fs-8)" }}
+                      className={`pm-site-caption inline-flex max-w-full min-w-0 items-center truncate rounded-full px-1.5 py-px font-semibold ${pillClass}`}
                       title={industryKey}
                     >
                       {industryKey}
@@ -130,7 +129,7 @@ export default function DailyThemesPanel() {
 
   if (loading) {
     return (
-      <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+      <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
         Loading themes…
       </p>
     );
@@ -139,14 +138,19 @@ export default function DailyThemesPanel() {
   if (error) {
     return (
       <div className="space-y-2">
-        <p role="alert" style={{ color: "var(--warning)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-prose" role="alert" style={{ color: "var(--warning)" }}>
           {error}
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)", fontSize: "var(--fs-9)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-secondary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           Retry
         </button>
@@ -161,23 +165,28 @@ export default function DailyThemesPanel() {
         style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
       >
         <div className="mb-1">
-          <span className="font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-cyan)" }}>
+          <span className="pm-section-label" style={{ color: "var(--accent-cyan)" }}>
             Active themes
           </span>
         </div>
         {setupHint ? (
-          <p className="mb-1" style={{ color: "var(--accent-amber)", fontSize: "var(--fs-9)" }}>
+          <p className="pm-site-caption mb-1" style={{ color: "var(--accent-amber)" }}>
             {setupHint}
           </p>
         ) : null}
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           No themes yet. Run extraction after macro + equities writeups.
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="pm-focus mt-2 rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", fontSize: "var(--fs-8)" }}
+          className="pm-focus mt-2 rounded border px-2 py-1 font-medium"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-tertiary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-caption)",
+          }}
         >
           Refresh
         </button>
@@ -191,14 +200,14 @@ export default function DailyThemesPanel() {
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
       <div className="mb-2 border-b pb-1.5" style={{ borderColor: "var(--border-default)" }}>
-        <span className="font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--accent-cyan)" }}>
+        <span className="pm-section-label" style={{ color: "var(--accent-cyan)" }}>
           Active themes
         </span>
       </div>
 
       {macroThemes.length ? (
         <div className="mb-2">
-          <p className="mb-0.5 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+          <p className="pm-sip-col-head mb-0.5" style={{ color: "var(--text-tertiary)" }}>
             Macro
           </p>
           <ul className="m-0 list-none p-0">
@@ -211,7 +220,7 @@ export default function DailyThemesPanel() {
 
       {industryThemes.length ? (
         <div>
-          <p className="mb-0.5 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+          <p className="pm-sip-col-head mb-0.5" style={{ color: "var(--text-tertiary)" }}>
             Industry
           </p>
           <ul className="m-0 list-none p-0">
@@ -225,8 +234,13 @@ export default function DailyThemesPanel() {
       <button
         type="button"
         onClick={() => void load()}
-        className="pm-focus mt-2 w-full rounded border py-1 font-medium uppercase tracking-[var(--letter-label)]"
-        style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", fontSize: "var(--fs-8)" }}
+        className="pm-focus mt-2 w-full rounded border py-1 font-medium"
+        style={{
+          borderColor: "var(--border-default)",
+          color: "var(--text-tertiary)",
+          fontFamily: "var(--ws-font-sans)",
+          fontSize: "var(--ws-fs-caption)",
+        }}
       >
         Refresh
       </button>

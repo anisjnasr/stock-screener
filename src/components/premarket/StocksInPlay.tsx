@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { GapperRow, GappersRequestBody } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
@@ -25,32 +25,64 @@ function fmtPct(n: number): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-function NewsCompact({ items }: { items: PythonNewsItem[] }) {
-  const slice = items.slice(0, 3);
-  if (slice.length === 0) {
-    return <span style={{ color: "var(--text-faint)", fontSize: "var(--fs-9)" }}>No headlines in window.</span>;
+const NEWS_PILL_MAX = 3;
+
+function newsSourceLabel(it: PythonNewsItem): string {
+  const pub = it.publisher?.trim();
+  if (pub) return pub;
+  const link = it.link?.trim();
+  if (link) {
+    try {
+      const host = new URL(link).hostname.replace(/^www\./, "");
+      const seg = host.split(".")[0];
+      if (seg) return seg.charAt(0).toUpperCase() + seg.slice(1);
+    } catch {
+      /* ignore */
+    }
   }
+  return "News";
+}
+
+function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
+  const slice = items.slice(0, NEWS_PILL_MAX);
+  if (slice.length === 0) return null;
   return (
-    <ul className="m-0 list-none space-y-0.5 p-0" style={{ fontSize: "var(--fs-9)", color: "var(--text-secondary)" }}>
-      {slice.map((it, i) => (
-        <li key={i} className="truncate">
-          {it.link ? (
+    <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+      {slice.map((it, i) => {
+        const label = newsSourceLabel(it);
+        const href = it.link?.trim();
+        const title = it.title?.trim() || label;
+        const baseClass =
+          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 no-underline transition-colors";
+        const pillStyle: CSSProperties = {
+          fontFamily: "var(--ws-font-sans)",
+          fontSize: "var(--ws-fs-caption)",
+          border: "1px solid var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--text-secondary)",
+        };
+        if (href) {
+          return (
             <a
-              href={it.link}
+              key={`${href}-${i}`}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="pm-focus rounded underline-offset-2 hover:underline"
-              style={{ color: "var(--text-primary)" }}
+              className={`${baseClass} hover:border-[var(--accent-cyan)] hover:text-[var(--text-primary)]`}
+              style={pillStyle}
+              title={title}
             >
-              {it.title}
+              {label}
             </a>
-          ) : (
-            <span>{it.title}</span>
-          )}
-          {it.publisher ? <span style={{ color: "var(--text-tertiary)" }}> · {it.publisher}</span> : null}
-        </li>
-      ))}
-    </ul>
+          );
+        }
+        return (
+          <span key={i} className={`${baseClass} cursor-default opacity-80`} style={pillStyle} title={title}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -165,78 +197,78 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 leading-snug" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-9)" }}>
-          Up to <strong style={{ color: "var(--text-primary)" }}>75</strong> names after volume pre-filter (|gap| ≥ 2%, PM vol ≥ 100k &amp; ≥ 20% of 90d ADV) plus LLM
-          headline checks (company-specific story + fresh within 24h). Auto-loads once per ET day on first expand; use refresh after filter changes. Headlines need Python
-          service env; classification needs{" "}
-          <code className="pm-mono rounded px-0.5" style={{ background: "var(--bg-base)" }}>
-            ANTHROPIC_API_KEY
-          </code>{" "}
-          on the host.
-        </p>
+      <div className="flex flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={refreshSip}
           disabled={loading || !filtersHydrated}
-          className="pm-focus shrink-0 rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)] transition-opacity disabled:opacity-50"
-          style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--fs-9)" }}
+          className="pm-focus shrink-0 rounded border px-2 py-1 font-medium transition-opacity disabled:opacity-50"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
         >
           {loading ? "Loading…" : "Refresh SIP"}
         </button>
       </div>
 
       {!filtersHydrated ? (
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>Loading gapper filters…</p>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
+          Loading gapper filters…
+        </p>
       ) : null}
 
       {sessionNeedsManualRefresh ? (
-        <p className="rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
           SIP list is empty in this tab after reload — click <strong style={{ color: "var(--text-primary)" }}>Refresh SIP</strong>.
         </p>
       ) : null}
 
       {!pythonConfigured ? (
-        <p className="rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
           Headlines off until <code className="pm-mono">PYTHON_SERVICE_URL</code> / <code className="pm-mono">PYTHON_SERVICE_KEY</code> are set.
         </p>
       ) : null}
 
       {newsError ? (
-        <p className="rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-caption rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)" }}>
           Headlines request failed: {newsError}
         </p>
       ) : null}
 
       {catalystSkipped ? (
-        <p className="rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
           Catalyst summaries skipped without <code className="pm-mono">ANTHROPIC_API_KEY</code>.
         </p>
       ) : null}
 
       {catalystError ? (
-        <p className="rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)", fontSize: "var(--fs-10)" }}>
+        <p className="pm-site-caption rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)" }}>
           Catalyst generation failed: {catalystError}
         </p>
       ) : null}
 
       {error ? (
         <div className="rounded border px-3 py-2.5" role="alert" style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}>
-          <p className="font-semibold" style={{ color: "var(--text-primary)", fontSize: "var(--fs-11)" }}>
+          <p className="pm-site-prose font-semibold" style={{ color: "var(--text-primary)" }}>
             Could not load Stocks in Play
           </p>
-          <p className="mt-1" style={{ color: "var(--text-secondary)", fontSize: "var(--fs-10)" }}>
+          <p className="pm-site-caption mt-1" style={{ color: "var(--text-secondary)" }}>
             {error}
           </p>
         </div>
       ) : null}
 
       {loading && !rows?.length ? (
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>Loading gappers, headlines, and catalysts…</p>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
+          Loading gappers, headlines, and catalysts…
+        </p>
       ) : null}
 
       {!error && rows && rows.length === 0 && !loading ? (
-        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
+        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           No names passed the SIP volume + headline gates (or market is closed / no pre-market data).
         </p>
       ) : null}
@@ -245,12 +277,11 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
         <>
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
             <div
-              className="pm-mono grid min-w-[52rem] gap-x-2 gap-y-0 border-b px-2 py-1.5 font-semibold uppercase tracking-[var(--letter-label)]"
+              className="pm-sip-col-head grid min-w-[52rem] gap-x-2 gap-y-0 border-b px-2 py-1.5"
               style={{
                 gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,1fr)",
                 borderColor: "var(--border-default)",
                 background: "var(--bg-inset)",
-                fontSize: "var(--fs-8)",
                 color: "var(--text-tertiary)",
               }}
             >
@@ -258,25 +289,27 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
               <span className="text-right">GAP%</span>
               <span className="text-right">MCAP</span>
               <span className="text-right">PM VOL</span>
-              <span>RATIONALE</span>
               <span>CATALYST</span>
+              <span>TYPE</span>
             </div>
             {rows.map((r) => {
               const cat = catalyst?.[r.ticker];
               const badge = cat ? sipCatalystBadge(cat) : null;
               const rationale = cat ? truncateSipRationale(cat.summary) : "—";
+              const rowNews = news?.[r.ticker] ?? [];
+              const showNewsEmpty =
+                news !== null && pythonConfigured && !newsError && rowNews.length === 0;
               return (
                 <div
                   key={r.ticker}
-                  className="pm-mono grid min-w-[52rem] items-start gap-x-2 gap-y-1 border-b px-2 py-1.5"
+                  className="grid min-w-[52rem] items-start gap-x-2 gap-y-1 border-b px-2 py-1.5"
                   style={{
                     gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,1fr)",
                     borderColor: "var(--border-default)",
                     background: "var(--bg-panel)",
-                    fontSize: "var(--fs-10)",
                   }}
                 >
-                  <div className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                  <div className="pm-site-caption font-semibold" style={{ color: "var(--text-primary)" }}>
                     {onOpenTickerInLists ? (
                       <button
                         type="button"
@@ -290,30 +323,53 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
                       r.ticker
                     )}
                   </div>
-                  <div className="text-right tabular-nums" style={{ color: r.gapPct >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                  <div className="pm-mono text-right tabular-nums" style={{ color: r.gapPct >= 0 ? "var(--positive)" : "var(--negative)", fontSize: "var(--ws-fs-caption)" }}>
                     {fmtPct(r.gapPct)}
                   </div>
-                  <div className="text-right tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                  <div className="pm-mono text-right tabular-nums" style={{ color: "var(--text-secondary)", fontSize: "var(--ws-fs-caption)" }}>
                     {formatScreenerCompact(r.marketCap)}
                   </div>
-                  <div className="text-right tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                  <div className="pm-mono text-right tabular-nums" style={{ color: "var(--text-secondary)", fontSize: "var(--ws-fs-caption)" }}>
                     {formatScreenerCompact(r.pmVolume)}
                   </div>
-                  <div className="min-w-0 leading-snug" style={{ color: "var(--text-secondary)" }} title={cat?.summary}>
-                    {rationale}
+                  <div className="pm-site-caption min-w-0 leading-snug" style={{ color: "var(--text-secondary)" }}>
+                    <p className="m-0" title={cat?.summary}>
+                      {rationale}
+                    </p>
+                    {rowNews.length > 0 ? (
+                      <SourceNewsPills items={rowNews} />
+                    ) : showNewsEmpty ? (
+                      <p className="pm-site-caption m-0 mt-1" style={{ color: "var(--text-faint)" }}>
+                        No headlines in window.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-1">
                     {badge ? (
-                      <span className={`rounded px-1 py-px font-semibold uppercase ${badge.className}`} style={{ fontSize: "var(--fs-8)", letterSpacing: "var(--letter-tight)" }}>
+                      <span
+                        className={`rounded px-1 py-px font-semibold uppercase ${badge.className}`}
+                        style={{
+                          fontFamily: "var(--ws-font-sans)",
+                          fontSize: "var(--ws-fs-caption)",
+                          letterSpacing: "var(--letter-tight)",
+                        }}
+                      >
                         {badge.label}
                       </span>
                     ) : (
-                      <span style={{ color: "var(--text-faint)", fontSize: "var(--fs-9)" }}>—</span>
+                      <span className="pm-site-caption" style={{ color: "var(--text-faint)" }}>
+                        —
+                      </span>
                     )}
                     {r.earningsRecent24h ? (
                       <span
                         className="rounded px-1 py-px uppercase"
-                        style={{ fontSize: "var(--fs-8)", border: "1px solid var(--accent-purple)", color: "var(--accent-purple)" }}
+                        style={{
+                          fontFamily: "var(--ws-font-sans)",
+                          fontSize: "var(--ws-fs-caption)",
+                          border: "1px solid var(--accent-purple)",
+                          color: "var(--accent-purple)",
+                        }}
                       >
                         24h ER
                       </span>
@@ -324,27 +380,9 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
             })}
           </div>
 
-          <div className="rounded border px-2 py-1.5" style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}>
-            <p className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
-              Headlines
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {rows.map((r) => (
-                <div key={`n-${r.ticker}`} className="min-w-0 border-t pt-1 sm:border-t-0 sm:border-l sm:pl-2 sm:pt-0 first:border-t-0 first:pt-0 first:sm:border-l-0 first:sm:pl-0" style={{ borderColor: "var(--border-default)" }}>
-                  <div className="pm-mono font-semibold" style={{ fontSize: "var(--fs-9)", color: "var(--accent-cyan)" }}>
-                    {r.ticker}
-                  </div>
-                  {news && news[r.ticker] ? <NewsCompact items={news[r.ticker]!} /> : pythonConfigured && !newsError ? (
-                    <span style={{ color: "var(--text-faint)", fontSize: "var(--fs-9)" }}>No headlines.</span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div
-            className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"
-            style={{ borderColor: "var(--border-default)", fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
+            className="pm-site-caption flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+            style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
           >
             <span>
               {n} of 75 max · updated {nowEt} ET

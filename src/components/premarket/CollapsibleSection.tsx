@@ -69,7 +69,7 @@ export default function CollapsibleSection({
           <span
             className="pm-mono inline-flex w-3 shrink-0 justify-center leading-none transition-transform duration-300 ease-out"
             style={{
-              fontSize: "var(--fs-8)",
+              fontSize: "var(--ws-fs-caption)",
               color: "var(--text-tertiary)",
               transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
             }}
@@ -78,25 +78,16 @@ export default function CollapsibleSection({
             ▼
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-            <span
-              className="shrink-0 font-semibold uppercase tracking-[var(--letter-label)]"
-              style={{ fontSize: "var(--fs-10)", color: accentColor, letterSpacing: "var(--letter-label)" }}
-            >
+            <span className="pm-section-label shrink-0" style={{ color: accentColor }}>
               {label}
             </span>
             {!collapsed && metadata ? (
-              <span
-                className="min-w-0 truncate font-medium"
-                style={{ fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
-              >
+              <span className="pm-site-caption min-w-0 truncate font-medium" style={{ color: "var(--text-tertiary)" }}>
                 {metadata}
               </span>
             ) : null}
             {collapsed && peekText ? (
-              <span
-                className="min-w-0 flex-1 truncate text-right font-medium leading-snug"
-                style={{ fontSize: "var(--fs-10)", color: "var(--text-secondary)" }}
-              >
+              <span className="pm-site-caption min-w-0 flex-1 truncate text-right font-medium leading-snug" style={{ color: "var(--text-secondary)" }}>
                 {peekText}
               </span>
             ) : null}
@@ -110,7 +101,7 @@ export default function CollapsibleSection({
         >
           {actions ? <div className="flex items-center gap-1.5">{actions}</div> : null}
           {headerLegend ? (
-            <div className="flex max-w-[14rem] flex-wrap items-center justify-end gap-x-2 gap-y-0.5 sm:max-w-none" style={{ fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}>
+            <div className="pm-site-caption flex max-w-[14rem] flex-wrap items-center justify-end gap-x-2 gap-y-0.5 sm:max-w-none" style={{ color: "var(--text-tertiary)" }}>
               {headerLegend}
             </div>
           ) : null}
@@ -128,11 +119,10 @@ export default function CollapsibleSection({
         }}
       >
         <div
-          className="border-t px-3 transition-[padding] duration-300 ease-out"
+          className="pm-site-prose border-t px-3 transition-[padding] duration-300 ease-out"
           style={{
             borderColor: "var(--border-default)",
             color: "var(--text-secondary)",
-            fontSize: "var(--fs-11)",
             paddingTop: collapsed ? 0 : 12,
             paddingBottom: collapsed ? 0 : 12,
             pointerEvents: collapsed ? "none" : "auto",
