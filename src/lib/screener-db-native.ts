@@ -33,6 +33,7 @@ export type ScreenerRow = {
   high_52w: number | null;
   off_52w_high_pct: number | null;
   atr_pct_21d: number | null;
+  atr_units_above_ema50: number | null;
   price_change_1w_pct: number | null;
   price_change_1m_pct: number | null;
   price_change_3m_pct: number | null;
@@ -138,6 +139,12 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
       " AND q.high_52w IS NOT NULL AND q.last_price IS NOT NULL AND q.last_price + 1e-9 >= q.high_52w"
     );
   }
+  if (str(filters.atr_10x_above_ema50) === "1") {
+    conditions.push(
+      " AND i.atr_units_above_ema50 IS NOT NULL AND i.atr_units_above_ema50 >= 10"
+    );
+  }
+  addNumericRange("i.atr_units_above_ema50", "atr_units_above_ema50_min", "atr_units_above_ema50_max");
   if (num(filters.atr_pct_21d_min) != null) { conditions.push(" AND q.atr_pct_21d >= ?"); params.push(num(filters.atr_pct_21d_min)); }
   if (num(filters.atr_pct_21d_max) != null) { conditions.push(" AND q.atr_pct_21d <= ?"); params.push(num(filters.atr_pct_21d_max)); }
 
@@ -714,6 +721,7 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
     high_52w: typeof r.high_52w === "number" ? r.high_52w : null,
     off_52w_high_pct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
     atr_pct_21d,
+    atr_units_above_ema50: typeof r.atr_units_above_ema50 === "number" ? r.atr_units_above_ema50 : null,
     price_change_1w_pct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
     price_change_1m_pct: typeof r.price_change_1m_pct === "number" ? r.price_change_1m_pct : null,
     price_change_3m_pct: typeof r.price_change_3m_pct === "number" ? r.price_change_3m_pct : null,
@@ -1127,6 +1135,7 @@ export function getScreenerSnapshot(options: {
       i.price_change_1w_pct, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct,
       i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
+      i.atr_units_above_ema50,
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
       i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m${includeFin ? SCREENER_SNAPSHOT_FINANCIAL_SQL : ""}
     FROM companies c
@@ -2403,13 +2412,20 @@ export type MarketMonitorMetricKey =
   | "down50pct_month"
   | "nnh52w_highs"
   | "nnh52w_lows"
+  | "count_10x_atr_50d"
+  | "count_episodic_pivot"
   | "universe_above_50d"
   | "universe_above_200d";
 
 /** Breadth-style metrics (daily_bar CTE); 52W NNH uses a separate query. */
 type MarketMonitorBreadthMetricKey = Exclude<
   MarketMonitorMetricKey,
-  "nnh52w_highs" | "nnh52w_lows" | "universe_above_50d" | "universe_above_200d"
+  | "nnh52w_highs"
+  | "nnh52w_lows"
+  | "count_10x_atr_50d"
+  | "count_episodic_pivot"
+  | "universe_above_50d"
+  | "universe_above_200d"
 >;
 
 const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
@@ -2423,6 +2439,8 @@ const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "down50pct_month",
   "nnh52w_highs",
   "nnh52w_lows",
+  "count_10x_atr_50d",
+  "count_episodic_pivot",
   "universe_above_50d",
   "universe_above_200d",
 ];
@@ -2546,6 +2564,68 @@ export function getMarketMonitorConstituents(
     "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
   ).get() as { c: number })?.c > 0;
   const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
+  if (metric === "count_10x_atr_50d" || metric === "count_episodic_pivot") {
+    const indPred =
+      metric === "count_10x_atr_50d"
+        ? "i.atr_units_above_ema50 IS NOT NULL AND i.atr_units_above_ema50 >= 10"
+        : "i.episodic_pivot = 1";
+    const sql = `
+    WITH symbols_today AS (
+      SELECT DISTINCT d.symbol
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
+    ),
+    b AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close,
+        LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) AS prev_close
+      FROM daily_bars d
+      INNER JOIN symbols_today st ON st.symbol = d.symbol
+      WHERE d.date <= ?
+    )
+    SELECT
+      b.symbol AS symbol,
+      COALESCE(co.name, '') AS name,
+      COALESCE(co.industry, '') AS industry,
+      b.close AS price,
+      CASE
+        WHEN b.prev_close IS NOT NULL AND b.prev_close > 0 THEN 100.0 * (b.close - b.prev_close) / b.prev_close
+        ELSE 0
+      END AS changePct
+    FROM b
+    INNER JOIN companies co ON co.symbol = b.symbol
+    INNER JOIN indicators_daily i ON i.symbol = b.symbol AND i.date = b.date
+    WHERE b.date = ?
+      AND (${indPred})
+    ORDER BY changePct DESC
+  `;
+    const rows = db.prepare(sql).all(
+      asOfDate,
+      MM_MIN_MARKET_CAP_USD,
+      asOfDate,
+      asOfDate
+    ) as Array<{
+      symbol: string;
+      name: string;
+      industry: string;
+      price: number;
+      changePct: number;
+    }>;
+
+    return rows.map((r) => ({
+      symbol: String(r.symbol),
+      name: String(r.name ?? ""),
+      industry: String(r.industry ?? ""),
+      price: Number(r.price ?? 0),
+      changePct: Number(r.changePct ?? 0),
+    }));
+  }
 
   if (metric === "universe_above_50d" || metric === "universe_above_200d") {
     const emaPred = metric === "universe_above_50d" ? "i.above_ema_50 = 1" : "i.above_ema_200 = 1";
@@ -2742,6 +2822,8 @@ export type MarketMonitorDailyRow = {
   nnh_52w_highs: number | null;
   nnh_52w_lows: number | null;
   nnh_52w_net: number | null;
+  count_10x_atr_50d: number | null;
+  count_episodic_pivot: number | null;
 };
 
 export function getPrecomputedMarketMonitor(startDate: string, endDate: string): MarketMonitorDailyRow[] {
@@ -2790,6 +2872,8 @@ export function getPrecomputedMarketMonitor(startDate: string, endDate: string):
     nnh_52w_highs: r.nnh_52w_highs != null ? Number(r.nnh_52w_highs) : null,
     nnh_52w_lows: r.nnh_52w_lows != null ? Number(r.nnh_52w_lows) : null,
     nnh_52w_net: r.nnh_52w_net != null ? Number(r.nnh_52w_net) : null,
+    count_10x_atr_50d: r.count_10x_atr_50d != null ? Number(r.count_10x_atr_50d) : null,
+    count_episodic_pivot: r.count_episodic_pivot != null ? Number(r.count_episodic_pivot) : null,
   }));
 }
 

@@ -112,6 +112,7 @@ type WatchlistRow = {
   avgSalesGrowth3y?: number | null;
   high52w?: number | null;
   off52wHighPct?: number | null;
+  atrUnitsAboveEma50?: number | null;
   priceChange1wPct?: number | null;
   priceChange1mPct?: number | null;
   priceChange3mPct?: number | null;
@@ -1583,6 +1584,8 @@ export default function WatchlistPanel({
     avgSalesGrowth3y: typeof r.avg_sales_growth_3y === "number" ? r.avg_sales_growth_3y : typeof r.avgSalesGrowth3y === "number" ? r.avgSalesGrowth3y : null,
     high52w: typeof r.high_52w === "number" ? r.high_52w : null,
     off52wHighPct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
+    atrUnitsAboveEma50:
+      typeof r.atr_units_above_ema50 === "number" ? r.atr_units_above_ema50 : typeof r.atrUnitsAboveEma50 === "number" ? r.atrUnitsAboveEma50 : null,
     priceChange1wPct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
     priceChange1mPct: typeof r.price_change_1m_pct === "number" ? r.price_change_1m_pct : null,
     priceChange3mPct: typeof r.price_change_3m_pct === "number" ? r.price_change_3m_pct : null,

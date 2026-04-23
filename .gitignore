@@ -37,6 +37,7 @@ yarn-error.log*
 
 # screener DB (never commit; use a volume or host storage in production)
 data/*.db
+data/*.db-journal
 data/*.db-shm
 data/*.db-wal
 data/*.sqlite

@@ -36,6 +36,7 @@ function fmtChg(n: number): string {
 function changeColumnLabel(metric: MarketMonitorMetricKey): string {
   if (metric === "nnh52w_highs" || metric === "nnh52w_lows") return "Change % (1d)";
   if (metric === "universe_above_50d" || metric === "universe_above_200d") return "Change % (1d)";
+  if (metric === "count_10x_atr_50d" || metric === "count_episodic_pivot") return "Change % (1d)";
   if (metric.includes("qtr")) return "Change % (Q)";
   if (metric.includes("month")) return "Change % (M)";
   return "Change %";
