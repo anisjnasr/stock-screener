@@ -413,8 +413,6 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   if (!data) return null;
 
-  const total = BUCKET_ORDER.reduce((n, b) => n + data.buckets[b].length, 0);
-
   return (
     <div className="space-y-3">
       <p className="pm-site-caption font-medium" style={{ color: "var(--text-tertiary)" }}>
@@ -438,12 +436,9 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
       </div>
 
       <div
-        className="pm-site-caption flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+        className="pm-site-caption flex flex-wrap items-center justify-end gap-2 border-t pt-2"
         style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
-        <span>
-          {total} name{total === 1 ? "" : "s"} across days
-        </span>
         <button
           type="button"
           onClick={() => void load()}

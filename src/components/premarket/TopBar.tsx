@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 type MarketPhase = "PRE-MARKET" | "MARKET OPEN" | "AFTER-HOURS" | "MARKET CLOSED";
@@ -82,15 +83,19 @@ export default function TopBar({ anySectionExpanded, onToggleAllSections }: TopB
       style={{ borderColor: "var(--border-default)", background: "var(--bg-elevated)" }}
     >
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
-        <div className="min-w-0 shrink-0 leading-tight" style={{ fontFamily: "var(--ws-font-sans)" }}>
-          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--accent-cyan)" }}>
-            Stock
-          </span>
-          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--text-secondary)" }}>
-            Stalker
-          </span>
-          <span className="font-semibold" style={{ fontSize: "var(--ws-fs-title)", color: "var(--accent-cyan)" }}>
-            {" "}
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 leading-tight">
+          <Image
+            src="/brand/stockstalker-lockup.png"
+            alt="Stock Stalker"
+            width={524}
+            height={72}
+            className="h-[22px] w-auto max-w-[min(48vw,220px)] object-contain object-left sm:h-[26px]"
+            priority
+          />
+          <span
+            className="whitespace-nowrap font-semibold"
+            style={{ fontFamily: "var(--ws-font-sans)", fontSize: "var(--ws-fs-title)", color: "var(--text-secondary)" }}
+          >
             / Pre-Market
           </span>
         </div>

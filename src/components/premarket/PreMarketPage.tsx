@@ -89,9 +89,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                     ? "Today · ET"
                     : s.id === "earnings"
                       ? "Big-cap buckets · ET"
-                      : s.id === "movers"
-                        ? "TradingView screener"
-                        : undefined
+                      : undefined
             }
             peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}

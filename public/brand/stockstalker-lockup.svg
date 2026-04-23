@@ -1,18 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="48" viewBox="0 0 320 48">
-  <g transform="translate(4, 4)">
-    <g transform="scale(1.667)">
-      <circle cx="12" cy="12" r="10" stroke="#00e5cc" stroke-width="1.8" opacity="0.25" fill="none"/>
-      <circle cx="12" cy="12" r="5.5" stroke="#00e5cc" stroke-width="1.6" opacity="0.55" fill="none"/>
-      <line x1="12" y1="0" x2="12" y2="5" stroke="#00e5cc" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
-      <line x1="12" y1="19" x2="12" y2="24" stroke="#00e5cc" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
-      <line x1="0" y1="12" x2="5" y2="12" stroke="#00e5cc" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
-      <line x1="19" y1="12" x2="24" y2="12" stroke="#00e5cc" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
-      <line x1="12" y1="8" x2="12" y2="9.8" stroke="#00e5cc" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="12" y1="14.2" x2="12" y2="16" stroke="#00e5cc" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="8" y1="12" x2="9.8" y2="12" stroke="#00e5cc" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="14.2" y1="12" x2="16" y2="12" stroke="#00e5cc" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <circle cx="12" cy="12" r="1.1" fill="#00e5cc"/>
-    </g>
-  </g>
-  <text x="56" y="31" font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace" font-weight="600" font-size="20" fill="#00e5cc" letter-spacing="-0.5">Stock Stalker</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 262 36" width="262" height="36">
+  <!-- STOCK — text-anchor end x=103 for symmetric gap (g=6) vs crosshair [109,125] -->
+  <text
+    x="103"
+    y="26"
+    text-anchor="end"
+    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="1.5"
+    fill="#00e5cc"
+  >STOCK</text>
+  <!-- crosshair centered cx=117 -->
+  <circle cx="117" cy="18" r="8" fill="none" stroke="#00e5cc" stroke-width="0.9" opacity="0.8" />
+  <circle cx="117" cy="18" r="4.5" fill="none" stroke="#00e5cc" stroke-width="0.5" opacity="0.35" />
+  <line x1="117" y1="7" x2="117" y2="12" stroke="#00e5cc" stroke-width="0.9" stroke-linecap="round" opacity="0.8" />
+  <line x1="117" y1="24" x2="117" y2="29" stroke="#00e5cc" stroke-width="0.9" stroke-linecap="round" opacity="0.8" />
+  <line x1="106" y1="18" x2="111" y2="18" stroke="#00e5cc" stroke-width="0.9" stroke-linecap="round" opacity="0.8" />
+  <line x1="123" y1="18" x2="128" y2="18" stroke="#00e5cc" stroke-width="0.9" stroke-linecap="round" opacity="0.8" />
+  <circle cx="117" cy="18" r="1.1" fill="#00e5cc" opacity="0.55" />
+  <!-- STALKER -->
+  <text
+    x="131"
+    y="26"
+    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="22"
+    font-weight="300"
+    letter-spacing="1.5"
+    fill="#E8E8E8"
+  >STALKER</text>
 </svg>
