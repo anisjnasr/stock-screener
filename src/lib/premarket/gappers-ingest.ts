@@ -1,6 +1,7 @@
 import {
   DEFAULT_TRADINGVIEW_SCAN,
   fetchTradingViewGappers,
+  fetchTradingViewGappersBidirectional,
   TRADINGVIEW_GAP_SCAN_ROW_CAP,
   type TradingViewScanParams,
 } from "@/lib/sources/tradingViewScreener";
@@ -25,6 +26,27 @@ export async function loadGappersScanOnly(
     const raw = await fetchTradingViewGappers(scan, {
       signal: init?.signal,
       rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
+    });
+    const rows = applyMcapFilter(raw, scan.minMarketCap, scan.maxMarketCap);
+    return { source: "tradingview", rows };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `TradingView screener could not load (${detail}). Try again later, or set TRADINGVIEW_SESSIONID and TRADINGVIEW_SESSIONID_SIGN on the server if the feed requires a browser session.`
+    );
+  }
+}
+
+/** Bidirectional gap scan (|gap| ≥ minAbs) for Stocks in Play candidate pool. */
+export async function loadGappersSipScan(
+  scan: TradingViewScanParams,
+  init?: { signal?: AbortSignal; rowLimit?: number; minAbsGapPct?: number }
+): Promise<{ source: "tradingview"; rows: Omit<GapperRow, "earningsRecent24h">[] }> {
+  try {
+    const raw = await fetchTradingViewGappersBidirectional(scan, {
+      signal: init?.signal,
+      rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
+      minAbsGapPct: init?.minAbsGapPct ?? 2,
     });
     const rows = applyMcapFilter(raw, scan.minMarketCap, scan.maxMarketCap);
     return { source: "tradingview", rows };

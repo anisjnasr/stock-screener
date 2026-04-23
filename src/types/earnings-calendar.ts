@@ -32,6 +32,8 @@ export type EarningsCalendarInsert = {
 export type EarningsCalendarPublic = {
   id: string;
   ticker: string;
+  /** From `big_name_universe` at request time (for peek ordering). */
+  market_cap_usd: number | null;
   company_name: string | null;
   report_date: string;
   report_time: string | null;

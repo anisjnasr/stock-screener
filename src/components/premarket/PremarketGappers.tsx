@@ -93,8 +93,8 @@ function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDes
   const hi = "var(--ws-text)";
   return (
     <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
-      <span style={{ fontSize: "7px", color: activeAsc ? hi : dim }}>▲</span>
-      <span style={{ fontSize: "7px", color: activeDesc ? hi : dim }}>▼</span>
+      <span style={{ fontSize: "var(--fs-75)", color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ fontSize: "var(--fs-75)", color: activeDesc ? hi : dim }}>▼</span>
     </span>
   );
 }
@@ -259,7 +259,7 @@ export default function PremarketGappers({
 
   const gapFilterLabelStyle: CSSProperties = {
     fontFamily: "var(--font-premarket-barlow), sans-serif",
-    fontSize: 11,
+    fontSize: "var(--fs-10)",
     fontWeight: 500,
     letterSpacing: "0.8px",
     textTransform: "uppercase",
@@ -267,10 +267,10 @@ export default function PremarketGappers({
     whiteSpace: "nowrap",
   };
   const gapFilterInputStyle: CSSProperties = {
-    height: 26,
-    padding: "4px 7px",
+    height: 30,
+    padding: "5px 9px",
     fontFamily: "var(--font-premarket-mono), monospace",
-    fontSize: 12,
+    fontSize: "var(--fs-11)",
     background: "#1c1c1c",
     border: "1px solid #333",
     borderRadius: 3,
@@ -279,15 +279,19 @@ export default function PremarketGappers({
   };
 
   return (
-    <div className="space-y-3">
+    <div
+      className="rounded border"
+      style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
+    >
+      <div className="space-y-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
+        <span className="tabular-nums" style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-10)" }}>
           Results: {resultsCount === null ? "—" : resultsCount}
         </span>
         <button
           type="button"
           className="ws-focus-ring rounded px-0.5 leading-none"
-          style={{ color: "var(--ws-text-dim)", fontSize: 14, background: "none", border: "none", cursor: "help" }}
+          style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-12)", background: "none", border: "none", cursor: "help" }}
           title={GAPPER_SCAN_INFO}
           aria-label={GAPPER_SCAN_INFO}
         >
@@ -347,7 +351,7 @@ export default function PremarketGappers({
               }));
             }}
           />
-          <span style={{ color: "#8a8a8a", fontSize: 12 }}>–</span>
+          <span style={{ color: "#8a8a8a", fontSize: "var(--fs-11)" }}>–</span>
           <input
             type="text"
             inputMode="numeric"
@@ -463,9 +467,9 @@ export default function PremarketGappers({
           disabled={loading}
           className="shrink-0 rounded font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
           style={{
-            height: 26,
-            padding: "3px 10px",
-            fontSize: 10,
+            height: 30,
+            padding: "4px 12px",
+            fontSize: "var(--fs-8)",
             border: "1px solid var(--ws-cyan)",
             color: "var(--ws-cyan)",
             background: "rgba(59, 191, 207, 0.08)",
@@ -483,9 +487,9 @@ export default function PremarketGappers({
           disabled={loading}
           className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
           style={{
-            height: 26,
-            padding: "3px 10px",
-            fontSize: 14,
+            height: 30,
+            padding: "4px 12px",
+            fontSize: "var(--fs-12)",
             lineHeight: 1,
             border: "1px solid var(--ws-border)",
             color: "var(--ws-text-dim)",
@@ -502,7 +506,7 @@ export default function PremarketGappers({
             className="shrink-0 tabular-nums"
             style={{
               fontFamily: "var(--font-premarket-mono), monospace",
-              fontSize: 11,
+              fontSize: "var(--fs-10)",
               color: "#8a8a8a",
             }}
             title="Duration of the last gappers / TradingView request"
@@ -514,9 +518,9 @@ export default function PremarketGappers({
 
       {error ? (
         <div
-          className="rounded border px-3 py-2.5 text-sm leading-relaxed"
+          className="rounded border px-3 py-2.5 leading-relaxed"
           role="alert"
-          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
+          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)", fontSize: "var(--fs-11)" }}
         >
           <p className="font-semibold" style={{ color: "var(--ws-text)" }}>
             TradingView screener failed
@@ -528,14 +532,14 @@ export default function PremarketGappers({
       ) : null}
 
       {!error && rows && rows.length === 0 && !loading ? (
-        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>
+        <p style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-11)" }}>
           No rows match these filters (or market is closed / no pre-market data).
         </p>
       ) : null}
 
       {sortedRows && sortedRows.length > 0 ? (
         <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-          <table className="w-full min-w-[36rem] border-collapse text-xs">
+          <table className="w-full min-w-[36rem] border-collapse" style={{ fontSize: "var(--fs-10)" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
                 <th
@@ -625,8 +629,9 @@ export default function PremarketGappers({
                         type="button"
                         title="Earnings in last 24h — open Earnings section"
                         onClick={() => onJumpToEarnings?.()}
-                        className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border text-[10px] font-bold uppercase tracking-tight ws-focus-ring"
+                        className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded border font-bold uppercase tracking-tight ws-focus-ring"
                         style={{
+                          fontSize: "var(--fs-8)",
                           borderColor: "var(--ws-border)",
                           color: "#c4a7e7",
                           background: "var(--ws-bg)",
@@ -696,10 +701,11 @@ export default function PremarketGappers({
       ) : null}
 
       {loading && !rows?.length ? (
-        <p className="text-sm" style={{ color: "var(--ws-text-dim)" }}>
+        <p style={{ color: "var(--ws-text-dim)", fontSize: "var(--fs-11)" }}>
           Loading gappers…
         </p>
       ) : null}
+      </div>
     </div>
   );
 }

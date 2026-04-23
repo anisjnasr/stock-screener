@@ -1,7 +1,59 @@
+const AMERICA_NEW_YORK = "America/New_York";
+
+/**
+ * Premarket UI: `23 Apr 2026, 8:09:10 AM ET` from an ISO timestamp (e.g. `generated_at`).
+ */
+export function formatGeneratedAtEtDisplay(iso: string | null | undefined): string {
+  if (iso == null || iso === "") return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  const datePart = new Intl.DateTimeFormat("en-GB", {
+    timeZone: AMERICA_NEW_YORK,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: AMERICA_NEW_YORK,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(d);
+  return `${datePart}, ${timePart} ET`;
+}
+
+/** Latest of several ISO timestamps (e.g. macro vs equities `generated_at`), formatted for premarket headers. */
+export function formatLatestGeneratedAtEtDisplay(...isos: (string | null | undefined)[]): string {
+  let best: string | null = null;
+  let bestMs = -Infinity;
+  for (const iso of isos) {
+    if (iso == null || iso === "") continue;
+    const ms = new Date(iso).getTime();
+    if (!Number.isFinite(ms) || ms <= bestMs) continue;
+    bestMs = ms;
+    best = iso;
+  }
+  return formatGeneratedAtEtDisplay(best);
+}
+
+/** `YYYY-MM-DD` → `23 Apr 2026` for UI copy. */
+export function formatYmdDisplay(ymd: string | null | undefined): string {
+  if (ymd == null || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd ?? "—";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!Number.isFinite(dt.getTime())) return ymd;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(dt);
+}
+
 /** Calendar YYYY-MM-DD in America/New_York for `now`. */
 export function ymdInEt(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: AMERICA_NEW_YORK,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -20,7 +20,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 const barlowCondensed = Barlow_Condensed({
   variable: "--font-premarket-barlow",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 

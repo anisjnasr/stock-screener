@@ -1,85 +1,54 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatEpsDollarPair, formatRevDollarPair } from "@/components/premarket/earnings-calendar-format";
 import type { EarningsCalendarBucket, EarningsCalendarPublic, EarningsCalendarResponse } from "@/types/earnings-calendar";
 
-const TIME_ORDER: Record<string, number> = { bmo: 0, dmh: 1, amc: 2 };
-
-type EarningsSortKey =
-  | "ticker"
-  | "company_name"
-  | "when"
-  | "rev"
-  | "rev_surprise"
-  | "eps"
-  | "eps_surprise";
-
+type EarningsSortKey = "ticker" | "name" | "eps" | "rev";
 type SortDir = "asc" | "desc";
 
-function defaultSortDir(key: EarningsSortKey): SortDir {
-  return key === "ticker" || key === "company_name" || key === "when" ? "asc" : "desc";
+function defaultEarningsSortDir(k: EarningsSortKey): SortDir {
+  return k === "eps" || k === "rev" ? "desc" : "asc";
 }
 
-function whenOrder(t: string | null): number {
-  const x = t ?? "dmh";
-  return TIME_ORDER[x] ?? 1;
-}
-
-function cmpNum(a: number | null, b: number | null, asc: boolean): number {
-  const aOk = a != null && Number.isFinite(a);
-  const bOk = b != null && Number.isFinite(b);
-  if (!aOk && !bOk) return 0;
-  if (!aOk) return 1;
-  if (!bOk) return -1;
-  return asc ? a - b : b - a;
-}
-
-function compareRows(a: EarningsCalendarPublic, b: EarningsCalendarPublic, key: EarningsSortKey, asc: boolean): number {
+function compareEarningsRows(a: EarningsCalendarPublic, b: EarningsCalendarPublic, key: EarningsSortKey, asc: boolean): number {
+  const mul = asc ? 1 : -1;
   switch (key) {
     case "ticker": {
-      const c = a.ticker.localeCompare(b.ticker);
-      return asc ? c : -c;
+      const d = a.ticker.localeCompare(b.ticker);
+      return mul * d;
     }
-    case "company_name": {
-      const as = (a.company_name ?? "").toLowerCase();
-      const bs = (b.company_name ?? "").toLowerCase();
-      const c = as.localeCompare(bs);
-      return asc ? c : -c;
+    case "name": {
+      const an = (a.company_name ?? "").trim() || "\uffff";
+      const bn = (b.company_name ?? "").trim() || "\uffff";
+      const d = an.localeCompare(bn);
+      return mul * d;
     }
-    case "when": {
-      const d = whenOrder(a.report_time) - whenOrder(b.report_time);
-      if (d !== 0) return asc ? d : -d;
-      const c = a.ticker.localeCompare(b.ticker);
-      return asc ? c : -c;
-    }
+    case "eps":
     case "rev": {
-      const d = cmpNum(a.revenue_actual, b.revenue_actual, asc);
-      if (d !== 0) return d;
-      return cmpNum(a.prior_revenue_actual, b.prior_revenue_actual, asc);
+      const pa = key === "eps" ? a.current_quarter_eps_surprise_pct : a.current_quarter_rev_surprise_pct;
+      const pb = key === "eps" ? b.current_quarter_eps_surprise_pct : b.current_quarter_rev_surprise_pct;
+      const na = pa == null || !Number.isFinite(pa);
+      const nb = pb == null || !Number.isFinite(pb);
+      if (na && nb) return a.ticker.localeCompare(b.ticker);
+      if (na) return 1;
+      if (nb) return -1;
+      const d = pa! - pb!;
+      if (d !== 0) return mul * d;
+      return a.ticker.localeCompare(b.ticker);
     }
-    case "rev_surprise":
-      return cmpNum(a.current_quarter_rev_surprise_pct, b.current_quarter_rev_surprise_pct, asc);
-    case "eps": {
-      const d = cmpNum(a.eps_actual, b.eps_actual, asc);
-      if (d !== 0) return d;
-      return cmpNum(a.prior_eps_actual, b.prior_eps_actual, asc);
-    }
-    case "eps_surprise":
-      return cmpNum(a.current_quarter_eps_surprise_pct, b.current_quarter_eps_surprise_pct, asc);
     default:
       return 0;
   }
 }
 
 function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDesc: boolean }) {
-  const dim = "var(--ws-text-vdim)";
-  const hi = "var(--ws-text)";
+  const dim = "var(--text-tertiary)";
+  const hi = "var(--text-primary)";
   return (
     <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
-      <span style={{ fontSize: "7px", color: activeAsc ? hi : dim }}>▲</span>
-      <span style={{ fontSize: "7px", color: activeDesc ? hi : dim }}>▼</span>
+      <span style={{ fontSize: "var(--fs-75)", color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ fontSize: "var(--fs-75)", color: activeDesc ? hi : dim }}>▼</span>
     </span>
   );
 }
@@ -91,8 +60,7 @@ function EarningsSortTh({
   sortDir,
   onSort,
   align,
-  thClassName = "",
-  title: thTitle,
+  className: thClass,
 }: {
   label: ReactNode;
   col: EarningsSortKey;
@@ -100,16 +68,16 @@ function EarningsSortTh({
   sortDir: SortDir;
   onSort: (k: EarningsSortKey) => void;
   align: "left" | "right";
-  thClassName?: string;
-  title?: string;
+  className?: string;
 }) {
   const active = sortKey === col;
   return (
     <th
       scope="col"
-      title={thTitle}
-      className={`cursor-pointer select-none whitespace-nowrap px-2 py-1.5 font-semibold ${align === "right" ? "text-right" : "text-left"} ${thClassName}`}
-      style={{ color: "var(--ws-text-dim)" }}
+      className={`cursor-pointer select-none py-0.5 font-semibold uppercase tracking-[var(--letter-tight)] ${
+        align === "right" ? "pl-1 text-right" : "pr-1 text-left"
+      } ${thClass ?? ""}`}
+      style={{ color: "var(--text-tertiary)" }}
       onClick={() => onSort(col)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -129,210 +97,118 @@ function EarningsSortTh({
   );
 }
 
-function formatSurprise(pct: number | null): string {
-  if (pct == null || !Number.isFinite(pct)) return "—";
-  const sign = pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(1)}%`;
-}
-
-function formatDeltaPct(
-  surprise: number | null,
-  estimate: number | null,
-  actual: number | null
-): { text: string; title?: string } {
-  if (surprise != null && Number.isFinite(surprise)) return { text: formatSurprise(surprise) };
-  if (estimate != null && Number.isFinite(estimate) && (actual == null || !Number.isFinite(actual))) {
-    return { text: "Pre", title: `Estimate ${estimate}; actual after release` };
-  }
-  return { text: "—" };
-}
-
-function surpriseStyle(pct: number | null): CSSProperties {
-  if (pct == null || !Number.isFinite(pct)) return { color: "var(--ws-text-dim)" };
-  if (pct >= 0) return { color: "var(--ws-green)" };
-  return { color: "var(--ws-red)" };
-}
-
-function deltaCellStyle(surprise: number | null, label: string): CSSProperties {
-  if (label === "Pre") return { color: "var(--ws-text-dim)" };
-  return surpriseStyle(surprise);
-}
-
-function timeLabel(t: string | null): string {
-  if (t === "bmo") return "BMO";
-  if (t === "amc") return "AMC";
-  if (t === "dmh") return "DMH";
-  return "TBD";
-}
-
-function BucketTable({
-  title,
-  rows,
-  sortKey,
-  sortDir,
-  onSortHeaderClick,
-  onOpenTickerInLists,
-}: {
-  title: string;
-  rows: EarningsCalendarPublic[];
-  sortKey: EarningsSortKey;
-  sortDir: SortDir;
-  onSortHeaderClick: (k: EarningsSortKey) => void;
-  onOpenTickerInLists?: (sym: string) => void;
-}) {
-  const sorted = useMemo(() => {
-    if (!rows.length) return rows;
-    const asc = sortDir === "asc";
-    return [...rows].sort((a, b) => compareRows(a, b, sortKey, asc));
-  }, [rows, sortKey, sortDir]);
-
-  if (!rows.length) {
-    return (
-      <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
-        No names in {title}.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-        {title}
-      </h3>
-      <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-        <table className="w-full min-w-[44rem] border-collapse text-left text-xs">
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
-              <EarningsSortTh label="Ticker" col="ticker" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="left" />
-              <EarningsSortTh
-                label="Name"
-                col="company_name"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSortHeaderClick}
-                align="left"
-                thClassName="hidden sm:table-cell"
-              />
-              <EarningsSortTh label="When" col="when" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="left" />
-              <EarningsSortTh
-                label="Rev $"
-                col="rev"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSortHeaderClick}
-                align="right"
-                thClassName="hidden sm:table-cell"
-                title="Revenue actual: current quarter / prior quarter (when stored)"
-              />
-              <EarningsSortTh
-                label="Rev Surprise"
-                col="rev_surprise"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSortHeaderClick}
-                align="right"
-                title="vs consensus estimate"
-              />
-              <EarningsSortTh
-                label="EPS $"
-                col="eps"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSortHeaderClick}
-                align="right"
-                thClassName="hidden sm:table-cell"
-                title="EPS actual: current quarter / prior quarter (when stored)"
-              />
-              <EarningsSortTh
-                label="EPS Surprise"
-                col="eps_surprise"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSortHeaderClick}
-                align="right"
-                title="vs consensus estimate"
-              />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r) => {
-              const epsSurprise = formatDeltaPct(r.current_quarter_eps_surprise_pct, r.eps_estimate, r.eps_actual);
-              const revSurprise = formatDeltaPct(r.current_quarter_rev_surprise_pct, r.revenue_estimate, r.revenue_actual);
-              const revDollars = formatRevDollarPair(r.revenue_actual, r.prior_revenue_actual);
-              const epsDollars = formatEpsDollarPair(r.eps_actual, r.prior_eps_actual);
-              return (
-                <tr key={r.id} style={{ borderBottom: "1px solid var(--ws-border)" }}>
-                  <td className="px-2 py-1.5 font-medium">
-                    {onOpenTickerInLists ? (
-                      <button
-                        type="button"
-                        className="ws-focus-ring rounded font-medium underline-offset-2 hover:underline"
-                        style={{ color: "var(--ws-text)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
-                        onClick={() => onOpenTickerInLists(r.ticker)}
-                      >
-                        {r.ticker}
-                      </button>
-                    ) : (
-                      <span style={{ color: "var(--ws-text)" }}>{r.ticker}</span>
-                    )}
-                  </td>
-                  <td className="hidden max-w-[10rem] truncate px-2 py-1.5 sm:table-cell" style={{ color: "var(--ws-text-dim)" }}>
-                    {r.company_name ?? "—"}
-                  </td>
-                  <td className="px-2 py-1.5" style={{ color: "var(--ws-text-dim)" }}>
-                    {timeLabel(r.report_time)}
-                  </td>
-                  <td
-                    className="hidden whitespace-nowrap px-2 py-1.5 text-right tabular-nums sm:table-cell"
-                    style={{ color: "var(--ws-text)" }}
-                  >
-                    {revDollars}
-                  </td>
-                  <td
-                    className="px-2 py-1.5 text-right tabular-nums"
-                    style={deltaCellStyle(r.current_quarter_rev_surprise_pct, revSurprise.text)}
-                    title={revSurprise.title}
-                  >
-                    {revSurprise.text}
-                  </td>
-                  <td
-                    className="hidden whitespace-nowrap px-2 py-1.5 text-right tabular-nums sm:table-cell"
-                    style={{ color: "var(--ws-text)" }}
-                  >
-                    {epsDollars}
-                  </td>
-                  <td
-                    className="px-2 py-1.5 text-right tabular-nums"
-                    style={deltaCellStyle(r.current_quarter_eps_surprise_pct, epsSurprise.text)}
-                    title={epsSurprise.title}
-                  >
-                    {epsSurprise.text}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 const BUCKET_ORDER: EarningsCalendarBucket[] = ["yesterday", "today", "tomorrow"];
 
 const BUCKET_TITLE: Record<EarningsCalendarBucket, string> = {
-  yesterday: "Yesterday (ET)",
-  today: "Today (ET)",
-  tomorrow: "Tomorrow (ET)",
+  yesterday: "Yesterday",
+  today: "Today",
+  tomorrow: "Tomorrow",
 };
 
-type EarningsCalendarProps = {
+function slotKey(t: string | null): "bmo" | "amc" | "dmh" {
+  if (t === "bmo" || t === "amc" || t === "dmh") return t;
+  return "dmh";
+}
+
+function sign(x: number | null): number | null {
+  if (x == null || !Number.isFinite(x)) return null;
+  if (x > 0) return 1;
+  if (x < 0) return -1;
+  return 0;
+}
+
+function earningsPillKind(r: EarningsCalendarPublic): "beat" | "miss" | "mixed" | "upcoming" {
+  const se = sign(r.current_quarter_eps_surprise_pct);
+  const sr = sign(r.current_quarter_rev_surprise_pct);
+  if (se === null && sr === null) {
+    return "upcoming";
+  }
+  if (se === null) {
+    return sr! >= 0 ? "beat" : "miss";
+  }
+  if (sr === null) {
+    return se >= 0 ? "beat" : "miss";
+  }
+  if (se >= 0 && sr >= 0) return "beat";
+  if (se < 0 && sr < 0) return "miss";
+  return "mixed";
+}
+
+function pillClass(kind: ReturnType<typeof earningsPillKind>): string {
+  switch (kind) {
+    case "beat":
+      return "earn-pill-beat";
+    case "miss":
+      return "earn-pill-miss";
+    case "mixed":
+      return "earn-pill-mixed";
+    default:
+      return "earn-pill-upcoming";
+  }
+}
+
+function fmtSurprisePct(p: number | null): string {
+  if (p == null || !Number.isFinite(p)) return "—";
+  const signStr = p > 0 ? "+" : "";
+  return `${signStr}${p.toFixed(1)}%`;
+}
+
+function surpriseTextColor(p: number | null): string {
+  const s = sign(p);
+  if (s == null || s === 0) return "var(--text-tertiary)";
+  return s > 0 ? "var(--positive)" : "var(--negative)";
+}
+
+function TickerPillButton({
+  row,
+  showSlotTag,
+  onOpenTickerInLists,
+}: {
+  row: EarningsCalendarPublic;
+  showSlotTag: boolean;
   onOpenTickerInLists?: (sym: string) => void;
-};
+}) {
+  const kind = earningsPillKind(row);
+  const cls = pillClass(kind);
+  const slot = row.report_time === "bmo" ? "BMO" : row.report_time === "amc" ? "AMC" : "DMH";
+  const inner = (
+    <>
+      <span className="pm-mono font-semibold">{row.ticker}</span>
+      {showSlotTag ? (
+        <span className="ml-1 opacity-80" style={{ fontSize: "var(--fs-75)" }}>
+          {slot}
+        </span>
+      ) : null}
+    </>
+  );
+  if (onOpenTickerInLists) {
+    return (
+      <button
+        type="button"
+        className={`pm-focus inline-flex max-w-full min-w-0 items-center rounded-full px-1.5 py-px ${cls}`}
+        style={{ fontSize: "var(--fs-8)" }}
+        onClick={() => onOpenTickerInLists(row.ticker)}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <span className={`inline-flex max-w-full min-w-0 items-center rounded-full px-1.5 py-px ${cls}`} style={{ fontSize: "var(--fs-8)" }}>
+      {inner}
+    </span>
+  );
+}
 
-export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalendarProps) {
-  const [data, setData] = useState<EarningsCalendarResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+function CompactEarningsTable({
+  rows,
+  showSlotTag,
+  onOpenTickerInLists,
+}: {
+  rows: EarningsCalendarPublic[];
+  showSlotTag: boolean;
+  onOpenTickerInLists?: (sym: string) => void;
+}) {
   const [sortKey, setSortKey] = useState<EarningsSortKey>("ticker");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -342,11 +218,145 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
         setSortDir((d) => (d === "asc" ? "desc" : "asc"));
       } else {
         setSortKey(key);
-        setSortDir(defaultSortDir(key));
+        setSortDir(defaultEarningsSortDir(key));
       }
     },
     [sortKey]
   );
+
+  const sortedRows = useMemo(() => {
+    if (!rows.length) return rows;
+    const asc = sortDir === "asc";
+    return [...rows].sort((a, b) => compareEarningsRows(a, b, sortKey, asc));
+  }, [rows, sortKey, sortDir]);
+
+  if (!rows.length) {
+    return (
+      <p className="m-0 py-1" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-8)" }}>
+        No names
+      </p>
+    );
+  }
+
+  return (
+    <div className="min-w-0 overflow-x-auto">
+      <table
+        className="w-full min-w-0 border-collapse"
+        style={{ fontSize: "var(--fs-8)", color: "var(--text-secondary)" }}
+      >
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border-default)" }}>
+            <EarningsSortTh label="Ticker" col="ticker" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="left" />
+            <EarningsSortTh
+              label="Name"
+              col="name"
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSortHeaderClick}
+              align="left"
+              className="max-w-[7rem]"
+            />
+            <EarningsSortTh label="EPS Surprise" col="eps" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="right" />
+            <EarningsSortTh label="Rev Surprise" col="rev" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeaderClick} align="right" />
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.map((r) => (
+            <tr key={r.id} className="border-t" style={{ borderColor: "var(--border-default)" }}>
+              <td className="py-0.5 pr-1 align-middle">
+                <TickerPillButton row={r} showSlotTag={showSlotTag} onOpenTickerInLists={onOpenTickerInLists} />
+              </td>
+              <td
+                className="max-w-[7rem] truncate py-0.5 pr-1 align-middle"
+                style={{ color: "var(--text-secondary)" }}
+                title={r.company_name ?? undefined}
+              >
+                {r.company_name ?? "—"}
+              </td>
+              <td
+                className="pm-mono whitespace-nowrap py-0.5 pl-1 pr-1 text-right align-middle tabular-nums"
+                style={{ color: surpriseTextColor(r.current_quarter_eps_surprise_pct) }}
+              >
+                {fmtSurprisePct(r.current_quarter_eps_surprise_pct)}
+              </td>
+              <td
+                className="pm-mono whitespace-nowrap py-0.5 pl-1 text-right align-middle tabular-nums"
+                style={{ color: surpriseTextColor(r.current_quarter_rev_surprise_pct) }}
+              >
+                {fmtSurprisePct(r.current_quarter_rev_surprise_pct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DayBucketBlock({
+  bucket,
+  rows,
+  onOpenTickerInLists,
+}: {
+  bucket: EarningsCalendarBucket;
+  rows: EarningsCalendarPublic[];
+  onOpenTickerInLists?: (sym: string) => void;
+}) {
+  const { bmo, amc, dmh } = useMemo(() => {
+    const bmo: EarningsCalendarPublic[] = [];
+    const amc: EarningsCalendarPublic[] = [];
+    const dmh: EarningsCalendarPublic[] = [];
+    for (const r of rows) {
+      const sk = slotKey(r.report_time);
+      if (sk === "bmo") bmo.push(r);
+      else if (sk === "amc") amc.push(r);
+      else dmh.push(r);
+    }
+    return { bmo, amc, dmh };
+  }, [rows]);
+
+  return (
+    <div
+      className="rounded border px-2 py-2"
+      style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
+    >
+      <h3 className="mb-2 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-10)", color: "var(--text-primary)" }}>
+        {BUCKET_TITLE[bucket]}
+      </h3>
+      <div className="grid min-w-0 gap-3 md:grid-cols-2">
+        <div className="min-w-0 space-y-2">
+          <p className="m-0 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+            Before market open
+          </p>
+          <CompactEarningsTable rows={bmo} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
+          {dmh.length > 0 ? (
+            <div className="border-t pt-2" style={{ borderColor: "var(--border-default)" }}>
+              <p className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+                During market
+              </p>
+              <CompactEarningsTable rows={dmh} showSlotTag onOpenTickerInLists={onOpenTickerInLists} />
+            </div>
+          ) : null}
+        </div>
+        <div className="min-w-0">
+          <p className="mb-1 font-semibold uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-8)", color: "var(--text-tertiary)" }}>
+            After market close
+          </p>
+          <CompactEarningsTable rows={amc} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type EarningsCalendarProps = {
+  onOpenTickerInLists?: (sym: string) => void;
+};
+
+export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalendarProps) {
+  const [data, setData] = useState<EarningsCalendarResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -374,7 +384,7 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   if (loading) {
     return (
-      <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
         Loading earnings…
       </p>
     );
@@ -383,14 +393,14 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
   if (error) {
     return (
       <div className="space-y-2">
-        <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+        <p style={{ color: "var(--text-secondary)", fontSize: "var(--fs-11)" }}>
           {error}
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="rounded border px-2 py-1 text-xs font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)]"
-          style={{ borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
+          style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--fs-9)" }}
         >
           Retry
         </button>
@@ -400,30 +410,43 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   if (!data) return null;
 
+  const total = BUCKET_ORDER.reduce((n, b) => n + data.buckets[b].length, 0);
+
   return (
-    <div className="space-y-6">
-      <p className="text-[11px] uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-        Big names (&gt;$50B mcap) · anchor {data.anchor} ET
+    <div className="space-y-3">
+      <p className="font-medium uppercase tracking-[var(--letter-label)]" style={{ fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}>
+        Big names (&gt;$50B mcap) · anchor {data.anchor} ET · EPS &amp; revenue surprise vs consensus when reported
       </p>
-      {BUCKET_ORDER.map((b) => (
-        <BucketTable
-          key={b}
-          title={BUCKET_TITLE[b]}
-          rows={data.buckets[b]}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSortHeaderClick={onSortHeaderClick}
-          onOpenTickerInLists={onOpenTickerInLists}
-        />
-      ))}
-      <button
-        type="button"
-        onClick={() => void load()}
-        className="rounded border px-2 py-1 text-xs font-medium uppercase tracking-wide transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)]"
-        style={{ borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+
+      <div className="flex flex-wrap gap-2 rounded border px-2 py-1.5" style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)", fontSize: "var(--fs-8)" }}>
+        <span className="earn-pill-beat rounded-full px-2 py-0.5">Beat</span>
+        <span className="earn-pill-miss rounded-full px-2 py-0.5">Miss</span>
+        <span className="earn-pill-mixed rounded-full px-2 py-0.5">Mixed</span>
+        <span className="earn-pill-upcoming rounded-full px-2 py-0.5">Upcoming</span>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {BUCKET_ORDER.map((b) => (
+          <DayBucketBlock key={b} bucket={b} rows={data.buckets[b]} onOpenTickerInLists={onOpenTickerInLists} />
+        ))}
+      </div>
+
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+        style={{ borderColor: "var(--border-default)", fontSize: "var(--fs-9)", color: "var(--text-tertiary)" }}
       >
-        Refresh
-      </button>
+        <span>
+          {total} name{total === 1 ? "" : "s"} across days
+        </span>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="pm-focus rounded border px-2 py-1 font-medium uppercase tracking-[var(--letter-label)]"
+          style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}
+        >
+          Refresh
+        </button>
+      </div>
     </div>
   );
 }

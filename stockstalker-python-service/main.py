@@ -74,23 +74,60 @@ def _normalize_ticker(raw: str) -> str | None:
     return s
 
 
+def _flatten_yf_news_row(item: dict[str, Any]) -> dict[str, Any]:
+    """yfinance often returns { id, content: { title, pubDate, ... } }; normalize to one dict."""
+    inner = item.get("content")
+    if isinstance(inner, dict):
+        base = dict(inner)
+        base.setdefault("link", None)
+        prov = inner.get("provider")
+        if isinstance(prov, dict) and prov.get("displayName"):
+            base.setdefault("publisher", prov.get("displayName"))
+        for url_key in ("canonicalUrl", "clickThroughUrl"):
+            u = inner.get(url_key)
+            if isinstance(u, dict) and u.get("url") and not base.get("link"):
+                base["link"] = u.get("url")
+        return base
+    return item
+
+
+def _pub_to_unix(pub: Any) -> float | None:
+    if isinstance(pub, (int, float)):
+        v = float(pub)
+        # Heuristic: ms vs s (Yahoo ISO strings parsed below are always s)
+        if v > 1e12:
+            v = v / 1000.0
+        return v
+    if isinstance(pub, str) and pub.strip():
+        s = pub.strip().replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            return None
+    return None
+
+
 def _yf_news_to_items(raw: list[Any], cutoff_ts: float) -> list[NewsItem]:
     out: list[NewsItem] = []
     for item in raw or []:
         if not isinstance(item, dict):
             continue
-        pub = item.get("providerPublishTime") or item.get("pubDate")
-        if isinstance(pub, (int, float)) and pub < cutoff_ts:
+        row = _flatten_yf_news_row(item)
+        pub_ts = _pub_to_unix(row.get("providerPublishTime") or row.get("pubDate"))
+        if pub_ts is not None and pub_ts < cutoff_ts:
             continue
-        title = item.get("title") or item.get("headline") or ""
+        title = row.get("title") or row.get("headline") or ""
         if not isinstance(title, str) or not title.strip():
             continue
-        link = item.get("link")
-        publisher = item.get("publisher")
-        typ = item.get("type")
+        link = row.get("link")
+        publisher = row.get("publisher")
+        typ = row.get("type") or row.get("contentType")
         pub_int: int | None
-        if isinstance(pub, (int, float)):
-            pub_int = int(pub)
+        if pub_ts is not None:
+            pub_int = int(pub_ts)
         else:
             pub_int = None
         out.append(

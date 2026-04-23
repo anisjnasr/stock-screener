@@ -123,10 +123,10 @@ export async function fetchForexFactoryCalendarXml(init?: { signal?: AbortSignal
 }
 
 /**
- * Parse weekly XML; keep **USD** + **High** impact only (pre-market spec).
+ * Parse weekly XML; keep **USD** + **High** or **Medium** impact (pre-market spec).
  * Times are interpreted as **US Eastern** wall times (feed convention).
  */
-export function parseForexFactoryHighImpactUsd(xml: string): EconomicEventInsert[] {
+export function parseForexFactoryHighMediumImpactUsd(xml: string): EconomicEventInsert[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
@@ -151,7 +151,7 @@ export function parseForexFactoryHighImpactUsd(xml: string): EconomicEventInsert
     if (countryRaw !== "USD") continue;
 
     const impact = normalizeImpact(textOf(ev.impact));
-    if (impact !== "High") continue;
+    if (impact !== "High" && impact !== "Medium") continue;
 
     const eventName = textOf(ev.title ?? ev.event);
     if (!eventName) continue;
@@ -171,7 +171,7 @@ export function parseForexFactoryHighImpactUsd(xml: string): EconomicEventInsert
       event_time_et: eventTimeEt,
       event_name: eventName,
       country: "US",
-      impact: "High",
+      impact,
       forecast,
       previous,
       source: "forex_factory",

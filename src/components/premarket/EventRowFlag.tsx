@@ -88,8 +88,8 @@ export default function EventRowFlag({ eventType, eventId, onFlagged }: EventRow
               type="button"
               role="menuitem"
               disabled={busy}
-              className="block w-full px-2.5 py-1.5 text-left text-[11px] leading-snug transition-colors hover:bg-[color:var(--ws-hover)]"
-              style={{ color: "var(--ws-text)" }}
+              className="block w-full px-2.5 py-1.5 text-left leading-snug transition-colors hover:bg-[color:var(--ws-hover)]"
+              style={{ color: "var(--ws-text)", fontSize: "var(--fs-11)" }}
               onClick={() => void submit(reason)}
             >
               {label}

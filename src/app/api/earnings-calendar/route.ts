@@ -25,6 +25,7 @@ function rowToPublic(r: Record<string, unknown>): EarningsCalendarPublic {
   return {
     id: String(r.id ?? ""),
     ticker: String(r.ticker ?? "").toUpperCase(),
+    market_cap_usd: null,
     company_name: r.company_name != null ? String(r.company_name) : null,
     report_date: String(r.report_date ?? "").slice(0, 10),
     report_time: r.report_time != null ? String(r.report_time) : null,
@@ -110,6 +111,7 @@ export async function GET() {
     const row = rowToPublic(raw as Record<string, unknown>);
     if (!row.id || !row.ticker) continue;
     if (!mcapByTicker.has(row.ticker)) continue;
+    row.market_cap_usd = mcapByTicker.get(row.ticker) ?? null;
     if (row.report_date === yesterday) buckets.yesterday.push(row);
     else if (row.report_date === anchor) buckets.today.push(row);
     else if (row.report_date === tomorrow) buckets.tomorrow.push(row);

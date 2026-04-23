@@ -15,7 +15,7 @@ export type PythonNewsResponse = {
   data: Record<string, PythonNewsItem[]>;
 };
 
-const MAX_TICKERS = 40;
+const MAX_TICKERS = 120;
 
 function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");

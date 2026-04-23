@@ -1,0 +1,350 @@
+/**
+ * Pre-market desk: scoped trading-terminal tokens (Barlow Condensed + JetBrains Mono via layout).
+ * Parent must add class `premarket-terminal` (see PreMarketShell).
+ */
+.premarket-terminal {
+  --bg-base: #0a0b0d;
+  --bg-panel: #0f1115;
+  --bg-elevated: #13161c;
+  --bg-inset: #0c0e12;
+  --border-default: #1e232b;
+  --border-strong: #2a3140;
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa3b2;
+  --text-tertiary: #6b7280;
+  --text-faint: #4b5563;
+  --accent-cyan: #22d3ee;
+  --accent-cyan-muted: rgba(34, 211, 238, 0.18);
+  --accent-amber: #fbbf24;
+  --accent-amber-muted: rgba(251, 191, 36, 0.14);
+  --accent-purple: #c084fc;
+  --positive: #5bbd6e;
+  --negative: #e05a5a;
+  --warning: #f59e0b;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --font-sans: var(--font-premarket-barlow), system-ui, sans-serif;
+  --font-mono: var(--font-premarket-mono), ui-monospace, monospace;
+  /* ~1.36× prior scale — keep relative steps; bump here to improve legibility */
+  --fs-75: 10px;
+  --fs-8: 11px;
+  --fs-9: 12px;
+  --fs-10: 14px;
+  --fs-11: 15px;
+  --fs-12: 16px;
+  --letter-tight: 0.02em;
+  --letter-label: 0.06em;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: var(--fs-11);
+  line-height: 1.42;
+  -webkit-font-smoothing: antialiased;
+}
+
+.premarket-terminal .pm-mono {
+  font-family: var(--font-mono);
+}
+
+.premarket-terminal .pm-focus:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.premarket-terminal .pm-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  animation: pm-pulse 2s ease-out infinite;
+}
+
+@keyframes pm-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent);
+  }
+}
+
+/* SIP / catalyst badge tokens */
+.premarket-terminal .badge-earnings {
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--accent-cyan);
+}
+.premarket-terminal .badge-guidance-pos {
+  background: rgba(45, 212, 191, 0.14);
+  color: #2dd4bf;
+}
+.premarket-terminal .badge-guidance-neg {
+  background: rgba(224, 90, 90, 0.14);
+  color: var(--negative);
+}
+.premarket-terminal .badge-guidance-neu {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+}
+.premarket-terminal .badge-mna {
+  background: rgba(192, 132, 252, 0.14);
+  color: var(--accent-purple);
+}
+.premarket-terminal .badge-deal {
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+}
+.premarket-terminal .badge-product {
+  background: rgba(59, 130, 246, 0.14);
+  color: #60a5fa;
+}
+.premarket-terminal .badge-reg {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--accent-amber);
+}
+.premarket-terminal .badge-analyst {
+  background: rgba(251, 146, 60, 0.12);
+  color: #fb923c;
+}
+.premarket-terminal .badge-sector {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-secondary);
+}
+.premarket-terminal .badge-other {
+  background: rgba(100, 116, 139, 0.14);
+  color: #94a3b8;
+}
+.premarket-terminal .badge-unclear {
+  background: rgba(71, 85, 105, 0.22);
+  color: #64748b;
+}
+
+/* Calendar impact legend */
+.premarket-terminal .impact-high {
+  color: #f87171;
+}
+.premarket-terminal .impact-med {
+  color: var(--accent-amber);
+}
+.premarket-terminal .impact-low {
+  color: var(--text-tertiary);
+}
+
+/* Earnings pills */
+.premarket-terminal .earn-pill-beat {
+  background: rgba(91, 189, 110, 0.16);
+  color: var(--positive);
+  border: 1px solid rgba(91, 189, 110, 0.35);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .earn-pill-beat:hover {
+  background: rgba(91, 189, 110, 0.28);
+  border-color: rgba(91, 189, 110, 0.55);
+  box-shadow: 0 0 0 1px rgba(91, 189, 110, 0.2);
+}
+.premarket-terminal .earn-pill-miss {
+  background: rgba(224, 90, 90, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(224, 90, 90, 0.35);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .earn-pill-miss:hover {
+  background: rgba(224, 90, 90, 0.26);
+  border-color: rgba(248, 113, 113, 0.55);
+  box-shadow: 0 0 0 1px rgba(224, 90, 90, 0.22);
+}
+.premarket-terminal .earn-pill-mixed {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--accent-amber);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .earn-pill-mixed:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.18);
+}
+.premarket-terminal .earn-pill-upcoming {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .earn-pill-upcoming:hover {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+/* Daily themes: industry label pills (keyword-mapped) */
+.premarket-terminal .theme-industry-pill-neutral {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-neutral:hover {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+.premarket-terminal .theme-industry-pill-tech {
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--accent-cyan);
+  border-color: rgba(34, 211, 238, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-tech:hover {
+  background: rgba(34, 211, 238, 0.24);
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+.premarket-terminal .theme-industry-pill-healthcare {
+  background: rgba(45, 212, 191, 0.14);
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-healthcare:hover {
+  background: rgba(45, 212, 191, 0.24);
+  border-color: rgba(45, 212, 191, 0.52);
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.16);
+}
+.premarket-terminal .theme-industry-pill-financial {
+  background: rgba(192, 132, 252, 0.14);
+  color: var(--accent-purple);
+  border-color: rgba(192, 132, 252, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-financial:hover {
+  background: rgba(192, 132, 252, 0.22);
+  border-color: rgba(192, 132, 252, 0.52);
+  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.16);
+}
+.premarket-terminal .theme-industry-pill-energy {
+  background: rgba(251, 146, 60, 0.14);
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.4);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-energy:hover {
+  background: rgba(251, 146, 60, 0.24);
+  border-color: rgba(251, 146, 60, 0.55);
+  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.16);
+}
+.premarket-terminal .theme-industry-pill-cleanenergy {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-cleanenergy:hover {
+  background: rgba(74, 222, 128, 0.22);
+  border-color: rgba(74, 222, 128, 0.52);
+  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.14);
+}
+.premarket-terminal .theme-industry-pill-utilities {
+  background: rgba(56, 189, 248, 0.14);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-utilities:hover {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.52);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.14);
+}
+.premarket-terminal .theme-industry-pill-realestate {
+  background: rgba(52, 211, 153, 0.14);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-realestate:hover {
+  background: rgba(52, 211, 153, 0.22);
+  border-color: rgba(52, 211, 153, 0.52);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.14);
+}
+.premarket-terminal .theme-industry-pill-consumer {
+  background: rgba(251, 113, 133, 0.14);
+  color: #fb7185;
+  border-color: rgba(251, 113, 133, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-consumer:hover {
+  background: rgba(251, 113, 133, 0.22);
+  border-color: rgba(251, 113, 133, 0.52);
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.14);
+}
+.premarket-terminal .theme-industry-pill-staples {
+  background: rgba(163, 230, 53, 0.12);
+  color: #a3e635;
+  border-color: rgba(163, 230, 53, 0.35);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-staples:hover {
+  background: rgba(163, 230, 53, 0.2);
+  border-color: rgba(163, 230, 53, 0.48);
+  box-shadow: 0 0 0 1px rgba(163, 230, 53, 0.12);
+}
+.premarket-terminal .theme-industry-pill-industrial {
+  background: rgba(129, 140, 248, 0.14);
+  color: #a5b4fc;
+  border-color: rgba(129, 140, 248, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-industrial:hover {
+  background: rgba(129, 140, 248, 0.22);
+  border-color: rgba(165, 180, 252, 0.52);
+  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.14);
+}
+.premarket-terminal .theme-industry-pill-materials {
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-materials:hover {
+  background: rgba(234, 179, 8, 0.2);
+  border-color: rgba(250, 204, 21, 0.5);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.12);
+}
+.premarket-terminal .theme-industry-pill-communication {
+  background: rgba(232, 121, 249, 0.14);
+  color: #e879f9;
+  border-color: rgba(232, 121, 249, 0.38);
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.premarket-terminal .theme-industry-pill-communication:hover {
+  background: rgba(232, 121, 249, 0.22);
+  border-color: rgba(232, 121, 249, 0.52);
+  box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.14);
+}
+
+.premarket-terminal .s1-context {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+@media (max-width: 1440px) {
+  .premarket-terminal .s1-context {
+    grid-template-columns: 1fr 350px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .premarket-terminal .s1-context {
+    grid-template-columns: 1fr;
+  }
+}

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseFfAmericanDateToIso,
   parseFfTimeToHmsEt,
-  parseForexFactoryHighImpactUsd,
+  parseForexFactoryHighMediumImpactUsd,
 } from "./forexFactoryCalendar";
 
 describe("parseFfAmericanDateToIso", () => {
@@ -30,21 +30,28 @@ describe("parseFfTimeToHmsEt", () => {
   });
 });
 
-describe("parseForexFactoryHighImpactUsd", () => {
-  it("keeps only USD High events", () => {
+describe("parseForexFactoryHighMediumImpactUsd", () => {
+  it("keeps USD High and Medium events only", () => {
     const fixturePath = join(__dirname, "__fixtures__", "forex-factory-sample.xml");
     const xml = readFileSync(fixturePath, "utf8");
-    const rows = parseForexFactoryHighImpactUsd(xml);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].event_name).toBe("Non-Farm Payrolls");
-    expect(rows[0].country).toBe("US");
-    expect(rows[0].impact).toBe("High");
-    expect(rows[0].event_date).toBe("2026-04-20");
-    expect(rows[0].event_time_et).toBe("08:30:00");
-    expect(rows[0].forecast).toBe("180K");
-    expect(rows[0].previous).toBe("175K");
-    expect(rows[0].source).toBe("forex_factory");
-    expect(rows[0].actual).toBeUndefined();
-    expect(rows[0].external_id).toMatch(/^ff:2026-04-20:/);
+    const rows = parseForexFactoryHighMediumImpactUsd(xml);
+    expect(rows).toHaveLength(2);
+    const nfp = rows.find((r) => r.event_name === "Non-Farm Payrolls");
+    const pmi = rows.find((r) => r.event_name === "ISM Manufacturing PMI");
+    expect(nfp).toBeDefined();
+    expect(nfp!.country).toBe("US");
+    expect(nfp!.impact).toBe("High");
+    expect(nfp!.event_date).toBe("2026-04-20");
+    expect(nfp!.event_time_et).toBe("08:30:00");
+    expect(nfp!.forecast).toBe("180K");
+    expect(nfp!.previous).toBe("175K");
+    expect(nfp!.source).toBe("forex_factory");
+    expect(nfp!.actual).toBeUndefined();
+    expect(nfp!.external_id).toMatch(/^ff:2026-04-20:/);
+    expect(pmi).toBeDefined();
+    expect(pmi!.impact).toBe("Medium");
+    expect(pmi!.event_time_et).toBe("10:00:00");
+    expect(pmi!.forecast).toBe("50.1");
+    expect(pmi!.previous).toBe("49.5");
   });
 });

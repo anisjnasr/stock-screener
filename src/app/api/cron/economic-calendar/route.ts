@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertEconomicEvents } from "@/lib/economic-events-upsert";
 import { getSupabaseService } from "@/lib/supabase";
-import { fetchForexFactoryCalendarXml, parseForexFactoryHighImpactUsd } from "@/lib/sources/forexFactoryCalendar";
+import { fetchForexFactoryCalendarXml, parseForexFactoryHighMediumImpactUsd } from "@/lib/sources/forexFactoryCalendar";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 /**
- * Ingest US high-impact events from Forex Factory weekly XML into Supabase.
+ * Ingest US high- and medium-impact events from Forex Factory weekly XML into Supabase.
  * Secured with CRON_SECRET (Bearer), same pattern as admin routes.
  *
  * POST — run on schedule (e.g. Render cron every 6h) or manually via curl.
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const xml = await fetchForexFactoryCalendarXml({ signal: request.signal });
-    const rows = parseForexFactoryHighImpactUsd(xml);
+    const rows = parseForexFactoryHighMediumImpactUsd(xml);
     const { upserted, errors } = await upsertEconomicEvents(supabase, rows);
     if (errors.length) {
       for (const line of errors) console.error("[economic-calendar]", line);

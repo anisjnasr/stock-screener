@@ -19,6 +19,15 @@
     <previous><![CDATA[1.9%]]></previous>
   </event>
   <event>
+    <title>ISM Manufacturing PMI</title>
+    <country>USD</country>
+    <date><![CDATA[04-20-2026]]></date>
+    <time><![CDATA[10:00am]]></time>
+    <impact><![CDATA[Medium]]></impact>
+    <forecast><![CDATA[50.1]]></forecast>
+    <previous><![CDATA[49.5]]></previous>
+  </event>
+  <event>
     <title>Low impact US</title>
     <country>USD</country>
     <date><![CDATA[04-21-2026]]></date>

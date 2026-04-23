@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
@@ -18,37 +18,23 @@ import {
   type GapperFilterState,
 } from "@/components/premarket/gapper-filters-storage";
 import { usePremarketPeeks } from "@/hooks/usePremarketPeeks";
+import { formatLatestGeneratedAtEtDisplay } from "@/lib/et-ymd";
 
-const SECTIONS: {
+const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "calendars", "earnings", "movers"];
+
+type SectionConfig = {
   id: PremarketSectionId;
-  title: string;
+  label: string;
+  labelAccent?: "cyan" | "amber" | "default";
   stub: string;
-}[] = [
-  {
-    id: "context",
-    title: "Macro & US equities brief",
-    stub: "",
-  },
-  {
-    id: "sip",
-    title: "Stocks in Play",
-    stub: "",
-  },
-  {
-    id: "calendars",
-    title: "Economic calendar",
-    stub: "",
-  },
-  {
-    id: "earnings",
-    title: "Earnings",
-    stub: "",
-  },
-  {
-    id: "movers",
-    title: "Top movers",
-    stub: "",
-  },
+};
+
+const SECTIONS: SectionConfig[] = [
+  { id: "context", label: "Context", labelAccent: "cyan", stub: "" },
+  { id: "sip", label: "Stocks in Play", labelAccent: "amber", stub: "" },
+  { id: "calendars", label: "Economic & key events", labelAccent: "cyan", stub: "" },
+  { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
+  { id: "movers", label: "Top movers", labelAccent: "default", stub: "" },
 ];
 
 type PreMarketPageProps = {
@@ -79,33 +65,60 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     equitiesSetupHint,
   } = usePremarketPeeks(gapperFilters, gapperFiltersHydrated);
 
+  const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--ws-bg)" }}>
-      <TopBar onCollapseAll={collapseAll} onExpandAll={expandAll} />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg-base)" }}>
+      <TopBar
+        anySectionExpanded={anySectionExpanded}
+        onToggleAllSections={() => (anySectionExpanded ? collapseAll() : expandAll())}
+      />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         {SECTIONS.map((s) => (
           <CollapsibleSection
             key={s.id}
             id={s.id}
-            title={s.title}
+            label={s.label}
+            labelAccent={s.labelAccent}
+            metadata={
+              s.id === "context" && !macroLoading && !equitiesLoading
+                ? formatLatestGeneratedAtEtDisplay(macroRow?.generated_at, equitiesRow?.generated_at)
+                : s.id === "sip"
+                  ? "Up to 75 · volume + headline gates"
+                  : s.id === "calendars"
+                    ? "Today · ET"
+                    : s.id === "earnings"
+                      ? "Big-cap buckets · ET"
+                      : s.id === "movers"
+                        ? "TradingView screener"
+                        : undefined
+            }
             peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}
             onToggle={() => toggle(s.id)}
+            headerLegend={
+              s.id === "calendars" ? (
+                <>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="impact-high" aria-hidden>
+                      ●
+                    </span>
+                    High
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="impact-med" aria-hidden>
+                      ●
+                    </span>
+                    Med
+                  </span>
+                </>
+              ) : undefined
+            }
           >
             {s.id === "calendars" ? (
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                  Today
-                </h3>
-                <EconomicCalendar />
-              </div>
+              <EconomicCalendar />
             ) : s.id === "earnings" ? (
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                  Earnings calendar
-                </h3>
-                <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
-              </div>
+              <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
             ) : s.id === "sip" ? (
               <StocksInPlay
                 collapsed={collapsed.sip}
@@ -114,42 +127,30 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                 onOpenTickerInLists={onOpenTickerInLists}
               />
             ) : s.id === "movers" ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    Pre-market gappers
-                  </h3>
-                  <PremarketGappers
-                    filters={gapperFilters}
-                    setFilters={setGapperFilters}
-                    filtersHydrated={gapperFiltersHydrated}
-                    onOpenTickerInLists={onOpenTickerInLists}
-                    onJumpToEarnings={() => {
-                      setCollapsed("earnings", false);
-                      queueMicrotask(() => {
-                        document
-                          .querySelector("[data-premarket-section=\"earnings\"]")
-                          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              <div className="space-y-3">
+                <PremarketGappers
+                  filters={gapperFilters}
+                  setFilters={setGapperFilters}
+                  filtersHydrated={gapperFiltersHydrated}
+                  onOpenTickerInLists={onOpenTickerInLists}
+                  onJumpToEarnings={() => {
+                    setCollapsed("earnings", false);
+                    queueMicrotask(() => {
+                      document.querySelector('[data-premarket-section="earnings"]')?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "nearest",
                       });
-                    }}
-                  />
-                </div>
-                <p className="text-sm leading-relaxed" style={{ color: "var(--ws-text-dim)" }}>
+                    });
+                  }}
+                />
+                <p className="border-t pt-2" style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", fontSize: "var(--fs-9)" }}>
                   Policy tape (Truth Social) — Phase 7.
                 </p>
               </div>
             ) : s.id === "context" ? (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    Today&apos;s macro writeup
-                  </h3>
+              <div className="s1-context">
+                <div className="min-w-0 space-y-3">
                   <MacroWriteup loading={macroLoading} error={macroError} row={macroRow} ymd={macroYmd} />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    US equities writeup
-                  </h3>
                   <EquitiesWriteup
                     loading={equitiesLoading}
                     error={equitiesError}
@@ -158,12 +159,9 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                     setupHint={equitiesSetupHint}
                   />
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
-                    Daily themes
-                  </h3>
+                <aside className="min-w-0">
                   <DailyThemesPanel />
-                </div>
+                </aside>
               </div>
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>

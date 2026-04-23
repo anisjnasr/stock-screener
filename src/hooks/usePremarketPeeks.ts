@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { ymdInEt } from "@/lib/et-ymd";
 import { gapperFilterStateToRequestBody, type GapperFilterState } from "@/components/premarket/gapper-filters-storage";
-import { deriveMacroPeekKeywords } from "@/lib/premarket/macro-peek-derive";
+import { keywordFromThemeTitle } from "@/lib/premarket/theme-peek-keyword";
 import type { DailyEquitiesWriteupRow, DailyMacroWriteupRow } from "@/types/newsletter-macro";
-import type { EconomicEventsResponse } from "@/types/economic-events";
-import type { MarketEventsResponse } from "@/types/market-events";
+import type { DailyThemeRow } from "@/types/daily-themes";
+import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
+import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 import type { EarningsCalendarResponse } from "@/types/earnings-calendar";
 import type { GappersResponse } from "@/types/gappers";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
@@ -32,15 +33,9 @@ type EquitiesApi =
     }
   | { ok: false; error: string };
 
-function formatTopTickersDashed(tickers: string[], max = 5): string {
-  const u = [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))];
-  const top = u.slice(0, max);
-  if (!top.length) return "No tickers";
-  return top.join(" - ");
-}
-
-/** Top tickers by gap % desc (dedupe keeps first/highest gap). */
-function topTickersByGapPct(rows: { ticker: string; gapPct: number }[], max = 5): string[] {
+/** Top tickers by gap % with ± gap for collapsed peek (dedupe keeps first / highest gap). */
+function formatTopGapperPeeks(rows: { ticker: string; gapPct: number }[], max = 5): string {
+  if (!rows.length) return "No names";
   const sorted = [...rows].sort((a, b) => {
     const d = b.gapPct - a.gapPct;
     if (d !== 0) return d;
@@ -52,15 +47,62 @@ function topTickersByGapPct(rows: { ticker: string; gapPct: number }[], max = 5)
     const t = r.ticker.trim().toUpperCase();
     if (!t || seen.has(t)) continue;
     seen.add(t);
-    out.push(t);
+    const sign = r.gapPct >= 0 ? "+" : "";
+    out.push(`${t} ${sign}${r.gapPct.toFixed(1)}%`);
     if (out.length >= max) break;
   }
-  return out;
+  return out.join(" · ");
 }
 
-async function fetchCalendarCountToday(): Promise<number> {
+function timeForSort(hms: string | null): string {
+  if (!hms || !hms.includes(":")) return "00:00:00";
+  const parts = hms.split(":");
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  const s = parts[2] != null ? Number(parts[2]) : 0;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "00:00:00";
+  const sec = Number.isFinite(s) ? s : 0;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function sortKeyForCal(date: string, time: string | null): string {
+  return `${date}T${timeForSort(time)}`;
+}
+
+function formatPeekTimeEt(hms: string | null): string {
+  if (!hms) return "TBD";
+  const [hs, ms] = hms.split(":");
+  const h = Number(hs);
+  const m = Number(ms);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hms;
+  const ap = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${ap}`;
+}
+
+function mergeCalendarPeekRows(
+  econ: EconomicEventPublic[],
+  mkt: MarketEventPublic[],
+  todayYmd: string
+): { sortKey: string; timeEt: string | null }[] {
+  const rows: { sortKey: string; timeEt: string | null }[] = [];
+  for (const ev of econ) {
+    if (ev.event_date !== todayYmd) continue;
+    if (String(ev.impact).toLowerCase() === "low") continue;
+    rows.push({ sortKey: sortKeyForCal(ev.event_date, ev.event_time_et), timeEt: ev.event_time_et });
+  }
+  for (const ev of mkt) {
+    if (ev.event_date !== todayYmd) continue;
+    if (String(ev.impact).toLowerCase() === "low") continue;
+    rows.push({ sortKey: sortKeyForCal(ev.event_date, ev.event_time_et), timeEt: ev.event_time_et });
+  }
+  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return rows;
+}
+
+async function fetchCalendarPeekToday(): Promise<string> {
   const todayYmd = ymdInEt();
-  const econQs = new URLSearchParams({ impact: "High" });
+  const econQs = new URLSearchParams({ impact: "High,Medium" });
   const mktQs = new URLSearchParams({ impact: "High,Medium" });
   const [eRes, mRes] = await Promise.all([
     fetch(`/api/economic-events?${econQs.toString()}`, { cache: "no-store" }),
@@ -70,9 +112,11 @@ async function fetchCalendarCountToday(): Promise<number> {
   const mJson = (await mRes.json()) as MarketEventsResponse & { error?: string };
   const econ = eRes.ok ? eJson.events ?? [] : [];
   const mkt = mRes.ok ? mJson.events ?? [] : [];
-  const nE = econ.filter((ev) => ev.event_date === todayYmd).length;
-  const nM = mkt.filter((ev) => ev.event_date === todayYmd).length;
-  return nE + nM;
+  const rows = mergeCalendarPeekRows(econ, mkt, todayYmd);
+  if (!rows.length) return "No events today";
+  const n = rows.length;
+  const next = formatPeekTimeEt(rows[0].timeEt);
+  return `${n} event${n === 1 ? "" : "s"} · next ${next}`;
 }
 
 export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydrated: boolean) {
@@ -91,6 +135,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
   const [earningsPeek, setEarningsPeek] = useState("…");
   const [moversPeek, setMoversPeek] = useState("…");
   const [sipPeek, setSipPeek] = useState("…");
+  const [themePeek, setThemePeek] = useState("…");
 
   const lastScheduledSlotRef = useRef<string | null>(null);
   const gapperBody = useMemo(() => gapperFilterStateToRequestBody(gapperFilters), [gapperFilters]);
@@ -147,8 +192,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
 
   const loadCalendarPeek = useCallback(async () => {
     try {
-      const n = await fetchCalendarCountToday();
-      setCalendarPeek(n === 0 ? "No events today" : `${n} Events today`);
+      setCalendarPeek(await fetchCalendarPeekToday());
     } catch {
       setCalendarPeek("Calendar unavailable");
     }
@@ -167,7 +211,14 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
         setEarningsPeek("No earnings today");
         return;
       }
-      setEarningsPeek(formatTopTickersDashed(today.map((r) => r.ticker)));
+      const sorted = [...today].sort((a, b) => {
+        const ma = a.market_cap_usd ?? -1;
+        const mb = b.market_cap_usd ?? -1;
+        if (mb !== ma) return mb - ma;
+        return a.ticker.localeCompare(b.ticker);
+      });
+      const top = sorted.slice(0, 5).map((r) => r.ticker.trim().toUpperCase()).filter(Boolean);
+      setEarningsPeek(top.join(" · "));
     } catch {
       setEarningsPeek("Earnings unavailable");
     }
@@ -195,7 +246,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
         setMoversPeek("No gappers");
         return;
       }
-      setMoversPeek(formatTopTickersDashed(topTickersByGapPct(rows)));
+      setMoversPeek(formatTopGapperPeeks(rows));
     } catch {
       setMoversPeek("Gappers unavailable");
     }
@@ -220,18 +271,46 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
       }
       const rows = json.rows ?? [];
       if (!rows.length) {
-        setSipPeek("No gappers");
+        setSipPeek("No SIP rows");
         return;
       }
-      setSipPeek(formatTopTickersDashed(topTickersByGapPct(rows)));
+      const tickers = [...new Set(rows.map((r) => r.ticker.trim().toUpperCase()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      setSipPeek(tickers.join(" · "));
     } catch {
       setSipPeek("SIP unavailable");
     }
   }, [filtersHydrated, gapperBody]);
 
+  const loadThemePeek = useCallback(async () => {
+    try {
+      const res = await fetch("/api/premarket/daily-themes", { cache: "no-store" });
+      const json = (await res.json()) as { ok?: boolean; themes?: DailyThemeRow[]; error?: string };
+      if (!res.ok || json.ok === false) {
+        setThemePeek("Themes unavailable");
+        return;
+      }
+      const themes = json.themes ?? [];
+      if (!themes.length) {
+        setThemePeek("No themes");
+        return;
+      }
+      const sorted = [...themes].sort((a, b) => {
+        const oa = a.theme_type === "macro" ? 0 : 1;
+        const ob = b.theme_type === "macro" ? 0 : 1;
+        if (oa !== ob) return oa - ob;
+        return a.theme_rank - b.theme_rank;
+      });
+      setThemePeek(sorted.map((t) => keywordFromThemeTitle(t.theme_title)).join(" · "));
+    } catch {
+      setThemePeek("Themes unavailable");
+    }
+  }, []);
+
   const refreshAuxPeeks = useCallback(async () => {
-    await Promise.all([loadCalendarPeek(), loadEarningsPeek(), loadMoversPeek(), loadSipPeek()]);
-  }, [loadCalendarPeek, loadEarningsPeek, loadMoversPeek, loadSipPeek]);
+    await Promise.all([loadCalendarPeek(), loadEarningsPeek(), loadMoversPeek(), loadSipPeek(), loadThemePeek()]);
+  }, [loadCalendarPeek, loadEarningsPeek, loadMoversPeek, loadSipPeek, loadThemePeek]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadMacro(), loadEquities(), refreshAuxPeeks()]);
@@ -269,37 +348,16 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
     };
   }, [refreshAll]);
 
-  const peeks: PremarketPeeks = useMemo(() => {
-    const macroText = macroRow?.writeup_text?.trim() ?? "";
-    const macroKw = macroText ? deriveMacroPeekKeywords(macroText, 2) : null;
-    const eqBullets = equitiesRow?.bullets?.map((b) => b.trim()).filter(Boolean) ?? [];
-    const eqPeekParts = eqBullets.slice(0, 2).map((b) => (b.length > 48 ? `${b.slice(0, 45)}…` : b));
-    const eqPeek = eqPeekParts.length ? eqPeekParts.join(" · ") : null;
-
-    const stillLoading = macroLoading || equitiesLoading;
-    const hasPartial = Boolean(macroKw || eqPeek);
-
-    let context: string;
-    if (stillLoading && !hasPartial) {
-      context = "…";
-    } else if (macroKw && eqPeek) {
-      context = `${macroKw} · ${eqPeek}`;
-    } else if (macroKw) {
-      context = macroKw;
-    } else if (eqPeek) {
-      context = eqPeek;
-    } else {
-      context = "No brief yet";
-    }
-
-    return {
-      context,
+  const peeks: PremarketPeeks = useMemo(
+    () => ({
+      context: themePeek,
       sip: sipPeek,
       calendars: calendarPeek,
       earnings: earningsPeek,
       movers: moversPeek,
-    };
-  }, [macroRow, macroLoading, equitiesRow, equitiesLoading, calendarPeek, earningsPeek, moversPeek, sipPeek]);
+    }),
+    [themePeek, sipPeek, calendarPeek, earningsPeek, moversPeek]
+  );
 
   return {
     peeks,

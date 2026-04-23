@@ -31,6 +31,12 @@ export type TradingViewScanParams = {
 /** TV `range` end (exclusive-style upper bound); capped at 150 per request. */
 export const TRADINGVIEW_GAP_SCAN_ROW_CAP = 150;
 
+export type TradingViewGapScanOptions = {
+  /** When set, filter `premarket_change <= -minAbsGapPct` and sort ascending (down-gappers). */
+  leg: "negative";
+  minAbsGapPct: number;
+};
+
 export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minPrice: 5,
   minMarketCap: 100_000_000,
@@ -43,9 +49,15 @@ export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
 /** TV scanner uses `egreater` / `eless` for numeric comparisons (not `greater_equal`). */
 export function buildTradingViewScanPayload(
   p: TradingViewScanParams,
-  rowLimit: number = TRADINGVIEW_GAP_SCAN_ROW_CAP
+  rowLimit: number = TRADINGVIEW_GAP_SCAN_ROW_CAP,
+  gap?: TradingViewGapScanOptions
 ): Record<string, unknown> {
   const rangeEnd = Math.min(TRADINGVIEW_GAP_SCAN_ROW_CAP, Math.max(1, Math.floor(rowLimit)));
+  const gapFilter =
+    gap?.leg === "negative"
+      ? { left: "premarket_change", operation: "eless", right: -gap.minAbsGapPct }
+      : { left: "premarket_change", operation: "egreater", right: p.minGapPct };
+  const sortOrder = gap?.leg === "negative" ? "asc" : "desc";
   return {
     filter: [
       { left: "type", operation: "equal", right: "stock" },
@@ -56,10 +68,10 @@ export function buildTradingViewScanPayload(
       { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
       { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
       // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
-      { left: "premarket_change", operation: "egreater", right: p.minGapPct },
+      gapFilter,
     ],
     columns: [...SCAN_COLUMNS],
-    sort: { sortBy: "premarket_change", sortOrder: "desc" },
+    sort: { sortBy: "premarket_change", sortOrder },
     range: [0, rangeEnd],
     markets: ["america"],
     options: { lang: "en" },
@@ -142,11 +154,10 @@ function cookieHeaderFromEnv(): string | undefined {
   return parts.length ? parts.join("; ") : undefined;
 }
 
-export async function fetchTradingViewGappers(
-  params: TradingViewScanParams,
-  init?: { signal?: AbortSignal; rowLimit?: number }
+async function postTradingViewScan(
+  body: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<Omit<GapperRow, "earningsRecent24h">[]> {
-  const body = buildTradingViewScanPayload(params, init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP);
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -160,7 +171,7 @@ export async function fetchTradingViewGappers(
     headers,
     body: JSON.stringify(body),
     cache: "no-store",
-    signal: init?.signal,
+    signal,
   });
 
   const text = await res.text();
@@ -175,4 +186,41 @@ export async function fetchTradingViewGappers(
   }
   const { rows } = parseTradingViewScanJson(json);
   return rows;
+}
+
+export async function fetchTradingViewGappers(
+  params: TradingViewScanParams,
+  init?: { signal?: AbortSignal; rowLimit?: number }
+): Promise<Omit<GapperRow, "earningsRecent24h">[]> {
+  const body = buildTradingViewScanPayload(params, init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP);
+  return postTradingViewScan(body, init?.signal);
+}
+
+/**
+ * Up-gappers and down-gappers with |premarket_change| ≥ minAbsGapPct, merged and deduped (keeps larger |gap|).
+ */
+export async function fetchTradingViewGappersBidirectional(
+  params: TradingViewScanParams,
+  init?: { signal?: AbortSignal; rowLimit?: number; minAbsGapPct?: number }
+): Promise<Omit<GapperRow, "earningsRecent24h">[]> {
+  const maxRows = Math.min(TRADINGVIEW_GAP_SCAN_ROW_CAP, init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP);
+  const minAbs = init?.minAbsGapPct ?? 2;
+  const half = Math.max(1, Math.ceil(maxRows / 2));
+  const posParams = {
+    ...params,
+    minGapPct: Math.max(minAbs, params.minGapPct),
+  };
+  const [pos, neg] = await Promise.all([
+    postTradingViewScan(buildTradingViewScanPayload(posParams, half), init?.signal),
+    postTradingViewScan(
+      buildTradingViewScanPayload(params, half, { leg: "negative", minAbsGapPct: minAbs }),
+      init?.signal
+    ),
+  ]);
+  const byTicker = new Map<string, Omit<GapperRow, "earningsRecent24h">>();
+  for (const r of [...pos, ...neg]) {
+    const ex = byTicker.get(r.ticker);
+    if (!ex || Math.abs(r.gapPct) > Math.abs(ex.gapPct)) byTicker.set(r.ticker, r);
+  }
+  return [...byTicker.values()];
 }

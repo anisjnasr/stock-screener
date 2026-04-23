@@ -2,30 +2,39 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 import { unstable_cache } from "next/cache";
 import { generateSipCatalystMap } from "@/lib/ai/sipCatalyst";
+import { ymdInEt } from "@/lib/et-ymd";
 import { getTickersWithEarningsInLast24Hours } from "@/lib/premarket/earnings-recent";
-import { loadGappersScanOnly, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
+import { loadGappersSipScan, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
+import { fetchDailyThemesForDate, summarizeThemesForMacroPrompt } from "@/lib/premarket/dailyThemesRead";
+import { isSipVolumeCandidate } from "@/lib/premarket/sip-candidate-filter";
 import { fetchPythonTickerNews, isPythonServiceConfigured } from "@/lib/python-service";
+import { getSupabase } from "@/lib/supabase";
 import type { TradingViewScanParams } from "@/lib/sources/tradingViewScreener";
+import { TRADINGVIEW_GAP_SCAN_ROW_CAP } from "@/lib/sources/tradingViewScreener";
+import type { GapperRow } from "@/types/gappers";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 
 export const dynamic = "force-dynamic";
 
-/** Hard cap on SIP list size (news + catalyst cost control). */
-const SIP_MAX_TICKERS = 8;
+/** Max SIP rows returned after LLM gates (spec). */
+const SIP_MAX_TICKERS = 75;
+/** Cap how many volume-qualified names enter news + LLM (cost control). */
+const SIP_LLM_CANDIDATE_CAP = 120;
+const SIP_SCAN_ROW_CAP = TRADINGVIEW_GAP_SCAN_ROW_CAP;
 
-/** SIP scan: slightly tighter than generic gappers defaults; body still overrides within clamps. */
+/** SIP scan: quality floors; bidirectional TV fetch uses min |gap| 2. */
 function sipScanFromBody(body: unknown): TradingViewScanParams {
   const n = normalizeGappersScanBody(body);
   return {
     ...n,
     minPrice: Math.max(3, n.minPrice),
     minMarketCap: Math.max(250_000_000, n.minMarketCap),
-    minGapPct: Math.max(1, n.minGapPct),
+    minGapPct: Math.max(2, n.minGapPct),
   };
 }
 
 /**
- * Pre-market “Stocks in Play”: TradingView gappers plus optional yfinance headlines (Python service).
+ * Pre-market “Stocks in Play”: bidirectional gappers, volume pre-filter, strict LLM classification.
  * POST JSON body — same optional fields as `/api/movers/gappers` (see `GappersRequestBody`).
  */
 export async function POST(request: NextRequest) {
@@ -41,25 +50,36 @@ export async function POST(request: NextRequest) {
 
   try {
     const base = await unstable_cache(
-      async () => loadGappersScanOnly(scan, { rowLimit: 30 }),
-      ["premarket-sip-gappers", cacheKey],
+      async () => loadGappersSipScan(scan, { rowLimit: SIP_SCAN_ROW_CAP, minAbsGapPct: 2 }),
+      ["premarket-sip-gappers-v2", cacheKey],
       { revalidate: 30 }
     )();
 
     const earnings = await getTickersWithEarningsInLast24Hours();
-    const merged = base.rows.map((r) => ({
+    const merged: GapperRow[] = base.rows.map((r) => ({
       ...r,
       earningsRecent24h: earnings.has(r.ticker),
     }));
-    const rows = [...merged]
+
+    const volumeOk = merged.filter(isSipVolumeCandidate);
+    const sortedForLlm = [...volumeOk]
       .sort((a, b) => {
-        const d = b.gapPct - a.gapPct;
-        if (d !== 0) return d;
+        const ag = Math.abs(b.gapPct) - Math.abs(a.gapPct);
+        if (ag !== 0) return ag;
+        const dv = b.pmVolume - a.pmVolume;
+        if (dv !== 0) return dv;
         return a.ticker.localeCompare(b.ticker);
       })
-      .slice(0, SIP_MAX_TICKERS);
+      .slice(0, SIP_LLM_CANDIDATE_CAP);
 
-    const tickers = rows.map((r) => r.ticker);
+    let themesSummary = "";
+    const supabase = getSupabase();
+    if (supabase) {
+      const themes = await fetchDailyThemesForDate(supabase, ymdInEt());
+      themesSummary = summarizeThemesForMacroPrompt(themes);
+    }
+
+    const tickers = sortedForLlm.map((r) => r.ticker);
     let news: StocksInPlaySuccess["news"] = null;
     let newsError: string | null = null;
 
@@ -80,16 +100,36 @@ export async function POST(request: NextRequest) {
     let catalystError: string | null = null;
     let catalystSkipped = false;
     const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
-    if (rows.length > 0) {
+
+    const rowByTicker = new Map(sortedForLlm.map((r) => [r.ticker, r]));
+    let finalRows: GapperRow[] = [];
+
+    if (sortedForLlm.length > 0) {
       if (!anthropicKey) {
         catalystSkipped = true;
+        finalRows = [];
+        catalyst = null;
       } else {
         try {
           const anthropic = new Anthropic({ apiKey: anthropicKey });
-          catalyst = await generateSipCatalystMap(anthropic, rows, news);
+          const { catalystByTicker, qualifiedOrder } = await generateSipCatalystMap(
+            anthropic,
+            sortedForLlm,
+            news,
+            themesSummary
+          );
+          const order = qualifiedOrder.slice(0, SIP_MAX_TICKERS);
+          finalRows = order.map((t) => rowByTicker.get(t)).filter((r): r is GapperRow => Boolean(r));
+          const catalystOut: NonNullable<StocksInPlaySuccess["catalyst"]> = {};
+          for (const t of order) {
+            const c = catalystByTicker[t];
+            if (c) catalystOut[t] = c;
+          }
+          catalyst = Object.keys(catalystOut).length ? catalystOut : null;
         } catch (e) {
           catalystError = e instanceof Error ? e.message : "Catalyst generation failed";
           catalyst = null;
+          finalRows = [];
         }
       }
     }
@@ -97,7 +137,7 @@ export async function POST(request: NextRequest) {
     const out: StocksInPlaySuccess = {
       ok: true,
       source: base.source,
-      rows,
+      rows: finalRows,
       pythonConfigured: isPythonServiceConfigured(),
       news,
       newsError,
