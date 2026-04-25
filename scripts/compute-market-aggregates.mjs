@@ -182,6 +182,7 @@ withBusyRetry(
     nnh_52w_lows INTEGER,
     nnh_52w_net INTEGER,
     count_10x_atr_50d INTEGER,
+    count_7x_atr_50d INTEGER,
     count_episodic_pivot INTEGER,
     updated_at TEXT
   );
@@ -215,6 +216,7 @@ for (const stmt of [
   "ALTER TABLE market_monitor_daily ADD COLUMN universe_pct_above_50d REAL",
   "ALTER TABLE market_monitor_daily ADD COLUMN universe_pct_above_200d REAL",
   "ALTER TABLE market_monitor_daily ADD COLUMN count_10x_atr_50d INTEGER",
+  "ALTER TABLE market_monitor_daily ADD COLUMN count_7x_atr_50d INTEGER",
   "ALTER TABLE market_monitor_daily ADD COLUMN count_episodic_pivot INTEGER",
 ]) {
   try {
@@ -242,6 +244,7 @@ function getMmUniverseSymbolSet(date) {
 const mmSignalCountsStmt = db.prepare(`
   SELECT
     COALESCE(SUM(CASE WHEN i.atr_units_above_ema50 IS NOT NULL AND i.atr_units_above_ema50 >= 10 THEN 1 ELSE 0 END), 0) AS c10x,
+    COALESCE(SUM(CASE WHEN i.atr_multiple_sma50 IS NOT NULL AND i.atr_multiple_sma50 >= 7 THEN 1 ELSE 0 END), 0) AS c7x,
     COALESCE(SUM(CASE WHEN i.episodic_pivot = 1 THEN 1 ELSE 0 END), 0) AS cep
   FROM daily_bars d
   INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
@@ -540,9 +543,9 @@ const mmUpsert = db.prepare(`
     nnh_3m_highs, nnh_3m_lows, nnh_3m_net,
     nnh_6m_highs, nnh_6m_lows, nnh_6m_net,
     nnh_52w_highs, nnh_52w_lows, nnh_52w_net,
-    count_10x_atr_50d, count_episodic_pivot,
+    count_10x_atr_50d, count_7x_atr_50d, count_episodic_pivot,
     updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(date) DO UPDATE SET
     up4pct=excluded.up4pct, down4pct=excluded.down4pct,
     ratio5d=excluded.ratio5d, ratio10d=excluded.ratio10d,
@@ -560,7 +563,7 @@ const mmUpsert = db.prepare(`
     nnh_3m_highs=excluded.nnh_3m_highs, nnh_3m_lows=excluded.nnh_3m_lows, nnh_3m_net=excluded.nnh_3m_net,
     nnh_6m_highs=excluded.nnh_6m_highs, nnh_6m_lows=excluded.nnh_6m_lows, nnh_6m_net=excluded.nnh_6m_net,
     nnh_52w_highs=excluded.nnh_52w_highs, nnh_52w_lows=excluded.nnh_52w_lows, nnh_52w_net=excluded.nnh_52w_net,
-    count_10x_atr_50d=excluded.count_10x_atr_50d, count_episodic_pivot=excluded.count_episodic_pivot,
+    count_10x_atr_50d=excluded.count_10x_atr_50d, count_7x_atr_50d=excluded.count_7x_atr_50d, count_episodic_pivot=excluded.count_episodic_pivot,
     updated_at=excluded.updated_at
 `);
 
@@ -652,6 +655,7 @@ const insertAll = db.transaction(() => {
 
     const signalRow = mmSignalCountsStmt.get(date, MM_MIN_MARKET_CAP_USD);
     const count10xAtr = Number(signalRow?.c10x ?? 0);
+    const count7xAtr = Number(signalRow?.c7x ?? 0);
     const countEp = Number(signalRow?.cep ?? 0);
 
     mmUpsert.run(
@@ -686,6 +690,7 @@ const insertAll = db.transaction(() => {
       nnh52w.lows,
       nnh52w.net,
       count10xAtr,
+      count7xAtr,
       countEp,
       nowIso
     );

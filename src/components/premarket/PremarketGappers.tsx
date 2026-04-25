@@ -31,8 +31,10 @@ function fmtPct(n: number): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-const GAPPER_SCAN_INFO =
-  "Market cap values are full USD (not millions). Optional TV cookies: TRADINGVIEW_SESSIONID, TRADINGVIEW_SESSIONID_SIGN on the server.";
+function fmtVolPct(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
 
 /** Parse a plain decimal from a filter field on blur; empty = cancel edit (revert). */
 function parseDecimalBlur(raw: string): number | null {
@@ -42,7 +44,7 @@ function parseDecimalBlur(raw: string): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "marketCap" | "sector";
+type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "volPct" | "marketCap" | "sector";
 type SortDir = "asc" | "desc";
 
 function defaultSortDir(key: GapperSortKey): SortDir {
@@ -79,6 +81,8 @@ function compareGapperRows(a: GapperRow, b: GapperRow, key: GapperSortKey, asc: 
       return asc ? a.pmVolume - b.pmVolume : b.pmVolume - a.pmVolume;
     case "avgVolume90d":
       return cmpNum(a.avgVolume90d, b.avgVolume90d, asc);
+    case "volPct":
+      return cmpNum(a.volPct, b.volPct, asc);
     case "marketCap":
       return cmpNum(a.marketCap, b.marketCap, asc);
     case "sector":
@@ -171,6 +175,7 @@ export default function PremarketGappers({
   const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
   const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
+  const [minVolPctDraft, setMinVolPctDraft] = useState<string | null>(null);
   /** Wall time of the last completed `run()` (success or error), in seconds. */
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
   /** Row count from last successful scan (updates on Apply + Refresh). */
@@ -183,6 +188,7 @@ export default function PremarketGappers({
     setMinPriceDraft(null);
     setMinGapDraft(null);
     setMinPmVolDraft(null);
+    setMinVolPctDraft(null);
   }, []);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
@@ -237,9 +243,11 @@ export default function PremarketGappers({
   }, [filtersHydrated, filters, run]);
 
   const applyFilters = () => {
+    const next = filtersWithDraftValues(filters);
     clearFilterInputDrafts();
-    saveGapperFiltersToStorage(filters);
-    void run(filters);
+    setFilters(next);
+    saveGapperFiltersToStorage(next);
+    void run(next);
   };
 
   function applyPreset(p: Exclude<GapperCapPreset, "custom">) {
@@ -255,6 +263,45 @@ export default function PremarketGappers({
 
   function setCustomField<K extends keyof GappersRequestBody>(key: K, value: number) {
     setFilters((prev) => ({ ...prev, [key]: value, capPreset: "custom" }));
+  }
+
+  function filtersWithDraftValues(base: GapperFilterState): GapperFilterState {
+    let next = { ...base };
+
+    const minMcap = mcapMinDraft != null ? parseFlexibleFilterNumber(mcapMinDraft) : null;
+    if (minMcap != null) {
+      next = {
+        ...next,
+        minMarketCap: Math.min(minMcap, next.maxMarketCap ?? 10_000_000_000_000),
+        capPreset: "custom",
+      };
+    }
+
+    const maxMcap = mcapMaxDraft != null ? parseFlexibleFilterNumber(mcapMaxDraft) : null;
+    if (maxMcap != null) {
+      next = {
+        ...next,
+        maxMarketCap: Math.max(maxMcap, next.minMarketCap ?? 0),
+        capPreset: "custom",
+      };
+    }
+
+    const minPrice = minPriceDraft != null ? parseDecimalBlur(minPriceDraft) : null;
+    if (minPrice != null) next = { ...next, minPrice: Math.max(0.01, minPrice), capPreset: "custom" };
+
+    const minGapPct = minGapDraft != null ? parseDecimalBlur(minGapDraft) : null;
+    if (minGapPct != null) next = { ...next, minGapPct: Math.max(0, minGapPct), capPreset: "custom" };
+
+    const minPmVolume = minPmVolDraft != null ? parseDecimalBlur(minPmVolDraft) : null;
+    if (minPmVolume != null) next = { ...next, minPmVolume: Math.max(0, Math.round(minPmVolume)), capPreset: "custom" };
+
+    const minAvgVolume = minAvgVolDraft != null ? parseFlexibleFilterNumber(minAvgVolDraft) : null;
+    if (minAvgVolume != null) next = { ...next, minAvgVolume: Math.max(0, Math.round(minAvgVolume)), capPreset: "custom" };
+
+    const minVolPct = minVolPctDraft != null ? parseDecimalBlur(minVolPctDraft) : null;
+    if (minVolPct != null) next = { ...next, minVolPct: Math.max(0, minVolPct), capPreset: "custom" };
+
+    return next;
   }
 
   const gapFilterLabelStyle: CSSProperties = {
@@ -288,15 +335,6 @@ export default function PremarketGappers({
         <span className="pm-site-caption tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
           Results: {resultsCount === null ? "—" : resultsCount}
         </span>
-        <button
-          type="button"
-          className="ws-focus-ring rounded px-0.5 leading-none"
-          style={{ color: "var(--ws-text-dim)", fontSize: "var(--ws-fs-title)", background: "none", border: "none", cursor: "help" }}
-          title={GAPPER_SCAN_INFO}
-          aria-label={GAPPER_SCAN_INFO}
-        >
-          ⓘ
-        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-[14px] px-[14px] py-[10px]" style={{ alignItems: "center" }}>
@@ -315,7 +353,7 @@ export default function PremarketGappers({
             className="tabular-nums outline-none ws-focus-ring focus:border-[#3BBFCF]"
             style={{ ...gapFilterInputStyle, width: 110 }}
           >
-            <option value="all">All (min $100M)</option>
+            <option value="all">All (no min)</option>
             <option value="mid">Mid ($2B–$10B)</option>
             <option value="large">Large ($10B–$200B)</option>
             <option value="mega">Mega ($200B+)</option>
@@ -367,7 +405,7 @@ export default function PremarketGappers({
               if (p == null) return;
               setFilters((prev) => ({
                 ...prev,
-                maxMarketCap: Math.max(p, prev.minMarketCap ?? 100_000_000),
+                maxMarketCap: Math.max(p, prev.minMarketCap ?? 0),
                 capPreset: "custom",
               }));
             }}
@@ -458,10 +496,32 @@ export default function PremarketGappers({
           />
         </div>
 
+        <div className="flex items-center gap-1.5">
+          <span style={gapFilterLabelStyle}>Vol % ≥</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+            style={{ ...gapFilterInputStyle, width: 50 }}
+            value={minVolPctDraft === null ? String(filters.minVolPct ?? 0) : minVolPctDraft}
+            onFocus={() => setMinVolPctDraft(String(filters.minVolPct ?? 0))}
+            onChange={(e) => setMinVolPctDraft(e.target.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value;
+              setMinVolPctDraft(null);
+              const p = parseDecimalBlur(raw);
+              if (p == null) return;
+              setCustomField("minVolPct", Math.max(0, p));
+            }}
+          />
+        </div>
+
         <div className="min-w-2 flex-1" aria-hidden />
 
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={applyFilters}
           disabled={loading}
           className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
@@ -540,7 +600,7 @@ export default function PremarketGappers({
 
       {sortedRows && sortedRows.length > 0 ? (
         <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-          <table className="pm-site-caption w-full min-w-[36rem] border-collapse">
+          <table className="pm-site-caption w-full min-w-[42rem] border-collapse">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
                 <th
@@ -591,6 +651,14 @@ export default function PremarketGappers({
                 <GapperSortTh
                   label="Avg Vol (3M)"
                   col="avgVolume90d"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeaderClick}
+                  align="right"
+                />
+                <GapperSortTh
+                  label="Vol %"
+                  col="volPct"
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSortHeaderClick}
@@ -685,6 +753,12 @@ export default function PremarketGappers({
                     style={{ color: "var(--ws-text-dim)" }}
                   >
                     {formatScreenerCompact(r.avgVolume90d)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
+                    style={{ color: r.volPct != null && r.volPct > 5 ? "#5bbd6e" : "var(--ws-text-dim)" }}
+                  >
+                    {fmtVolPct(r.volPct)}
                   </td>
                   <td
                     className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
 import { toTitleCase } from "@/lib/text-format";
@@ -68,6 +68,7 @@ type IndustryRankUniverse = {
 type DbProfileMetrics = {
   marketCap: number | null;
   avgVolume20d: number | null;
+  avgDollarVolume1m: number | null;
   atrPct21d: number | null;
 } | null;
 
@@ -95,6 +96,45 @@ type RightRailProps = {
 };
 
 type RailTab = "profile" | "news" | "insights";
+type ProfileSectionKey = "header" | "financials" | "owners";
+
+function ProfileCollapsibleSection({
+  expanded,
+  onToggle,
+  title,
+  children,
+  borderBottom = true,
+  className = "",
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  title: ReactNode;
+  children: ReactNode;
+  borderBottom?: boolean;
+  className?: string;
+}) {
+  return (
+    <section className={className} style={borderBottom ? { borderBottom: "1px solid var(--ws-border)" } : undefined}>
+      <button
+        type="button"
+        className="ws-focus-ring flex w-full items-center gap-2 text-left"
+        style={{ color: "var(--ws-text)", background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span
+          className="inline-flex h-4 w-4 shrink-0 items-center justify-center transition-transform"
+          style={{ color: "var(--ws-text-dim)", transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          aria-hidden
+        >
+          ▸
+        </span>
+        <span className="min-w-0 flex-1">{title}</span>
+      </button>
+      {expanded ? <div>{children}</div> : null}
+    </section>
+  );
+}
 
 function fmtMarketCapNoDollar(n: number): string {
   const abs = Math.abs(n);
@@ -179,6 +219,11 @@ export default function RightRail({
   const [insightMenuOpen, setInsightMenuOpen] = useState(false);
   const [insightMenuIndex, setInsightMenuIndex] = useState(0);
   const [insightFormMode, setInsightFormMode] = useState<"create" | "edit" | null>(null);
+  const [profileSectionsOpen, setProfileSectionsOpen] = useState<Record<ProfileSectionKey, boolean>>({
+    header: true,
+    financials: true,
+    owners: true,
+  });
   const insightMenuRef = useRef<HTMLDivElement>(null);
   const selectedInsight = useMemo(
     () => insightPages.find((p) => p.id === selectedInsightId) ?? null,
@@ -212,6 +257,10 @@ export default function RightRail({
     const selectedIdx = selectedInsightId ? insightPages.findIndex((p) => p.id === selectedInsightId) : -1;
     setInsightMenuIndex(selectedIdx >= 0 ? selectedIdx + 1 : 0);
     setInsightMenuOpen(true);
+  };
+
+  const toggleProfileSection = (key: ProfileSectionKey) => {
+    setProfileSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   useEffect(() => {
@@ -277,6 +326,10 @@ export default function RightRail({
   const avgVol20dLabel =
     dbProfileMetrics?.avgVolume20d != null && Number.isFinite(dbProfileMetrics.avgVolume20d)
       ? Math.round(dbProfileMetrics.avgVolume20d).toLocaleString("en-US")
+      : "—";
+  const avgDollarVolLabel =
+    dbProfileMetrics?.avgDollarVolume1m != null && Number.isFinite(dbProfileMetrics.avgDollarVolume1m)
+      ? fmtMarketCapNoDollar(dbProfileMetrics.avgDollarVolume1m)
       : "—";
   const atrPctLabel =
     dbProfileMetrics?.atrPct21d != null && Number.isFinite(dbProfileMetrics.atrPct21d)
@@ -461,65 +514,76 @@ export default function RightRail({
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          {/* Profile header */}
-          <div className="px-3 py-1.5" style={{ borderBottom: "1px solid var(--ws-border)" }}>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
-                {symbol}
-              </span>
-              {profile?.companyName && (
-                <span className="text-sm font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
-                  {safe(profile.companyName)}
+          <ProfileCollapsibleSection
+            className="px-3 py-1.5"
+            expanded={profileSectionsOpen.header}
+            onToggle={() => toggleProfileSection("header")}
+            title={
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-lg font-bold leading-tight tracking-tight" style={{ color: "var(--ws-text)" }}>
+                  {symbol}
                 </span>
-              )}
-            </div>
-            {profile?.website && typeof profile.website === "string" && (
-              <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-                target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm font-medium" style={{ color: "var(--ws-cyan)" }}>
-                {safe(profile.website).replace(/^https?:\/\//, "")}
-              </a>
-            )}
-
-            {desc && (
-              <div className="mt-2">
-                <p className="text-sm leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
-                  {showFullDesc ? desc : truncatedDesc}
-                </p>
-                {desc.length > 150 && (
-                  <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-ws-body mt-0.5" style={{ color: "var(--ws-cyan)" }}>
-                    {showFullDesc ? "Less" : "More"}
-                  </button>
+                {profile?.companyName && (
+                  <span className="text-sm font-semibold leading-snug truncate min-w-0" style={{ color: "rgba(201,209,217,0.85)" }}>
+                    {safe(profile.companyName)}
+                  </span>
                 )}
               </div>
-            )}
+            }
+          >
+            <>
+              {profile?.website && typeof profile.website === "string" && (
+                <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
+                  target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-sm font-medium" style={{ color: "var(--ws-cyan)" }}>
+                  {safe(profile.website).replace(/^https?:\/\//, "")}
+                </a>
+              )}
 
-            <div
-              className="mt-2 grid gap-x-2 gap-y-1.5 text-xs items-center"
-              style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
-            >
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
-              <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
+              {desc && (
+                <div className="mt-2">
+                  <p className="text-sm leading-relaxed" style={{ color: "rgba(201,209,217,0.8)" }}>
+                    {showFullDesc ? desc : truncatedDesc}
+                  </p>
+                  {desc.length > 150 && (
+                    <button type="button" onClick={() => setShowFullDesc((v) => !v)} className="text-ws-body mt-0.5" style={{ color: "var(--ws-cyan)" }}>
+                      {showFullDesc ? "Less" : "More"}
+                    </button>
+                  )}
+                </div>
+              )}
 
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
-              <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-                {profile?.sector ? safe(profile.sector) : "—"}
-              </span>
+              <div
+                className="mt-2 grid gap-x-2 gap-y-1.5 text-xs items-center"
+                style={{ gridTemplateColumns: "minmax(4.5rem, auto) 1fr" }}
+              >
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Exchange</span>
+                <span className="font-medium tabular-nums" style={{ color: "var(--ws-text)" }}>{safe(exchangeFriendlyName(profile?.exchange))}</span>
 
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
-              <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-                {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
-              </span>
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Sector</span>
+                <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+                  {profile?.sector ? safe(profile.sector) : "—"}
+                </span>
 
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
-              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
+                <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
+                  {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
+                </span>
 
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Avg Vol (20D)</span>
-              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{avgVol20dLabel}</span>
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
+                <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
 
-              <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>ATR %</span>
-              <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{atrPctLabel}</span>
-            </div>
-          </div>
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Avg Vol</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{avgVol20dLabel}</span>
+                  <span className="font-medium shrink-0" style={{ color: "rgba(201,209,217,0.7)" }}>Avg $ Vol</span>
+                  <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{avgDollarVolLabel}</span>
+                </span>
+
+                <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>ATR %</span>
+                <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{atrPctLabel}</span>
+              </div>
+            </>
+          </ProfileCollapsibleSection>
 
           <div className="px-3 py-2 space-y-2.5">
 
@@ -567,10 +631,18 @@ export default function RightRail({
 
           {(rsRank || industryRanks) && sectionDivider}
 
-          {/* REVENUE & EPS — combined table */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
+          <ProfileCollapsibleSection
+            expanded={profileSectionsOpen.financials}
+            onToggle={() => toggleProfileSection("financials")}
+            borderBottom={false}
+            title={
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold" style={{ color: "var(--ws-text)" }}>Revenue &amp; EPS</span>
+              </div>
+            }
+          >
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-2">
               <div className="flex items-center gap-0.5">
                 {(["annual", "quarterly"] as const).map((v) => (
                   <button key={v} type="button" onClick={() => setFinFreq(v)}
@@ -644,15 +716,18 @@ export default function RightRail({
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </ProfileCollapsibleSection>
 
           {sectionDivider}
 
-          {/* INSTITUTIONAL OWNERS */}
-          <div>
-            <div className="text-ws-title font-semibold mb-1.5" style={{ color: "var(--ws-text)" }}>
-              Institutional Owners
-            </div>
+          <ProfileCollapsibleSection
+            expanded={profileSectionsOpen.owners}
+            onToggle={() => toggleProfileSection("owners")}
+            borderBottom={false}
+            title={<span className="text-ws-title font-semibold" style={{ color: "var(--ws-text)" }}>Institutional Owners</span>}
+          >
+            <div className="pt-1.5">
             <table className="w-full text-ws-title" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--ws-border)" }}>
@@ -679,7 +754,8 @@ export default function RightRail({
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </ProfileCollapsibleSection>
 
         </div>
       </div>

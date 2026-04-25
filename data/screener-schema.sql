@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
   ema_100_above_200 INTEGER,
   ema_100_200_spread_pct REAL,
   atr_units_above_ema50 REAL,
+  atr_multiple_sma50 REAL,
   avg_volume_20d REAL,
   episodic_pivot INTEGER,
   ema_200_lag_20 REAL,
@@ -226,6 +227,7 @@ CREATE TABLE IF NOT EXISTS market_monitor_daily (
   nnh_52w_lows INTEGER,
   nnh_52w_net INTEGER,
   count_10x_atr_50d INTEGER,
+  count_7x_atr_50d INTEGER,
   count_episodic_pivot INTEGER,
   updated_at TEXT
 );

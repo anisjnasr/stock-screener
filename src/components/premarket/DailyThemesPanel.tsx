@@ -175,7 +175,7 @@ export default function DailyThemesPanel() {
           </p>
         ) : null}
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          No themes yet. Run extraction after macro + equities writeups.
+          No themes yet.
         </p>
         <button
           type="button"

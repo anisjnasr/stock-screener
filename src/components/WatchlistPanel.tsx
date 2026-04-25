@@ -113,6 +113,7 @@ type WatchlistRow = {
   high52w?: number | null;
   off52wHighPct?: number | null;
   atrUnitsAboveEma50?: number | null;
+  atrMultipleSma50?: number | null;
   priceChange1wPct?: number | null;
   priceChange1mPct?: number | null;
   priceChange3mPct?: number | null;
@@ -1586,6 +1587,8 @@ export default function WatchlistPanel({
     off52wHighPct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
     atrUnitsAboveEma50:
       typeof r.atr_units_above_ema50 === "number" ? r.atr_units_above_ema50 : typeof r.atrUnitsAboveEma50 === "number" ? r.atrUnitsAboveEma50 : null,
+    atrMultipleSma50:
+      typeof r.atr_multiple_sma50 === "number" ? r.atr_multiple_sma50 : typeof r.atrMultipleSma50 === "number" ? r.atrMultipleSma50 : null,
     priceChange1wPct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
     priceChange1mPct: typeof r.price_change_1m_pct === "number" ? r.price_change_1m_pct : null,
     priceChange3mPct: typeof r.price_change_3m_pct === "number" ? r.price_change_3m_pct : null,
@@ -2420,12 +2423,19 @@ export default function WatchlistPanel({
     [newScreenForm.filters, newScreenForm.pctOperatorRows, newScreenForm.includeExcludeRows, newScreenForm.universe]
   );
 
-  const formatNumberInput = (raw: string | number | undefined, isPct: boolean): string => {
+  const formatNumberInput = (raw: string | number | undefined, isPct: boolean, decimalPlaces?: number): string => {
     if (raw === undefined || raw === "") return "";
     if (isPct) return `${Number(raw)}%`;
     const n = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/,/g, ""));
     if (Number.isNaN(n)) return String(raw);
+    if (decimalPlaces != null) return n.toFixed(decimalPlaces);
     return n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : String(n);
+  };
+
+  const roundDecimalInput = (value: string | number | undefined, decimalPlaces: number): string | number | undefined => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return value;
+    const factor = 10 ** decimalPlaces;
+    return Math.round(value * factor) / factor;
   };
 
   const parseNumberInput = (s: string, isPct: boolean): string | number | undefined => {
@@ -4231,8 +4241,8 @@ export default function WatchlistPanel({
                                         <input
                                           type="text"
                                           value={
-                                            field.type === "numeric" && field.format === "number"
-                                              ? formatNumberInput(newScreenForm.filters[field.minKey], false)
+                                            field.type === "numeric" && (field.format === "number" || field.format === "decimal2")
+                                              ? formatNumberInput(newScreenForm.filters[field.minKey], false, field.format === "decimal2" ? 2 : undefined)
                                               : isPct && newScreenForm.filters[field.minKey] != null && newScreenForm.filters[field.minKey] !== ""
                                                 ? formatNumberInput(newScreenForm.filters[field.minKey], true)
                                                 : String(newScreenForm.filters[field.minKey] ?? "")
@@ -4254,6 +4264,9 @@ export default function WatchlistPanel({
                                             ) {
                                               v = Math.max(0, v);
                                             }
+                                            if (field.type === "numeric" && field.format === "decimal2") {
+                                              v = roundDecimalInput(v, 2);
+                                            }
                                             setNewScreenFilter(field.minKey!, v);
                                           }}
                                           placeholder={isPct ? "Min %" : "Min"}
@@ -4264,8 +4277,8 @@ export default function WatchlistPanel({
                                         <input
                                           type="text"
                                           value={
-                                            field.type === "numeric" && field.format === "number"
-                                              ? formatNumberInput(newScreenForm.filters[field.maxKey], false)
+                                            field.type === "numeric" && (field.format === "number" || field.format === "decimal2")
+                                              ? formatNumberInput(newScreenForm.filters[field.maxKey], false, field.format === "decimal2" ? 2 : undefined)
                                               : isPct && newScreenForm.filters[field.maxKey] != null && newScreenForm.filters[field.maxKey] !== ""
                                                 ? formatNumberInput(newScreenForm.filters[field.maxKey], true)
                                                 : String(newScreenForm.filters[field.maxKey] ?? "")
@@ -4286,6 +4299,9 @@ export default function WatchlistPanel({
                                               Number.isFinite(v)
                                             ) {
                                               v = Math.max(0, v);
+                                            }
+                                            if (field.type === "numeric" && field.format === "decimal2") {
+                                              v = roundDecimalInput(v, 2);
                                             }
                                             setNewScreenFilter(field.maxKey!, v);
                                           }}

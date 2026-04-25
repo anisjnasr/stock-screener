@@ -9,7 +9,6 @@ import EquitiesWriteup from "./EquitiesWriteup";
 import MacroWriteup from "./MacroWriteup";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
-import TopBar from "./TopBar";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
 import {
@@ -31,10 +30,10 @@ type SectionConfig = {
 
 const SECTIONS: SectionConfig[] = [
   { id: "context", label: "Context", labelAccent: "cyan", stub: "" },
-  { id: "sip", label: "Stocks in Play", labelAccent: "amber", stub: "" },
+  { id: "sip", label: "Stocks in Play", labelAccent: "cyan", stub: "" },
   { id: "calendars", label: "Economic & key events", labelAccent: "cyan", stub: "" },
   { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
-  { id: "movers", label: "Top movers", labelAccent: "default", stub: "" },
+  { id: "movers", label: "Top movers", labelAccent: "cyan", stub: "" },
 ];
 
 type PreMarketPageProps = {
@@ -48,8 +47,10 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
   const [gapperFiltersHydrated, setGapperFiltersHydrated] = useState(false);
 
   useLayoutEffect(() => {
-    setGapperFilters(loadGapperFiltersFromStorage());
-    setGapperFiltersHydrated(true);
+    queueMicrotask(() => {
+      setGapperFilters(loadGapperFiltersFromStorage());
+      setGapperFiltersHydrated(true);
+    });
   }, []);
 
   const {
@@ -69,10 +70,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg-base)" }}>
-      <TopBar
-        anySectionExpanded={anySectionExpanded}
-        onToggleAllSections={() => (anySectionExpanded ? collapseAll() : expandAll())}
-      />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         {SECTIONS.map((s) => (
           <CollapsibleSection
@@ -94,22 +91,22 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}
             onToggle={() => toggle(s.id)}
-            headerLegend={
-              s.id === "calendars" ? (
-                <>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="impact-high" aria-hidden>
-                      ●
-                    </span>
-                    High
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="impact-med" aria-hidden>
-                      ●
-                    </span>
-                    Med
-                  </span>
-                </>
+            actions={
+              s.id === "context" ? (
+                <button
+                  type="button"
+                  onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
+                  className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                  style={{
+                    borderColor: "var(--border-default)",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--ws-font-sans)",
+                    fontSize: "var(--ws-fs-label)",
+                  }}
+                  aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
+                >
+                  {anySectionExpanded ? "Collapse all" : "Expand all"}
+                </button>
               ) : undefined
             }
           >
@@ -141,9 +138,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                     });
                   }}
                 />
-                <p className="border-t pt-2" style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", fontSize: "var(--fs-9)" }}>
-                  Policy tape (Truth Social) — Phase 7.
-                </p>
               </div>
             ) : s.id === "context" ? (
               <div className="s1-context">

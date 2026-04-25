@@ -36,7 +36,7 @@ function fmtChg(n: number): string {
 function changeColumnLabel(metric: MarketMonitorMetricKey): string {
   if (metric === "nnh52w_highs" || metric === "nnh52w_lows") return "Change % (1d)";
   if (metric === "universe_above_50d" || metric === "universe_above_200d") return "Change % (1d)";
-  if (metric === "count_10x_atr_50d" || metric === "count_episodic_pivot") return "Change % (1d)";
+  if (metric === "count_7x_atr_50d" || metric === "count_episodic_pivot") return "Change % (1d)";
   if (metric.includes("qtr")) return "Change % (Q)";
   if (metric.includes("month")) return "Change % (M)";
   return "Change %";
@@ -72,7 +72,7 @@ export default function MarketMonitorConstituentsModal({
 
   useEffect(() => {
     if (!open) return;
-    refreshLists();
+    queueMicrotask(refreshLists);
     const onLists = () => refreshLists();
     window.addEventListener(WATCHLISTS_CHANGED, onLists);
     return () => window.removeEventListener(WATCHLISTS_CHANGED, onLists);
@@ -92,12 +92,15 @@ export default function MarketMonitorConstituentsModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setStocks([]);
-    setExpandedIndustries(new Set());
-    setRowChecked(new Set());
-    setPlusMenuOpen(false);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      setStocks([]);
+      setExpandedIndustries(new Set());
+      setRowChecked(new Set());
+      setPlusMenuOpen(false);
+    });
     fetch(`/api/market-monitor/constituents?date=${encodeURIComponent(date)}&metric=${encodeURIComponent(metric)}`)
       .then((r) => r.json() as Promise<{ stocks?: MarketMonitorConstituentRow[]; error?: string }>)
       .then((json) => {

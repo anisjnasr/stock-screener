@@ -5,7 +5,7 @@ export const GAPPER_FILTERS_LS_KEY = "stockstalker-gapper-filters-v1";
 export type GapperCapPreset = "all" | "mid" | "large" | "mega" | "custom";
 
 export const GAPPER_CAP_PRESET_MC: Record<Exclude<GapperCapPreset, "custom">, { min: number; max: number }> = {
-  all: { min: 100_000_000, max: 10_000_000_000_000 },
+  all: { min: 0, max: 10_000_000_000_000 },
   mid: { min: 2_000_000_000, max: 10_000_000_000 },
   large: { min: 10_000_000_000, max: 200_000_000_000 },
   mega: { min: 200_000_000_000, max: 10_000_000_000_000 },
@@ -16,10 +16,11 @@ export type GapperFilterState = GappersRequestBody & { capPreset: GapperCapPrese
 export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   capPreset: "all",
   minPrice: 5,
-  minMarketCap: 100_000_000,
+  minMarketCap: 0,
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
   minAvgVolume: 0,
+  minVolPct: 0,
   minGapPct: 1,
 };
 
@@ -48,6 +49,13 @@ export function saveGapperFiltersToStorage(f: GapperFilterState): void {
 }
 
 export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersRequestBody {
-  const { capPreset: _p, minPrice, minMarketCap, maxMarketCap, minPmVolume, minAvgVolume, minGapPct } = f;
-  return { minPrice, minMarketCap, maxMarketCap, minPmVolume, minAvgVolume, minGapPct };
+  return {
+    minPrice: f.minPrice,
+    minMarketCap: f.minMarketCap,
+    maxMarketCap: f.maxMarketCap,
+    minPmVolume: f.minPmVolume,
+    minAvgVolume: f.minAvgVolume,
+    minVolPct: f.minVolPct,
+    minGapPct: f.minGapPct,
+  };
 }

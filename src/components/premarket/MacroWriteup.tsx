@@ -45,9 +45,6 @@ export default function MacroWriteup({ loading, error, row, ymd }: MacroWriteupP
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           No macro writeup for {ymd ? formatYmdDisplay(ymd) : "today"} yet.
         </p>
-        <p className="pm-site-caption mt-1" style={{ color: "var(--text-tertiary)" }}>
-          After Gmail + crons, check ~7:10 AM ET on market days — or run ingest locally.
-        </p>
       </div>
     );
   }

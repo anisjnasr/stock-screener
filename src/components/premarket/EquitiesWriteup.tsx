@@ -66,9 +66,6 @@ export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }:
           <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
             No US equities writeup for {ymd ? formatYmdDisplay(ymd) : "today"} yet.
           </p>
-          <p className="pm-site-caption mt-1" style={{ color: "var(--text-tertiary)" }}>
-            Runs after morning newsletters (or web-search fallback).
-          </p>
         </div>
       </div>
     );

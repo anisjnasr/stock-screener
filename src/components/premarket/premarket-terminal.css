@@ -1,5 +1,5 @@
 /**
- * Pre-market desk: scoped trading-terminal tokens (Barlow Condensed + JetBrains Mono via layout).
+ * Pre-market desk: scoped trading-terminal tokens aligned with the main workspace UI.
  * Parent must add class `premarket-terminal` (see PreMarketShell).
  */
 .premarket-terminal {
@@ -27,8 +27,8 @@
   --space-2: 6px;
   --space-3: 8px;
   --space-4: 12px;
-  --font-sans: var(--font-premarket-barlow), system-ui, sans-serif;
-  --font-mono: var(--font-premarket-mono), ui-monospace, monospace;
+  --font-sans: var(--ws-font-sans);
+  --font-mono: var(--ws-font-mono);
   /* ~1.36× prior scale — keep relative steps; bump here to improve legibility */
   --fs-75: 10px;
   --fs-8: 11px;
@@ -36,6 +36,9 @@
   --fs-10: 14px;
   --fs-11: 15px;
   --fs-12: 16px;
+  --pm-content-fs: var(--ws-fs-body);
+  --ws-fs-caption: var(--pm-content-fs);
+  --ws-fs-label: var(--pm-content-fs);
   --letter-tight: 0.02em;
   --letter-label: 0.06em;
   color: var(--text-primary);
@@ -55,7 +58,7 @@
 .premarket-terminal .pm-site-prose {
   font-family: var(--ws-font-sans);
   font-weight: 400;
-  font-size: var(--ws-fs-body);
+  font-size: var(--pm-content-fs);
   line-height: 1.55;
   letter-spacing: normal;
 }
@@ -67,7 +70,7 @@
 .premarket-terminal .pm-site-caption {
   font-family: var(--ws-font-sans);
   font-weight: 400;
-  font-size: var(--ws-fs-caption);
+  font-size: var(--pm-content-fs);
   line-height: 1.45;
   letter-spacing: normal;
 }
@@ -75,7 +78,7 @@
 .premarket-terminal .pm-section-label {
   font-family: var(--ws-font-sans);
   font-weight: 600;
-  font-size: var(--ws-fs-label);
+  font-size: var(--ws-fs-title);
   line-height: 1.3;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -84,7 +87,7 @@
 .premarket-terminal .pm-sip-col-head {
   font-family: var(--ws-font-sans);
   font-weight: 600;
-  font-size: var(--ws-fs-caption);
+  font-size: var(--pm-content-fs);
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -370,7 +373,7 @@
 
 .premarket-terminal .s1-context {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.42fr);
   gap: var(--space-4);
   align-items: start;
   min-width: 0;
@@ -378,7 +381,7 @@
 
 @media (max-width: 1440px) {
   .premarket-terminal .s1-context {
-    grid-template-columns: 1fr 350px;
+    grid-template-columns: minmax(0, 1fr) 400px;
   }
 }
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import EventRowFlag from "./EventRowFlag";
 import { ymdInEt } from "@/lib/et-ymd";
+import { industryThemePillClass } from "@/lib/premarket/industry-theme-pill-class";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 
@@ -49,6 +50,12 @@ function ImpactDot({ impact }: { impact: string }) {
 
 function filterLow(impact: string): boolean {
   return impact.toLowerCase() !== "low";
+}
+
+function themePillLabel(themeTag: string | null | undefined): string {
+  const tag = themeTag?.trim();
+  if (!tag) return "Theme";
+  return /\btheme$/i.test(tag) ? tag : `${tag} Theme`;
 }
 
 export default function EconomicCalendar() {
@@ -112,7 +119,6 @@ export default function EconomicCalendar() {
     void load();
   }, [load]);
 
-  const todayYmd = ymdInEt();
   const total = econToday.length + mktToday.length;
 
   if (loading) {
@@ -301,14 +307,10 @@ export default function EconomicCalendar() {
                         )}
                         {row.event_category === "theme_driven" ? (
                           <span
-                            className="pm-site-caption mt-0.5 ml-1 inline-block rounded px-1 py-px uppercase"
-                            style={{
-                              background: "rgba(192, 132, 252, 0.14)",
-                              color: "var(--accent-purple)",
-                            }}
+                            className={`pm-site-caption mt-0.5 ml-1 inline-block rounded border px-1.5 py-px font-semibold ${industryThemePillClass(row.theme_tag ?? "")}`}
                             title={row.theme_tag ? `Theme: ${row.theme_tag}` : "Theme-driven"}
                           >
-                            Theme
+                            {themePillLabel(row.theme_tag)}
                           </span>
                         ) : null}
                       </td>
@@ -329,12 +331,9 @@ export default function EconomicCalendar() {
       </div>
 
       <div
-        className="pm-site-caption flex flex-wrap items-center justify-between gap-2 border-t pt-2"
+        className="pm-site-caption flex flex-wrap items-center justify-end gap-2 border-t pt-2"
         style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
-        <span className="pm-mono tabular-nums">
-          {econToday.length} econ · {mktToday.length} key · {todayYmd} ET
-        </span>
         <button
           type="button"
           onClick={() => void load()}

@@ -195,6 +195,13 @@ function computeEMA(bars, key = "close", period) {
   return out;
 }
 
+function smaEndingHere(bars, key, period) {
+  if (bars.length < period) return null;
+  const window = bars.slice(-period);
+  const sum = window.reduce((acc, bar) => acc + bar[key], 0);
+  return sum / period;
+}
+
 function computeATR(bars, period) {
   const out = [];
   for (let i = 0; i < bars.length; i++) {
@@ -234,6 +241,12 @@ function atrUnitsAboveEma50(close, ema50, atr21) {
   if (atr21 == null || !Number.isFinite(atr21) || atr21 <= 0) return null;
   if (ema50 == null || close == null || !Number.isFinite(close) || !Number.isFinite(ema50)) return null;
   return (close - ema50) / atr21;
+}
+
+function atrMultipleVsSma50(close, sma50, atr21) {
+  if (atr21 == null || !Number.isFinite(atr21) || atr21 <= 0) return null;
+  if (sma50 == null || close == null || !Number.isFinite(close) || !Number.isFinite(sma50)) return null;
+  return (close - sma50) / atr21;
 }
 
 function episodicPivotFlag(close, volume, prevClose, ema200Prev, avgVol20Prev) {
@@ -575,6 +588,7 @@ async function main() {
     "ema_200_lag_30",
     "ema_200_lag_60",
     "atr_units_above_ema50",
+    "atr_multiple_sma50",
     "avg_volume_20d",
   ]) {
     if (!indCols.has(col)) db.exec(`ALTER TABLE indicators_daily ADD COLUMN ${col} REAL`);
@@ -601,9 +615,9 @@ async function main() {
       ema_200_lag_20, ema_200_lag_30, ema_200_lag_60,
       above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50, above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200,
       ema_20_above_50, ema_20_50_spread_pct, ema_50_above_100, ema_50_100_spread_pct, ema_50_above_200, ema_50_200_spread_pct, ema_100_above_200, ema_100_200_spread_pct,
-      atr_units_above_ema50, avg_volume_20d, episodic_pivot,
+      atr_units_above_ema50, atr_multiple_sma50, avg_volume_20d, episodic_pivot,
       rs_vs_spy_1w, rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const getBarsStmt = db.prepare(
     "SELECT date, open, high, low, close, volume, dollar_volume FROM daily_bars WHERE symbol = ? AND date <= ? ORDER BY date"
@@ -760,6 +774,8 @@ async function main() {
       const ema200YesterdayRd = barIdx >= 1 ? ema200Arr[barIdx - 1] : null;
       const prevCloseEpRd = barIdx >= 1 ? bars[barIdx - 1].close : null;
       const atrUnitsValRd = atrUnitsAboveEma50(lastBar.close, ema50, atr21);
+      const sma50Rd = smaEndingHere(bars, "close", 50);
+      const atrMultipleSma50Rd = atrMultipleVsSma50(lastBar.close, sma50Rd, atr21);
       const episodicPivotValRd = episodicPivotFlag(
         lastBar.close,
         lastBar.volume,
@@ -808,6 +824,7 @@ async function main() {
         ema100 > ema200 ? 1 : 0,
         spread(ema100, ema200),
         atrUnitsValRd,
+        atrMultipleSma50Rd,
         avgVol20dRd,
         episodicPivotValRd,
         rs1w,

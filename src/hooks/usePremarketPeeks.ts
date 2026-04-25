@@ -10,7 +10,6 @@ import type { DailyThemeRow } from "@/types/daily-themes";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 import type { EarningsCalendarResponse } from "@/types/earnings-calendar";
-import type { GappersResponse } from "@/types/gappers";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 
 export type PremarketPeeks = {
@@ -33,71 +32,12 @@ type EquitiesApi =
     }
   | { ok: false; error: string };
 
-/** Top tickers by gap % with ± gap for collapsed peek (dedupe keeps first / highest gap). */
-function formatTopGapperPeeks(rows: { ticker: string; gapPct: number }[], max = 5): string {
-  if (!rows.length) return "No names";
-  const sorted = [...rows].sort((a, b) => {
-    const d = b.gapPct - a.gapPct;
-    if (d !== 0) return d;
-    return a.ticker.localeCompare(b.ticker);
-  });
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const r of sorted) {
-    const t = r.ticker.trim().toUpperCase();
-    if (!t || seen.has(t)) continue;
-    seen.add(t);
-    const sign = r.gapPct >= 0 ? "+" : "";
-    out.push(`${t} ${sign}${r.gapPct.toFixed(1)}%`);
-    if (out.length >= max) break;
-  }
-  return out.join(" · ");
+function countTodayEvents<T extends { event_date: string; impact: string }>(rows: T[], todayYmd: string): number {
+  return rows.filter((ev) => ev.event_date === todayYmd && String(ev.impact).toLowerCase() !== "low").length;
 }
 
-function timeForSort(hms: string | null): string {
-  if (!hms || !hms.includes(":")) return "00:00:00";
-  const parts = hms.split(":");
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  const s = parts[2] != null ? Number(parts[2]) : 0;
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return "00:00:00";
-  const sec = Number.isFinite(s) ? s : 0;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
-
-function sortKeyForCal(date: string, time: string | null): string {
-  return `${date}T${timeForSort(time)}`;
-}
-
-function formatPeekTimeEt(hms: string | null): string {
-  if (!hms) return "TBD";
-  const [hs, ms] = hms.split(":");
-  const h = Number(hs);
-  const m = Number(ms);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return hms;
-  const ap = h >= 12 ? "PM" : "AM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${ap}`;
-}
-
-function mergeCalendarPeekRows(
-  econ: EconomicEventPublic[],
-  mkt: MarketEventPublic[],
-  todayYmd: string
-): { sortKey: string; timeEt: string | null }[] {
-  const rows: { sortKey: string; timeEt: string | null }[] = [];
-  for (const ev of econ) {
-    if (ev.event_date !== todayYmd) continue;
-    if (String(ev.impact).toLowerCase() === "low") continue;
-    rows.push({ sortKey: sortKeyForCal(ev.event_date, ev.event_time_et), timeEt: ev.event_time_et });
-  }
-  for (const ev of mkt) {
-    if (ev.event_date !== todayYmd) continue;
-    if (String(ev.impact).toLowerCase() === "low") continue;
-    rows.push({ sortKey: sortKeyForCal(ev.event_date, ev.event_time_et), timeEt: ev.event_time_et });
-  }
-  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  return rows;
+function joinPeekParts(parts: string[]): string {
+  return parts.join(" - ");
 }
 
 async function fetchCalendarPeekToday(): Promise<string> {
@@ -112,11 +52,9 @@ async function fetchCalendarPeekToday(): Promise<string> {
   const mJson = (await mRes.json()) as MarketEventsResponse & { error?: string };
   const econ = eRes.ok ? eJson.events ?? [] : [];
   const mkt = mRes.ok ? mJson.events ?? [] : [];
-  const rows = mergeCalendarPeekRows(econ, mkt, todayYmd);
-  if (!rows.length) return "No events today";
-  const n = rows.length;
-  const next = formatPeekTimeEt(rows[0].timeEt);
-  return `${n} event${n === 1 ? "" : "s"} · next ${next}`;
+  const econCount = countTodayEvents<EconomicEventPublic>(econ, todayYmd);
+  const keyCount = countTodayEvents<MarketEventPublic>(mkt, todayYmd);
+  return `${econCount} Economic and ${keyCount} Key Events Today`;
 }
 
 export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydrated: boolean) {
@@ -133,7 +71,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
 
   const [calendarPeek, setCalendarPeek] = useState("…");
   const [earningsPeek, setEarningsPeek] = useState("…");
-  const [moversPeek, setMoversPeek] = useState("…");
+  const [moversPeek, setMoversPeek] = useState("");
   const [sipPeek, setSipPeek] = useState("…");
   const [themePeek, setThemePeek] = useState("…");
 
@@ -218,7 +156,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
         return a.ticker.localeCompare(b.ticker);
       });
       const top = sorted.slice(0, 5).map((r) => r.ticker.trim().toUpperCase()).filter(Boolean);
-      setEarningsPeek(top.join(" · "));
+      setEarningsPeek(joinPeekParts(top));
     } catch {
       setEarningsPeek("Earnings unavailable");
     }
@@ -226,31 +164,11 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
 
   const loadMoversPeek = useCallback(async () => {
     if (!filtersHydrated) {
-      setMoversPeek("…");
+      setMoversPeek("");
       return;
     }
-    try {
-      const res = await fetch("/api/movers/gappers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(gapperBody),
-        cache: "no-store",
-      });
-      const json = (await res.json()) as GappersResponse & { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        setMoversPeek("Gappers unavailable");
-        return;
-      }
-      const rows = json.rows ?? [];
-      if (!rows.length) {
-        setMoversPeek("No gappers");
-        return;
-      }
-      setMoversPeek(formatTopGapperPeeks(rows));
-    } catch {
-      setMoversPeek("Gappers unavailable");
-    }
-  }, [filtersHydrated, gapperBody]);
+    setMoversPeek("");
+  }, [filtersHydrated]);
 
   const loadSipPeek = useCallback(async () => {
     if (!filtersHydrated) {
@@ -277,7 +195,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
       const tickers = [...new Set(rows.map((r) => r.ticker.trim().toUpperCase()).filter(Boolean))].sort((a, b) =>
         a.localeCompare(b)
       );
-      setSipPeek(tickers.join(" · "));
+      setSipPeek(joinPeekParts(tickers));
     } catch {
       setSipPeek("SIP unavailable");
     }
@@ -302,7 +220,7 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
         if (oa !== ob) return oa - ob;
         return a.theme_rank - b.theme_rank;
       });
-      setThemePeek(sorted.map((t) => keywordFromThemeTitle(t.theme_title)).join(" · "));
+      setThemePeek(joinPeekParts(sorted.slice(0, 5).map((t) => keywordFromThemeTitle(t.theme_title))));
     } catch {
       setThemePeek("Themes unavailable");
     }

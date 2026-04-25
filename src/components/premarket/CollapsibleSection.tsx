@@ -37,7 +37,7 @@ export default function CollapsibleSection({
 
   const accentColor =
     labelAccent === "cyan"
-      ? "var(--accent-cyan)"
+      ? "var(--ws-cyan)"
       : labelAccent === "amber"
         ? "var(--accent-amber)"
         : "var(--text-primary)";
@@ -62,7 +62,7 @@ export default function CollapsibleSection({
           role="button"
           aria-expanded={!collapsed}
           aria-controls={panelId}
-          className="pm-focus flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-elevated)]"
+          className="pm-focus flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-elevated)]"
           style={{ color: "var(--text-primary)" }}
           onClick={onToggle}
         >
@@ -87,7 +87,7 @@ export default function CollapsibleSection({
               </span>
             ) : null}
             {collapsed && peekText ? (
-              <span className="pm-site-caption min-w-0 flex-1 truncate text-right font-medium leading-snug" style={{ color: "var(--text-secondary)" }}>
+              <span className="pm-site-caption min-w-0 truncate text-left font-medium leading-snug" style={{ color: "var(--text-secondary)" }}>
                 {peekText}
               </span>
             ) : null}

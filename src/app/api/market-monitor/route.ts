@@ -29,7 +29,7 @@ export type MarketMonitorRow = {
   nnh52wHighs: number;
   nnh52wLows: number;
   /** Present after `market_monitor_daily` backfill with new columns. */
-  count10xAtr50d?: number;
+  count7xAtr50d?: number;
   countEpisodicPivot?: number;
 };
 
@@ -101,7 +101,7 @@ function marketMonitorRowFromPrecomputedDaily(r: MarketMonitorDailyRow): MarketM
     universePctAbove200d: r.universe_pct_above_200d,
     nnh52wHighs: r.nnh_52w_highs ?? 0,
     nnh52wLows: r.nnh_52w_lows ?? 0,
-    count10xAtr50d: r.count_10x_atr_50d ?? 0,
+    count7xAtr50d: r.count_7x_atr_50d ?? 0,
     countEpisodicPivot: r.count_episodic_pivot ?? 0,
   };
 }

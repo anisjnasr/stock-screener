@@ -34,6 +34,7 @@ export type ScreenerRow = {
   off_52w_high_pct: number | null;
   atr_pct_21d: number | null;
   atr_units_above_ema50: number | null;
+  atr_multiple_sma50: number | null;
   price_change_1w_pct: number | null;
   price_change_1m_pct: number | null;
   price_change_3m_pct: number | null;
@@ -136,15 +137,10 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
   }
   if (str(filters.new_52w_high) === "1") {
     conditions.push(
-      " AND q.high_52w IS NOT NULL AND q.last_price IS NOT NULL AND q.last_price + 1e-9 >= q.high_52w"
+      " AND q.high_52w IS NOT NULL AND d.high IS NOT NULL AND d.high + 1e-9 >= q.high_52w"
     );
   }
-  if (str(filters.atr_10x_above_ema50) === "1") {
-    conditions.push(
-      " AND i.atr_units_above_ema50 IS NOT NULL AND i.atr_units_above_ema50 >= 10"
-    );
-  }
-  addNumericRange("i.atr_units_above_ema50", "atr_units_above_ema50_min", "atr_units_above_ema50_max");
+  addNumericRange("i.atr_multiple_sma50", "atr_multiple_sma50_min", "atr_multiple_sma50_max");
   if (num(filters.atr_pct_21d_min) != null) { conditions.push(" AND q.atr_pct_21d >= ?"); params.push(num(filters.atr_pct_21d_min)); }
   if (num(filters.atr_pct_21d_max) != null) { conditions.push(" AND q.atr_pct_21d <= ?"); params.push(num(filters.atr_pct_21d_max)); }
 
@@ -722,6 +718,7 @@ function rowToScreenerRow(r: RowObject, marketClosed: boolean): ScreenerRow {
     off_52w_high_pct: typeof r.off_52w_high_pct === "number" ? r.off_52w_high_pct : null,
     atr_pct_21d,
     atr_units_above_ema50: typeof r.atr_units_above_ema50 === "number" ? r.atr_units_above_ema50 : null,
+    atr_multiple_sma50: typeof r.atr_multiple_sma50 === "number" ? r.atr_multiple_sma50 : null,
     price_change_1w_pct: typeof r.price_change_1w_pct === "number" ? r.price_change_1w_pct : null,
     price_change_1m_pct: typeof r.price_change_1m_pct === "number" ? r.price_change_1m_pct : null,
     price_change_3m_pct: typeof r.price_change_3m_pct === "number" ? r.price_change_3m_pct : null,
@@ -814,6 +811,20 @@ export type IndustryRankUniverseCounts = {
   industry_rank_12m: number;
 };
 
+export type IndustryRanks = {
+  industry_rank_1m: number | null;
+  industry_rank_3m: number | null;
+  industry_rank_6m: number | null;
+  industry_rank_12m: number | null;
+};
+
+export type StockRsPercentiles = {
+  rs_pct_1m: number | null;
+  rs_pct_3m: number | null;
+  rs_pct_6m: number | null;
+  rs_pct_12m: number | null;
+};
+
 export function getIndustryRankUniverseCounts(date?: string): {
   date: string | null;
   counts: IndustryRankUniverseCounts | null;
@@ -826,10 +837,7 @@ export function getIndustryRankUniverseCounts(date?: string): {
     .prepare(
       `
       SELECT
-        COUNT(DISTINCT CASE WHEN i.industry_rank_1m IS NOT NULL THEN c.industry END) AS c1m,
-        COUNT(DISTINCT CASE WHEN i.industry_rank_3m IS NOT NULL THEN c.industry END) AS c3m,
-        COUNT(DISTINCT CASE WHEN i.industry_rank_6m IS NOT NULL THEN c.industry END) AS c6m,
-        COUNT(DISTINCT CASE WHEN i.industry_rank_12m IS NOT NULL THEN c.industry END) AS c12m
+        COUNT(DISTINCT TRIM(c.industry)) AS industries
       FROM indicators_daily i
       INNER JOIN companies c ON c.symbol = i.symbol
       WHERE i.date = ?
@@ -838,16 +846,158 @@ export function getIndustryRankUniverseCounts(date?: string): {
       `
     )
     .get(targetDate) as
-    | { c1m?: number | null; c3m?: number | null; c6m?: number | null; c12m?: number | null }
+    | { industries?: number | null }
     | undefined;
   if (!row) return { date: targetDate, counts: null };
+  const industryCount = Number(row.industries ?? 0);
   return {
     date: targetDate,
     counts: {
-      industry_rank_1m: Number(row.c1m ?? 0),
-      industry_rank_3m: Number(row.c3m ?? 0),
-      industry_rank_6m: Number(row.c6m ?? 0),
-      industry_rank_12m: Number(row.c12m ?? 0),
+      industry_rank_1m: industryCount,
+      industry_rank_3m: industryCount,
+      industry_rank_6m: industryCount,
+      industry_rank_12m: industryCount,
+    },
+  };
+}
+
+function rankIndustriesByReturn(rows: Array<{ industry: string; value: number | null }>): Map<string, number> {
+  const sorted = [...rows].sort((a, b) => {
+    if (a.value == null && b.value == null) return a.industry.localeCompare(b.industry);
+    if (a.value == null) return 1;
+    if (b.value == null) return -1;
+    if (b.value !== a.value) return b.value - a.value;
+    return a.industry.localeCompare(b.industry);
+  });
+  const out = new Map<string, number>();
+  sorted.forEach((row, index) => out.set(row.industry, index + 1));
+  return out;
+}
+
+export function getComputedIndustryRanksForIndustry(industry: string | null | undefined, date?: string): {
+  date: string | null;
+  ranks: IndustryRanks | null;
+} {
+  const normalizedIndustry = typeof industry === "string" ? industry.trim() : "";
+  if (!normalizedIndustry) return { date: null, ranks: null };
+  const db = getDb();
+  if (!db) return { date: null, ranks: null };
+  const targetDate = date ?? getLatestReliableScreenerDateFromDb(db);
+  if (!targetDate) return { date: null, ranks: null };
+  const rows = db
+    .prepare(
+      `
+      WITH base AS (
+        SELECT
+          TRIM(c.industry) AS industry,
+          i.price_change_1m_pct,
+          i.price_change_3m_pct,
+          i.price_change_6m_pct,
+          i.price_change_12m_pct,
+          COALESCE(NULLIF(q.market_cap, 0), NULLIF(c.shares_outstanding * COALESCE(q.last_price, q.prev_close, d.close), 0), 1) AS weight
+        FROM indicators_daily i
+        INNER JOIN companies c ON c.symbol = i.symbol
+        LEFT JOIN quote_daily q ON q.symbol = i.symbol AND q.date = i.date
+        LEFT JOIN daily_bars d ON d.symbol = i.symbol AND d.date = i.date
+        WHERE i.date = ?
+          AND c.industry IS NOT NULL
+          AND TRIM(c.industry) <> ''
+          AND COALESCE(c.is_etf, 0) = 0
+      )
+      SELECT
+        industry,
+        SUM(CASE WHEN price_change_1m_pct IS NOT NULL THEN weight * price_change_1m_pct ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN price_change_1m_pct IS NOT NULL THEN weight ELSE 0 END), 0) AS ret1m,
+        SUM(CASE WHEN price_change_3m_pct IS NOT NULL THEN weight * price_change_3m_pct ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN price_change_3m_pct IS NOT NULL THEN weight ELSE 0 END), 0) AS ret3m,
+        SUM(CASE WHEN price_change_6m_pct IS NOT NULL THEN weight * price_change_6m_pct ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN price_change_6m_pct IS NOT NULL THEN weight ELSE 0 END), 0) AS ret6m,
+        SUM(CASE WHEN price_change_12m_pct IS NOT NULL THEN weight * price_change_12m_pct ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN price_change_12m_pct IS NOT NULL THEN weight ELSE 0 END), 0) AS ret12m
+      FROM base
+      GROUP BY industry
+      `
+    )
+    .all(targetDate) as Array<{
+      industry: string;
+      ret1m: number | null;
+      ret3m: number | null;
+      ret6m: number | null;
+      ret12m: number | null;
+    }>;
+  if (rows.length === 0) return { date: targetDate, ranks: null };
+  const rank1m = rankIndustriesByReturn(rows.map((r) => ({ industry: r.industry, value: r.ret1m })));
+  const rank3m = rankIndustriesByReturn(rows.map((r) => ({ industry: r.industry, value: r.ret3m })));
+  const rank6m = rankIndustriesByReturn(rows.map((r) => ({ industry: r.industry, value: r.ret6m })));
+  const rank12m = rankIndustriesByReturn(rows.map((r) => ({ industry: r.industry, value: r.ret12m })));
+  return {
+    date: targetDate,
+    ranks: {
+      industry_rank_1m: rank1m.get(normalizedIndustry) ?? null,
+      industry_rank_3m: rank3m.get(normalizedIndustry) ?? null,
+      industry_rank_6m: rank6m.get(normalizedIndustry) ?? null,
+      industry_rank_12m: rank12m.get(normalizedIndustry) ?? null,
+    },
+  };
+}
+
+export function getComputedRsPercentilesForSymbol(symbol: string, date?: string): {
+  date: string | null;
+  rsRank: StockRsPercentiles | null;
+} {
+  const symbolUpper = String(symbol).trim().toUpperCase();
+  if (!symbolUpper) return { date: null, rsRank: null };
+  const db = getDb();
+  if (!db) return { date: null, rsRank: null };
+  const targetDate = date ?? getLatestReliableScreenerDateFromDb(db);
+  if (!targetDate) return { date: null, rsRank: null };
+  const row = db
+    .prepare(
+      `
+      SELECT rs_vs_spy_1m, rs_vs_spy_3m, rs_vs_spy_6m, rs_vs_spy_12m
+      FROM indicators_daily
+      WHERE symbol = ?
+        AND date = ?
+      LIMIT 1
+      `
+    )
+    .get(symbolUpper, targetDate) as
+    | {
+        rs_vs_spy_1m?: number | null;
+        rs_vs_spy_3m?: number | null;
+        rs_vs_spy_6m?: number | null;
+        rs_vs_spy_12m?: number | null;
+      }
+    | undefined;
+  if (!row) return { date: targetDate, rsRank: null };
+  const total = Number(
+    (
+      db.prepare("SELECT COUNT(*) AS c FROM indicators_daily WHERE date = ?").get(targetDate) as
+        | { c?: number | null }
+        | undefined
+    )?.c ?? 0
+  );
+  if (total <= 0) return { date: targetDate, rsRank: null };
+
+  const percentileFor = (column: string, value: number | null | undefined): number | null => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    const greater = Number(
+      (
+        db.prepare(`SELECT COUNT(*) AS c FROM indicators_daily WHERE date = ? AND ${column} > ?`).get(targetDate, value) as
+          | { c?: number | null }
+          | undefined
+      )?.c ?? 0
+    );
+    return ((total - greater) / total) * 100;
+  };
+
+  return {
+    date: targetDate,
+    rsRank: {
+      rs_pct_1m: percentileFor("rs_vs_spy_1m", row.rs_vs_spy_1m),
+      rs_pct_3m: percentileFor("rs_vs_spy_3m", row.rs_vs_spy_3m),
+      rs_pct_6m: percentileFor("rs_vs_spy_6m", row.rs_vs_spy_6m),
+      rs_pct_12m: percentileFor("rs_vs_spy_12m", row.rs_vs_spy_12m),
     },
   };
 }
@@ -875,6 +1025,7 @@ export function getAllIndustryNames(): string[] {
 export type StockProfileDbMetrics = {
   marketCap: number | null;
   avgVolume20d: number | null;
+  avgDollarVolume1m: number | null;
   atrPct21d: number | null;
 };
 
@@ -892,6 +1043,7 @@ export function getStockProfileDbMetrics(symbol: string, date?: string): {
       SELECT
         q.market_cap AS market_cap,
         i.avg_volume_1m AS avg_volume_1m,
+        i.avg_dollar_volume_1m AS avg_dollar_volume_1m,
         q.atr_pct_21d AS atr_pct_21d
       FROM quote_daily q
       LEFT JOIN indicators_daily i ON i.symbol = q.symbol AND i.date = q.date
@@ -901,7 +1053,7 @@ export function getStockProfileDbMetrics(symbol: string, date?: string): {
       `
     )
     .get(String(symbol).toUpperCase(), targetDate) as
-    | { market_cap?: number | null; avg_volume_1m?: number | null; atr_pct_21d?: number | null }
+    | { market_cap?: number | null; avg_volume_1m?: number | null; avg_dollar_volume_1m?: number | null; atr_pct_21d?: number | null }
     | undefined;
   if (!row) return { date: targetDate, metrics: null };
   return {
@@ -909,6 +1061,7 @@ export function getStockProfileDbMetrics(symbol: string, date?: string): {
     metrics: {
       marketCap: typeof row.market_cap === "number" ? row.market_cap : null,
       avgVolume20d: typeof row.avg_volume_1m === "number" ? row.avg_volume_1m : null,
+      avgDollarVolume1m: typeof row.avg_dollar_volume_1m === "number" ? row.avg_dollar_volume_1m : null,
       atrPct21d: typeof row.atr_pct_21d === "number" ? row.atr_pct_21d : null,
     },
   };
@@ -1073,6 +1226,7 @@ export function getScreenerCount(options: {
   const sql = `
     SELECT COUNT(*) AS cnt FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+    INNER JOIN daily_bars d ON d.symbol = c.symbol AND d.date = q.date
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
     WHERE 1=1 ${symbolSql}${filterSql}
   `;
@@ -1135,11 +1289,12 @@ export function getScreenerSnapshot(options: {
       i.price_change_1w_pct, i.price_change_1m_pct, i.price_change_3m_pct, i.price_change_6m_pct, i.price_change_12m_pct,
       i.rs_vs_spy_1w, i.rs_vs_spy_1m, i.rs_vs_spy_3m, i.rs_vs_spy_6m, i.rs_vs_spy_12m,
       i.rs_pct_1w, i.rs_pct_1m, i.rs_pct_3m, i.rs_pct_6m, i.rs_pct_12m,
-      i.atr_units_above_ema50,
+      i.atr_units_above_ema50, i.atr_multiple_sma50,
       i.industry_rank_1m, i.industry_rank_3m, i.industry_rank_6m, i.industry_rank_12m,
       i.sector_rank_1m, i.sector_rank_3m, i.sector_rank_6m, i.sector_rank_12m${includeFin ? SCREENER_SNAPSHOT_FINANCIAL_SQL : ""}
     FROM companies c
     INNER JOIN quote_daily q ON q.symbol = c.symbol AND q.date = ?
+    INNER JOIN daily_bars d ON d.symbol = c.symbol AND d.date = q.date
     LEFT JOIN indicators_daily i ON i.symbol = c.symbol AND i.date = q.date
     WHERE 1=1 ${symbolSql}${filterSql}
     ORDER BY c.symbol
@@ -2412,7 +2567,7 @@ export type MarketMonitorMetricKey =
   | "down50pct_month"
   | "nnh52w_highs"
   | "nnh52w_lows"
-  | "count_10x_atr_50d"
+  | "count_7x_atr_50d"
   | "count_episodic_pivot"
   | "universe_above_50d"
   | "universe_above_200d";
@@ -2422,7 +2577,7 @@ type MarketMonitorBreadthMetricKey = Exclude<
   MarketMonitorMetricKey,
   | "nnh52w_highs"
   | "nnh52w_lows"
-  | "count_10x_atr_50d"
+  | "count_7x_atr_50d"
   | "count_episodic_pivot"
   | "universe_above_50d"
   | "universe_above_200d"
@@ -2439,7 +2594,7 @@ const MARKET_MONITOR_METRIC_KEYS: MarketMonitorMetricKey[] = [
   "down50pct_month",
   "nnh52w_highs",
   "nnh52w_lows",
-  "count_10x_atr_50d",
+  "count_7x_atr_50d",
   "count_episodic_pivot",
   "universe_above_50d",
   "universe_above_200d",
@@ -2565,10 +2720,10 @@ export function getMarketMonitorConstituents(
   ).get() as { c: number })?.c > 0;
   const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
 
-  if (metric === "count_10x_atr_50d" || metric === "count_episodic_pivot") {
+  if (metric === "count_7x_atr_50d" || metric === "count_episodic_pivot") {
     const indPred =
-      metric === "count_10x_atr_50d"
-        ? "i.atr_units_above_ema50 IS NOT NULL AND i.atr_units_above_ema50 >= 10"
+      metric === "count_7x_atr_50d"
+        ? "i.atr_multiple_sma50 IS NOT NULL AND i.atr_multiple_sma50 >= 7"
         : "i.episodic_pivot = 1";
     const sql = `
     WITH symbols_today AS (
@@ -2822,7 +2977,7 @@ export type MarketMonitorDailyRow = {
   nnh_52w_highs: number | null;
   nnh_52w_lows: number | null;
   nnh_52w_net: number | null;
-  count_10x_atr_50d: number | null;
+  count_7x_atr_50d: number | null;
   count_episodic_pivot: number | null;
 };
 
@@ -2872,7 +3027,7 @@ export function getPrecomputedMarketMonitor(startDate: string, endDate: string):
     nnh_52w_highs: r.nnh_52w_highs != null ? Number(r.nnh_52w_highs) : null,
     nnh_52w_lows: r.nnh_52w_lows != null ? Number(r.nnh_52w_lows) : null,
     nnh_52w_net: r.nnh_52w_net != null ? Number(r.nnh_52w_net) : null,
-    count_10x_atr_50d: r.count_10x_atr_50d != null ? Number(r.count_10x_atr_50d) : null,
+    count_7x_atr_50d: r.count_7x_atr_50d != null ? Number(r.count_7x_atr_50d) : null,
     count_episodic_pivot: r.count_episodic_pivot != null ? Number(r.count_episodic_pivot) : null,
   }));
 }

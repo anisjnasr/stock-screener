@@ -163,7 +163,7 @@ function MarketStatusClock() {
 
   return (
     <div
-      className="flex items-center gap-2 shrink-0 select-none font-mono text-[11px] tabular-nums leading-none"
+      className="flex shrink-0 select-none items-center gap-1.5 font-mono text-xs tabular-nums leading-none sm:text-sm"
       style={{ color: "var(--ws-text)" }}
     >
       <span
@@ -176,9 +176,9 @@ function MarketStatusClock() {
         }}
         aria-hidden
       />
-      <span className="inline-flex min-w-[10.5rem] justify-end">
+      <span className="inline-flex min-w-[12.25rem] items-baseline justify-end gap-2">
         <span style={{ color: "var(--ws-text-dim)" }}>{parts?.datePart ?? "…"}</span>
-        <span style={{ color: "var(--ws-cyan)" }}>{parts ? ` ${parts.timePart}` : ""}</span>
+        <span style={{ color: "var(--ws-cyan)" }}>{parts?.timePart ?? ""}</span>
       </span>
     </div>
   );
@@ -836,7 +836,7 @@ function WorkspaceHeader({
           </nav>
         </div>
 
-        <div className="ml-auto flex items-center gap-2 md:gap-3 shrink-0 z-10 order-2 lg:order-none">
+        <div className="ml-auto flex items-center gap-1.5 md:gap-2 shrink-0 z-10 order-2 lg:order-none">
           <MarketStatusClock />
           <DataFreshnessInfo detail={lastUpdated} />
           <ProfileIcon />

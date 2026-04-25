@@ -34,6 +34,7 @@
     "audit-financial-baseline": "node scripts/audit-financial-baseline.mjs",
     "backup-db": "node scripts/backup-db.mjs",
     "backfill-dollar-volume": "node scripts/backfill-dollar-volume-from-bars.mjs",
+    "backfill-ipo-dates": "node scripts/backfill-ipo-dates-massive.mjs",
     "validate-historical-backfill": "node scripts/validate-historical-backfill.mjs",
     "historical-backfill-rollout": "node scripts/run-historical-backfill-rollout.mjs",
     "backfill-daily-history": "node scripts/backfill-daily-history.mjs",

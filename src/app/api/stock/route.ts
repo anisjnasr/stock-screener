@@ -5,6 +5,8 @@ import { getStockRecord } from "@/lib/stocks-db";
 import {
   getCompanyClassification,
   getIndustryRankUniverseCounts,
+  getComputedIndustryRanksForIndustry,
+  getComputedRsPercentilesForSymbol,
   getLatestScreenerDate,
   getStockProfileDbMetrics,
   getScreenerSnapshot,
@@ -54,6 +56,7 @@ const STOCK_API_TTL_OPEN_MS = 60 * 1000;
 const STOCK_API_TTL_CLOSED_MS = 5 * 60 * 1000;
 const STOCK_API_STALE_BUFFER_MS = 30 * 1000;
 const LATEST_SCREENER_DATE_TTL_MS = 30 * 1000;
+const STOCK_API_CACHE_VERSION = "rs-fallback-v1";
 
 function getStockApiCache(): Map<string, StockApiCacheEntry> {
   const g = globalThis as typeof globalThis & { __stockToolStockApiCache?: Map<string, StockApiCacheEntry> };
@@ -104,7 +107,7 @@ export async function GET(request: NextRequest) {
   const symbolUpper = String(symbol).toUpperCase();
   try {
     const latestScreenerDate = getLatestScreenerDateCached();
-    const cacheKey = `${symbolUpper}:${latestScreenerDate}`;
+    const cacheKey = `${STOCK_API_CACHE_VERSION}:${symbolUpper}:${latestScreenerDate}`;
     const cache = getStockApiCache();
     const cached = cache.get(cacheKey);
     const now = Date.now();
@@ -228,14 +231,31 @@ export async function GET(request: NextRequest) {
         typeof dbRow?.atr_pct_21d === "number" && dbRow.atr_pct_21d > 0 ? dbRow.atr_pct_21d : null,
     };
 
-    const rsRank = dbRow ? {
+    const rowRsRank = dbRow ? {
       rs_pct_1m: dbRow.rs_pct_1m ?? null,
       rs_pct_3m: dbRow.rs_pct_3m ?? null,
       rs_pct_6m: dbRow.rs_pct_6m ?? null,
       rs_pct_12m: dbRow.rs_pct_12m ?? null,
     } : null;
+    const computedRsRank =
+      !rowRsRank ||
+      rowRsRank.rs_pct_1m == null ||
+      rowRsRank.rs_pct_3m == null ||
+      rowRsRank.rs_pct_6m == null ||
+      rowRsRank.rs_pct_12m == null
+        ? getComputedRsPercentilesForSymbol(symbolUpper, dbSnapshot.date ?? undefined).rsRank
+        : null;
+    const rsRank =
+      rowRsRank || computedRsRank
+        ? {
+            rs_pct_1m: rowRsRank?.rs_pct_1m ?? computedRsRank?.rs_pct_1m ?? null,
+            rs_pct_3m: rowRsRank?.rs_pct_3m ?? computedRsRank?.rs_pct_3m ?? null,
+            rs_pct_6m: rowRsRank?.rs_pct_6m ?? computedRsRank?.rs_pct_6m ?? null,
+            rs_pct_12m: rowRsRank?.rs_pct_12m ?? computedRsRank?.rs_pct_12m ?? null,
+          }
+        : null;
 
-    const industryRanks = dbRow
+    const rowIndustryRanks = dbRow
       ? {
           industry_rank_1m: dbRow.industry_rank_1m ?? null,
           industry_rank_3m: dbRow.industry_rank_3m ?? null,
@@ -243,6 +263,30 @@ export async function GET(request: NextRequest) {
           industry_rank_12m: dbRow.industry_rank_12m ?? null,
         }
       : null;
+    const profileIndustry =
+      profileNorm?.industry ??
+      companyClass?.industry ??
+      stockRecord?.industry ??
+      (profile as { industry?: string } | null | undefined)?.industry ??
+      dbRow?.industry ??
+      null;
+    const computedIndustryRanks =
+      !rowIndustryRanks ||
+      rowIndustryRanks.industry_rank_1m == null ||
+      rowIndustryRanks.industry_rank_3m == null ||
+      rowIndustryRanks.industry_rank_6m == null ||
+      rowIndustryRanks.industry_rank_12m == null
+        ? getComputedIndustryRanksForIndustry(profileIndustry, dbSnapshot.date ?? undefined).ranks
+        : null;
+    const industryRanks =
+      rowIndustryRanks || computedIndustryRanks
+        ? {
+            industry_rank_1m: rowIndustryRanks?.industry_rank_1m ?? computedIndustryRanks?.industry_rank_1m ?? null,
+            industry_rank_3m: rowIndustryRanks?.industry_rank_3m ?? computedIndustryRanks?.industry_rank_3m ?? null,
+            industry_rank_6m: rowIndustryRanks?.industry_rank_6m ?? computedIndustryRanks?.industry_rank_6m ?? null,
+            industry_rank_12m: rowIndustryRanks?.industry_rank_12m ?? computedIndustryRanks?.industry_rank_12m ?? null,
+          }
+        : null;
 
     const payload = {
       quote: quoteWithFallback,

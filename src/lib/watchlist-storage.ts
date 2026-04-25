@@ -356,6 +356,7 @@ export type ColumnId =
   | "high52w"
   | "off52wHighPct"
   | "atrUnitsAboveEma50"
+  | "atrMultipleSma50"
   | "priceChange1wPct"
   | "priceChange1mPct"
   | "priceChange3mPct"
@@ -423,6 +424,7 @@ export const ALL_COLUMN_IDS: ColumnId[] = [
   "high52w",
   "off52wHighPct",
   "atrUnitsAboveEma50",
+  "atrMultipleSma50",
   "priceChange1wPct",
   "priceChange1mPct",
   "priceChange3mPct",
@@ -490,6 +492,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   high52w: "52W High",
   off52wHighPct: "Off 52W High %",
   atrUnitsAboveEma50: "ATR units > EMA50",
+  atrMultipleSma50: "7x ATR Multiple",
   priceChange1wPct: "Chg 1W %",
   priceChange1mPct: "Chg 1M %",
   priceChange3mPct: "Chg 3M %",
@@ -550,6 +553,7 @@ export const NUMERIC_COLUMN_IDS = new Set<ColumnId>([
   "high52w",
   "off52wHighPct",
   "atrUnitsAboveEma50",
+  "atrMultipleSma50",
   "priceChange1wPct",
   "priceChange1mPct",
   "priceChange3mPct",

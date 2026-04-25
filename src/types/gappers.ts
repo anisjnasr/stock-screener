@@ -5,6 +5,7 @@ export type GappersRequestBody = {
   maxMarketCap?: number;
   minPmVolume?: number;
   minAvgVolume?: number;
+  minVolPct?: number;
   minGapPct?: number;
 };
 
@@ -20,6 +21,7 @@ export type GapperRow = {
   pmVolume: number;
   dayVolume: number | null;
   avgVolume90d: number | null;
+  volPct: number | null;
   marketCap: number | null;
   sector: string | null;
   industry: string | null;

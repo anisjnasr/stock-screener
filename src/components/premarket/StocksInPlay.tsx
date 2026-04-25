@@ -53,13 +53,13 @@ function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
         const href = it.link?.trim();
         const title = it.title?.trim() || label;
         const baseClass =
-          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 no-underline transition-colors";
+          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 font-semibold no-underline shadow-[inset_0_0_0_1px_rgba(34,211,238,0.10)] transition-colors";
         const pillStyle: CSSProperties = {
           fontFamily: "var(--ws-font-sans)",
           fontSize: "var(--ws-fs-caption)",
-          border: "1px solid var(--border-strong)",
-          background: "var(--bg-elevated)",
-          color: "var(--text-secondary)",
+          border: "1px solid rgba(34, 211, 238, 0.36)",
+          background: "rgba(34, 211, 238, 0.12)",
+          color: "var(--accent-cyan)",
         };
         if (href) {
           return (
@@ -68,7 +68,7 @@ function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className={`${baseClass} hover:border-[var(--accent-cyan)] hover:text-[var(--text-primary)]`}
+              className={`${baseClass} cursor-pointer hover:border-[var(--accent-cyan)] hover:bg-[rgba(34,211,238,0.20)] hover:text-[var(--text-primary)]`}
               style={pillStyle}
               title={title}
             >

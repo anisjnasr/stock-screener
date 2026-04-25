@@ -25,6 +25,7 @@ export type TradingViewScanParams = {
   maxMarketCap: number;
   minPmVolume: number;
   minAvgVolume: number;
+  minVolPct: number;
   minGapPct: number;
 };
 
@@ -43,6 +44,7 @@ export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
   minAvgVolume: 0,
+  minVolPct: 0,
   minGapPct: 1,
 };
 
@@ -58,18 +60,22 @@ export function buildTradingViewScanPayload(
       ? { left: "premarket_change", operation: "eless", right: -gap.minAbsGapPct }
       : { left: "premarket_change", operation: "egreater", right: p.minGapPct };
   const sortOrder = gap?.leg === "negative" ? "asc" : "desc";
-  return {
-    filter: [
+  const filter = [
       { left: "type", operation: "equal", right: "stock" },
       { left: "exchange", operation: "in_range", right: ["NYSE", "NASDAQ"] },
       { left: "close", operation: "egreater", right: p.minPrice },
-      { left: "market_cap_basic", operation: "egreater", right: p.minMarketCap },
       { left: "market_cap_basic", operation: "eless", right: p.maxMarketCap },
       { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
       { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
       // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
       gapFilter,
-    ],
+  ];
+  if (p.minMarketCap > 0) {
+    filter.splice(3, 0, { left: "market_cap_basic", operation: "egreater", right: p.minMarketCap });
+  }
+
+  return {
+    filter,
     columns: [...SCAN_COLUMNS],
     sort: { sortBy: "premarket_change", sortOrder },
     range: [0, rangeEnd],
@@ -121,6 +127,7 @@ export function parseTradingViewScanJson(json: unknown): { rows: Omit<GapperRow,
     const pmVol = parseNum(d[4]) ?? 0;
     const dayVol = parseNum(d[5]);
     const avg90 = parseNum(d[6]);
+    const volPct = avg90 != null && avg90 > 0 ? (pmVol / avg90) * 100 : null;
     const mcap = parseNum(d[7]);
     const sector = String(d[8] ?? "").trim() || null;
     const industry = String(d[9] ?? "").trim() || null;
@@ -136,6 +143,7 @@ export function parseTradingViewScanJson(json: unknown): { rows: Omit<GapperRow,
       pmVolume: pmVol,
       dayVolume: dayVol,
       avgVolume90d: avg90,
+      volPct,
       marketCap: mcap,
       sector,
       industry,
