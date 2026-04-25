@@ -2,8 +2,6 @@ name: Ownership 13F Refresh
 
 on:
   schedule:
-    # Daily lightweight incremental check/update (latest quarter only).
-    - cron: "15 2 * * *"
     # Weekly full recompute (all 8 quarters) to pick up CUSIP map improvements.
     - cron: "30 3 * * 0"
   workflow_dispatch:
@@ -73,13 +71,8 @@ jobs:
         run: |
           ARGS=()
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "${{ github.event.schedule }}" = "30 3 * * 0" ]; then
-              echo "Weekly full recompute (all 8 quarters)"
-              ARGS+=("--recompute")
-            else
-              echo "Daily latest-only refresh"
-              ARGS+=("--latest-only")
-            fi
+            echo "Weekly full recompute (all 8 quarters)"
+            ARGS+=("--recompute")
           else
             if [ "${{ github.event.inputs.latest_only }}" = "true" ]; then ARGS+=("--latest-only"); fi
             if [ "${{ github.event.inputs.recompute }}" = "true" ]; then ARGS+=("--recompute"); fi

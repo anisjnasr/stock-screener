@@ -60,7 +60,7 @@ export default function MacroWriteup({ loading, error, row, ymd }: MacroWriteupP
             color: "var(--accent-amber)",
           }}
         >
-          Web search fallback (no morning newsletters in the 4–7 AM ET window).
+          Web search fallback (no current newsletters archived in the last 2 days).
         </p>
       ) : null}
       <div

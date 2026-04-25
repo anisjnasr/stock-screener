@@ -70,6 +70,39 @@ import SSLHelp from "@/components/SSLHelp";
 export const FULL_UNIVERSE_ID = "__full_universe__";
 export const DEFAULT_LISTS_OPEN_ID = "index:nasdaq100";
 
+const FINANCIAL_COLUMN_IDS = new Set<ColumnId>([
+  "earningsLastReported",
+  "salesLastReported",
+  "epsRecentQ",
+  "avgEps2q",
+  "epsGrowthRecentQ",
+  "avgEpsGrowth2q",
+  "avgEpsGrowth3q",
+  "avgEpsGrowth4q",
+  "epsTtm",
+  "avgEps2y",
+  "epsGrowth1y",
+  "epsGrowth2yAgo",
+  "avgEpsGrowth2y",
+  "avgEpsGrowth3y",
+  "salesRecentQ",
+  "avgSales2q",
+  "salesGrowthRecentQ",
+  "avgSalesGrowth2q",
+  "avgSalesGrowth3q",
+  "avgSalesGrowth4q",
+  "salesTtm",
+  "avgSales2y",
+  "salesGrowth1y",
+  "salesGrowth2yAgo",
+  "avgSalesGrowth2y",
+  "avgSalesGrowth3y",
+]);
+
+function hasFinancialColumns(columns: readonly string[]): boolean {
+  return columns.some((col) => FINANCIAL_COLUMN_IDS.has(col as ColumnId));
+}
+
 /** Row shape: core fields + all optional screener/quote columns (camelCase). */
 type WatchlistRow = {
   symbol: string;
@@ -1748,6 +1781,10 @@ export default function WatchlistPanel({
     const params = new URLSearchParams();
     params.set("limit", String(limit));
     const runtimeFilters = resolveRuntimeFilters(screen.filters ?? {});
+    const filterColumns = getFilterCriteriaColumns(runtimeFilters);
+    if (hasFinancialColumns(visibleColumns) || hasFinancialColumns(filterColumns)) {
+      params.set("full", "1");
+    }
     if (screen.type === "script") {
       params.set("scriptBody", screen.scriptBody ?? "");
       params.set("universe", screen.universe ?? "all");
@@ -1765,7 +1802,7 @@ export default function WatchlistPanel({
     if (symbols && symbols.length > 0) params.set("symbols", symbols.join(","));
     if (Object.keys(runtimeFilters).length > 0) params.set("filters", JSON.stringify(runtimeFilters));
     return params;
-  }, [resolveRuntimeFilters]);
+  }, [resolveRuntimeFilters, visibleColumns]);
 
   const fetchScreenerResults = useCallback(async (screen: SavedScreen) => {
     setLoading(true);

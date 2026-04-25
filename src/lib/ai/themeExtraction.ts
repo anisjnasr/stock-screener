@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseModelJson, PREMARKET_CLAUDE_MODEL, streamClaudeText } from "@/lib/ai/claudeStream";
 import { addCalendarDaysYmd } from "@/lib/et-ymd";
+import { fetchCurrentNewsletterArchive, formatNewsletterArchivePromptBlock } from "@/lib/premarket/currentNewsletterArchive";
 import { fetchDailyThemesForDate } from "@/lib/premarket/dailyThemesRead";
 import { loadGappersScanOnly, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
 import type { DailyThemeRow } from "@/types/daily-themes";
@@ -37,7 +38,7 @@ export type ThemeExtractionResult =
   | { ok: false; error: string };
 
 /**
- * Builds `daily_themes` from today's macro + equities writeups, prior themes, and pre-market gappers.
+ * Builds `daily_themes` from the current newsletter archive, prior themes, and pre-market gappers.
  */
 export async function generateAndStoreDailyThemes(
   supabase: SupabaseClient,
@@ -46,21 +47,9 @@ export async function generateAndStoreDailyThemes(
 ): Promise<ThemeExtractionResult> {
   const { ymd } = opts;
 
-  const [{ data: macroRow, error: mErr }, { data: eqRow, error: eErr }] = await Promise.all([
-    supabase.from("daily_macro_writeup").select("writeup_text").eq("writeup_date", ymd).maybeSingle(),
-    supabase.from("daily_equities_writeup").select("bullets").eq("writeup_date", ymd).maybeSingle(),
-  ]);
-
-  if (mErr) return { ok: false, error: mErr.message };
-  if (eErr) return { ok: false, error: eErr.message };
-
-  const macroText = (macroRow as { writeup_text?: string } | null)?.writeup_text?.trim() ?? "";
-  const bullets = (eqRow as { bullets?: unknown } | null)?.bullets;
-  const eqList = Array.isArray(bullets) ? bullets.map((b) => String(b).trim()).filter(Boolean) : [];
-
-  if (!macroText && !eqList.length) {
-    return { ok: false, error: "Missing daily_macro_writeup and daily_equities_writeup for this date" };
-  }
+  const currentArchive = await fetchCurrentNewsletterArchive(supabase);
+  if (!currentArchive.ok) return { ok: false, error: currentArchive.error };
+  const newsletterBlock = formatNewsletterArchivePromptBlock(currentArchive.rows);
 
   const priorYmd = addCalendarDaysYmd(ymd, -1);
   const priorThemes = await fetchDailyThemesForDate(supabase, priorYmd);
@@ -84,15 +73,12 @@ export async function generateAndStoreDailyThemes(
   }
 
   const user = [
-    "Infer **5 macro themes** and **5 industry themes** that best explain today's US trading context.",
+    "Infer **5 macro themes** and **5 industry themes** that best explain the current US trading context.",
     "",
     "Inputs:",
     "",
-    "### Macro writeup",
-    macroText || "(empty)",
-    "",
-    "### Equities bullets",
-    eqList.length ? eqList.map((b) => `- ${b}`).join("\n") : "(empty)",
+    "### Current newsletter archive",
+    newsletterBlock,
     "",
     "### Yesterday's themes (continuity / persistence)",
     priorBlock,

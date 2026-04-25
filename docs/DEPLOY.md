@@ -157,7 +157,7 @@ If you use the pre-market **economic calendar** (`economic_events` in Supabase),
 
 **Schedule ingest** (pick one):
 
-- **GitHub Actions:** Add repository secrets `APP_BASE_URL` (public origin only, e.g. `https://your-service.onrender.com`, no trailing slash) and `CRON_SECRET` (same string as on the host). The workflow **Economic Calendar Injest** ([economic-calendar-cron.yml](../.github/workflows/economic-calendar-cron.yml)) runs daily and on manual dispatch; scheduled runs no-op until both secrets are set. For policy / Fed events, use **Market Events Ingest** ([market-events-cron.yml](../.github/workflows/market-events-cron.yml)); see [MARKET-EVENTS-PRODUCTION.md](MARKET-EVENTS-PRODUCTION.md).
+- **GitHub Actions:** Add repository secrets `APP_BASE_URL` (public origin only, e.g. `https://your-service.onrender.com`, no trailing slash) and `CRON_SECRET` (same string as on the host). The workflow **Economic Calendar Ingest** ([economic-calendar-cron.yml](../.github/workflows/economic-calendar-cron.yml)) runs daily and on manual dispatch; it also ingests policy / Fed market events. Scheduled runs no-op until both secrets are set.
 - **Render Cron Jobs:** Create a cron job that `POST`s to `https://<your-host>/api/cron/economic-calendar` with header `Authorization: Bearer <CRON_SECRET>` (same pattern for `/api/cron/market-events/*` if you do not use GitHub for those).
 
 ---
@@ -173,7 +173,7 @@ If you use the pre-market **economic calendar** (`economic_events` in Supabase),
 - [ ] Verify health endpoint: `GET /api/health` returns `status: "ok"` and `checks.*Healthy` are true.
 - [ ] Enable DB backup workflow (`.github/workflows/db-backup.yml`) or equivalent daily backup on your host.
 - [ ] (If using economic calendar) Supabase keys + `CRON_SECRET` on the host; SQL from `data/supabase-economic-events.sql` applied; scheduled `POST /api/cron/economic-calendar` (GitHub Actions or Render cron).
-- [ ] (If using market policy events) SQL from `data/supabase-market-events.sql` applied; scheduled `POST /api/cron/market-events/*` (GitHub **Market Events Ingest** or Render cron); see [MARKET-EVENTS-PRODUCTION.md](MARKET-EVENTS-PRODUCTION.md).
+- [ ] (If using market policy events) SQL from `data/supabase-market-events.sql` applied; consolidated scheduled `POST /api/cron/market-events/*` from GitHub **Economic Calendar Ingest** or Render cron; see [MARKET-EVENTS-PRODUCTION.md](MARKET-EVENTS-PRODUCTION.md).
 
 ---
 

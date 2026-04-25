@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback, useLayoutEffect } from "react
 import { tokenize, tokenClass } from "@/lib/ssl/tokens";
 import { parseScript, ParseError } from "@/lib/ssl/parser";
 import { filterCompletions, type SslCompletionItem } from "@/lib/ssl/completions";
+import { normalizeSslText } from "@/lib/ssl/formatting";
 import { getTextareaCaretClientPosition } from "@/lib/ssl/textarea-caret";
 
 export type ValidationStatus = { status: "ok" | "invalid" | "empty"; error?: string };
@@ -30,24 +31,6 @@ function isCaretInLineComment(text: string, caret: number): boolean {
   const before = text.slice(0, caret);
   const lineStart = before.lastIndexOf("\n") + 1;
   return before.slice(lineStart).includes("//");
-}
-
-/** Uppercase identifiers/keywords; ASCII length is unchanged so caret indices stay valid. */
-function normalizeSslText(raw: string): string {
-  const lines = raw.split("\n");
-  return lines
-    .map((line) => {
-      const tokens = tokenize(line);
-      return tokens
-        .map((t) => {
-          if (t.type === "number" || t.type === "space" || t.type === "punctuation") {
-            return t.value;
-          }
-          return t.value.toUpperCase();
-        })
-        .join("");
-    })
-    .join("\n");
 }
 
 export default function SSLEditor({
@@ -169,9 +152,15 @@ export default function SSLEditor({
   useEffect(() => {
     if (!value.trim()) {
       const s: ValidationStatus = { status: "empty" };
-      setValidation(s);
-      onValidation?.(s);
-      return;
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setValidation(s);
+        onValidation?.(s);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
     const timer = setTimeout(() => {
       try {
@@ -202,19 +191,26 @@ export default function SSLEditor({
   /** Re-filter or close when script changes while menu is open. */
   useLayoutEffect(() => {
     if (!menuOpen) return;
+    let cancelled = false;
     const ta = textareaRef.current;
     if (!ta) return;
     const caret = ta.selectionStart;
     const bounds = wordAtCaret(value, caret);
     replaceRangeRef.current = { start: bounds.start, end: bounds.end };
     const list = filterCompletions(value, bounds.prefix);
-    if (list.length === 0) {
-      closeCompletions();
-      return;
-    }
-    setMenuItems(list);
-    setActiveIndex((i) => Math.min(i, list.length - 1));
-    updateMenuPosition();
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (list.length === 0) {
+        closeCompletions();
+        return;
+      }
+      setMenuItems(list);
+      setActiveIndex((i) => Math.min(i, list.length - 1));
+      updateMenuPosition();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [value, menuOpen, closeCompletions, updateMenuPosition]);
 
   useEffect(() => {
@@ -341,7 +337,6 @@ export default function SSLEditor({
           placeholder={placeholder}
           aria-label="SSL script editor"
           aria-autocomplete="list"
-          aria-expanded={menuOpen}
           aria-controls={menuOpen ? "ssl-completion-list" : undefined}
           aria-activedescendant={menuOpen && menuItems[activeIndex] ? `ssl-completion-${activeIndex}` : undefined}
           className="absolute inset-0 w-full h-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-inset px-3 py-2.5 text-sm font-mono z-10 selection:bg-blue-400/35 dark:selection:bg-cyan-400/25"

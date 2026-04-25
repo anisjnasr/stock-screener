@@ -1,9 +1,7 @@
 # Sequential morning pipeline: macro → equities → themes → theme calendar events.
-# Run after Newsletter ingest so `newsletter_archive` has the 4–7 AM ET window.
+# Runs after Newsletter ingest completes so `newsletter_archive` has the latest allowlisted messages.
 #
-# Schedule (UTC, Mon–Fri only):
-#   11:00 — Newsletter ingest (newsletter-ingest-cron.yml)
-#   11:12 — This pipeline starts (~7:12 AM Eastern during EDT; ~6:12 AM during EST)
+# Newsletter ingest is scheduled at 06:00, 13:00, 14:00, and 16:00 UAE time.
 #
 # Secrets: APP_BASE_URL, CRON_SECRET
 #
@@ -12,8 +10,9 @@
 name: Premarket brief pipeline
 
 on:
-  schedule:
-    - cron: "12 11 * * 1-5"
+  workflow_run:
+    workflows: ["Newsletter ingest"]
+    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -22,6 +21,7 @@ concurrency:
 
 jobs:
   brief:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:

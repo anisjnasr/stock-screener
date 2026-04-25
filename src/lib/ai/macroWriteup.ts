@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PREMARKET_CLAUDE_MODEL, streamClaudeText } from "@/lib/ai/claudeStream";
 import { addCalendarDaysYmd } from "@/lib/et-ymd";
+import { fetchCurrentNewsletterArchive } from "@/lib/premarket/currentNewsletterArchive";
 import { summarizeThemesForMacroPrompt, fetchDailyThemesForDate } from "@/lib/premarket/dailyThemesRead";
-import { etMorningNewsletterWindow } from "@/lib/premarket/et-morning-window";
 import type { NewsletterArchiveRow } from "@/types/newsletter-macro";
 
 function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject: string | null; text: string }[]; yesterdayThemes: string }): string {
@@ -18,7 +18,7 @@ function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject:
   return [
     "You are a senior macro analyst synthesizing overnight research for a professional swing trader.",
     "",
-    `Below are ${n} morning newsletters from trusted sources, received between 4 AM and 7 AM ET today.`,
+    `Below are ${n} current newsletters from trusted sources, archived in the last 2 days up to this refresh.`,
     "Synthesize the most important US macro developments into a 3-5 sentence briefing.",
     "",
     "Newsletters:",
@@ -44,7 +44,7 @@ function buildNewsletterMacroPrompt(params: { bodies: { sender: string; subject:
 
 async function macroFromWebSearchFallback(anthropic: Anthropic, ymd: string, yesterdayThemes: string): Promise<string> {
   const user = [
-    "No trusted morning newsletters were ingested for today (empty mailbox, filters, or Gmail outage).",
+    "No trusted newsletters were archived in the last 2 days (empty mailbox, filters, or Gmail outage).",
     `Today's calendar date (US Eastern) is ${ymd}.`,
     "",
     "Yesterday's themes (for continuity):",
@@ -80,7 +80,7 @@ export type MacroWriteupResult =
   | { ok: false; error: string };
 
 /**
- * Reads `newsletter_archive` for the 4–7 AM ET window on `ymd`, generates a paragraph, upserts `daily_macro_writeup`.
+ * Reads the current newsletter archive, generates a paragraph, upserts `daily_macro_writeup`.
  */
 export async function generateAndStoreDailyMacroWriteup(
   supabase: SupabaseClient,
@@ -88,25 +88,10 @@ export async function generateAndStoreDailyMacroWriteup(
   opts: { ymd: string }
 ): Promise<MacroWriteupResult> {
   const { ymd } = opts;
-  let window: { startUtcIso: string; endUtcIso: string };
-  try {
-    window = etMorningNewsletterWindow(ymd);
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Invalid ymd" };
-  }
+  const currentArchive = await fetchCurrentNewsletterArchive(supabase);
+  if (!currentArchive.ok) return { ok: false, error: currentArchive.error };
 
-  const { data: rows, error: qErr } = await supabase
-    .from("newsletter_archive")
-    .select("id,sender_email,subject,body_text,received_at")
-    .gte("received_at", window.startUtcIso)
-    .lt("received_at", window.endUtcIso)
-    .order("received_at", { ascending: true });
-
-  if (qErr) {
-    return { ok: false, error: qErr.message };
-  }
-
-  const archives = (rows ?? []) as Pick<NewsletterArchiveRow, "id" | "sender_email" | "subject" | "body_text" | "received_at">[];
+  const archives = currentArchive.rows as Pick<NewsletterArchiveRow, "id" | "sender_email" | "subject" | "body_text" | "received_at">[];
 
   let writeupText: string;
   let fallbackUsed: boolean;

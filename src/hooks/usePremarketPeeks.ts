@@ -238,17 +238,16 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
     void refreshAll();
   }, [refreshAll]);
 
-  /** Weekdays 7:00, 8:00, 9:00 AM America/New_York — refresh macro + peeks once per hour slot. */
+  /** Refresh while scheduled UAE newsletter/pipeline windows are active. */
   useEffect(() => {
     const tick = () => {
-      const z = DateTime.now().setZone("America/New_York");
+      const z = DateTime.now().setZone("Asia/Dubai");
       const wd = z.weekday;
       if (wd > 5) return;
       const h = z.hour;
       const m = z.minute;
-      if (![7, 8, 9].includes(h)) return;
-      if (m > 14) return;
-      const slot = `${z.toISODate()}-${h}`;
+      if (![6, 7, 13, 14, 15, 16, 17].includes(h)) return;
+      const slot = `${z.toISODate()}-${h}-${Math.floor(m / 10)}`;
       if (lastScheduledSlotRef.current === slot) return;
       lastScheduledSlotRef.current = slot;
       void refreshAll();

@@ -23,10 +23,10 @@ Uses the **same** repository secrets as the economic calendar workflow:
 | `APP_BASE_URL` | Public origin only, e.g. `https://your-service.onrender.com` (no trailing slash) |
 | `CRON_SECRET` | Exact match of `CRON_SECRET` on Render |
 
-Workflow: **Market Events Ingest** — [`.github/workflows/market-events-cron.yml`](../.github/workflows/market-events-cron.yml)
+Workflow: **Economic Calendar Ingest** — [`.github/workflows/economic-calendar-cron.yml`](../.github/workflows/economic-calendar-cron.yml)
 
-- **Actions** → **Market Events Ingest** → **Run workflow** to verify after deploy.
-- Default schedule: daily `0 7 * * *` UTC (edit the workflow file to change).
+- **Actions** → **Economic Calendar Ingest** → **Run workflow** to verify after deploy.
+- Default schedule: daily `30 6 * * *` UTC (edit the workflow file to change).
 
 ---
 

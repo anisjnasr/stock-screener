@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Public read of today's (or `?date=YYYY-MM-DD`) daily themes via anon Supabase (RLS).
+ * Public read of the latest daily themes, or an exact `?date=YYYY-MM-DD` set.
  */
 export async function GET(request: NextRequest) {
   const supabase = getSupabase();
@@ -17,8 +17,29 @@ export async function GET(request: NextRequest) {
   }
 
   const dateParam = request.nextUrl.searchParams.get("date")?.trim();
-  const ymd =
-    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : ymdInEt();
+  let ymd = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+  if (!ymd) {
+    const { data: latest, error: latestError } = await supabase
+      .from("daily_themes")
+      .select("theme_date")
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestError) {
+      if (isSupabaseTableMissingError(latestError.message)) {
+        return NextResponse.json({
+          ok: true,
+          ymd: ymdInEt(),
+          themes: [] as DailyThemeRow[],
+          setupRequired: true,
+          setupMessage:
+            "Database table `daily_themes` is missing. In Supabase -> SQL Editor, run `data/supabase-premarket-brief-tables.sql` from this repo, then reload.",
+        });
+      }
+      return NextResponse.json({ ok: false, error: latestError.message }, { status: 500 });
+    }
+    ymd = (latest as { theme_date?: string } | null)?.theme_date ?? ymdInEt();
+  }
 
   const { data, error } = await supabase
     .from("daily_themes")

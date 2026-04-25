@@ -1,31 +1,33 @@
-# POST /api/cron/fred-actuals — FRED series → economic_events.actual (Phase 2.5).
+# POST /api/cron/economic-actuals — web-search economic_events.actual after scheduled releases.
 #
-# Master spec: every 30 minutes, 08:00–17:59 ET, weekdays. GitHub Actions cron is UTC.
-# This workflow uses 12:00–22:30 UTC Mon–Fri at :00 and :30 (covers ET 8–18 across EST/EDT).
+# GitHub Actions cannot dynamically schedule from Supabase event rows, so this runs hourly
+# during the weekday US data-release window. The API only processes missing actuals when
+# the event is at least 1 minute past its scheduled ET release time.
 #
 # Setup (repository Settings → Secrets and variables → Actions):
 #   APP_BASE_URL   — public origin only (no trailing slash)
 #   CRON_SECRET    — must match production CRON_SECRET
 #
-# Host env: FRED_API_KEY, SUPABASE_SERVICE_ROLE_KEY. Run data/supabase-fred-event-mapping.sql once.
+# Host env: ANTHROPIC_API_KEY, SUPABASE_SERVICE_ROLE_KEY.
 
-name: FRED Actuals Backfill
+name: Economic Actuals Web Search
 
 on:
   schedule:
-    - cron: "0,30 12-22 * * 1-5"
+    # Weekdays hourly at :01 UTC; covers common US release windows across EST/EDT.
+    - cron: "1 12-22 * * 1-5"
   workflow_dispatch:
 
 concurrency:
-  group: fred-actuals-cron
-  cancel-in-progress: false
+  group: economic-actuals-cron
+  cancel-in-progress: true
 
 jobs:
   backfill:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: POST /api/cron/fred-actuals
+      - name: POST /api/cron/economic-actuals
         env:
           BASE: ${{ secrets.APP_BASE_URL }}
           SECRET: ${{ secrets.CRON_SECRET }}
@@ -40,7 +42,7 @@ jobs:
             exit 0
           fi
           BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/fred-actuals"
+          URL="${BASE_TRIMMED}/api/cron/economic-actuals"
           echo "POST $URL"
           code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
             -H "Authorization: Bearer ${SECRET}" \

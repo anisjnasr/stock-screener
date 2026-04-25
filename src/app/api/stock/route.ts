@@ -21,7 +21,21 @@ function pickStr(obj: Record<string, unknown>, ...keys: string[]): string | unde
   return undefined;
 }
 
-function normalizeProfile(raw: Record<string, unknown> | null): Record<string, unknown> | undefined {
+type NormalizedProfile = {
+  companyName?: string;
+  description?: string;
+  website?: string;
+  exchange?: string;
+  country?: string;
+  industry?: string;
+  sector?: string;
+  ipoDate?: string;
+  floatShares?: number;
+  sharesOutstanding?: number;
+  mktCap?: number;
+};
+
+function normalizeProfile(raw: Record<string, unknown> | null): NormalizedProfile | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   return {
     companyName: pickStr(raw as Record<string, unknown>, "companyName", "Company Name", "name"),
@@ -34,7 +48,7 @@ function normalizeProfile(raw: Record<string, unknown> | null): Record<string, u
     ipoDate: pickStr(raw as Record<string, unknown>, "ipoDate", "ipo date"),
     floatShares: typeof raw.floatShares === "number" ? raw.floatShares : typeof raw.sharesFloat === "number" ? raw.sharesFloat : undefined,
     sharesOutstanding: typeof raw.sharesOutstanding === "number" ? raw.sharesOutstanding : undefined,
-    mktCap: raw.mktCap ?? raw.marketCap,
+    mktCap: typeof raw.mktCap === "number" ? raw.mktCap : typeof raw.marketCap === "number" ? raw.marketCap : undefined,
   };
 }
 

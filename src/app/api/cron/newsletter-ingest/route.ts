@@ -17,7 +17,7 @@ function parseYmd(body: unknown): string | null {
 }
 
 /**
- * Gmail → `newsletter_archive` for the 4–7 AM ET window on `ymd` (default: today ET).
+ * Gmail → `newsletter_archive` for allowlisted messages from the last 2 days.
  * Secured with CRON_SECRET (Bearer), same pattern as other crons.
  */
 export async function POST(request: NextRequest) {
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       ymd,
       inserted: result.inserted,
       examined: result.examined,
-      inMorningWindow: result.inMorningWindow,
+      allowlisted: result.allowlisted,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

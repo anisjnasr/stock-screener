@@ -6,10 +6,8 @@ import { ymdInEt } from "@/lib/et-ymd";
 import { getTickersWithEarningsInLast24Hours } from "@/lib/premarket/earnings-recent";
 import { loadGappersSipScan, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
 import { fetchDailyThemesForDate, summarizeThemesForMacroPrompt } from "@/lib/premarket/dailyThemesRead";
-import { isSipVolumeCandidate } from "@/lib/premarket/sip-candidate-filter";
 import { fetchPythonTickerNews, isPythonServiceConfigured } from "@/lib/python-service";
 import { getSupabase } from "@/lib/supabase";
-import type { TradingViewScanParams } from "@/lib/sources/tradingViewScreener";
 import { TRADINGVIEW_GAP_SCAN_ROW_CAP } from "@/lib/sources/tradingViewScreener";
 import type { GapperRow } from "@/types/gappers";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
@@ -22,19 +20,8 @@ const SIP_MAX_TICKERS = 75;
 const SIP_LLM_CANDIDATE_CAP = 120;
 const SIP_SCAN_ROW_CAP = TRADINGVIEW_GAP_SCAN_ROW_CAP;
 
-/** SIP scan: quality floors; bidirectional TV fetch uses min |gap| 2. */
-function sipScanFromBody(body: unknown): TradingViewScanParams {
-  const n = normalizeGappersScanBody(body);
-  return {
-    ...n,
-    minPrice: Math.max(3, n.minPrice),
-    minMarketCap: Math.max(250_000_000, n.minMarketCap),
-    minGapPct: Math.max(2, n.minGapPct),
-  };
-}
-
 /**
- * Pre-market “Stocks in Play”: bidirectional gappers, volume pre-filter, strict LLM classification.
+ * Pre-market “Stocks in Play”: bidirectional gappers with user-configured filters, strict LLM classification.
  * POST JSON body — same optional fields as `/api/movers/gappers` (see `GappersRequestBody`).
  */
 export async function POST(request: NextRequest) {
@@ -45,12 +32,12 @@ export async function POST(request: NextRequest) {
     body = {};
   }
 
-  const scan = sipScanFromBody(body);
+  const scan = normalizeGappersScanBody(body);
   const cacheKey = JSON.stringify(scan);
 
   try {
     const base = await unstable_cache(
-      async () => loadGappersSipScan(scan, { rowLimit: SIP_SCAN_ROW_CAP, minAbsGapPct: 2 }),
+      async () => loadGappersSipScan(scan, { rowLimit: SIP_SCAN_ROW_CAP, minAbsGapPct: scan.minGapPct }),
       ["premarket-sip-gappers-v2", cacheKey],
       { revalidate: 30 }
     )();
@@ -61,8 +48,7 @@ export async function POST(request: NextRequest) {
       earningsRecent24h: earnings.has(r.ticker),
     }));
 
-    const volumeOk = merged.filter(isSipVolumeCandidate);
-    const sortedForLlm = [...volumeOk]
+    const sortedForLlm = [...merged]
       .sort((a, b) => {
         const ag = Math.abs(b.gapPct) - Math.abs(a.gapPct);
         if (ag !== 0) return ag;

@@ -117,8 +117,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             ) : s.id === "sip" ? (
               <StocksInPlay
                 collapsed={collapsed.sip}
-                gapperFilters={gapperFilters}
-                filtersHydrated={gapperFiltersHydrated}
                 onOpenTickerInLists={onOpenTickerInLists}
               />
             ) : s.id === "movers" ? (

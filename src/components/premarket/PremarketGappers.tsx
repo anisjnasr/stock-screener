@@ -6,25 +6,18 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
 } from "react";
-import type { GapperRow, GappersRequestBody, GappersResponse } from "@/types/gappers";
+import type { GapperRow, GappersResponse } from "@/types/gappers";
 import {
-  GAPPER_CAP_PRESET_MC,
   gapperFilterStateToRequestBody,
-  type GapperCapPreset,
   type GapperFilterState,
   saveGapperFiltersToStorage,
 } from "@/components/premarket/gapper-filters-storage";
-import {
-  abbreviateUsdFilterDisplay,
-  formatScreenerCompact,
-  formatUsdIntInputDisplay,
-  parseFlexibleFilterNumber,
-} from "@/components/premarket/premarket-number-display";
+import GapperFilterControls from "@/components/premarket/GapperFilterControls";
+import { formatScreenerCompact } from "@/components/premarket/premarket-number-display";
 
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
@@ -34,14 +27,6 @@ function fmtPct(n: number): string {
 function fmtVolPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
-}
-
-/** Parse a plain decimal from a filter field on blur; empty = cancel edit (revert). */
-function parseDecimalBlur(raw: string): number | null {
-  const t = raw.trim();
-  if (t === "") return null;
-  const x = Number(t);
-  return Number.isFinite(x) ? x : null;
 }
 
 type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "volPct" | "marketCap" | "sector";
@@ -167,29 +152,10 @@ export default function PremarketGappers({
   const initialFetchDone = useRef(false);
   const [sortKey, setSortKey] = useState<GapperSortKey>("gapPct");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  /** Local string while editing large-number filters; `null` = show abbreviated/blurred display. */
-  const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
-  const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
-  const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
-  /** Draft strings for numeric filters so the user can clear the field while typing (controlled `type="number"` cannot). */
-  const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
-  const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
-  const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
-  const [minVolPctDraft, setMinVolPctDraft] = useState<string | null>(null);
   /** Wall time of the last completed `run()` (success or error), in seconds. */
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
   /** Row count from last successful scan (updates on Apply + Refresh). */
   const [resultsCount, setResultsCount] = useState<number | null>(null);
-
-  const clearFilterInputDrafts = useCallback(() => {
-    setMcapMinDraft(null);
-    setMcapMaxDraft(null);
-    setMinAvgVolDraft(null);
-    setMinPriceDraft(null);
-    setMinGapDraft(null);
-    setMinPmVolDraft(null);
-    setMinVolPctDraft(null);
-  }, []);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
     if (sortKey === key) {
@@ -242,87 +208,10 @@ export default function PremarketGappers({
     void run(filters);
   }, [filtersHydrated, filters, run]);
 
-  const applyFilters = () => {
-    const next = filtersWithDraftValues(filters);
-    clearFilterInputDrafts();
+  const applyFilters = (next: GapperFilterState) => {
     setFilters(next);
     saveGapperFiltersToStorage(next);
     void run(next);
-  };
-
-  function applyPreset(p: Exclude<GapperCapPreset, "custom">) {
-    clearFilterInputDrafts();
-    const { min, max } = GAPPER_CAP_PRESET_MC[p];
-    setFilters((prev) => {
-      const next = { ...prev, capPreset: p, minMarketCap: min, maxMarketCap: max };
-      saveGapperFiltersToStorage(next);
-      queueMicrotask(() => run(next));
-      return next;
-    });
-  }
-
-  function setCustomField<K extends keyof GappersRequestBody>(key: K, value: number) {
-    setFilters((prev) => ({ ...prev, [key]: value, capPreset: "custom" }));
-  }
-
-  function filtersWithDraftValues(base: GapperFilterState): GapperFilterState {
-    let next = { ...base };
-
-    const minMcap = mcapMinDraft != null ? parseFlexibleFilterNumber(mcapMinDraft) : null;
-    if (minMcap != null) {
-      next = {
-        ...next,
-        minMarketCap: Math.min(minMcap, next.maxMarketCap ?? 10_000_000_000_000),
-        capPreset: "custom",
-      };
-    }
-
-    const maxMcap = mcapMaxDraft != null ? parseFlexibleFilterNumber(mcapMaxDraft) : null;
-    if (maxMcap != null) {
-      next = {
-        ...next,
-        maxMarketCap: Math.max(maxMcap, next.minMarketCap ?? 0),
-        capPreset: "custom",
-      };
-    }
-
-    const minPrice = minPriceDraft != null ? parseDecimalBlur(minPriceDraft) : null;
-    if (minPrice != null) next = { ...next, minPrice: Math.max(0.01, minPrice), capPreset: "custom" };
-
-    const minGapPct = minGapDraft != null ? parseDecimalBlur(minGapDraft) : null;
-    if (minGapPct != null) next = { ...next, minGapPct: Math.max(0, minGapPct), capPreset: "custom" };
-
-    const minPmVolume = minPmVolDraft != null ? parseDecimalBlur(minPmVolDraft) : null;
-    if (minPmVolume != null) next = { ...next, minPmVolume: Math.max(0, Math.round(minPmVolume)), capPreset: "custom" };
-
-    const minAvgVolume = minAvgVolDraft != null ? parseFlexibleFilterNumber(minAvgVolDraft) : null;
-    if (minAvgVolume != null) next = { ...next, minAvgVolume: Math.max(0, Math.round(minAvgVolume)), capPreset: "custom" };
-
-    const minVolPct = minVolPctDraft != null ? parseDecimalBlur(minVolPctDraft) : null;
-    if (minVolPct != null) next = { ...next, minVolPct: Math.max(0, minVolPct), capPreset: "custom" };
-
-    return next;
-  }
-
-  const gapFilterLabelStyle: CSSProperties = {
-    fontFamily: "var(--ws-font-sans)",
-    fontSize: "var(--ws-fs-caption)",
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "#8a8a8a",
-    whiteSpace: "nowrap",
-  };
-  const gapFilterInputStyle: CSSProperties = {
-    height: 30,
-    padding: "5px 9px",
-    fontFamily: "var(--ws-font-mono)",
-    fontSize: "var(--ws-fs-body)",
-    background: "#1c1c1c",
-    border: "1px solid #333",
-    borderRadius: 3,
-    color: "#e5e5e5",
-    boxSizing: "border-box",
   };
 
   return (
@@ -337,245 +226,16 @@ export default function PremarketGappers({
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-[14px] px-[14px] py-[10px]" style={{ alignItems: "center" }}>
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>Preset</span>
-          <select
-            value={filters.capPreset === "custom" ? "custom" : filters.capPreset}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "custom") {
-                setFilters((p) => ({ ...p, capPreset: "custom" }));
-                return;
-              }
-              applyPreset(v as Exclude<GapperCapPreset, "custom">);
-            }}
-            className="tabular-nums outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 110 }}
-          >
-            <option value="all">All (no min)</option>
-            <option value="mid">Mid ($2B–$10B)</option>
-            <option value="large">Large ($10B–$200B)</option>
-            <option value="mega">Mega ($200B+)</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
-
-        <div className="h-5 w-px shrink-0 bg-[#333]" aria-hidden />
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>MCap</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 60 }}
-            value={mcapMinDraft ?? abbreviateUsdFilterDisplay(filters.minMarketCap ?? 0)}
-            onFocus={() => setMcapMinDraft(formatUsdIntInputDisplay(filters.minMarketCap))}
-            onChange={(e) => setMcapMinDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMcapMinDraft(null);
-              const p = parseFlexibleFilterNumber(raw);
-              if (p == null) return;
-              setFilters((prev) => ({
-                ...prev,
-                minMarketCap: Math.min(p, prev.maxMarketCap ?? 10_000_000_000_000),
-                capPreset: "custom",
-              }));
-            }}
-          />
-          <span className="pm-mono" style={{ color: "#8a8a8a", fontSize: "var(--ws-fs-body)" }}>
-            –
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 60 }}
-            value={mcapMaxDraft ?? abbreviateUsdFilterDisplay(filters.maxMarketCap ?? 0)}
-            onFocus={() => setMcapMaxDraft(formatUsdIntInputDisplay(filters.maxMarketCap))}
-            onChange={(e) => setMcapMaxDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMcapMaxDraft(null);
-              const p = parseFlexibleFilterNumber(raw);
-              if (p == null) return;
-              setFilters((prev) => ({
-                ...prev,
-                maxMarketCap: Math.max(p, prev.minMarketCap ?? 0),
-                capPreset: "custom",
-              }));
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>Price ≥</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 50 }}
-            value={minPriceDraft === null ? String(filters.minPrice) : minPriceDraft}
-            onFocus={() => setMinPriceDraft(String(filters.minPrice))}
-            onChange={(e) => setMinPriceDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMinPriceDraft(null);
-              const p = parseDecimalBlur(raw);
-              if (p == null) return;
-              setCustomField("minPrice", Math.max(0.01, p));
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>Gap % ≥</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 50 }}
-            value={minGapDraft === null ? String(filters.minGapPct) : minGapDraft}
-            onFocus={() => setMinGapDraft(String(filters.minGapPct))}
-            onChange={(e) => setMinGapDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMinGapDraft(null);
-              const p = parseDecimalBlur(raw);
-              if (p == null) return;
-              setCustomField("minGapPct", Math.max(0, p));
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>PM Vol ≥</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 60 }}
-            value={minPmVolDraft === null ? String(filters.minPmVolume) : minPmVolDraft}
-            onFocus={() => setMinPmVolDraft(String(filters.minPmVolume))}
-            onChange={(e) => setMinPmVolDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMinPmVolDraft(null);
-              const p = parseDecimalBlur(raw);
-              if (p == null) return;
-              setCustomField("minPmVolume", Math.max(0, Math.round(p)));
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>Avg Vol ≥</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 60 }}
-            value={minAvgVolDraft ?? abbreviateUsdFilterDisplay(filters.minAvgVolume ?? 0)}
-            onFocus={() => setMinAvgVolDraft(formatUsdIntInputDisplay(filters.minAvgVolume))}
-            onChange={(e) => setMinAvgVolDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMinAvgVolDraft(null);
-              const p = parseFlexibleFilterNumber(raw);
-              if (p == null) return;
-              setCustomField("minAvgVolume", Math.max(0, Math.round(p)));
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span style={gapFilterLabelStyle}>Vol % ≥</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-            style={{ ...gapFilterInputStyle, width: 50 }}
-            value={minVolPctDraft === null ? String(filters.minVolPct ?? 0) : minVolPctDraft}
-            onFocus={() => setMinVolPctDraft(String(filters.minVolPct ?? 0))}
-            onChange={(e) => setMinVolPctDraft(e.target.value)}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setMinVolPctDraft(null);
-              const p = parseDecimalBlur(raw);
-              if (p == null) return;
-              setCustomField("minVolPct", Math.max(0, p));
-            }}
-          />
-        </div>
-
-        <div className="min-w-2 flex-1" aria-hidden />
-
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={applyFilters}
-          disabled={loading}
-          className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
-          style={{
-            height: 30,
-            padding: "4px 12px",
-            fontFamily: "var(--ws-font-sans)",
-            fontSize: "var(--ws-fs-label)",
-            border: "1px solid var(--ws-cyan)",
-            color: "var(--ws-cyan)",
-            background: "rgba(59, 191, 207, 0.08)",
-          }}
-        >
-          Apply
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            clearFilterInputDrafts();
-            void run(filters);
-          }}
-          disabled={loading}
-          className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
-          style={{
-            height: 30,
-            padding: "4px 12px",
-            fontFamily: "var(--ws-font-sans)",
-            fontSize: "var(--ws-fs-title)",
-            lineHeight: 1,
-            border: "1px solid var(--ws-border)",
-            color: "var(--ws-text-dim)",
-            background: "var(--ws-bg)",
-          }}
-          title="Refresh scan"
-          aria-label="Refresh scan"
-        >
-          ↻
-        </button>
-
-        {lastRefreshSeconds != null ? (
-          <span
-            className="shrink-0 tabular-nums"
-            style={{
-              fontFamily: "var(--ws-font-mono)",
-              fontSize: "var(--ws-fs-caption)",
-              color: "#8a8a8a",
-            }}
-            title="Duration of the last gappers / TradingView request"
-          >
-            {lastRefreshSeconds.toFixed(2)}s
-          </span>
-        ) : null}
-      </div>
+      <GapperFilterControls
+        filters={filters}
+        onFiltersChange={setFilters}
+        onPrimaryAction={applyFilters}
+        primaryLabel="Apply"
+        loading={loading}
+        onSecondaryRefresh={() => void run(filters)}
+        secondaryLabel="Refresh scan"
+        lastRefreshSeconds={lastRefreshSeconds}
+      />
 
       {error ? (
         <div

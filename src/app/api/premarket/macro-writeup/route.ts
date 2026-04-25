@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Public read of today's (or `?date=YYYY-MM-DD`) macro writeup via anon Supabase (RLS).
+ * Public read of the latest macro writeup, or an exact `?date=YYYY-MM-DD` row.
  */
 export async function GET(request: NextRequest) {
   const supabase = getSupabase();
@@ -16,14 +16,14 @@ export async function GET(request: NextRequest) {
   }
 
   const dateParam = request.nextUrl.searchParams.get("date")?.trim();
-  const ymd =
-    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : ymdInEt();
-
-  const { data, error } = await supabase
+  const requestedYmd = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+  const baseQuery = supabase
     .from("daily_macro_writeup")
-    .select("id,writeup_date,writeup_text,source_newsletter_ids,model_used,fallback_used,generated_at,is_flagged")
-    .eq("writeup_date", ymd)
-    .maybeSingle();
+    .select("id,writeup_date,writeup_text,source_newsletter_ids,model_used,fallback_used,generated_at,is_flagged");
+  const { data, error } = requestedYmd
+    ? await baseQuery.eq("writeup_date", requestedYmd).maybeSingle()
+    : await baseQuery.order("generated_at", { ascending: false }).limit(1).maybeSingle();
+  const ymd = requestedYmd ?? (data as DailyMacroWriteupRow | null)?.writeup_date ?? ymdInEt();
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

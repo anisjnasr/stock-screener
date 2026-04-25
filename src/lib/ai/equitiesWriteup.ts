@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseModelJson, PREMARKET_CLAUDE_MODEL, streamClaudeText } from "@/lib/ai/claudeStream";
-import { etMorningNewsletterWindow } from "@/lib/premarket/et-morning-window";
+import { fetchCurrentNewsletterArchive } from "@/lib/premarket/currentNewsletterArchive";
 import type { NewsletterArchiveRow } from "@/types/newsletter-macro";
 
 function buildEquitiesPrompt(bodies: { sender: string; subject: string | null; text: string }[]): string {
@@ -16,7 +16,7 @@ function buildEquitiesPrompt(bodies: { sender: string; subject: string | null; t
   return [
     "You are a senior US equities strategist synthesizing overnight research for a professional swing trader.",
     "",
-    `Below are ${n} morning newsletters from trusted sources, received between 4 AM and 7 AM ET today.`,
+    `Below are ${n} current newsletters from trusted sources, archived in the last 2 days up to this refresh.`,
     "Extract the most important **US-listed equities** developments as a tight list of bullets.",
     "",
     "Newsletters:",
@@ -34,7 +34,7 @@ function buildEquitiesPrompt(bodies: { sender: string; subject: string | null; t
 
 async function equitiesFromWebSearchFallback(anthropic: Anthropic, ymd: string): Promise<string[]> {
   const user = [
-    "No trusted morning newsletters were ingested for today (empty mailbox, filters, or Gmail outage).",
+    "No trusted newsletters were archived in the last 2 days (empty mailbox, filters, or Gmail outage).",
     `Today's calendar date (US Eastern) is ${ymd}.`,
     "",
     "Use the web_search tool to gather **current** overnight information relevant to **US equities** (single names, sectors, earnings, M&A, regulatory).",
@@ -65,7 +65,7 @@ export type EquitiesWriteupResult =
   | { ok: false; error: string };
 
 /**
- * Reads `newsletter_archive` for the 4–7 AM ET window on `ymd`, generates bullets, upserts `daily_equities_writeup`.
+ * Reads the current newsletter archive, generates bullets, upserts `daily_equities_writeup`.
  */
 export async function generateAndStoreDailyEquitiesWriteup(
   supabase: SupabaseClient,
@@ -73,25 +73,10 @@ export async function generateAndStoreDailyEquitiesWriteup(
   opts: { ymd: string }
 ): Promise<EquitiesWriteupResult> {
   const { ymd } = opts;
-  let window: { startUtcIso: string; endUtcIso: string };
-  try {
-    window = etMorningNewsletterWindow(ymd);
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Invalid ymd" };
-  }
+  const currentArchive = await fetchCurrentNewsletterArchive(supabase);
+  if (!currentArchive.ok) return { ok: false, error: currentArchive.error };
 
-  const { data: rows, error: qErr } = await supabase
-    .from("newsletter_archive")
-    .select("id,sender_email,subject,body_text,received_at")
-    .gte("received_at", window.startUtcIso)
-    .lt("received_at", window.endUtcIso)
-    .order("received_at", { ascending: true });
-
-  if (qErr) {
-    return { ok: false, error: qErr.message };
-  }
-
-  const archives = (rows ?? []) as Pick<NewsletterArchiveRow, "id" | "sender_email" | "subject" | "body_text" | "received_at">[];
+  const archives = currentArchive.rows as Pick<NewsletterArchiveRow, "id" | "sender_email" | "subject" | "body_text" | "received_at">[];
 
   let bullets: string[];
   let fallbackUsed: boolean;

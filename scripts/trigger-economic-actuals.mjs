@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * POST /api/cron/fred-actuals (FRED → economic_events.actual).
+ * POST /api/cron/economic-actuals (web search → economic_events.actual).
  *
- * Loads optional `.env.local` from repo root (same pattern as trigger-economic-calendar.mjs).
+ * Loads optional `.env.local` from repo root.
  *
  * Usage:
- *   npm run fred-actuals:trigger
- *   npm run fred-actuals:trigger -- --url https://your-app.onrender.com
+ *   npm run economic-actuals:trigger
+ *   npm run economic-actuals:trigger -- --url https://your-app.onrender.com
  *
  * Env (or .env.local):
  *   CRON_SECRET   — required
@@ -55,7 +55,7 @@ if (!secret) {
 }
 
 const rawBase = (urlOverride || process.env.APP_BASE_URL || "http://localhost:3000").trim().replace(/\/$/, "");
-const endpoint = `${rawBase}/api/cron/fred-actuals`;
+const endpoint = `${rawBase}/api/cron/economic-actuals`;
 
 const res = await fetch(endpoint, {
   method: "POST",

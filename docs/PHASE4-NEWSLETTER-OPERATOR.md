@@ -33,17 +33,12 @@ Approved senders live in `config/newsletters-for-writeups.txt` (one email per li
 
 ## 5. GitHub Actions
 
-**One-click verify (after `APP_BASE_URL` + `CRON_SECRET` repo secrets exist):**
-
-- GitHub → **Actions** → workflow **“Phase 4 newsletter verify”** → **Run workflow**  
-- Runs **ingest** then **macro** in one job: `.github/workflows/newsletter-phase4-verify.yml`
-
 **Scheduled weekday crons:**
 
-- `.github/workflows/newsletter-ingest-cron.yml` — **11:00 UTC** (~7:00 AM Eastern during **EDT**).
-- `.github/workflows/macro-writeup-cron.yml` — **11:05 UTC** (~7:05 AM Eastern during **EDT**).
+- `.github/workflows/newsletter-ingest-cron.yml` — **02:00, 09:00, 10:00, 12:00 UTC** (**6:00 AM, 1:00 PM, 2:00 PM, 4:00 PM UAE time**).
+- `.github/workflows/premarket-brief-pipeline.yml` — triggered automatically after a successful Newsletter ingest run.
 
-**DST note:** US Eastern toggles between UTC−5 and UTC−4. If jobs drift relative to 7:00 AM ET, adjust cron hours seasonally (e.g. use `12` UTC instead of `11` during standard time) or switch to a runner that schedules in `America/New_York`.
+**Timezone note:** UAE time is UTC+4 year-round, so these cron hours do not require DST rotation.
 
 Repository secrets (same pattern as `economic-calendar-cron.yml`):
 
@@ -72,9 +67,9 @@ Optional body override (advanced): POST JSON `{"ymd":"2026-04-20"}` on each cron
 ## 6b. GitHub verify (step 4)
 
 1. Repo **Settings → Secrets and variables → Actions**: set `**APP_BASE_URL`**, `**CRON_SECRET**` (same values as production).
-2. **Actions → Phase 4 newsletter verify → Run workflow**.
-3. Confirm green; check Pre-market **Today’s macro writeup** on the site.
+2. **Actions → Newsletter ingest → Run workflow**.
+3. Confirm the follow-on **Premarket brief pipeline** run is green; check Pre-market context on the site.
 
 ## 7. Ingest window
 
-Cron loads Gmail messages from roughly the last **2 days**, then keeps only those whose `internalDate` falls in **4:00–7:00 AM America/New_York** on the target `ymd`, and whose **From** address matches the allowlist.
+Cron loads Gmail messages from roughly the last **2 days** up to the current refresh time, then keeps messages whose **From** address matches the allowlist. Macro, equities, and themes read that current 2-day archive when the pipeline runs.

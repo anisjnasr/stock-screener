@@ -2,7 +2,6 @@ import * as cheerio from "cheerio";
 import { google, type gmail_v1 } from "googleapis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadNewsletterAllowlistFromRepo } from "@/lib/premarket/newsletter-allowlist";
-import { etMorningNewsletterWindow } from "@/lib/premarket/et-morning-window";
 import { parseEmailAddressFromFromHeader } from "@/lib/sources/gmailParse";
 
 const BODY_MAX_CHARS = 400_000;
@@ -86,17 +85,18 @@ function gmailClient() {
 }
 
 export type NewsletterIngestResult =
-  | { ok: true; inserted: number; examined: number; inMorningWindow: number }
+  | { ok: true; inserted: number; examined: number; allowlisted: number }
   | { ok: false; error: string };
 
 /**
- * Fetch Gmail messages from the last ~36h, keep those in the 4–7 AM ET window on `ymd`
- * whose From matches `config/newsletters-for-writeups.txt`, upsert into `newsletter_archive`.
+ * Fetch Gmail messages from the last 2 days, keep allowlisted senders, and upsert into
+ * `newsletter_archive`. Gmail only returns messages received up to the current refresh.
  */
 export async function ingestMorningNewslettersForDate(
   supabase: SupabaseClient,
-  opts: { ymd: string; signal?: AbortSignal }
+  _opts: { ymd: string; signal?: AbortSignal }
 ): Promise<NewsletterIngestResult> {
+  void _opts;
   if (!isGmailIngestConfigured()) {
     return { ok: false, error: "Gmail OAuth env not configured (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN)" };
   }
@@ -105,15 +105,6 @@ export async function ingestMorningNewslettersForDate(
   if (allow.size === 0) {
     return { ok: false, error: "Newsletter allowlist is empty" };
   }
-
-  let window: { startUtcIso: string; endUtcIso: string };
-  try {
-    window = etMorningNewsletterWindow(opts.ymd);
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Invalid date" };
-  }
-  const startMs = Date.parse(window.startUtcIso);
-  const endMs = Date.parse(window.endUtcIso);
 
   let gmail;
   try {
@@ -136,12 +127,12 @@ export async function ingestMorningNewslettersForDate(
   }
 
   if (!ids?.length) {
-    return { ok: true, inserted: 0, examined: 0, inMorningWindow: 0 };
+    return { ok: true, inserted: 0, examined: 0, allowlisted: 0 };
   }
 
   let inserted = 0;
   let examined = 0;
-  let inMorningWindow = 0;
+  let allowlisted = 0;
 
   for (const id of ids) {
     let full;
@@ -159,13 +150,13 @@ export async function ingestMorningNewslettersForDate(
     if (!gmsg.id) continue;
     examined += 1;
     const internal = Number(gmsg.internalDate);
-    if (!Number.isFinite(internal) || internal < startMs || internal >= endMs) continue;
-    inMorningWindow += 1;
+    if (!Number.isFinite(internal)) continue;
 
     const headers = headerMap(gmsg);
     const from = headers["from"] ?? "";
     const sender = parseEmailAddressFromFromHeader(from);
     if (!sender || !allow.has(sender)) continue;
+    allowlisted += 1;
 
     const subject = headers["subject"] ?? null;
     const body = extractEmailBodyText(gmsg);
@@ -186,5 +177,5 @@ export async function ingestMorningNewslettersForDate(
     inserted += 1;
   }
 
-  return { ok: true, inserted, examined, inMorningWindow };
+  return { ok: true, inserted, examined, allowlisted };
 }

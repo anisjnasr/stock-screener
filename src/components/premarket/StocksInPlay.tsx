@@ -5,20 +5,43 @@ import type { GapperRow, GappersRequestBody } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 import type { SipCatalyst } from "@/types/sip-catalyst";
-import { gapperFilterStateToRequestBody, type GapperFilterState } from "@/components/premarket/gapper-filters-storage";
+import {
+  DEFAULT_GAPPER_FILTER_STATE,
+  gapperFilterStateToRequestBody,
+  type GapperFilterState,
+} from "@/components/premarket/gapper-filters-storage";
+import GapperFilterControls from "@/components/premarket/GapperFilterControls";
 import { formatScreenerCompact } from "@/components/premarket/premarket-number-display";
 import { ymdInEt } from "@/lib/et-ymd";
 import { truncateSipRationale } from "@/lib/premarket/sip-rationale-truncate";
 import { sipCatalystBadge } from "@/components/premarket/sip-badge-map";
 
 const SIP_FIRST_AUTO_YMD_KEY = "premarket-sip-first-auto-ymd";
+const SIP_GAPPER_FILTERS_LS_KEY = "stockstalker-sip-gapper-filters-v1";
 
 type StocksInPlayProps = {
   collapsed: boolean;
-  gapperFilters: GapperFilterState;
-  filtersHydrated: boolean;
   onOpenTickerInLists?: (sym: string) => void;
 };
+
+function loadSipGapperFiltersFromStorage(): GapperFilterState {
+  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
+  try {
+    const raw = window.localStorage.getItem(SIP_GAPPER_FILTERS_LS_KEY);
+    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
+    return { ...DEFAULT_GAPPER_FILTER_STATE, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_GAPPER_FILTER_STATE;
+  }
+}
+
+function saveSipGapperFiltersToStorage(filters: GapperFilterState) {
+  try {
+    window.localStorage.setItem(SIP_GAPPER_FILTERS_LS_KEY, JSON.stringify(filters));
+  } catch {
+    /* ignore */
+  }
+}
 
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
@@ -86,19 +109,19 @@ function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
   );
 }
 
-export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated, onOpenTickerInLists }: StocksInPlayProps) {
+export default function StocksInPlay({ collapsed, onOpenTickerInLists }: StocksInPlayProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
   const [catalyst, setCatalyst] = useState<Record<string, SipCatalyst> | null>(null);
   const [catalystError, setCatalystError] = useState<string | null>(null);
-  const [catalystSkipped, setCatalystSkipped] = useState(false);
   const [pythonConfigured, setPythonConfigured] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sessionNeedsManualRefresh, setSessionNeedsManualRefresh] = useState(false);
-  const filtersRef = useRef(gapperFilters);
-  filtersRef.current = gapperFilters;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sipFilters, setSipFilters] = useState<GapperFilterState>(() => loadSipGapperFiltersFromStorage());
+  const filtersRef = useRef(sipFilters);
+  filtersRef.current = sipFilters;
 
   const load = useCallback(async (signal: AbortSignal, scanBody: GappersRequestBody): Promise<boolean> => {
     setLoading(true);
@@ -118,7 +141,6 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
         setRows(null);
         setNews(null);
         setCatalyst(null);
-        setCatalystSkipped(false);
         setPythonConfigured(false);
         setError((json as { error?: string }).error ?? res.statusText);
         return false;
@@ -127,7 +149,6 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
       setNews(json.news);
       setCatalyst(json.catalyst);
       setCatalystError(json.catalystError ?? null);
-      setCatalystSkipped(Boolean(json.catalystSkipped));
       setPythonConfigured(json.pythonConfigured);
       setNewsError(json.newsError ?? null);
       return true;
@@ -136,7 +157,6 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
       setRows(null);
       setNews(null);
       setCatalyst(null);
-      setCatalystSkipped(false);
       setError(e instanceof Error ? e.message : "Failed to load");
       return false;
     } finally {
@@ -145,7 +165,7 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
   }, []);
 
   useEffect(() => {
-    if (collapsed || !filtersHydrated) return;
+    if (collapsed) return;
     const todayYmd = ymdInEt();
     if (typeof window !== "undefined" && window.localStorage.getItem(SIP_FIRST_AUTO_YMD_KEY) === todayYmd) {
       return;
@@ -163,31 +183,33 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
       cancelled = true;
       ac.abort();
     };
-  }, [collapsed, filtersHydrated, load]);
+  }, [collapsed, load]);
 
-  useEffect(() => {
-    if (collapsed || !filtersHydrated) {
-      setSessionNeedsManualRefresh(false);
-      return;
-    }
-    if (rows != null || loading || error) {
-      setSessionNeedsManualRefresh(false);
-      return;
-    }
-    const t = ymdInEt();
-    setSessionNeedsManualRefresh(typeof window !== "undefined" && window.localStorage.getItem(SIP_FIRST_AUTO_YMD_KEY) === t);
-  }, [collapsed, filtersHydrated, rows, loading, error]);
+  const updateSipFilters = useCallback((next: GapperFilterState) => {
+    setSipFilters(next);
+    saveSipGapperFiltersToStorage(next);
+  }, []);
 
   const refreshSip = useCallback(() => {
     const ac = new AbortController();
     void load(ac.signal, gapperFilterStateToRequestBody(filtersRef.current));
   }, [load]);
 
+  const refreshSipWithFilters = useCallback((next: GapperFilterState) => {
+    updateSipFilters(next);
+    const ac = new AbortController();
+    void load(ac.signal, gapperFilterStateToRequestBody(next));
+  }, [load, updateSipFilters]);
+
   if (collapsed) {
     return null;
   }
 
   const n = rows?.length ?? 0;
+  const displayError =
+    error ??
+    (newsError ? `Headlines request failed: ${newsError}` : null) ??
+    (catalystError ? `Catalyst generation failed: ${catalystError}` : null);
   const nowEt = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "2-digit",
@@ -200,8 +222,25 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
       <div className="flex flex-wrap justify-end gap-2">
         <button
           type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="pm-focus shrink-0 rounded border px-2 py-1 font-medium transition-opacity"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-secondary)",
+            fontFamily: "var(--ws-font-sans)",
+            fontSize: "var(--ws-fs-label)",
+          }}
+          aria-expanded={filtersOpen}
+        >
+          <span aria-hidden style={{ display: "inline-block", transform: filtersOpen ? "rotate(90deg)" : "rotate(0deg)" }}>
+            ▸
+          </span>{" "}
+          Filters
+        </button>
+        <button
+          type="button"
           onClick={refreshSip}
-          disabled={loading || !filtersHydrated}
+          disabled={loading}
           className="pm-focus shrink-0 rounded border px-2 py-1 font-medium transition-opacity disabled:opacity-50"
           style={{
             borderColor: "var(--border-default)",
@@ -214,49 +253,25 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
         </button>
       </div>
 
-      {!filtersHydrated ? (
-        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          Loading gapper filters…
-        </p>
+      {filtersOpen ? (
+        <div className="rounded border" style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}>
+          <GapperFilterControls
+            filters={sipFilters}
+            onFiltersChange={updateSipFilters}
+            onPrimaryAction={refreshSipWithFilters}
+            primaryLabel="Refresh SIP"
+            loading={loading}
+          />
+        </div>
       ) : null}
 
-      {sessionNeedsManualRefresh ? (
-        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
-          SIP list is empty in this tab after reload — click <strong style={{ color: "var(--text-primary)" }}>Refresh SIP</strong>.
-        </p>
-      ) : null}
-
-      {!pythonConfigured ? (
-        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
-          Headlines off until <code className="pm-mono">PYTHON_SERVICE_URL</code> / <code className="pm-mono">PYTHON_SERVICE_KEY</code> are set.
-        </p>
-      ) : null}
-
-      {newsError ? (
-        <p className="pm-site-caption rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)" }}>
-          Headlines request failed: {newsError}
-        </p>
-      ) : null}
-
-      {catalystSkipped ? (
-        <p className="pm-site-caption rounded border px-2 py-1.5 leading-snug" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
-          Catalyst summaries skipped without <code className="pm-mono">ANTHROPIC_API_KEY</code>.
-        </p>
-      ) : null}
-
-      {catalystError ? (
-        <p className="pm-site-caption rounded border px-2 py-1.5" role="alert" style={{ borderColor: "var(--border-default)", color: "var(--negative)" }}>
-          Catalyst generation failed: {catalystError}
-        </p>
-      ) : null}
-
-      {error ? (
+      {displayError ? (
         <div className="rounded border px-3 py-2.5" role="alert" style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}>
           <p className="pm-site-prose font-semibold" style={{ color: "var(--text-primary)" }}>
             Could not load Stocks in Play
           </p>
           <p className="pm-site-caption mt-1" style={{ color: "var(--text-secondary)" }}>
-            {error}
+            {displayError}
           </p>
         </div>
       ) : null}
@@ -267,9 +282,9 @@ export default function StocksInPlay({ collapsed, gapperFilters, filtersHydrated
         </p>
       ) : null}
 
-      {!error && rows && rows.length === 0 && !loading ? (
+      {!displayError && !loading && (!rows || rows.length === 0) ? (
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          No names passed the SIP volume + headline gates (or market is closed / no pre-market data).
+          No stocks to show
         </p>
       ) : null}
 
