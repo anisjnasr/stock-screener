@@ -268,12 +268,14 @@ if (!fullRebuild) {
     .all(recentWindow)
     .map((r) => r.date);
   const recentSet = new Set(recentDates);
-  const missingDates = db
+  const incompleteDates = db
     .prepare(
       `
     SELECT DISTINCT d.date FROM daily_bars d
     LEFT JOIN market_monitor_daily m ON m.date = d.date
     WHERE m.date IS NULL
+      OR m.universe_pct_above_50d IS NULL
+      OR m.universe_pct_above_200d IS NULL
     ORDER BY d.date ASC
   `
     )
@@ -290,7 +292,7 @@ if (!fullRebuild) {
     )
     .all(Math.max(backfillDays, 1))
     .map((r) => r.date);
-  const combined = new Set([...missingDates, ...latestNDates]);
+  const combined = new Set([...incompleteDates, ...latestNDates]);
   targetDates = [...combined].sort();
 } else {
   targetDates = db

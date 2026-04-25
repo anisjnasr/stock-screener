@@ -97,6 +97,11 @@ function getRatioExtremeCellClass(
   return "";
 }
 
+function getUniverseBreadthFloorClass(value: number | null | undefined, floor: number, inclusive: boolean): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  return inclusive ? (value <= floor ? "ws-mm-heat-red-strong" : "") : (value < floor ? "ws-mm-heat-red-strong" : "");
+}
+
 function formatDateDmy(input: string): string {
   const d = new Date(input.trim());
   if (Number.isNaN(d.getTime())) return input;
@@ -109,7 +114,7 @@ function formatDateDmy(input: string): string {
 
 /** `ch` widths tuned for locale-formatted integers, ratios, and breadth %. */
 const MM_TAB_DATE_CH = 11;
-const MM_TAB_MIN_INT_CH = 3;
+const MM_TAB_MIN_INT_CH = 2;
 const MM_TAB_MIN_RATIO_CH = 4;
 const MM_TAB_MIN_PCT_CH = 5;
 
@@ -144,6 +149,10 @@ function MmTabularInner({
 
 function MmNumericCellCenter({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`flex w-full justify-center items-center py-1 ${className}`.trim()}>{children}</div>;
+}
+
+function MmDateCellLeft({ children }: { children: ReactNode }) {
+  return <div className="flex w-full justify-start items-center px-1 py-1">{children}</div>;
 }
 
 /** Up/down pairs (4%, Q, M): every row is green or red when up ≠ down; extreme fill when dominance is very lopsided. */
@@ -227,33 +236,34 @@ export default function MarketMonitorTable({
   }, []);
 
   const columnValueWidths = useMemo(
-    () => ({
-      int: maxFormattedCh(
-        tableRowsToShow,
-        (row) => [
-          fmtInt(row.up4pct),
-          fmtInt(row.down4pct),
-          fmtInt(row.up25pct_qtr),
-          fmtInt(row.down25pct_qtr),
-          fmtInt(row.up25pct_month),
-          fmtInt(row.down25pct_month),
-          fmtInt(row.up50pct_month),
-          fmtInt(row.down50pct_month),
-          fmtInt(row.nnh52wHighs ?? 0),
-          fmtInt(row.nnh52wLows ?? 0),
-          fmtInt(row.count7xAtr50d ?? 0),
-          fmtInt(row.countEpisodicPivot ?? 0),
-          fmtInt(row.universe),
-        ],
-        MM_TAB_MIN_INT_CH
-      ),
-      ratio: maxFormattedCh(tableRowsToShow, (row) => [fmtRatio(row.ratio5d), fmtRatio(row.ratio10d)], MM_TAB_MIN_RATIO_CH),
-      pct: maxFormattedCh(
-        tableRowsToShow,
-        (row) => [fmtUniverseBreadthPct(row.universePctAbove50d), fmtUniverseBreadthPct(row.universePctAbove200d)],
-        MM_TAB_MIN_PCT_CH
-      ),
-    }),
+    () => {
+      const intWidth = (value: (row: MarketMonitorRow) => number | null | undefined) =>
+        maxFormattedCh(tableRowsToShow, (row) => [fmtInt(value(row))], MM_TAB_MIN_INT_CH);
+      const ratioWidth = (value: (row: MarketMonitorRow) => number | null | undefined) =>
+        maxFormattedCh(tableRowsToShow, (row) => [fmtRatio(value(row))], MM_TAB_MIN_RATIO_CH);
+      const pctWidth = (value: (row: MarketMonitorRow) => number | null | undefined) =>
+        maxFormattedCh(tableRowsToShow, (row) => [fmtUniverseBreadthPct(value(row))], MM_TAB_MIN_PCT_CH);
+
+      return {
+        up4pct: intWidth((row) => row.up4pct),
+        down4pct: intWidth((row) => row.down4pct),
+        ratio5d: ratioWidth((row) => row.ratio5d),
+        ratio10d: ratioWidth((row) => row.ratio10d),
+        up25pctQtr: intWidth((row) => row.up25pct_qtr),
+        down25pctQtr: intWidth((row) => row.down25pct_qtr),
+        up25pctMonth: intWidth((row) => row.up25pct_month),
+        down25pctMonth: intWidth((row) => row.down25pct_month),
+        up50pctMonth: intWidth((row) => row.up50pct_month),
+        down50pctMonth: intWidth((row) => row.down50pct_month),
+        nnh52wHighs: intWidth((row) => row.nnh52wHighs ?? 0),
+        nnh52wLows: intWidth((row) => row.nnh52wLows ?? 0),
+        count7xAtr50d: intWidth((row) => row.count7xAtr50d ?? 0),
+        countEpisodicPivot: intWidth((row) => row.countEpisodicPivot ?? 0),
+        universePctAbove50d: pctWidth((row) => row.universePctAbove50d),
+        universePctAbove200d: pctWidth((row) => row.universePctAbove200d),
+        universe: intWidth((row) => row.universe),
+      };
+    },
     [tableRowsToShow]
   );
 
@@ -390,9 +400,9 @@ export default function MarketMonitorTable({
               return (
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
                 <td className="p-0 whitespace-nowrap border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
-                  <MmNumericCellCenter>
-                    <MmTabularInner widthCh={MM_TAB_DATE_CH}>{formatDateDmy(row.date)}</MmTabularInner>
-                  </MmNumericCellCenter>
+                  <MmDateCellLeft>
+                    <MmTabularInner widthCh={MM_TAB_DATE_CH} className="text-left">{formatDateDmy(row.date)}</MmTabularInner>
+                  </MmDateCellLeft>
                 </td>
                 <td className="p-0">
                   {drillable ? (
@@ -402,11 +412,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up4pct", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up4pct}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair4}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up4pct}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -418,22 +428,22 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down4pct", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down4pct}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair4}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down4pct}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
                 <td className={`p-0 ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
                   <MmNumericCellCenter>
-                    <MmTabularInner widthCh={columnValueWidths.ratio}>{fmtRatio(row.ratio5d)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.ratio5d}>{fmtRatio(row.ratio5d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
                 <td className={`p-0 ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
                   <MmNumericCellCenter>
-                    <MmTabularInner widthCh={columnValueWidths.ratio}>{fmtRatio(row.ratio10d)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.ratio10d}>{fmtRatio(row.ratio10d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
                 <td className="p-0">
@@ -444,11 +454,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_qtr", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairQ}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -460,11 +470,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_qtr", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairQ}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -476,11 +486,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairM}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -492,11 +502,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairM}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -508,11 +518,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up50pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair50}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.up50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -524,11 +534,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down50pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair50}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.down50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -540,11 +550,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_highs", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair52w}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -556,11 +566,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_lows", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair52w}>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -572,11 +582,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_7x_atr_50d", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -588,15 +598,15 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_episodic_pivot", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={`p-0 ${getUniverseBreadthFloorClass(row.universePctAbove50d, 30, true)}`}>
                   {drillable ? (
                     <button
                       type="button"
@@ -604,15 +614,15 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("universe_above_50d", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.pct}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.universePctAbove50d}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.pct}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.universePctAbove50d}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={`p-0 ${getUniverseBreadthFloorClass(row.universePctAbove200d, 30, false)}`}>
                   {drillable ? (
                     <button
                       type="button"
@@ -620,17 +630,17 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("universe_above_200d", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.pct}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.universePctAbove200d}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.pct}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.universePctAbove200d}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
                 <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
                   <MmNumericCellCenter>
-                    <MmTabularInner widthCh={columnValueWidths.int}>{fmtInt(row.universe)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.universe}>{fmtInt(row.universe)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
               </tr>
