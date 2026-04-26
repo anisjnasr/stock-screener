@@ -132,15 +132,17 @@ function MmTabularInner({
   widthCh,
   children,
   className = "",
+  textAlign = "right",
 }: {
   widthCh: number;
   children: ReactNode;
   className?: string;
+  textAlign?: "left" | "right";
 }) {
   return (
     <span
       className={`inline-block text-right tabular-nums ${className}`.trim()}
-      style={{ width: `${widthCh}ch`, minWidth: `${widthCh}ch` }}
+      style={{ width: `${widthCh}ch`, minWidth: `${widthCh}ch`, textAlign }}
     >
       {children}
     </span>
@@ -368,11 +370,12 @@ export default function MarketMonitorTable({
                     ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
                     : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
                 const edge = idx === 0 || idx === 7 ? " border-l border-r" : "";
+                const align = idx === 0 ? "text-left" : "text-center";
                 return (
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b text-center text-ws-body font-bold${edge}`}
+                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b ${align} text-ws-body font-bold${edge}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -401,7 +404,7 @@ export default function MarketMonitorTable({
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
                 <td className="p-0 whitespace-nowrap border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
                   <MmDateCellLeft>
-                    <MmTabularInner widthCh={MM_TAB_DATE_CH} className="text-left">{formatDateDmy(row.date)}</MmTabularInner>
+                    <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left">{formatDateDmy(row.date)}</MmTabularInner>
                   </MmDateCellLeft>
                 </td>
                 <td className="p-0">
