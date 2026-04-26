@@ -327,6 +327,9 @@ if (!fullRebuild) {
     WHERE m.date IS NULL
       OR m.universe_pct_above_50d IS NULL
       OR m.universe_pct_above_200d IS NULL
+      OR m.count_10x_atr_50d IS NULL
+      OR m.count_7x_atr_50d IS NULL
+      OR m.count_episodic_pivot IS NULL
     ORDER BY d.date ASC
   `
     )
