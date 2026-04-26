@@ -41,10 +41,11 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
     <li className="border-b py-1.5 last:border-b-0" style={{ borderColor: "var(--border-default)" }}>
       <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-1.5">
         <span
-          className="col-start-1 row-start-1 pm-mono tabular-nums"
+          className="col-start-1 row-start-1 inline-flex w-3 shrink-0 justify-center leading-none pm-mono"
           style={{ fontSize: "var(--ws-fs-caption)", color: "var(--text-tertiary)" }}
+          aria-hidden
         >
-          #{t.theme_rank}
+          ›
         </span>
         <div className="col-start-2 row-start-1 flex min-w-0 items-baseline gap-1.5">
           <span className="pm-site-prose min-w-0 flex-1 font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
@@ -164,11 +165,6 @@ export default function DailyThemesPanel() {
         className="rounded border px-2 py-2"
         style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
       >
-        <div className="mb-1">
-          <span className="pm-section-label" style={{ color: "var(--accent-cyan)" }}>
-            Active themes
-          </span>
-        </div>
         {setupHint ? (
           <p className="pm-site-caption mb-1" style={{ color: "var(--accent-amber)" }}>
             {setupHint}
@@ -199,16 +195,10 @@ export default function DailyThemesPanel() {
       className="rounded border px-2 py-2"
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
-      <div className="mb-2 border-b pb-1.5" style={{ borderColor: "var(--border-default)" }}>
-        <span className="pm-section-label" style={{ color: "var(--accent-cyan)" }}>
-          Active themes
-        </span>
-      </div>
-
       {macroThemes.length ? (
         <div className="mb-2">
-          <p className="pm-sip-col-head mb-0.5" style={{ color: "var(--text-tertiary)" }}>
-            Macro
+          <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-cyan)" }}>
+            MACRO THEMES
           </p>
           <ul className="m-0 list-none p-0">
             {macroThemes.map((t) => (
@@ -220,8 +210,8 @@ export default function DailyThemesPanel() {
 
       {industryThemes.length ? (
         <div>
-          <p className="pm-sip-col-head mb-0.5" style={{ color: "var(--text-tertiary)" }}>
-            Industry
+          <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-amber)" }}>
+            INDUSTRY THEMES
           </p>
           <ul className="m-0 list-none p-0">
             {industryThemes.map((t) => (

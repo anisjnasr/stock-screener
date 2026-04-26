@@ -51,6 +51,24 @@ describe("python-service", () => {
     expect(JSON.parse(init.body as string)).toEqual({ tickers: ["AAPL"], hours_back: 48 });
   });
 
+  it("chunks tickers into batches of 40 for Python /news", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { tickers: string[] };
+      const data = Object.fromEntries(
+        body.tickers.map((t) => [t, [{ title: "h", publisher: null, published_at: null, link: null, type: null }]])
+      );
+      return { ok: true, text: async () => JSON.stringify({ data }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tickers = Array.from({ length: 41 }, (_, i) => `T${i}`);
+    const out = await fetchPythonTickerNews({ tickers, hoursBack: 24 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).tickers).toHaveLength(40);
+    expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string).tickers).toHaveLength(1);
+    expect(Object.keys(out.data)).toHaveLength(41);
+  });
+
   it("returns empty data when all tickers invalid", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

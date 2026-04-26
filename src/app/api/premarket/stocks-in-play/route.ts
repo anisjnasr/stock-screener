@@ -11,14 +11,46 @@ import { getSupabase } from "@/lib/supabase";
 import { TRADINGVIEW_GAP_SCAN_ROW_CAP } from "@/lib/sources/tradingViewScreener";
 import type { GapperRow } from "@/types/gappers";
 import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
+import { SIP_MAX_TICKERS, SIP_TOP_BY_GAP, SIP_TOP_BY_PM_VOL } from "@/lib/premarket/sip-constants";
 
 export const dynamic = "force-dynamic";
-
-/** Max SIP rows returned after LLM gates (spec). */
-const SIP_MAX_TICKERS = 75;
 /** Cap how many volume-qualified names enter news + LLM (cost control). */
 const SIP_LLM_CANDIDATE_CAP = 120;
 const SIP_SCAN_ROW_CAP = TRADINGVIEW_GAP_SCAN_ROW_CAP;
+
+/**
+ * When LLM qualifies more than {@link SIP_MAX_TICKERS} names: take top {@link SIP_TOP_BY_GAP} by signed gap %
+ * (highest first), then top {@link SIP_TOP_BY_PM_VOL} by premarket volume among the rest. Preserves order within each cohort.
+ */
+function pickSipFinalOrder(qualifiedOrder: string[], rowByTicker: Map<string, GapperRow>): string[] {
+  const rows = qualifiedOrder
+    .map((t) => rowByTicker.get(t))
+    .filter((r): r is GapperRow => Boolean(r));
+  if (rows.length <= SIP_MAX_TICKERS) {
+    return rows.map((r) => r.ticker);
+  }
+
+  const byGapPct = (a: GapperRow, b: GapperRow) => {
+    const g = b.gapPct - a.gapPct;
+    if (g !== 0) return g;
+    const dv = b.pmVolume - a.pmVolume;
+    if (dv !== 0) return dv;
+    return a.ticker.localeCompare(b.ticker);
+  };
+  const topGap = [...rows].sort(byGapPct).slice(0, SIP_TOP_BY_GAP);
+  const gapPicked = new Set(topGap.map((r) => r.ticker));
+
+  const byPmVol = (a: GapperRow, b: GapperRow) => {
+    const dv = b.pmVolume - a.pmVolume;
+    if (dv !== 0) return dv;
+    const g = b.gapPct - a.gapPct;
+    if (g !== 0) return g;
+    return a.ticker.localeCompare(b.ticker);
+  };
+  const topVol = [...rows].filter((r) => !gapPicked.has(r.ticker)).sort(byPmVol).slice(0, SIP_TOP_BY_PM_VOL);
+
+  return [...topGap.map((r) => r.ticker), ...topVol.map((r) => r.ticker)].slice(0, SIP_MAX_TICKERS);
+}
 
 /**
  * Pre-market “Stocks in Play”: bidirectional gappers with user-configured filters, strict LLM classification.
@@ -104,8 +136,11 @@ export async function POST(request: NextRequest) {
             news,
             themesSummary
           );
-          const order = qualifiedOrder.slice(0, SIP_MAX_TICKERS);
-          finalRows = order.map((t) => rowByTicker.get(t)).filter((r): r is GapperRow => Boolean(r));
+          const order = pickSipFinalOrder(qualifiedOrder, rowByTicker);
+          finalRows = order
+            .map((t) => rowByTicker.get(t))
+            .filter((r): r is GapperRow => Boolean(r))
+            .slice(0, SIP_MAX_TICKERS);
           const catalystOut: NonNullable<StocksInPlaySuccess["catalyst"]> = {};
           for (const t of order) {
             const c = catalystByTicker[t];
@@ -134,7 +169,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(out, {
       headers: {
-        "Cache-Control": "private, s-maxage=30, stale-while-revalidate=60",
+        /** SIP is dynamic; avoid shared caches retaining oversized pre-cap payloads. */
+        "Cache-Control": "private, max-age=0, must-revalidate",
       },
     });
   } catch (e) {

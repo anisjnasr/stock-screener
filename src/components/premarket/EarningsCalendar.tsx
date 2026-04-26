@@ -234,7 +234,7 @@ function CompactEarningsTable({
   if (!rows.length) {
     return (
       <p className="pm-site-caption m-0 py-1" style={{ color: "var(--text-tertiary)" }}>
-        No names
+        —
       </p>
     );
   }
@@ -415,10 +415,6 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   return (
     <div className="space-y-3">
-      <p className="pm-site-caption font-medium" style={{ color: "var(--text-tertiary)" }}>
-        Big names (&gt;$50B mcap) · anchor {data.anchor} ET · EPS &amp; revenue surprise vs consensus when reported
-      </p>
-
       <div
         className="pm-site-caption flex flex-wrap gap-2 rounded border px-2 py-1.5"
         style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)" }}

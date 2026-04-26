@@ -68,6 +68,7 @@ export function usePremarketLayout() {
         calendars: true,
         earnings: true,
         movers: true,
+        sipArchive: true,
       },
     };
     setLayout(next);
@@ -75,7 +76,17 @@ export function usePremarketLayout() {
   }, []);
 
   const expandAll = useCallback(() => {
-    const next = getDefaultLayout();
+    const next: PremarketLayoutState = {
+      version: 1,
+      collapsed_sections: {
+        context: false,
+        sip: false,
+        calendars: false,
+        earnings: false,
+        movers: false,
+        sipArchive: false,
+      },
+    };
     setLayout(next);
     persistLayout(next);
   }, []);

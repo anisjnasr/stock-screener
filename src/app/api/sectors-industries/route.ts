@@ -14,12 +14,33 @@ import {
   INDUSTRY_ETF_UNIVERSE,
   INDUSTRY_ETF_UNIVERSE_TICKERS,
 } from "@/lib/industry-etf-universe";
+import {
+  MATRIX_PERF_TF,
+  type MatrixPerfMap,
+  type MatrixRow,
+  type MatrixTfKey,
+  type SectorsMatrixPayload,
+} from "./matrix-shared";
 
 const INDEX_ITEMS = [
   { id: "sp500", name: "S&P 500", ticker: "SPY" },
   { id: "nasdaq100", name: "Nasdaq 100", ticker: "QQQ" },
   { id: "russell2000", name: "Russell 2000", ticker: "IWM" },
 ] as const;
+
+const SECTOR_ETF_MAP: Record<string, string> = {
+  Technology: "XLK",
+  "Financial Services": "XLF",
+  Healthcare: "XLV",
+  "Consumer Cyclical": "XLY",
+  "Consumer Defensive": "XLP",
+  "Communication Services": "XLC",
+  Industrials: "XLI",
+  Energy: "XLE",
+  "Basic Materials": "XLB",
+  "Real Estate": "XLRE",
+  Utilities: "XLU",
+};
 
 type TimeframeParam = "day" | "week" | "month" | "quarter" | "half_year" | "year" | "ytd";
 
@@ -58,7 +79,7 @@ function setResponseCache(
 }
 
 const CACHE_PATH = join(getDataDir(), "sectors-industries-cache.json");
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 type DiskCache = {
   version: number;
   items: Record<string, unknown>;
@@ -79,8 +100,159 @@ function toSlug(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function emptyPerf(): MatrixPerfMap {
+  const o = {} as MatrixPerfMap;
+  for (const tf of MATRIX_PERF_TF) o[tf as MatrixTfKey] = null;
+  return o;
+}
+
+function buildMatrixPayload(asOfDate: string | null, cache: Map<string, CachedValue>): SectorsMatrixPayload {
+  const getOrSet = <T extends CachedValue>(key: string, compute: () => T): T => {
+    const existing = cache.get(key) as T | undefined;
+    if (existing) return existing;
+    const next = compute();
+    cache.set(key, next);
+    return next;
+  };
+
+  const sectorRowByName = (tf: PerformanceTimeframe): Map<string, number | null> => {
+    const cached = getPrecomputedPerformance("sector", tf, asOfDate ?? undefined);
+    if (cached && cached.length > 0) {
+      return new Map(cached.map((r) => [r.name, r.change_pct ?? null]));
+    }
+    const w = getOrSet(`sector:${tf}:${asOfDate ?? "na"}`, () =>
+      getWeightedCategoryPerformance("sector", tf, asOfDate ?? undefined)
+    );
+    return new Map(w.rows.map((r) => [r.name, r.change_pct ?? null]));
+  };
+
+  const industryRowByName = (tf: PerformanceTimeframe): Map<string, number | null> => {
+    const cached = getPrecomputedPerformance("industry", tf, asOfDate ?? undefined);
+    if (cached && cached.length > 0) {
+      return new Map(cached.map((r) => [r.name, r.change_pct ?? null]));
+    }
+    const w = getOrSet(`industry:${tf}:${asOfDate ?? "na"}`, () =>
+      getWeightedCategoryPerformance("industry", tf, asOfDate ?? undefined)
+    );
+    return new Map(w.rows.map((r) => [r.name, r.change_pct ?? null]));
+  };
+
+  const etfPerfByTicker = (tf: PerformanceTimeframe): Map<string, number | null> => {
+    const merged = getOrSet(`industry-etfs:${tf}:${asOfDate ?? "na"}`, () =>
+      getTickerPerformance(INDUSTRY_ETF_UNIVERSE_TICKERS, tf, asOfDate ?? undefined)
+    );
+    return new Map(merged.rows.map((r) => [String(r.symbol).toUpperCase(), r.change_pct]));
+  };
+
+  const sectorDayCached = getPrecomputedPerformance("sector", "day", asOfDate ?? undefined);
+  const sectorNamesTemplate =
+    sectorDayCached && sectorDayCached.length > 0
+      ? sectorDayCached.map((r) => r.name)
+      : getOrSet(`sector:day:${asOfDate ?? "na"}`, () =>
+          getWeightedCategoryPerformance("sector", "day", asOfDate ?? undefined)
+        ).rows.map((r) => r.name);
+
+  const sectors: MatrixRow[] = sectorNamesTemplate.map((name) => {
+    const perf = emptyPerf();
+    for (const tf of MATRIX_PERF_TF) {
+      perf[tf] = sectorRowByName(tf as PerformanceTimeframe).get(name) ?? null;
+    }
+    return {
+      id: toSlug(name),
+      name,
+      ticker: SECTOR_ETF_MAP[name] ?? "",
+      drillKind: "sector",
+      drillValue: name,
+      perf,
+    };
+  });
+
+  const industries: MatrixRow[] = INDUSTRY_ETF_UNIVERSE.map((row) => {
+    const perf = emptyPerf();
+    for (const tf of MATRIX_PERF_TF) {
+      const tfP = tf as PerformanceTimeframe;
+      const etfPct = etfPerfByTicker(tfP).get(row.ticker.toUpperCase()) ?? null;
+      const stockIndustryPct = row.drillKind === "industry" ? industryRowByName(tfP).get(row.name) ?? null : null;
+      perf[tf] = row.drillKind === "industry" ? (stockIndustryPct ?? etfPct) : etfPct;
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      ticker: row.ticker,
+      drillKind: row.drillKind,
+      drillValue: row.drillValue,
+      perf,
+    };
+  });
+
+  return {
+    matrix: true,
+    version: 1,
+    date: asOfDate,
+    sectors,
+    industries,
+  };
+}
+
+async function respondMatrix(): Promise<NextResponse> {
+  const asOfDate = getLatestCompletedTradingDate();
+  const responseKey = `matrix|${asOfDate ?? "na"}`;
+  const responseCache = getSiResponseCache();
+  const memCached = responseCache.get(responseKey);
+  if (memCached && Date.now() - memCached.createdAt <= RESPONSE_CACHE_TTL_MS) {
+    return NextResponse.json(memCached.payload, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+    });
+  }
+  if (memCached) responseCache.delete(responseKey);
+
+  if (existsSync(CACHE_PATH)) {
+    try {
+      const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+      if (parsed && parsed.version === CACHE_VERSION && parsed.items?.[responseKey]) {
+        setResponseCache(responseCache, responseKey, parsed.items[responseKey]);
+        return NextResponse.json(parsed.items[responseKey], {
+          headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  ensurePerformanceCacheTable();
+  const cache = getSiCache();
+  const payload = buildMatrixPayload(asOfDate, cache);
+
+  setResponseCache(responseCache, responseKey, payload);
+  try {
+    let disk: DiskCache = { version: CACHE_VERSION, items: {} };
+    if (existsSync(CACHE_PATH)) {
+      const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as DiskCache;
+      if (parsed && parsed.version === CACHE_VERSION && parsed.items) disk = parsed;
+    }
+    disk.items[responseKey] = payload;
+    const keys = Object.keys(disk.items);
+    if (keys.length > 80) {
+      for (const k of keys.slice(0, keys.length - 80)) delete disk.items[k];
+    }
+    writeFileSync(CACHE_PATH, JSON.stringify(disk), "utf8");
+  } catch {
+    /* ignore */
+  }
+
+  return NextResponse.json(payload, {
+    headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
+    const view = request.nextUrl.searchParams.get("view");
+    if (view === "matrix") {
+      return respondMatrix();
+    }
+
     const defaultTimeframe = parseTimeframe(request.nextUrl.searchParams.get("timeframe"));
     const indicesTimeframe = parseTimeframe(
       request.nextUrl.searchParams.get("indicesTimeframe") ?? defaultTimeframe
@@ -133,7 +305,6 @@ export async function GET(request: NextRequest) {
       return next;
     };
 
-    // Try pre-computed cache first (instant), fall back to live computation
     const cachedSectors = getPrecomputedPerformance("sector", sectorsTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
     const cachedIndustries = getPrecomputedPerformance("industry", industriesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
     const cachedIndices = getPrecomputedPerformance("index", indicesTimeframe as PerformanceTimeframe, asOfDate ?? undefined);
@@ -239,4 +410,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

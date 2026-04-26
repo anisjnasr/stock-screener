@@ -3,6 +3,18 @@
 import type { DailyMacroWriteupRow } from "@/types/newsletter-macro";
 import { formatYmdDisplay } from "@/lib/et-ymd";
 
+const MAX_MACRO_SENTENCES = 8;
+
+/** First `max` sentences (split after . ! ? + whitespace); no character cap. */
+function takeFirstSentences(text: string, max: number): { display: string; truncated: boolean } {
+  const full = text.trim();
+  if (!full) return { display: "", truncated: false };
+  const parts = full.split(/(?<=[.!?])\s+/).filter((p) => p.length > 0);
+  if (parts.length === 0) return { display: full, truncated: false };
+  if (parts.length <= max) return { display: full, truncated: false };
+  return { display: `${parts.slice(0, max).join(" ")}…`, truncated: true };
+}
+
 export type MacroWriteupProps = {
   loading: boolean;
   error: string | null;
@@ -49,6 +61,8 @@ export default function MacroWriteup({ loading, error, row, ymd }: MacroWriteupP
     );
   }
 
+  const { display, truncated } = takeFirstSentences(row.writeup_text, MAX_MACRO_SENTENCES);
+
   return (
     <div className="space-y-2">
       {row.fallback_used ? (
@@ -76,8 +90,12 @@ export default function MacroWriteup({ loading, error, row, ymd }: MacroWriteupP
             Macro
           </span>
         </div>
-        <p className="pm-site-prose max-h-[8.5rem] overflow-hidden" style={{ color: "var(--text-primary)" }} title={row.writeup_text.trim()}>
-          {row.writeup_text.trim().length > 520 ? `${row.writeup_text.trim().slice(0, 520)}…` : row.writeup_text.trim()}
+        <p
+          className="pm-site-prose"
+          style={{ color: "var(--text-primary)" }}
+          title={truncated ? row.writeup_text.trim() : undefined}
+        >
+          {display}
         </p>
       </div>
     </div>

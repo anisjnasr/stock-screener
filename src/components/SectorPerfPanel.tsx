@@ -1,177 +1,348 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { SectorSubTab, SectorTimeframe } from "@/components/WorkspaceHeader";
+import type { SectorSubTab } from "@/components/WorkspaceHeader";
+import type { MatrixPerfMap, MatrixRow, MatrixTfKey, SectorsMatrixPayload } from "@/app/api/sectors-industries/matrix-shared";
+import { MATRIX_PERF_TF } from "@/app/api/sectors-industries/matrix-shared";
+import { getCachedSectorsMatrix, prefetchSectorsMatrix } from "@/lib/sectors-matrix-prefetch";
 
-type PerfItem = {
-  id: string;
-  name: string;
-  ticker?: string;
-  changePct: number | null;
-  drillKind: "sector" | "industry" | "theme";
-  drillValue: string;
+const PERF_HEADER: Record<MatrixTfKey, string> = {
+  day: "Day",
+  week: "Week",
+  month: "Month",
+  quarter: "3M",
+  half_year: "6M",
+  year: "Year",
+  ytd: "YTD",
 };
 
-type ApiResponse = {
-  indices: Array<{ id: string; name: string; ticker: string; changePct: number | null }>;
-  sectors: Array<{ id: string; name: string; changePct: number | null }>;
-  industries: Array<{ id: string; name: string; changePct: number | null }>;
-  industryEtfs: Array<{
-    id: string;
-    name: string;
-    ticker: string;
-    drillKind: "industry" | "theme";
-    drillValue: string;
-    changePct: number | null;
-  }>;
-  error?: string;
-};
+type SortKey = "ticker" | "name" | MatrixTfKey;
+type SortDir = "asc" | "desc";
 
-const SECTOR_ETF_MAP: Record<string, string> = {
-  "Technology": "XLK", "Financial Services": "XLF", "Healthcare": "XLV",
-  "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP", "Communication Services": "XLC",
-  "Industrials": "XLI", "Energy": "XLE", "Basic Materials": "XLB",
-  "Real Estate": "XLRE", "Utilities": "XLU",
-};
-
-const TF_API: Record<SectorTimeframe, string> = {
-  "1d": "day", "1w": "week", "1m": "month", "q": "quarter", "6m": "half_year", "y": "year", "ytd": "ytd",
-};
-
-/** Display labels: capitalize each word (matches prior sector panel behavior). */
 function toDisplayCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+function defaultSortDir(key: SortKey): SortDir {
+  return key === "ticker" || key === "name" ? "asc" : "desc";
+}
+
+function cmpStr(a: string, b: string, asc: boolean): number {
+  const c = a.localeCompare(b, undefined, { sensitivity: "base" });
+  return asc ? c : -c;
+}
+
+function cmpNum(a: number | null, b: number | null, asc: boolean): number {
+  const aOk = a != null && Number.isFinite(a);
+  const bOk = b != null && Number.isFinite(b);
+  if (!aOk && !bOk) return 0;
+  if (!aOk) return 1;
+  if (!bOk) return -1;
+  return asc ? a - b : b - a;
+}
+
+function compareMatrixRows(a: MatrixRow, b: MatrixRow, key: SortKey, asc: boolean): number {
+  if (key === "ticker") return cmpStr(a.ticker, b.ticker, asc);
+  if (key === "name") return cmpStr(a.name, b.name, asc);
+  return cmpNum(a.perf[key], b.perf[key], asc);
+}
+
+/** Same pixel size for header sort chevrons and industry row expand control. */
+const MATRIX_TABLE_CHEVRON_PX = 10;
+
+function SortChevrons({ activeAsc, activeDesc }: { activeAsc: boolean; activeDesc: boolean }) {
+  const dim = "var(--ws-text-vdim)";
+  const hi = "var(--ws-text)";
+  const chev = { fontSize: `${MATRIX_TABLE_CHEVRON_PX}px` } as const;
+  return (
+    <span className="ml-0.5 inline-flex shrink-0 flex-col items-center justify-center leading-[0.65]" aria-hidden>
+      <span style={{ ...chev, color: activeAsc ? hi : dim }}>▲</span>
+      <span style={{ ...chev, color: activeDesc ? hi : dim }}>▼</span>
+    </span>
+  );
+}
+
+function emptyPerfMap(): MatrixPerfMap {
+  const o = {} as MatrixPerfMap;
+  for (const tf of MATRIX_PERF_TF) o[tf] = null;
+  return o;
+}
+
+function fmtPct(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}%`;
+}
+
+function PerfCell({
+  value,
+  maxAbs,
+}: {
+  value: number | null;
+  maxAbs: number;
+}) {
+  if (value == null || !Number.isFinite(value)) {
+    return <span style={{ color: "var(--ws-text-vdim)" }}>—</span>;
+  }
+  const pct = maxAbs > 0 ? Math.min(1, Math.abs(value) / maxAbs) : 0;
+  /** Portion of the full cell width (0–50%) filled from the center axis. */
+  const halfSpanPct = pct * 50;
+  const textColor =
+    value > 0 ? "var(--ws-green)" : value < 0 ? "var(--ws-red)" : "var(--ws-text-dim)";
+  return (
+    <div className="flex items-center gap-1.5 min-w-[5.5rem] justify-end pr-1">
+      <div className="relative h-4 w-[72px] max-w-[72px] shrink-0" aria-hidden>
+        <div
+          className="pointer-events-none absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
+          style={{ background: "var(--ws-border)", opacity: 0.6 }}
+        />
+        {value > 0 && (
+          <div
+            className="absolute left-1/2 top-1/2 z-0 h-2 -translate-y-1/2 rounded-r-sm"
+            style={{
+              width: `${halfSpanPct}%`,
+              minWidth: halfSpanPct > 0 ? 2 : 0,
+              background: "var(--ws-green)",
+              opacity: 0.75,
+            }}
+          />
+        )}
+        {value < 0 && (
+          <div
+            className="absolute right-1/2 top-1/2 z-0 h-2 -translate-y-1/2 rounded-l-sm"
+            style={{
+              width: `${halfSpanPct}%`,
+              minWidth: halfSpanPct > 0 ? 2 : 0,
+              background: "var(--ws-red)",
+              opacity: 0.75,
+            }}
+          />
+        )}
+      </div>
+      <span className="font-mono text-ws-body tabular-nums shrink-0" style={{ color: textColor, fontSize: "11px" }}>
+        {fmtPct(value)}
+      </span>
+    </div>
+  );
+}
+
+/** Shrink-to-fit label column in a full-width table (avoids stretching past longest truncated name). */
+const NAME_COL_TH =
+  "w-[1%] max-w-[min(11rem,32ch)] overflow-hidden text-ellipsis border-b px-1 py-1.5 text-left text-ws-label font-semibold whitespace-nowrap";
+const NAME_COL_TD =
+  "w-[1%] max-w-[min(11rem,32ch)] overflow-hidden text-ellipsis px-1 py-1 align-middle whitespace-nowrap";
+
+function SortTh({
+  label,
+  colKey,
+  sortKey,
+  sortDir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  colKey: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortKey === colKey;
+  const activeAsc = active && sortDir === "asc";
+  const activeDesc = active && sortDir === "desc";
+  const isName = colKey === "name";
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      className={
+        isName
+          ? NAME_COL_TH
+          : `px-1 py-1.5 text-ws-label font-semibold whitespace-nowrap border-b ${align === "right" ? "text-right" : "text-left"}`
+      }
+      style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center gap-0.5 max-w-full cursor-pointer ws-focus-ring rounded px-0.5"
+        style={{ color: active ? "var(--ws-cyan)" : "var(--ws-text)" }}
+        onClick={() => onSort(colKey)}
+      >
+        <span className="truncate">{label}</span>
+        <SortChevrons activeAsc={activeAsc} activeDesc={activeDesc} />
+      </button>
+    </th>
+  );
+}
+
 export default function SectorPerfPanel({
   subTab,
-  timeframe,
   onDrillDown,
   onSymbolSelect,
+  onTickerActivate,
   headerActionsSlot,
   onRowCountChange,
 }: {
   subTab: SectorSubTab;
-  timeframe: SectorTimeframe;
-  onTimeframeChange?: (tf: SectorTimeframe) => void;
   onDrillDown?: (kind: "sector" | "industry" | "theme" | "index", value: string) => void;
+  /** Updates chart symbol only (row highlight). */
   onSymbolSelect?: (sym: string) => void;
+  /** Opens Lists with ticker active (e.g. Market Monitor drill). */
+  onTickerActivate?: (sym: string) => void;
   headerActionsSlot?: HTMLDivElement | null;
   onRowCountChange?: (display: string) => void;
 }) {
-  const [payload, setPayload] = useState<ApiResponse | null>(null);
+  const [payload, setPayload] = useState<SectorsMatrixPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [sortAsc, setSortAsc] = useState(false);
-
-  const apiTf = TF_API[timeframe] ?? "week";
+  const [sortKey, setSortKey] = useState<SortKey>("day");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [expandedTickers, setExpandedTickers] = useState<Set<string>>(() => new Set());
+  const [childrenByEtf, setChildrenByEtf] = useState<Record<string, MatrixRow[]>>({});
+  const [loadingEtf, setLoadingEtf] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/sectors-industries?indicesTimeframe=${apiTf}&sectorsTimeframe=${apiTf}&industriesTimeframe=${apiTf}`)
-      .then((r) => r.json() as Promise<ApiResponse>)
-      .then((json) => {
-        if (cancelled) return;
-        if (json.error) { setError(json.error); setPayload(null); return; }
-        setPayload(json);
-      })
-      .catch(() => { if (!cancelled) { setError("Failed to load"); setPayload(null); } })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [apiTf]);
+    const cached = getCachedSectorsMatrix();
+    const p = cached
+      ? Promise.resolve(cached)
+      : prefetchSectorsMatrix().then((j) => j ?? null);
+    p.then((json) => {
+      if (cancelled) return;
+      if (!json) {
+        setError("Failed to load");
+        setPayload(null);
+        return;
+      }
+      setPayload(json);
+    }).catch(() => {
+      if (!cancelled) {
+        setError("Failed to load");
+        setPayload(null);
+      }
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const items: PerfItem[] = useMemo(() => {
+  const parentRows: MatrixRow[] = useMemo(() => {
     if (!payload) return [];
-    if (subTab === "sectors")
-      return (payload.sectors ?? []).map((x) => ({
-        id: x.id,
-        name: x.name,
-        ticker: SECTOR_ETF_MAP[x.name],
-        changePct: x.changePct,
-        drillKind: "sector",
-        drillValue: x.name,
-      }));
-    if (subTab === "industries")
-      return (payload.industryEtfs ?? []).map((x) => ({
-        id: x.id,
-        name: toDisplayCase(x.name),
-        ticker: x.ticker,
-        changePct: x.changePct,
-        drillKind: x.drillKind,
-        drillValue: x.drillValue,
-      }));
-    return [];
+    if (subTab === "sectors") return payload.sectors ?? [];
+    return (payload.industries ?? []).map((x) => ({
+      ...x,
+      name: toDisplayCase(x.name),
+    }));
   }, [payload, subTab]);
 
-  const sorted = useMemo(
-    () =>
-      [...items].sort((a, b) =>
-        sortAsc
-          ? (a.changePct ?? -Infinity) - (b.changePct ?? -Infinity)
-          : (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity)
-      ),
-    [items, sortAsc]
+  const sortedParents = useMemo(() => {
+    const list = [...parentRows];
+    list.sort((a, b) => compareMatrixRows(a, b, sortKey, sortDir === "asc"));
+    return list;
+  }, [parentRows, sortKey, sortDir]);
+
+  const onSortHeader = useCallback(
+    (k: SortKey) => {
+      if (sortKey === k) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(k);
+        setSortDir(defaultSortDir(k));
+      }
+    },
+    [sortKey]
   );
 
-  const maxAbs = useMemo(
-    () => Math.max(0.01, ...sorted.map((s) => Math.abs(s.changePct ?? 0))),
-    [sorted]
-  );
+  const maxAbsByTf = useMemo(() => {
+    const rowsForMax: MatrixRow[] = [...sortedParents];
+    for (const t of expandedTickers) {
+      const ch = childrenByEtf[t];
+      if (ch) rowsForMax.push(...ch);
+    }
+    const m = {} as Record<MatrixTfKey, number>;
+    for (const tf of MATRIX_PERF_TF) {
+      m[tf] = Math.max(0.01, ...rowsForMax.map((r) => Math.abs(r.perf[tf] ?? 0)));
+    }
+    return m;
+  }, [sortedParents, expandedTickers, childrenByEtf]);
 
   useEffect(() => {
     if (!onRowCountChange) return;
-    onRowCountChange(loading ? "…" : String(sorted.length));
-  }, [loading, sorted.length, onRowCountChange]);
-
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const pendingAutoSelect = useRef(true);
+    onRowCountChange(loading ? "…" : String(sortedParents.length));
+  }, [loading, sortedParents.length, onRowCountChange]);
 
   useEffect(() => {
-    setSelectedIdx(0);
-    pendingAutoSelect.current = true;
-  }, [subTab, timeframe]);
-
-  useEffect(() => {
-    if (pendingAutoSelect.current && sorted.length > 0) {
-      pendingAutoSelect.current = false;
-      const first = sorted[0];
-      if (first?.ticker) onSymbolSelect?.(first.ticker);
+    if (sortedParents.length === 0) {
+      setSelectedTicker(null);
+      return;
     }
-  }, [sorted, onSymbolSelect]);
+    const first = sortedParents[0]?.ticker;
+    if (first) {
+      setSelectedTicker(first);
+      onSymbolSelect?.(first);
+    }
+  }, [sortedParents, subTab, onSymbolSelect]);
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
-      e.preventDefault();
-      setSelectedIdx((prev) => {
-        const next = e.key === "ArrowDown" ? Math.min(sorted.length - 1, prev + 1) : Math.max(0, prev - 1);
-        const row = sorted[next];
-        if (row?.ticker) onSymbolSelect?.(row.ticker);
-        return next;
-      });
+  const toggleExpand = useCallback(
+    async (etfTicker: string) => {
+      if (subTab !== "industries") return;
+      const next = new Set(expandedTickers);
+      if (next.has(etfTicker)) {
+        next.delete(etfTicker);
+        setExpandedTickers(next);
+        return;
+      }
+      next.add(etfTicker);
+      setExpandedTickers(next);
+      if (childrenByEtf[etfTicker]) return;
+      setLoadingEtf(etfTicker);
+      try {
+        const r = await fetch(`/api/sectors-industries/constituents-matrix?etfTicker=${encodeURIComponent(etfTicker)}`, {
+          cache: "no-store",
+        });
+        const j = (await r.json()) as { rows?: MatrixRow[]; error?: string };
+        if (j.error) return;
+        setChildrenByEtf((prev) => ({ ...prev, [etfTicker]: j.rows ?? [] }));
+      } finally {
+        setLoadingEtf(null);
+      }
     },
-    [sorted, onSymbolSelect]
+    [subTab, expandedTickers, childrenByEtf]
   );
 
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
-
-  useEffect(() => {
-    const container = listRef.current;
-    if (!container) return;
-    const row = container.children[selectedIdx] as HTMLElement | undefined;
-    row?.scrollIntoView({ block: "nearest" });
-  }, [selectedIdx]);
+  const flatRows = useMemo(() => {
+    type Flat = { kind: "parent" | "child"; row: MatrixRow; parentTicker?: string; indent?: boolean };
+    const out: Flat[] = [];
+    for (const row of sortedParents) {
+      out.push({ kind: "parent", row });
+      if (subTab === "industries" && expandedTickers.has(row.ticker)) {
+        if (loadingEtf === row.ticker && !childrenByEtf[row.ticker]?.length) {
+          out.push({
+            kind: "child",
+            row: {
+              id: `loading-${row.ticker}`,
+              name: "Loading…",
+              ticker: "",
+              drillKind: row.drillKind,
+              drillValue: row.drillValue,
+              perf: emptyPerfMap(),
+            },
+            indent: true,
+          });
+        }
+        for (const c of childrenByEtf[row.ticker] ?? []) {
+          out.push({ kind: "child", row: c, parentTicker: row.ticker, indent: true });
+        }
+      }
+    }
+    return out;
+  }, [sortedParents, subTab, expandedTickers, childrenByEtf, loadingEtf]);
 
   if (loading) {
     return (
@@ -181,199 +352,143 @@ export default function SectorPerfPanel({
     );
   }
 
-  if (error) {
+  if (error || !payload) {
     return (
       <div className="h-full flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
-        <span className="text-xs" style={{ color: "var(--ws-red)" }}>{error}</span>
+        <span className="text-xs" style={{ color: "var(--ws-red)" }}>{error ?? "No data"}</span>
       </div>
     );
   }
 
+  const selectedRow = sortedParents.find((r) => r.ticker === selectedTicker) ?? sortedParents[0];
+
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--ws-bg2)" }}>
+    <div className="h-full flex flex-col overflow-hidden min-w-0" style={{ background: "var(--ws-bg2)" }}>
       {headerActionsSlot && createPortal(
         <>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-ws-label font-medium cursor-pointer transition-colors"
-            style={{ color: sortAsc ? "var(--ws-cyan)" : "var(--ws-text-dim)", background: "rgba(255,255,255,0.04)" }}
-            title={sortAsc ? "Sorted ascending — click to sort descending" : "Sorted descending — click to sort ascending"}
-            onClick={() => { setSortAsc((v) => !v); setSelectedIdx(0); }}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              {sortAsc ? (
-                <>
-                  <line x1="8" y1="13" x2="8" y2="3" />
-                  <polyline points="4,7 8,3 12,7" />
-                </>
-              ) : (
-                <>
-                  <line x1="8" y1="3" x2="8" y2="13" />
-                  <polyline points="4,9 8,13 12,9" />
-                </>
-              )}
-            </svg>
-            {sortAsc ? "Asc" : "Desc"}
-          </button>
-          {sorted[selectedIdx] && onDrillDown && (
+          {selectedRow && onDrillDown && (
             <button
               type="button"
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-ws-label cursor-pointer transition-colors shrink-0"
               style={{ color: "var(--ws-cyan)", background: "rgba(0,229,204,0.08)" }}
-              title={`View ${sorted[selectedIdx]?.ticker ?? sorted[selectedIdx]?.name} constituents`}
+              title={`View ${selectedRow.ticker} constituents list`}
               onClick={() => {
-                const s = sorted[selectedIdx];
-                const kind = subTab === "sectors" ? "sector" : s.drillKind;
-                onDrillDown(kind, s.drillValue);
+                const kind = subTab === "sectors" ? "sector" : selectedRow.drillKind;
+                onDrillDown(kind, selectedRow.drillValue);
               }}
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5zm-3-8a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0zm0 4a1 1 0 1 0-2 0 1 1 0 0 0 2 0z"/></svg>
+              List
             </button>
           )}
         </>,
         headerActionsSlot
       )}
-      <div ref={listRef} className="flex-1 min-h-0 overflow-auto min-w-[min(100%,560px)] w-full">
-        {sorted.map((s, i) => {
-          const pct = s.changePct ?? 0;
-          const isPos = pct >= 0;
-          const barPct = (Math.abs(pct) / maxAbs) * 100;
-          const barWidth = `${barPct}%`;
-          const isSelected = i === selectedIdx;
-          const pctLabel = `${isPos ? "+" : ""}${pct.toFixed(2)}%`;
-          const labelInside = barPct > 65;
-          return (
-            <div
-              key={s.id}
-              className="grid items-center px-2 py-[5px] cursor-pointer ws-row-hover ws-focus-ring"
-              role="button"
-              tabIndex={0}
-              aria-label={`${s.ticker ?? s.name}: ${pctLabel}`}
-              aria-pressed={isSelected}
-              style={{
-                gridTemplateColumns: `auto minmax(0, 200px) 1fr ${onDrillDown ? "36px" : ""}`,
-                gap: "6px",
-                background: isSelected ? "rgba(0,229,204,0.08)" : undefined,
-                borderBottom: "1px solid var(--ws-border)",
-              }}
-              onClick={() => {
-                setSelectedIdx(i);
-                if (s.ticker) onSymbolSelect?.(s.ticker);
-              }}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedIdx(i); if (s.ticker) onSymbolSelect?.(s.ticker); } }}
-            >
-              <span
-                className="font-mono text-ws-body leading-snug whitespace-nowrap"
-                style={{
-                  fontWeight: isSelected ? 600 : 400,
-                  color: "var(--ws-cyan)",
-                  minWidth: 40,
-                }}
-              >
-                {s.ticker ?? ""}
-              </span>
-              <span
-                className="text-ws-body leading-snug truncate"
-                style={{
-                  fontWeight: isSelected ? 500 : 400,
-                  color: "#ffffff",
-                }}
-              >
-                {s.name}
-              </span>
-              <div className="flex items-center h-[36px]">
-                <div
-                  className="flex justify-end items-center self-stretch"
-                  style={{ width: "50%", borderRight: "1px solid var(--ws-border)" }}
-                >
-                  {!isPos && (
-                    <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-start" : "flex-end" }}>
-                      {!labelInside && (
-                        <span className="shrink-0 font-mono text-ws-title tabular-nums mr-1.5" style={{ color: "var(--ws-red)" }}>
-                          {pctLabel}
-                        </span>
-                      )}
-                      <div
-                        style={{
-                          width: "100%",
-                          height: 32,
-                          borderRadius: "3px 0 0 3px",
-                          background: "var(--ws-red)",
-                          opacity: 0.7,
-                          position: "relative",
-                        }}
-                      >
-                        {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-start pl-2.5 font-mono text-ws-body tabular-nums font-semibold" style={{ color: "#1a0a0a" }}>
-                            {pctLabel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div
-                  className="flex justify-start items-center self-stretch"
-                  style={{ width: "50%" }}
-                >
-                  {isPos && (
-                    <div className="flex items-center" style={{ width: barWidth, maxWidth: "100%", justifyContent: labelInside ? "flex-end" : "flex-start" }}>
-                      <div
-                        style={{
-                          width: "100%",
-                          height: 32,
-                          borderRadius: "0 3px 3px 0",
-                          background: "var(--ws-green)",
-                          opacity: 0.7,
-                          position: "relative",
-                        }}
-                      >
-                        {labelInside && (
-                          <span className="absolute inset-0 flex items-center justify-end pr-2.5 font-mono text-ws-body tabular-nums font-semibold" style={{ color: "#0a1a12" }}>
-                            {pctLabel}
-                          </span>
-                        )}
-                      </div>
-                      {!labelInside && (
-                        <span className="shrink-0 font-mono text-ws-title tabular-nums ml-1.5" style={{ color: "var(--ws-green)" }}>
-                          {pctLabel}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {onDrillDown && (
-                <div
-                  className="flex items-center justify-center rounded cursor-pointer transition-all hover:bg-white/[0.06] ws-focus-ring"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Drill into ${s.name}`}
-                  style={{ width: 32, height: 32, color: "var(--ws-cyan)" }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const kind = subTab === "sectors" ? "sector" : s.drillKind;
-                    onDrillDown(kind, s.drillValue);
+      <div className="flex-1 min-h-0 overflow-auto w-full">
+        <table className="w-full border-collapse text-xs min-w-[720px]">
+          <thead>
+            <tr style={{ background: "var(--ws-bg3)" }}>
+              {subTab === "industries" ? (
+                <th
+                  scope="col"
+                  className="w-9 min-w-[2.25rem] border-b p-0"
+                  style={{ borderColor: "var(--ws-border)" }}
+                  aria-label="Expand"
+                />
+              ) : null}
+              <SortTh label="Ticker" colKey="ticker" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeader} />
+              <SortTh label="Name" colKey="name" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeader} />
+              {MATRIX_PERF_TF.map((tf) => (
+                <SortTh
+                  key={tf}
+                  label={`Perf ${PERF_HEADER[tf]}`}
+                  colKey={tf}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSortHeader}
+                  align="right"
+                />
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {flatRows.map((fr) => {
+              const { row, kind, indent } = fr;
+              const isParent = kind === "parent";
+              const isSel = isParent && row.ticker === selectedTicker;
+              const pad = indent ? { paddingLeft: "1.5rem" } : undefined;
+              const open = subTab === "industries" && isParent && expandedTickers.has(row.ticker);
+              return (
+                <tr
+                  key={`${row.id}-${kind}-${row.ticker}`}
+                  className="ws-row-hover border-b"
+                  style={{
+                    borderColor: "var(--ws-border)",
+                    background: isSel ? "rgba(0,229,204,0.08)" : undefined,
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      const kind = subTab === "sectors" ? "sector" : s.drillKind;
-                      onDrillDown(kind, s.drillValue);
-                    }
+                  onClick={() => {
+                    if (!row.ticker) return;
+                    setSelectedTicker(row.ticker);
+                    onSymbolSelect?.(row.ticker);
                   }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1">
-                    <circle cx="8" cy="8" r="6" />
-                    <line x1="8" y1="4" x2="8" y2="12" />
-                    <line x1="4" y1="8" x2="12" y2="8" />
-                  </svg>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                  {subTab === "industries" ? (
+                    <td className="w-9 min-w-[2.25rem] p-0 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                      {isParent ? (
+                        <button
+                          type="button"
+                          className="w-full min-h-8 flex items-center justify-center ws-focus-ring"
+                          style={{ color: "var(--ws-text-dim)" }}
+                          aria-expanded={open}
+                          onClick={() => toggleExpand(row.ticker)}
+                        >
+                          <span
+                            className="inline-block transition-transform leading-[0.65]"
+                            style={{
+                              fontSize: `${MATRIX_TABLE_CHEVRON_PX}px`,
+                              color: "var(--ws-text-vdim)",
+                              transform: open ? "rotate(180deg)" : "rotate(90deg)",
+                            }}
+                            aria-hidden
+                          >
+                            ▲
+                          </span>
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                  <td className="px-1 py-1 align-middle font-mono whitespace-nowrap" style={pad}>
+                    {row.ticker ? (
+                      <button
+                        type="button"
+                        className="text-left ws-focus-ring rounded px-0.5"
+                        style={{ color: "var(--ws-cyan)", fontWeight: isSel ? 600 : 400 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTicker(row.ticker);
+                          onSymbolSelect?.(row.ticker);
+                          onTickerActivate?.(row.ticker);
+                        }}
+                      >
+                        {row.ticker}
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--ws-text-vdim)" }}>{row.name}</span>
+                    )}
+                  </td>
+                  <td className={NAME_COL_TD} style={{ ...pad, color: "var(--ws-text)" }} title={row.name}>
+                    {row.name}
+                  </td>
+                  {MATRIX_PERF_TF.map((tf) => (
+                    <td key={tf} className="px-0 py-1 align-middle text-right">
+                      <PerfCell value={row.perf[tf]} maxAbs={maxAbsByTf[tf]} />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -59,3 +59,30 @@ export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersReq
     minGapPct: f.minGapPct,
   };
 }
+
+/** SIP uses its own persisted filters (must match Stocks in Play). */
+export const SIP_GAPPER_FILTERS_LS_KEY = "stockstalker-sip-gapper-filters-v1";
+
+export function loadSipGapperFiltersFromStorage(): GapperFilterState {
+  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
+  try {
+    const raw = localStorage.getItem(SIP_GAPPER_FILTERS_LS_KEY);
+    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
+    const j = JSON.parse(raw) as Partial<GapperFilterState>;
+    return {
+      ...DEFAULT_GAPPER_FILTER_STATE,
+      ...j,
+      capPreset: (j.capPreset as GapperCapPreset) ?? "all",
+    };
+  } catch {
+    return DEFAULT_GAPPER_FILTER_STATE;
+  }
+}
+
+export function saveSipGapperFiltersToStorage(f: GapperFilterState): void {
+  try {
+    localStorage.setItem(SIP_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+  } catch {
+    /* ignore */
+  }
+}

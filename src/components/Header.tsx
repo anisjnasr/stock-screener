@@ -194,7 +194,7 @@ export default function Header({
           <div className="inline-flex items-center gap-0.5 sm:gap-1 rounded-md bg-zinc-100 dark:bg-zinc-800 p-0.5 sm:p-1">
             {[
               { id: "home" as HeaderPage, label: "Home", shortLabel: "Home" },
-              { id: "market-breadth" as HeaderPage, label: "Sectors / Industries", shortLabel: "Sectors" },
+              { id: "market-breadth" as HeaderPage, label: "INDUSTRIES", shortLabel: "Industries" },
               { id: "market-monitor" as HeaderPage, label: "Market Monitor", shortLabel: "Monitor" },
               { id: "breadth" as HeaderPage, label: "Breadth", shortLabel: "Breadth" },
             ].map((item) => (

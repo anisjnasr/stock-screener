@@ -29,11 +29,6 @@ const FLAG_COLORS: Record<StockFlag, string> = {
 };
 
 export type SectorSubTab = "sectors" | "industries";
-export type SectorTimeframe = "1d" | "1w" | "1m" | "q" | "6m" | "y" | "ytd";
-
-const SECTOR_TF_LABELS: Record<SectorTimeframe, string> = {
-  "1d": "Day", "1w": "1W", "1m": "1M", "q": "3M", "6m": "6M", "y": "1Y", "ytd": "YTD",
-};
 
 const FLAG_ORDER_KEY = "stock-research-flag-order";
 const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "purple", "yellow", "red", "green"];
@@ -91,8 +86,6 @@ type WorkspaceHeaderProps = {
   // Sectors contextual
   sectorSubTab?: SectorSubTab;
   onSectorSubTabChange?: (t: SectorSubTab) => void;
-  sectorTimeframe?: SectorTimeframe;
-  onSectorTimeframeChange?: (t: SectorTimeframe) => void;
   // Scans contextual
   scanList?: string[];
   screens?: SavedScreen[];
@@ -306,8 +299,6 @@ function WorkspaceHeader({
   onFlagListOpen,
   sectorSubTab = "sectors",
   onSectorSubTabChange,
-  sectorTimeframe = "1w",
-  onSectorTimeframeChange,
   scanList = [],
   screens: screensProp,
   scanFolders: scanFoldersProp,
@@ -868,28 +859,7 @@ function WorkspaceHeader({
                 ({rowCountDisplay})
               </span>
             )}
-            <div className="shrink-0" style={{ width: 1, height: 16, background: "var(--ws-border)", margin: "0 2px" }} />
-            {onSectorTimeframeChange && (
-              <div className="flex items-center gap-0.5">
-                {(["1d", "1w", "1m", "q", "6m", "y", "ytd"] as SectorTimeframe[]).map((tf) => (
-                  <button
-                    key={tf}
-                    type="button"
-                    onClick={() => onSectorTimeframeChange(tf)}
-                    className={`px-2 py-0.5 text-sm font-medium rounded transition-colors cursor-pointer ws-focus-ring ${sectorTimeframe !== tf ? "hover:bg-white/[0.06]" : ""}`}
-                    style={{
-                      background: sectorTimeframe === tf ? "rgba(0,229,204,0.12)" : undefined,
-                      color: sectorTimeframe === tf ? "var(--ws-cyan)" : "var(--ws-text-vdim)",
-                      border: sectorTimeframe === tf ? "1px solid rgba(0,229,204,0.2)" : "1px solid transparent",
-                    }}
-                    aria-pressed={sectorTimeframe === tf}
-                  >
-                    {SECTOR_TF_LABELS[tf]}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div ref={section === "sectors-industries" ? headerActionsSlotRef : undefined} className="flex items-center gap-1" />
+            <div ref={section === "sectors-industries" ? headerActionsSlotRef : undefined} className="flex items-center gap-1 ml-auto" />
           </div>
         )}
 

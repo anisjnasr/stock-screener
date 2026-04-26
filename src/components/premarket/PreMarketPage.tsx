@@ -9,6 +9,7 @@ import EquitiesWriteup from "./EquitiesWriteup";
 import MacroWriteup from "./MacroWriteup";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
+import SipArchiveSection from "./SipArchiveSection";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
 import {
@@ -19,7 +20,7 @@ import {
 import { usePremarketPeeks } from "@/hooks/usePremarketPeeks";
 import { formatLatestGeneratedAtEtDisplay } from "@/lib/et-ymd";
 
-const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "calendars", "earnings", "movers"];
+const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "calendars", "earnings", "movers", "sipArchive"];
 
 type SectionConfig = {
   id: PremarketSectionId;
@@ -29,11 +30,12 @@ type SectionConfig = {
 };
 
 const SECTIONS: SectionConfig[] = [
-  { id: "context", label: "Context", labelAccent: "cyan", stub: "" },
+  { id: "context", label: "MACRO & EQUITIES", labelAccent: "cyan", stub: "" },
   { id: "sip", label: "Stocks in Play", labelAccent: "cyan", stub: "" },
   { id: "calendars", label: "Economic & key events", labelAccent: "cyan", stub: "" },
   { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
   { id: "movers", label: "Top movers", labelAccent: "cyan", stub: "" },
+  { id: "sipArchive", label: "SIP ARCHIVE", labelAccent: "cyan", stub: "" },
 ];
 
 type PreMarketPageProps = {
@@ -64,14 +66,31 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     equitiesLoading,
     equitiesError,
     equitiesSetupHint,
-  } = usePremarketPeeks(gapperFilters, gapperFiltersHydrated);
+  } = usePremarketPeeks(gapperFiltersHydrated);
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg-base)" }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        {SECTIONS.map((s) => (
+        {SECTIONS.map((s) =>
+          s.id === "sip" ? (
+            <StocksInPlay
+              key={s.id}
+              sectionLabel={s.label}
+              collapsed={collapsed.sip}
+              onToggle={() => toggle("sip")}
+              peekText={peeks.sip}
+              onOpenTickerInLists={onOpenTickerInLists}
+            />
+          ) : s.id === "sipArchive" ? (
+            <SipArchiveSection
+              key={s.id}
+              collapsed={collapsed.sipArchive}
+              onToggle={() => toggle("sipArchive")}
+              onOpenTickerInLists={onOpenTickerInLists}
+            />
+          ) : (
           <CollapsibleSection
             key={s.id}
             id={s.id}
@@ -80,13 +99,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             metadata={
               s.id === "context" && !macroLoading && !equitiesLoading
                 ? formatLatestGeneratedAtEtDisplay(macroRow?.generated_at, equitiesRow?.generated_at)
-                : s.id === "sip"
-                  ? "Up to 75 · volume + headline gates"
-                  : s.id === "calendars"
-                    ? "Today · ET"
-                    : s.id === "earnings"
-                      ? "Big-cap buckets · ET"
-                      : undefined
+                : undefined
             }
             peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}
@@ -114,11 +127,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               <EconomicCalendar />
             ) : s.id === "earnings" ? (
               <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
-            ) : s.id === "sip" ? (
-              <StocksInPlay
-                collapsed={collapsed.sip}
-                onOpenTickerInLists={onOpenTickerInLists}
-              />
             ) : s.id === "movers" ? (
               <div className="space-y-3">
                 <PremarketGappers
@@ -157,7 +165,8 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               <p className="max-w-prose leading-relaxed">{s.stub}</p>
             )}
           </CollapsibleSection>
-        ))}
+          )
+        )}
       </div>
     </div>
   );

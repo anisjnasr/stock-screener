@@ -12,7 +12,7 @@ export type EquitiesWriteupProps = {
   setupHint?: string | null;
 };
 
-const MAX_BULLETS = 4;
+const MAX_BULLETS = 8;
 const MAX_CHARS = 220;
 
 export default function EquitiesWriteup({ loading, error, row, ymd, setupHint }: EquitiesWriteupProps) {

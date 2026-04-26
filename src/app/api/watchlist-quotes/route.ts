@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchQuote, fetchProfile, isAllowedTickerType } from "@/lib/massive";
-import { getAvgVolumeBatch } from "@/lib/screener-db-native";
+import { isUSMarketOpen } from "@/lib/market-hours";
+import { getAvgVolumeBatch, getScreenerSnapshot } from "@/lib/screener-db-native";
 
 const MAX_SYMBOLS = 50;
 const MAX_CONCURRENT_UPSTREAM = 6;
@@ -38,6 +39,22 @@ export async function GET(request: NextRequest) {
   }
   try {
     const avgVolMap = getAvgVolumeBatch(symbols, 30);
+    const marketOpen = isUSMarketOpen();
+    const dbChangeBySymbol = new Map<string, number>();
+    if (!marketOpen && symbols.length > 0) {
+      const snap = getScreenerSnapshot({
+        symbols,
+        limit: Math.max(symbols.length, 1),
+        includeFinancialExtras: false,
+      });
+      for (const row of snap.rows) {
+        const symU = String(row.symbol ?? "").toUpperCase();
+        if (typeof row.change_pct === "number" && Number.isFinite(row.change_pct)) {
+          dbChangeBySymbol.set(symU, row.change_pct);
+        }
+      }
+    }
+
     const results = await mapWithConcurrency(symbols, MAX_CONCURRENT_UPSTREAM, async (sym) => {
         const [quote, profile] = await Promise.all([
           fetchQuote(sym),
@@ -49,15 +66,33 @@ export async function GET(request: NextRequest) {
           (quote as { companyName?: string })?.companyName ??
           sym;
         const dbAvgVol = avgVolMap.get(sym);
+        const dbCh = dbChangeBySymbol.get(sym);
+        const upstreamPct = quote ? (quote as { changesPercentage?: number }).changesPercentage : undefined;
+        const upstreamChange = quote ? (quote as { change?: number }).change : undefined;
+        const price = quote ? (quote as { price?: number }).price : undefined;
+        const useDbChange = !marketOpen && typeof dbCh === "number";
+        const changesPercentage = useDbChange
+          ? dbCh
+          : typeof upstreamPct === "number"
+            ? upstreamPct
+            : typeof dbCh === "number"
+              ? dbCh
+              : 0;
+        const change =
+          useDbChange && typeof price === "number" && price > 0
+            ? (price * dbCh) / 100
+            : typeof upstreamChange === "number"
+              ? upstreamChange
+              : 0;
         return {
           symbol: sym,
           quote: quote
             ? {
                 ...quote,
                 name,
-                price: (quote as { price?: number }).price,
-                changesPercentage: (quote as { changesPercentage?: number }).changesPercentage,
-                change: (quote as { change?: number }).change,
+                price,
+                changesPercentage,
+                change,
                 volume: (quote as { volume?: number }).volume,
                 avgVolume: dbAvgVol ?? (quote as { avgVolume?: number }).avgVolume,
                 marketCap: (quote as { marketCap?: number }).marketCap ?? profile?.mktCap,

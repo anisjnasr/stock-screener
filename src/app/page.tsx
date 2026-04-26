@@ -34,7 +34,7 @@ class PanelErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-import WorkspaceHeader, { type SectorSubTab, type SectorTimeframe } from "@/components/WorkspaceHeader";
+import WorkspaceHeader, { type SectorSubTab } from "@/components/WorkspaceHeader";
 import type { MarketIndexSymbol } from "@/components/MarketIndexCards";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { type InsightInput } from "@/components/AIInsightFormCard";
@@ -69,6 +69,7 @@ import { useTheme } from "@/hooks/useTheme";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import SectorPerfPanel from "@/components/SectorPerfPanel";
+import { prefetchSectorsMatrix } from "@/lib/sectors-matrix-prefetch";
 import NNHPanel from "@/components/NNHPanel";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketLeftPanel from "@/components/MarketLeftPanel";
@@ -137,7 +138,6 @@ export default function Home() {
 
   // Sectors contextual state
   const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>("sectors");
-  const [sectorTimeframe, setSectorTimeframe] = useState<SectorTimeframe>("1w");
 
   // Scans contextual state
   const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
@@ -176,6 +176,8 @@ export default function Home() {
   const lastScanOrListSymbolRef = useRef<string | null>(null);
   const pendingAutoSelectRef = useRef(false);
   const prevSectionRef = useRef<WorkspaceSection | null>(null);
+  const sectorsLeftSavedRef = useRef<number | null>(null);
+  const lastSectionForLayoutRef = useRef<WorkspaceSection | null>(null);
   const { cycleTheme } = useTheme();
 
   const {
@@ -191,6 +193,8 @@ export default function Home() {
   } = useLayoutPreferences();
   const chartHidden = section === "market" && marketIndexCardSelection === null;
   const isSectorSection = section === "sectors-industries";
+  /** Sectors matrix is full-width: no chart split, no chart mount (see layout effect + centerPanel). */
+  const splitLayoutDisabled = chartHidden || isSectorSection;
   const railSupportedSection = section === "scans" || section === "lists";
   const effectiveRightRailHidden = railSupportedSection ? rightRailHidden : true;
 
@@ -209,6 +213,10 @@ export default function Home() {
     if (section === "market") {
       return;
     }
+    // Full-width sectors: chartLeftSectorsPx is owned by the enter/leave sectors layout effect only.
+    if (section === "sectors-industries") {
+      return;
+    }
 
     const railTotal = effectiveRightRailHidden ? 0 : RIGHT_DIVIDER_PX + railWidthPx;
     const run = () => {
@@ -220,15 +228,10 @@ export default function Home() {
         const w = Math.max(el.scrollWidth, el.getBoundingClientRect().width);
         target = Math.ceil(w + 24);
       }
-      if (section === "sectors-industries") {
-        target = Math.min(maxLeft, Math.max(520, Math.max(target, Math.round(cw * 0.44))));
-        setChartLeftSectorsPx(target);
-      } else {
-        // Scans/lists table can report large intrinsic width; cap target to keep chart usable.
-        target = Math.min(target, Math.round(cw * 0.58));
-        target = Math.min(maxLeft, Math.max(260, target));
-        setChartLeftPx(target);
-      }
+      // Scans/lists table can report large intrinsic width; cap target to keep chart usable.
+      target = Math.min(target, Math.round(cw * 0.58));
+      target = Math.min(maxLeft, Math.max(260, target));
+      setChartLeftPx(target);
     };
     const id = requestAnimationFrame(() => requestAnimationFrame(run));
     return () => cancelAnimationFrame(id);
@@ -240,7 +243,6 @@ export default function Home() {
     effectiveRightRailHidden,
     railWidthPx,
     setChartLeftPx,
-    setChartLeftSectorsPx,
   ]);
 
   const activeChartLeft = isSectorSection
@@ -292,6 +294,28 @@ export default function Home() {
       setSymbol(DEFAULT_SYMBOL);
     }
   }, [section]);
+
+  const sectorsMatrixPrefetchOnceRef = useRef(false);
+  useEffect(() => {
+    if (section !== "market" || sectorsMatrixPrefetchOnceRef.current) return;
+    sectorsMatrixPrefetchOnceRef.current = true;
+    prefetchSectorsMatrix();
+  }, [section]);
+
+  useLayoutEffect(() => {
+    const last = lastSectionForLayoutRef.current;
+    lastSectionForLayoutRef.current = section;
+    if (section === "sectors-industries" && last !== "sectors-industries") {
+      sectorsLeftSavedRef.current = chartLeftSectorsPx;
+      setChartLeftSectorsPx(999999);
+    }
+    if (last === "sectors-industries" && section !== "sectors-industries") {
+      if (sectorsLeftSavedRef.current != null) {
+        setChartLeftSectorsPx(sectorsLeftSavedRef.current);
+      }
+      sectorsLeftSavedRef.current = null;
+    }
+  }, [section, chartLeftSectorsPx, setChartLeftSectorsPx]);
 
   useEffect(() => {
     if (section === "market") {
@@ -416,7 +440,7 @@ export default function Home() {
       const targetLeft = Math.floor(cw * 0.4) - CHART_HANDLE_PX;
       setChartLeftPx(Math.max(0, Math.min(maxLeft, targetLeft)));
     },
-    [marketIndexCardSelection, effectiveRightRailHidden, setChartLeftPx]
+    [marketIndexCardSelection, effectiveRightRailHidden, railWidthPx, setChartLeftPx]
   );
 
   useEffect(() => {
@@ -789,7 +813,7 @@ export default function Home() {
     <div
       ref={leftPanelMeasureRef}
       className={
-        chartHidden
+        splitLayoutDisabled
           ? "h-full min-h-0 flex flex-col overflow-hidden w-full"
           : section === "market"
             ? "h-full min-h-0 flex flex-col overflow-x-auto overflow-y-hidden min-w-0 w-full max-w-[min(92vw,1600px)]"
@@ -810,9 +834,8 @@ export default function Home() {
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
           subTab={sectorSubTab}
-          timeframe={sectorTimeframe}
-          onTimeframeChange={setSectorTimeframe}
           onSymbolSelect={handleSymbolSelect}
+          onTickerActivate={handleMarketMonitorSymbolSelect}
           onDrillDown={(kind, value) => {
             pendingAutoSelectRef.current = true;
             const nextCollectionId =
@@ -857,38 +880,42 @@ export default function Home() {
 
   const centerPanel = (
     <PanelErrorBoundary name="CenterPanel">
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex min-h-[min(52vh,560px)] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
-          <StockChart
-            symbol={symbol}
-            data={candles}
-            loading={chartLoading}
-            onRetryLoad={() => {
-              setChartLoading(true);
-              setChartReloadNonce((n) => n + 1);
-            }}
-            timeframe={chartTimeframe}
-            onTimeframeChange={setChartTimeframe}
-            onVisibleDateRangeChange={section === "market" ? setVisibleDateRange : undefined}
-            dualModeEnabled={false}
-            showGlobalControls
-            chartInstanceId="single"
-            stockFlag={currentStockFlag}
-            onFlagChange={handleFlagChange}
-            watchlistPickerLists={watchlistPickerLists}
-            onWatchlistMembershipSave={handleWatchlistMembershipSave}
-          />
+      {isSectorSection ? (
+        <div className="h-full min-h-0" aria-hidden />
+      ) : (
+        <div className="h-full flex flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-[min(52vh,560px)] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
+              <StockChart
+                symbol={symbol}
+                data={candles}
+                loading={chartLoading}
+                onRetryLoad={() => {
+                  setChartLoading(true);
+                  setChartReloadNonce((n) => n + 1);
+                }}
+                timeframe={chartTimeframe}
+                onTimeframeChange={setChartTimeframe}
+                onVisibleDateRangeChange={section === "market" ? setVisibleDateRange : undefined}
+                dualModeEnabled={false}
+                showGlobalControls
+                chartInstanceId="single"
+                stockFlag={currentStockFlag}
+                onFlagChange={handleFlagChange}
+                watchlistPickerLists={watchlistPickerLists}
+                onWatchlistMembershipSave={handleWatchlistMembershipSave}
+              />
+            </div>
+          </div>
+          {section === "market" && (
+            <NNHPanel
+              visibleRange={visibleDateRange}
+              collapsed={nnhCollapsed}
+              onToggleCollapse={() => setNnhCollapsed((v) => !v)}
+            />
+          )}
         </div>
-      </div>
-      {section === "market" && (
-        <NNHPanel
-          visibleRange={visibleDateRange}
-          collapsed={nnhCollapsed}
-          onToggleCollapse={() => setNnhCollapsed((v) => !v)}
-        />
       )}
-    </div>
     </PanelErrorBoundary>
   );
 
@@ -972,8 +999,6 @@ export default function Home() {
         }}
         sectorSubTab={sectorSubTab}
         onSectorSubTabChange={setSectorSubTab}
-        sectorTimeframe={sectorTimeframe}
-        onSectorTimeframeChange={setSectorTimeframe}
         scanList={screens.map((s) => s.name)}
         screens={screens}
         scanFolders={scanFolders}
@@ -1091,8 +1116,8 @@ export default function Home() {
           </PanelErrorBoundary>
         ) : (
           <WorkspaceLayout
-            chartLeftPx={chartHidden ? 99999 : activeChartLeft}
-            onChartLeftChange={chartHidden ? undefined : handleChartLeftChange}
+            chartLeftPx={splitLayoutDisabled ? 99999 : activeChartLeft}
+            onChartLeftChange={splitLayoutDisabled ? undefined : handleChartLeftChange}
             chartInsetTopPx={0}
             railWidthPx={railWidthPx}
             onRailWidthChange={setRailWidthPx}

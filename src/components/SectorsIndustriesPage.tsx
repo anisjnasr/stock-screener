@@ -359,7 +359,7 @@ export default function SectorsIndustriesPage({
     <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900 p-2 sm:p-4">
       <div className="relative mb-3">
         <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 text-center">
-          Sectors / Industries
+          INDUSTRIES
         </h2>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 text-right">
           Last Update:{" "}

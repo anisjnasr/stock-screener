@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { ymdInEt } from "@/lib/et-ymd";
-import { gapperFilterStateToRequestBody, type GapperFilterState } from "@/components/premarket/gapper-filters-storage";
-import { keywordFromThemeTitle } from "@/lib/premarket/theme-peek-keyword";
+import { gapperFilterStateToRequestBody, loadSipGapperFiltersFromStorage } from "@/components/premarket/gapper-filters-storage";
+import { recordSipSnapshotForArchive } from "@/lib/premarket/sip-archive";
+import { SIP_MAX_TICKERS } from "@/lib/premarket/sip-constants";
 import type { DailyEquitiesWriteupRow, DailyMacroWriteupRow } from "@/types/newsletter-macro";
-import type { DailyThemeRow } from "@/types/daily-themes";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 import type { EarningsCalendarResponse } from "@/types/earnings-calendar";
@@ -57,7 +57,7 @@ async function fetchCalendarPeekToday(): Promise<string> {
   return `${econCount} Economic and ${keyCount} Key Events Today`;
 }
 
-export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydrated: boolean) {
+export function usePremarketPeeks(filtersHydrated: boolean) {
   const [macroRow, setMacroRow] = useState<DailyMacroWriteupRow | null>(null);
   const [macroYmd, setMacroYmd] = useState<string | null>(null);
   const [macroLoading, setMacroLoading] = useState(true);
@@ -73,10 +73,8 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
   const [earningsPeek, setEarningsPeek] = useState("…");
   const [moversPeek, setMoversPeek] = useState("");
   const [sipPeek, setSipPeek] = useState("…");
-  const [themePeek, setThemePeek] = useState("…");
 
   const lastScheduledSlotRef = useRef<string | null>(null);
-  const gapperBody = useMemo(() => gapperFilterStateToRequestBody(gapperFilters), [gapperFilters]);
 
   const loadMacro = useCallback(async () => {
     setMacroLoading(true);
@@ -176,10 +174,11 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
       return;
     }
     try {
+      const sipScanBody = gapperFilterStateToRequestBody(loadSipGapperFiltersFromStorage());
       const res = await fetch("/api/premarket/stocks-in-play", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(gapperBody),
+        body: JSON.stringify(sipScanBody),
         cache: "no-store",
       });
       const json = (await res.json()) as StocksInPlaySuccess | { ok?: false; error?: string };
@@ -187,9 +186,11 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
         setSipPeek("SIP unavailable");
         return;
       }
-      const rows = json.rows ?? [];
+      const success = json as StocksInPlaySuccess;
+      const rows = (success.rows ?? []).slice(0, SIP_MAX_TICKERS);
+      recordSipSnapshotForArchive({ ...success, rows });
       if (!rows.length) {
-        setSipPeek("No SIP rows");
+        setSipPeek("");
         return;
       }
       const tickers = [...new Set(rows.map((r) => r.ticker.trim().toUpperCase()).filter(Boolean))].sort((a, b) =>
@@ -199,36 +200,19 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
     } catch {
       setSipPeek("SIP unavailable");
     }
-  }, [filtersHydrated, gapperBody]);
+  }, [filtersHydrated]);
 
-  const loadThemePeek = useCallback(async () => {
-    try {
-      const res = await fetch("/api/premarket/daily-themes", { cache: "no-store" });
-      const json = (await res.json()) as { ok?: boolean; themes?: DailyThemeRow[]; error?: string };
-      if (!res.ok || json.ok === false) {
-        setThemePeek("Themes unavailable");
-        return;
-      }
-      const themes = json.themes ?? [];
-      if (!themes.length) {
-        setThemePeek("No themes");
-        return;
-      }
-      const sorted = [...themes].sort((a, b) => {
-        const oa = a.theme_type === "macro" ? 0 : 1;
-        const ob = b.theme_type === "macro" ? 0 : 1;
-        if (oa !== ob) return oa - ob;
-        return a.theme_rank - b.theme_rank;
-      });
-      setThemePeek(joinPeekParts(sorted.slice(0, 5).map((t) => keywordFromThemeTitle(t.theme_title))));
-    } catch {
-      setThemePeek("Themes unavailable");
-    }
-  }, []);
+  useEffect(() => {
+    const onSipFilters = () => {
+      void loadSipPeek();
+    };
+    window.addEventListener("premarket-sip-filters-changed", onSipFilters);
+    return () => window.removeEventListener("premarket-sip-filters-changed", onSipFilters);
+  }, [loadSipPeek]);
 
   const refreshAuxPeeks = useCallback(async () => {
-    await Promise.all([loadCalendarPeek(), loadEarningsPeek(), loadMoversPeek(), loadSipPeek(), loadThemePeek()]);
-  }, [loadCalendarPeek, loadEarningsPeek, loadMoversPeek, loadSipPeek, loadThemePeek]);
+    await Promise.all([loadCalendarPeek(), loadEarningsPeek(), loadMoversPeek(), loadSipPeek()]);
+  }, [loadCalendarPeek, loadEarningsPeek, loadMoversPeek, loadSipPeek]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadMacro(), loadEquities(), refreshAuxPeeks()]);
@@ -267,13 +251,13 @@ export function usePremarketPeeks(gapperFilters: GapperFilterState, filtersHydra
 
   const peeks: PremarketPeeks = useMemo(
     () => ({
-      context: themePeek,
+      context: "",
       sip: sipPeek,
       calendars: calendarPeek,
       earnings: earningsPeek,
       movers: moversPeek,
     }),
-    [themePeek, sipPeek, calendarPeek, earningsPeek, moversPeek]
+    [sipPeek, calendarPeek, earningsPeek, moversPeek]
   );
 
   return {

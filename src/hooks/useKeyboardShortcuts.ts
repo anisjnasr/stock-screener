@@ -75,7 +75,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: "toggle-theme", key: "t", description: "Cycle theme (dark/light/system)", category: "general" },
   { id: "show-shortcuts", key: "?", shift: true, description: "Show keyboard shortcuts", category: "general" },
   { id: "nav-home", key: "1", description: "Go to Home", category: "navigation" },
-  { id: "nav-sectors", key: "2", description: "Go to Sectors / Industries", category: "navigation" },
+  { id: "nav-sectors", key: "2", description: "Go to INDUSTRIES", category: "navigation" },
   { id: "nav-scans", key: "3", description: "Go to Scans", category: "navigation" },
   { id: "nav-breadth", key: "4", description: "Go to Breadth", category: "navigation" },
   { id: "nav-premarket", key: "5", description: "Go to PRE-MARKET", category: "navigation" },
