@@ -254,6 +254,28 @@ const mmSignalCountsStmt = db.prepare(`
     AND (${MM_EFFECTIVE_CAP_SQL}) >= ?
 `);
 
+/** Skip MM/breadth upserts when indicators lag bars for the MM cap universe (avoids bad 7×ATR/EP/% rows). */
+const mmUniverseIndicatorCoverageStmt = db.prepare(`
+  SELECT
+    (SELECT COUNT(DISTINCT d.symbol) FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date = ? AND (${MM_EFFECTIVE_CAP_SQL}) >= ?) AS bar_syms,
+    (SELECT COUNT(DISTINCT i.symbol) FROM indicators_daily i
+      INNER JOIN daily_bars d ON d.symbol = i.symbol AND d.date = i.date
+      INNER JOIN companies co ON co.symbol = d.symbol AND co.is_etf = 0
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE i.date = ? AND (${MM_EFFECTIVE_CAP_SQL}) >= ?) AS ind_syms
+`);
+
+function mmUniverseIndicatorsReady(date) {
+  const row = mmUniverseIndicatorCoverageStmt.get(date, MM_MIN_MARKET_CAP_USD, date, MM_MIN_MARKET_CAP_USD);
+  const bars = Number(row?.bar_syms ?? 0);
+  const ind = Number(row?.ind_syms ?? 0);
+  if (bars < 80) return true;
+  return ind >= Math.max(200, Math.floor(bars * 0.88));
+}
+
 // Get dates to process.
 let targetDates;
 if (!fullRebuild) {
@@ -633,6 +655,12 @@ for (const r of mmRows) mmByDate.set(r.date, r);
 
 const insertAll = db.transaction(() => {
   for (const date of targetDates) {
+    if (!mmUniverseIndicatorsReady(date)) {
+      console.warn(
+        `  Skipping ${date}: indicators_daily coverage too low vs MM universe bars (wait for compute-indicators / refresh-daily).`
+      );
+      continue;
+    }
     const mm = mmByDate.get(date);
     const up4 = Number(mm?.up4pct ?? 0);
     const down4 = Number(mm?.down4pct ?? 0);

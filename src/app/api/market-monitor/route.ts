@@ -55,7 +55,7 @@ export type MarketMonitorApiPayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 22;
+const CACHE_VERSION = 23;
 const RESPONSE_CACHE_TTL_MS = 30 * 1000;
 
 const STALE_HINT =

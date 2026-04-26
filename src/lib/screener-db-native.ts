@@ -1681,10 +1681,48 @@ function getTodayDateInNewYork(): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Latest session date where `indicators_daily` has broad enough coverage to trust
+ * indicator-backed aggregates (same threshold style as daily_bars in
+ * {@link getLatestCompletedTradingDate}). Returns null when the table is missing
+ * or no date meets the bar — avoids capping the app when indicator data is absent.
+ */
+function getLatestReliableIndicatorsDateFromDb(db: BetterSqlite3Database): string | null {
+  try {
+    db.prepare("SELECT 1 FROM indicators_daily LIMIT 1").get();
+  } catch {
+    return null;
+  }
+  const companyCountRow = db.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number } | undefined;
+  const companyCount = Number(companyCountRow?.c ?? 0);
+  const minCoverage = companyCount > 0 ? Math.max(200, Math.floor(companyCount * 0.8)) : 200;
+  const nyToday = getTodayDateInNewYork();
+  const row = db
+    .prepare(
+      `
+      SELECT MAX(date) AS d FROM (
+        SELECT date, COUNT(DISTINCT symbol) AS cnt
+        FROM indicators_daily
+        WHERE date < ?
+        GROUP BY date
+        HAVING cnt >= ?
+      )
+      `
+    )
+    .get(nyToday, minCoverage) as { d: string | null } | undefined;
+  return row?.d != null && String(row.d).length >= 8 ? String(row.d) : null;
+}
+
+function minIsoTradingDate(a: string, b: string | null): string {
+  if (!b) return a;
+  return a < b ? a : b;
+}
+
 export function getLatestCompletedTradingDate(): string | null {
   const db = getDb();
   if (!db) return null;
   const latestScreenerDate = getLatestReliableScreenerDateFromDb(db);
+  const latestIndicatorDate = getLatestReliableIndicatorsDateFromDb(db);
   const nyToday = getTodayDateInNewYork();
   const companyCountRow = db.prepare("SELECT COUNT(*) AS c FROM companies").get() as { c: number } | undefined;
   const companyCount = Number(companyCountRow?.c ?? 0);
@@ -1701,13 +1739,18 @@ export function getLatestCompletedTradingDate(): string | null {
       `
     )
     .all(nyToday) as Array<{ date: string; cnt: number }>;
-  if (recent.length === 0) return latestScreenerDate;
+  if (recent.length === 0) {
+    if (!latestScreenerDate) return latestIndicatorDate;
+    return minIsoTradingDate(latestScreenerDate, latestIndicatorDate);
+  }
   const reliable = recent.find((r) => Number(r.cnt ?? 0) >= minCoverage);
   const latestDailyDate = String(reliable?.date ?? recent[0].date);
-  if (!latestScreenerDate) return latestDailyDate;
   // Use the common upper bound so endpoints that rely on quote/indicator coverage
   // don't switch to a date where those joins are still incomplete.
-  return latestDailyDate < latestScreenerDate ? latestDailyDate : latestScreenerDate;
+  let upper = latestDailyDate;
+  upper = minIsoTradingDate(upper, latestScreenerDate);
+  upper = minIsoTradingDate(upper, latestIndicatorDate);
+  return upper;
 }
 
 export function getWeightedCategoryPerformance(
