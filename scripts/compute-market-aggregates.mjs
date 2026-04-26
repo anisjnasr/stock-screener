@@ -226,6 +226,35 @@ for (const stmt of [
   }
 }
 
+// Cached / older screener.db files may predate these columns; refresh-daily adds them
+// but this script also runs when "Skip daily" is set in CI. Align schema before PREPARE.
+(function ensureIndicatorsDailyMmColumns() {
+  try {
+    db.prepare("SELECT 1 FROM indicators_daily LIMIT 1").get();
+  } catch {
+    console.warn(
+      "[compute-market-aggregates] indicators_daily missing or unreadable — run refresh-daily or init-screener-db."
+    );
+    return;
+  }
+  const indCols = new Set(db.prepare("PRAGMA table_info(indicators_daily)").all().map((r) => r.name));
+  for (const col of [
+    "atr_units_above_ema50",
+    "atr_multiple_sma50",
+    "avg_volume_20d",
+  ]) {
+    if (!indCols.has(col)) {
+      db.exec(`ALTER TABLE indicators_daily ADD COLUMN ${col} REAL`);
+      console.log(`[compute-market-aggregates] Added indicators_daily.${col}`);
+      indCols.add(col);
+    }
+  }
+  if (!indCols.has("episodic_pivot")) {
+    db.exec("ALTER TABLE indicators_daily ADD COLUMN episodic_pivot INTEGER");
+    console.log("[compute-market-aggregates] Added indicators_daily.episodic_pivot");
+  }
+})();
+
 const mmUniverseSymbolsStmt = db.prepare(`
   SELECT DISTINCT d.symbol AS symbol
   FROM daily_bars d
