@@ -178,6 +178,14 @@ jobs:
         run: node scripts/backfill-quote-derived-from-bars.mjs
         timeout-minutes: 30
 
+      # Full MM rebuild needs indicator history refreshed too (7x ATR / EP live in indicators_daily).
+      - name: Recompute indicators history for full MM rebuild
+        if: ${{ github.event.inputs.full_mm_recompute == 'true' }}
+        run: |
+          echo "full_mm_recompute=true: rebuilding indicators for last ~2y"
+          node scripts/compute-indicators-from-bars.mjs --years 2
+        timeout-minutes: 240
+
       # Precompute market_monitor_daily and breadth_daily (SQLite only; no Massive).
       # Default: incremental (--days 1) when MM table is warm; cold DB uses --days 504.
       # Optional workflow input full_mm_recompute runs bounded --all (~2y of dates in script).
@@ -207,6 +215,38 @@ jobs:
             node scripts/compute-market-aggregates.mjs --days 1
           fi
         timeout-minutes: 180
+
+      - name: Full MM signal sanity (7x ATR / EP)
+        if: ${{ github.event.inputs.full_mm_recompute == 'true' }}
+        run: |
+          node -e "
+          const Database = require('better-sqlite3');
+          const db = new Database('data/screener.db', { readonly: true });
+          try {
+            const row = db.prepare(
+              \`SELECT
+                 COALESCE(SUM(COALESCE(count_7x_atr_50d, 0)), 0) AS s7,
+                 COALESCE(SUM(COALESCE(count_episodic_pivot, 0)), 0) AS sep,
+                 COUNT(*) AS n
+               FROM (
+                 SELECT count_7x_atr_50d, count_episodic_pivot
+                 FROM market_monitor_daily
+                 ORDER BY date DESC
+                 LIMIT 60
+               )\`
+            ).get();
+            console.log('Full MM signal sanity (last 60 rows):', row);
+            const sum7 = Number(row?.s7 ?? 0);
+            const sumEp = Number(row?.sep ?? 0);
+            const n = Number(row?.n ?? 0);
+            if (n > 0 && sum7 === 0 && sumEp === 0) {
+              console.error('::error::full_mm_recompute produced all-zero 7x ATR and EP counts in recent rows. Indicators backfill likely failed or stale.');
+              process.exit(1);
+            }
+          } finally {
+            db.close();
+          }
+          "
 
       - name: MM NNH sanity (latest row in DB)
         run: |
