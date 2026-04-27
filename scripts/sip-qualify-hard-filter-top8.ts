@@ -29,8 +29,8 @@ function sipScanFromBody(body: unknown): TradingViewScanParams {
 
 async function main() {
   const scan = sipScanFromBody({});
-  console.log("Loading TradingView (bidirectional)…");
-  const base = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP, minAbsGapPct: 2 });
+  console.log("Loading TradingView SIP scan…");
+  const base = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP });
 
   const earnings = await getTickersWithEarningsInLast24Hours();
   const merged: GapperRow[] = base.rows.map((r) => ({

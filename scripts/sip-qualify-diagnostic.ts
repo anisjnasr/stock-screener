@@ -30,8 +30,8 @@ function failReason(r: Pick<GapperRow, "gapPct" | "pmVolume" | "avgVolume90d">):
 async function main() {
   const scan = sipScanFromBody({});
   console.log("SIP scan params:", JSON.stringify(scan, null, 2));
-  const { rows } = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP, minAbsGapPct: 2 });
-  console.log(`\nRaw rows from bidirectional TV scan: ${rows.length}`);
+  const { rows } = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP });
+  console.log(`\nRaw rows from SIP TV scan: ${rows.length}`);
 
   const volOk = rows.filter(isSipVolumeCandidate);
   console.log(`Volume-qualified (|gap|≥${SIP_MIN_ABS_GAP_PCT}%, PM≥${SIP_MIN_PM_VOLUME}, PM≥${SIP_MIN_PM_VOL_FRAC_OF_ADV * 100}% of 90d ADV): ${volOk.length}`);

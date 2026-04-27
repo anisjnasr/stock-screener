@@ -29,7 +29,7 @@ async function main() {
   }
 
   const scan = sipScanFromBody({});
-  const base = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP, minAbsGapPct: 2 });
+  const base = await loadGappersSipScan(scan, { rowLimit: TRADINGVIEW_GAP_SCAN_ROW_CAP });
   const earnings = await getTickersWithEarningsInLast24Hours();
   const merged: GapperRow[] = base.rows.map((r) => ({
     ...r,
