@@ -516,6 +516,40 @@ jobs:
           poll_sync_status "new-sync" 320 30 || exit 1
           echo "DB sync completed successfully on Render"
 
+      - name: Verify live MM signals after sync
+        if: ${{ github.event.inputs.full_mm_recompute == 'true' }}
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+        run: |
+          if [ -z "$RENDER_APP_URL" ]; then
+            echo "Skipping live MM signal verification: RENDER_APP_URL not configured"
+            exit 0
+          fi
+          URL="${RENDER_APP_URL}/api/market-monitor"
+          echo "Checking live market monitor at $URL"
+          HTTP_CODE=$(curl -sS -o /tmp/live-mm.json -w "%{http_code}" --max-time 180 "$URL")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Live market monitor check failed with HTTP $HTTP_CODE"
+            cat /tmp/live-mm.json || true
+            exit 1
+          fi
+          node -e "
+          const fs = require('fs');
+          const payload = JSON.parse(fs.readFileSync('/tmp/live-mm.json', 'utf8'));
+          const rows = Array.isArray(payload?.rows) ? payload.rows.slice(0, 60) : [];
+          if (!rows.length) {
+            console.error('::error::Live market monitor returned no rows.');
+            process.exit(1);
+          }
+          const sum7 = rows.reduce((a, r) => a + Number(r?.count7xAtr50d ?? 0), 0);
+          const sumEp = rows.reduce((a, r) => a + Number(r?.countEpisodicPivot ?? 0), 0);
+          console.log('Live MM signal sanity (last', rows.length, 'rows):', { sum7, sumEp });
+          if (sum7 === 0 && sumEp === 0) {
+            console.error('::error::Live /api/market-monitor still shows all-zero 7x ATR and EP after sync.');
+            process.exit(1);
+          }
+          "
+
       - name: Send completion email via Formspree
         if: ${{ always() }}
         env:
