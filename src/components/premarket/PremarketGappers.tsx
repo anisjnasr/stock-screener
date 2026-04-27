@@ -13,7 +13,10 @@ import {
 import type { GapperRow, GappersResponse } from "@/types/gappers";
 import {
   gapperFilterStateToRequestBody,
+  loadSavedGapperFilterPresetsFromStorage,
+  saveSavedGapperFilterPresetsToStorage,
   type GapperFilterState,
+  type SavedGapperFilterPreset,
   saveGapperFiltersToStorage,
 } from "@/components/premarket/gapper-filters-storage";
 import GapperFilterControls from "@/components/premarket/GapperFilterControls";
@@ -50,6 +53,13 @@ function cmpStr(a: string | null, b: string | null, asc: boolean): number {
   const bs = (b ?? "").toLowerCase();
   const c = as.localeCompare(bs);
   return asc ? c : -c;
+}
+
+function makePresetId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function compareGapperRows(a: GapperRow, b: GapperRow, key: GapperSortKey, asc: boolean): number {
@@ -156,6 +166,8 @@ export default function PremarketGappers({
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
   /** Row count from last successful scan (updates on Apply + Refresh). */
   const [resultsCount, setResultsCount] = useState<number | null>(null);
+  const [savedPresets, setSavedPresets] = useState<SavedGapperFilterPreset[]>(() => loadSavedGapperFilterPresetsFromStorage());
+  const [selectedSavedPresetId, setSelectedSavedPresetId] = useState<string | null>(null);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
     if (sortKey === key) {
@@ -214,6 +226,53 @@ export default function PremarketGappers({
     void run(next);
   };
 
+  const applySavedPreset = useCallback((presetId: string) => {
+    const preset = savedPresets.find((p) => p.id === presetId);
+    if (!preset) return;
+    setFilters(preset.filters);
+    saveGapperFiltersToStorage(preset.filters);
+    setSelectedSavedPresetId(preset.id);
+    void run(preset.filters);
+  }, [savedPresets, setFilters, run]);
+
+  const saveCurrentPreset = useCallback((name: string, next: GapperFilterState) => {
+    const normalizedName = name.trim();
+    if (!normalizedName) return;
+    const normalizedFilters: GapperFilterState = { ...next, capPreset: "custom" };
+    const existing = savedPresets.find((p) => p.name.toLowerCase() === normalizedName.toLowerCase());
+    const entry: SavedGapperFilterPreset = existing
+      ? { ...existing, name: normalizedName, filters: normalizedFilters }
+      : { id: makePresetId(), name: normalizedName, filters: normalizedFilters };
+    const nextList = [entry, ...savedPresets.filter((p) => p.id !== entry.id)];
+    setSavedPresets(nextList);
+    saveSavedGapperFilterPresetsToStorage(nextList);
+    setFilters(normalizedFilters);
+    saveGapperFiltersToStorage(normalizedFilters);
+    setSelectedSavedPresetId(entry.id);
+  }, [savedPresets, setFilters]);
+
+  const renameSavedPreset = useCallback((presetId: string, nextName: string) => {
+    const normalizedName = nextName.trim();
+    if (!normalizedName) return;
+    const duplicate = savedPresets.find(
+      (p) => p.id !== presetId && p.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+    if (duplicate) {
+      window.alert(`A preset named "${duplicate.name}" already exists.`);
+      return;
+    }
+    const nextList = savedPresets.map((p) => (p.id === presetId ? { ...p, name: normalizedName } : p));
+    setSavedPresets(nextList);
+    saveSavedGapperFilterPresetsToStorage(nextList);
+  }, [savedPresets]);
+
+  const deleteSavedPreset = useCallback((presetId: string) => {
+    const nextList = savedPresets.filter((p) => p.id !== presetId);
+    setSavedPresets(nextList);
+    saveSavedGapperFilterPresetsToStorage(nextList);
+    setSelectedSavedPresetId((cur) => (cur === presetId ? null : cur));
+  }, [savedPresets]);
+
   return (
     <div
       className="rounded border"
@@ -228,8 +287,18 @@ export default function PremarketGappers({
 
       <GapperFilterControls
         filters={filters}
-        onFiltersChange={setFilters}
+        onFiltersChange={(next) => {
+          setSelectedSavedPresetId(null);
+          setFilters(next);
+        }}
         onPrimaryAction={applyFilters}
+        savedPresets={savedPresets}
+        selectedSavedPresetId={selectedSavedPresetId}
+        onSelectSavedPresetId={setSelectedSavedPresetId}
+        onApplySavedPreset={applySavedPreset}
+        onSaveCurrentPreset={saveCurrentPreset}
+        onRenameSavedPreset={renameSavedPreset}
+        onDeleteSavedPreset={deleteSavedPreset}
         primaryLabel="Apply"
         loading={loading}
         onSecondaryRefresh={() => void run(filters)}

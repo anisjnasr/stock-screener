@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties } from "react";
 import type { GapperRow } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { SipCatalyst } from "@/types/sip-catalyst";
@@ -15,6 +15,39 @@ function fmtPct(n: number): string {
 }
 
 const NEWS_PILL_MAX = 3;
+const NEWS_SOURCE_FIXED_HUES: Record<string, number> = {
+  "insider monkey": 118,
+  "simply wall st.": 136,
+  "simply wall st": 136,
+  "reuters": 28,
+  "marketbeat": 285,
+  "motley fool": 200,
+  "investing.com": 188,
+  "stockstory": 340,
+  "yahoo finance": 255,
+  "mt newswires": 192,
+  "investor's business daily": 38,
+  "the wall street journal": 44,
+  "quartz": 170,
+};
+
+function sourceHash(input: string): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    h = (h * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function newsPillStyleForHue(hue: number): CSSProperties {
+  return {
+    fontFamily: "var(--ws-font-sans)",
+    fontSize: "var(--ws-fs-caption)",
+    border: `1px solid hsl(${hue} 70% 36%)`,
+    background: `hsl(${hue} 48% 13%)`,
+    color: `hsl(${hue} 82% 64%)`,
+  };
+}
 
 function newsSourceLabel(it: PythonNewsItem): string {
   const pub = it.publisher?.trim();
@@ -32,7 +65,13 @@ function newsSourceLabel(it: PythonNewsItem): string {
   return "News";
 }
 
-function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
+function SourceNewsPills({
+  items,
+  sourceHueByLabel,
+}: {
+  items: PythonNewsItem[];
+  sourceHueByLabel: ReadonlyMap<string, number>;
+}) {
   const slice = items.slice(0, NEWS_PILL_MAX);
   if (slice.length === 0) return null;
   return (
@@ -42,14 +81,9 @@ function SourceNewsPills({ items }: { items: PythonNewsItem[] }) {
         const href = it.link?.trim();
         const title = it.title?.trim() || label;
         const baseClass =
-          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 font-semibold no-underline shadow-[inset_0_0_0_1px_rgba(34,211,238,0.10)] transition-colors";
-        const pillStyle: CSSProperties = {
-          fontFamily: "var(--ws-font-sans)",
-          fontSize: "var(--ws-fs-caption)",
-          border: "1px solid rgba(34, 211, 238, 0.36)",
-          background: "rgba(34, 211, 238, 0.12)",
-          color: "var(--accent-cyan)",
-        };
+          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 font-semibold no-underline transition-colors";
+        const hue = sourceHueByLabel.get(label) ?? (sourceHash(label.toLowerCase()) % 360);
+        const pillStyle = newsPillStyleForHue(hue);
         if (href) {
           return (
             <a
@@ -99,6 +133,30 @@ export default function SipPlayRowsTable({
   mode,
   archiveFooterNote,
 }: SipPlayRowsTableProps) {
+  const sourceHueByLabel = useMemo(() => {
+    const labels = new Set<string>();
+    if (news) {
+      for (const items of Object.values(news)) {
+        for (const it of items) labels.add(newsSourceLabel(it));
+      }
+    }
+    const out = new Map<string, number>();
+    const used = new Set<number>();
+    const sortedLabels = [...labels].sort((a, b) => a.localeCompare(b));
+    for (const label of sortedLabels) {
+      const fixed = NEWS_SOURCE_FIXED_HUES[label.toLowerCase()];
+      const base = fixed ?? (sourceHash(label.toLowerCase()) % 360);
+      let hue = base;
+      while (used.has(hue)) {
+        // Prime step size to reduce repeated collisions and keep hues spread.
+        hue = (hue + 29) % 360;
+      }
+      used.add(hue);
+      out.set(label, hue);
+    }
+    return out;
+  }, [news]);
+
   const n = rows.length;
   const displayError =
     (newsError ? `Headlines request failed: ${newsError}` : null) ??
@@ -198,7 +256,7 @@ export default function SipPlayRowsTable({
                   {rationale}
                 </p>
                 {rowNews.length > 0 ? (
-                  <SourceNewsPills items={rowNews} />
+                  <SourceNewsPills items={rowNews} sourceHueByLabel={sourceHueByLabel} />
                 ) : showNewsEmpty ? (
                   <p className="pm-site-caption m-0 mt-1" style={{ color: "var(--text-faint)" }}>
                     No headlines in window.

@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const base = await unstable_cache(
-      async () => loadGappersSipScan(scan, { rowLimit: SIP_SCAN_ROW_CAP, minAbsGapPct: scan.minGapPct }),
+      async () => loadGappersSipScan(scan, { rowLimit: SIP_SCAN_ROW_CAP }),
       ["premarket-sip-gappers-v2", cacheKey],
       { revalidate: 30 }
     )();

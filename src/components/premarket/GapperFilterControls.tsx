@@ -5,6 +5,7 @@ import {
   GAPPER_CAP_PRESET_MC,
   type GapperCapPreset,
   type GapperFilterState,
+  type SavedGapperFilterPreset,
 } from "@/components/premarket/gapper-filters-storage";
 import {
   abbreviateUsdFilterDisplay,
@@ -17,6 +18,13 @@ type GapperFilterControlsProps = {
   filters: GapperFilterState;
   onFiltersChange: (next: GapperFilterState) => void;
   onPrimaryAction: (next: GapperFilterState) => void;
+  savedPresets?: SavedGapperFilterPreset[];
+  selectedSavedPresetId?: string | null;
+  onSelectSavedPresetId?: (presetId: string | null) => void;
+  onApplySavedPreset?: (presetId: string) => void;
+  onSaveCurrentPreset?: (name: string, next: GapperFilterState) => void;
+  onRenameSavedPreset?: (presetId: string, nextName: string) => void;
+  onDeleteSavedPreset?: (presetId: string) => void;
   primaryLabel: string;
   loading?: boolean;
   onSecondaryRefresh?: () => void;
@@ -57,6 +65,13 @@ export default function GapperFilterControls({
   filters,
   onFiltersChange,
   onPrimaryAction,
+  savedPresets,
+  selectedSavedPresetId = null,
+  onSelectSavedPresetId,
+  onApplySavedPreset,
+  onSaveCurrentPreset,
+  onRenameSavedPreset,
+  onDeleteSavedPreset,
   primaryLabel,
   loading = false,
   onSecondaryRefresh,
@@ -71,6 +86,15 @@ export default function GapperFilterControls({
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
   const [minVolPctDraft, setMinVolPctDraft] = useState<string | null>(null);
 
+  const selectedPresetValue =
+    selectedSavedPresetId && (savedPresets ?? []).some((p) => p.id === selectedSavedPresetId)
+      ? `saved:${selectedSavedPresetId}`
+      : filters.capPreset === "custom"
+        ? "custom"
+        : filters.capPreset;
+  const selectedSavedPreset =
+    selectedSavedPresetId && savedPresets ? savedPresets.find((p) => p.id === selectedSavedPresetId) ?? null : null;
+
   const clearDrafts = () => {
     setMcapMinDraft(null);
     setMcapMaxDraft(null);
@@ -82,6 +106,7 @@ export default function GapperFilterControls({
   };
 
   const setCustomField = <K extends keyof GappersRequestBody>(key: K, value: number) => {
+    onSelectSavedPresetId?.(null);
     onFiltersChange({ ...filters, [key]: value, capPreset: "custom" });
   };
 
@@ -112,7 +137,7 @@ export default function GapperFilterControls({
     const minGapPct = minGapDraft != null ? parseDecimalBlur(minGapDraft) : null;
     if (minGapPct != null) next = { ...next, minGapPct: Math.max(0, minGapPct), capPreset: "custom" };
 
-    const minPmVolume = minPmVolDraft != null ? parseDecimalBlur(minPmVolDraft) : null;
+    const minPmVolume = minPmVolDraft != null ? parseFlexibleFilterNumber(minPmVolDraft) : null;
     if (minPmVolume != null) next = { ...next, minPmVolume: Math.max(0, Math.round(minPmVolume)), capPreset: "custom" };
 
     const minAvgVolume = minAvgVolDraft != null ? parseFlexibleFilterNumber(minAvgVolDraft) : null;
@@ -127,14 +152,48 @@ export default function GapperFilterControls({
   const handlePrimaryAction = () => {
     const next = filtersWithDraftValues();
     clearDrafts();
+    onSelectSavedPresetId?.(null);
     onFiltersChange(next);
     onPrimaryAction(next);
   };
 
   const applyPreset = (preset: Exclude<GapperCapPreset, "custom">) => {
     clearDrafts();
+    onSelectSavedPresetId?.(null);
     const { min, max } = GAPPER_CAP_PRESET_MC[preset];
     onFiltersChange({ ...filters, capPreset: preset, minMarketCap: min, maxMarketCap: max });
+  };
+
+  const handleSavePreset = () => {
+    if (!onSaveCurrentPreset) return;
+    const next = filtersWithDraftValues();
+    clearDrafts();
+    onSelectSavedPresetId?.(null);
+    onFiltersChange(next);
+    const defaultName = selectedSavedPresetId
+      ? (savedPresets ?? []).find((p) => p.id === selectedSavedPresetId)?.name ?? ""
+      : "";
+    const raw = window.prompt("Save filter preset as:", defaultName);
+    if (raw == null) return;
+    const name = raw.trim();
+    if (!name) return;
+    onSaveCurrentPreset(name, next);
+  };
+
+  const handleRenamePreset = () => {
+    if (!onRenameSavedPreset || !selectedSavedPreset) return;
+    const raw = window.prompt("Rename filter preset:", selectedSavedPreset.name);
+    if (raw == null) return;
+    const nextName = raw.trim();
+    if (!nextName) return;
+    onRenameSavedPreset(selectedSavedPreset.id, nextName);
+  };
+
+  const handleDeletePreset = () => {
+    if (!onDeleteSavedPreset || !selectedSavedPreset) return;
+    const ok = window.confirm(`Delete saved preset "${selectedSavedPreset.name}"?`);
+    if (!ok) return;
+    onDeleteSavedPreset(selectedSavedPreset.id);
   };
 
   return (
@@ -142,10 +201,19 @@ export default function GapperFilterControls({
       <div className="flex items-center gap-1.5">
         <span style={gapFilterLabelStyle}>Preset</span>
         <select
-          value={filters.capPreset === "custom" ? "custom" : filters.capPreset}
+          value={selectedPresetValue}
           onChange={(e) => {
             const value = e.target.value;
+            if (value.startsWith("saved:")) {
+              clearDrafts();
+              const id = value.slice("saved:".length);
+              if (!id) return;
+              onSelectSavedPresetId?.(id);
+              onApplySavedPreset?.(id);
+              return;
+            }
             if (value === "custom") {
+              onSelectSavedPresetId?.(null);
               onFiltersChange({ ...filters, capPreset: "custom" });
               return;
             }
@@ -159,7 +227,78 @@ export default function GapperFilterControls({
           <option value="large">Large ($10B-$200B)</option>
           <option value="mega">Mega ($200B+)</option>
           <option value="custom">Custom</option>
+          {savedPresets && savedPresets.length > 0 ? (
+            <optgroup label="Saved">
+              {savedPresets.map((preset) => (
+                <option key={preset.id} value={`saved:${preset.id}`}>
+                  {preset.name}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
+        {onSaveCurrentPreset ? (
+          <button
+            type="button"
+            onClick={handleSavePreset}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)]"
+            style={{
+              borderColor: "var(--border-default)",
+              color: "var(--text-secondary)",
+              background: "transparent",
+            }}
+            aria-label="Save current filters as preset"
+            title="Save current filters as preset"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M4 4h13l3 3v13H4z" />
+              <path d="M8 4v6h8V4" />
+              <path d="M8 20v-6h8v6" />
+            </svg>
+          </button>
+        ) : null}
+        {onRenameSavedPreset ? (
+          <button
+            type="button"
+            onClick={handleRenamePreset}
+            disabled={!selectedSavedPreset}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            style={{
+              borderColor: "var(--border-default)",
+              color: "var(--text-secondary)",
+              background: "transparent",
+            }}
+            aria-label="Rename selected saved preset"
+            title={selectedSavedPreset ? `Rename "${selectedSavedPreset.name}"` : "Select a saved preset to rename"}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 17.25V21h3.75L18.8 8.95l-3.75-3.75z" />
+              <path d="M14.98 5.2l3.75 3.75" />
+            </svg>
+          </button>
+        ) : null}
+        {onDeleteSavedPreset ? (
+          <button
+            type="button"
+            onClick={handleDeletePreset}
+            disabled={!selectedSavedPreset}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            style={{
+              borderColor: "var(--border-default)",
+              color: "var(--text-secondary)",
+              background: "transparent",
+            }}
+            aria-label="Delete selected saved preset"
+            title={selectedSavedPreset ? `Delete "${selectedSavedPreset.name}"` : "Select a saved preset to delete"}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M6 6l1 14h10l1-14" />
+              <path d="M10 10v7M14 10v7" />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       <div className="h-5 w-px shrink-0 bg-[#333]" aria-hidden />
@@ -179,6 +318,7 @@ export default function GapperFilterControls({
             setMcapMinDraft(null);
             const value = parseFlexibleFilterNumber(e.currentTarget.value);
             if (value == null) return;
+            onSelectSavedPresetId?.(null);
             onFiltersChange({
               ...filters,
               minMarketCap: Math.min(value, filters.maxMarketCap ?? 10_000_000_000_000),
@@ -202,6 +342,7 @@ export default function GapperFilterControls({
             setMcapMaxDraft(null);
             const value = parseFlexibleFilterNumber(e.currentTarget.value);
             if (value == null) return;
+            onSelectSavedPresetId?.(null);
             onFiltersChange({
               ...filters,
               maxMarketCap: Math.max(value, filters.minMarketCap ?? 0),
@@ -257,12 +398,12 @@ export default function GapperFilterControls({
           autoComplete="off"
           className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
           style={{ ...gapFilterInputStyle, width: 60 }}
-          value={minPmVolDraft === null ? String(filters.minPmVolume) : minPmVolDraft}
-          onFocus={() => setMinPmVolDraft(String(filters.minPmVolume))}
+          value={minPmVolDraft ?? abbreviateUsdFilterDisplay(filters.minPmVolume ?? 0)}
+          onFocus={() => setMinPmVolDraft(formatUsdIntInputDisplay(filters.minPmVolume))}
           onChange={(e) => setMinPmVolDraft(e.target.value)}
           onBlur={(e) => {
             setMinPmVolDraft(null);
-            const value = parseDecimalBlur(e.currentTarget.value);
+            const value = parseFlexibleFilterNumber(e.currentTarget.value);
             if (value != null) setCustomField("minPmVolume", Math.max(0, Math.round(value)));
           }}
         />

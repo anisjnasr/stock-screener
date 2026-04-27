@@ -7,9 +7,12 @@ import type { StocksInPlaySuccess } from "@/types/stocks-in-play";
 import type { SipCatalyst } from "@/types/sip-catalyst";
 import {
   gapperFilterStateToRequestBody,
+  loadSavedSipFilterPresetsFromStorage,
   loadSipGapperFiltersFromStorage,
+  saveSavedSipFilterPresetsToStorage,
   saveSipGapperFiltersToStorage,
   type GapperFilterState,
+  type SavedGapperFilterPreset,
 } from "@/components/premarket/gapper-filters-storage";
 import CollapsibleSection from "@/components/premarket/CollapsibleSection";
 import GapperFilterControls from "@/components/premarket/GapperFilterControls";
@@ -19,6 +22,13 @@ import { recordSipSnapshotForArchive } from "@/lib/premarket/sip-archive";
 import { SIP_MAX_TICKERS } from "@/lib/premarket/sip-constants";
 
 const SIP_FIRST_AUTO_YMD_KEY = "premarket-sip-first-auto-ymd";
+
+function makePresetId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 type StocksInPlayProps = {
   sectionLabel?: string;
@@ -45,6 +55,8 @@ export default function StocksInPlay({
   const [loading, setLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sipFilters, setSipFilters] = useState<GapperFilterState>(() => loadSipGapperFiltersFromStorage());
+  const [savedPresets, setSavedPresets] = useState<SavedGapperFilterPreset[]>(() => loadSavedSipFilterPresetsFromStorage());
+  const [selectedSavedPresetId, setSelectedSavedPresetId] = useState<string | null>(null);
   const filtersRef = useRef(sipFilters);
   filtersRef.current = sipFilters;
 
@@ -113,6 +125,7 @@ export default function StocksInPlay({
   }, [collapsed, load]);
 
   const updateSipFilters = useCallback((next: GapperFilterState) => {
+    setSelectedSavedPresetId(null);
     setSipFilters(next);
     saveSipGapperFiltersToStorage(next);
     window.dispatchEvent(new CustomEvent("premarket-sip-filters-changed"));
@@ -128,6 +141,56 @@ export default function StocksInPlay({
     const ac = new AbortController();
     void load(ac.signal, gapperFilterStateToRequestBody(next));
   }, [load, updateSipFilters]);
+
+  const applySavedPreset = useCallback((presetId: string) => {
+    const preset = savedPresets.find((p) => p.id === presetId);
+    if (!preset) return;
+    setSelectedSavedPresetId(preset.id);
+    setSipFilters(preset.filters);
+    saveSipGapperFiltersToStorage(preset.filters);
+    window.dispatchEvent(new CustomEvent("premarket-sip-filters-changed"));
+    const ac = new AbortController();
+    void load(ac.signal, gapperFilterStateToRequestBody(preset.filters));
+  }, [load, savedPresets]);
+
+  const saveCurrentPreset = useCallback((name: string, next: GapperFilterState) => {
+    const normalizedName = name.trim();
+    if (!normalizedName) return;
+    const normalizedFilters: GapperFilterState = { ...next, capPreset: "custom" };
+    const existing = savedPresets.find((p) => p.name.toLowerCase() === normalizedName.toLowerCase());
+    const entry: SavedGapperFilterPreset = existing
+      ? { ...existing, name: normalizedName, filters: normalizedFilters }
+      : { id: makePresetId(), name: normalizedName, filters: normalizedFilters };
+    const nextList = [entry, ...savedPresets.filter((p) => p.id !== entry.id)];
+    setSavedPresets(nextList);
+    saveSavedSipFilterPresetsToStorage(nextList);
+    setSelectedSavedPresetId(entry.id);
+    setSipFilters(normalizedFilters);
+    saveSipGapperFiltersToStorage(normalizedFilters);
+    window.dispatchEvent(new CustomEvent("premarket-sip-filters-changed"));
+  }, [savedPresets]);
+
+  const renameSavedPreset = useCallback((presetId: string, nextName: string) => {
+    const normalizedName = nextName.trim();
+    if (!normalizedName) return;
+    const duplicate = savedPresets.find(
+      (p) => p.id !== presetId && p.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+    if (duplicate) {
+      window.alert(`A preset named "${duplicate.name}" already exists.`);
+      return;
+    }
+    const nextList = savedPresets.map((p) => (p.id === presetId ? { ...p, name: normalizedName } : p));
+    setSavedPresets(nextList);
+    saveSavedSipFilterPresetsToStorage(nextList);
+  }, [savedPresets]);
+
+  const deleteSavedPreset = useCallback((presetId: string) => {
+    const nextList = savedPresets.filter((p) => p.id !== presetId);
+    setSavedPresets(nextList);
+    saveSavedSipFilterPresetsToStorage(nextList);
+    setSelectedSavedPresetId((cur) => (cur === presetId ? null : cur));
+  }, [savedPresets]);
 
   return (
     <CollapsibleSection
@@ -183,6 +246,13 @@ export default function StocksInPlay({
             filters={sipFilters}
             onFiltersChange={updateSipFilters}
             onPrimaryAction={refreshSipWithFilters}
+            savedPresets={savedPresets}
+            selectedSavedPresetId={selectedSavedPresetId}
+            onSelectSavedPresetId={setSelectedSavedPresetId}
+            onApplySavedPreset={applySavedPreset}
+            onSaveCurrentPreset={saveCurrentPreset}
+            onRenameSavedPreset={renameSavedPreset}
+            onDeleteSavedPreset={deleteSavedPreset}
             primaryLabel="Refresh SIP"
             loading={loading}
           />

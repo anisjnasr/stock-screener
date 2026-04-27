@@ -1,7 +1,6 @@
 import {
   DEFAULT_TRADINGVIEW_SCAN,
   fetchTradingViewGappers,
-  fetchTradingViewGappersBidirectional,
   TRADINGVIEW_GAP_SCAN_ROW_CAP,
   type TradingViewScanParams,
 } from "@/lib/sources/tradingViewScreener";
@@ -42,16 +41,15 @@ export async function loadGappersScanOnly(
   }
 }
 
-/** Bidirectional gap scan (|gap| ≥ minAbs) for Stocks in Play candidate pool. */
+/** Positive-gap scan (gap % ≥ minGapPct) for Stocks in Play candidate pool. */
 export async function loadGappersSipScan(
   scan: TradingViewScanParams,
-  init?: { signal?: AbortSignal; rowLimit?: number; minAbsGapPct?: number }
+  init?: { signal?: AbortSignal; rowLimit?: number }
 ): Promise<{ source: "tradingview"; rows: Omit<GapperRow, "earningsRecent24h">[] }> {
   try {
-    const raw = await fetchTradingViewGappersBidirectional(scan, {
+    const raw = await fetchTradingViewGappers(scan, {
       signal: init?.signal,
       rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
-      minAbsGapPct: init?.minAbsGapPct ?? 2,
     });
     const rows = applyVolPctFilter(applyMcapFilter(raw, scan.minMarketCap, scan.maxMarketCap), scan.minVolPct);
     return { source: "tradingview", rows };
