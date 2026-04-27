@@ -5,10 +5,13 @@ import { useCallback, useEffect, useId, useState } from "react";
 import SipPlayRowsTable from "@/components/premarket/SipPlayRowsTable";
 import {
   formatSipArchiveRowDate,
+  formatSipArchiveRowDateEt,
+  formatSipArchiveTickerSummary,
+  getSipArchiveRowKey,
   loadSipArchiveEntries,
-  msUntilNextDubaiMidnight,
+  msUntilNext2amDubai,
   SIP_ARCHIVE_LS_KEY,
-  tryAppendSipArchiveForCompletedUaeDay,
+  tryAppendSipArchiveAt2amDubai,
   type SipArchiveEntry,
 } from "@/lib/premarket/sip-archive";
 
@@ -18,23 +21,19 @@ type SipArchiveSectionProps = {
   onOpenTickerInLists?: (sym: string) => void;
 };
 
-function joinTickers(tickers: string[]): string {
-  return tickers.length ? tickers.join(" - ") : "—";
-}
-
 export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInLists }: SipArchiveSectionProps) {
   const uid = useId();
   const headerId = `premarket-header-sipArchive-${uid}`;
   const panelId = `premarket-panel-sipArchive-${uid}`;
   const [entries, setEntries] = useState<SipArchiveEntry[]>([]);
-  const [expandedRowYmd, setExpandedRowYmd] = useState<string | null>(null);
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const refreshEntries = useCallback(() => {
     setEntries(loadSipArchiveEntries());
   }, []);
 
   const runArchivePass = useCallback(async () => {
-    await tryAppendSipArchiveForCompletedUaeDay();
+    await tryAppendSipArchiveAt2amDubai();
     refreshEntries();
   }, [refreshEntries]);
 
@@ -49,18 +48,18 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
     void runArchivePass();
     const intervalId = window.setInterval(() => void runArchivePass(), 60_000);
 
-    const scheduleMidnight = () => {
-      const ms = msUntilNextDubaiMidnight(10);
+    const scheduleNext2am = () => {
+      const ms = msUntilNext2amDubai();
       return window.setTimeout(() => {
         void runArchivePass();
-        midnightId = scheduleMidnight();
+        dubai2amId = scheduleNext2am();
       }, ms);
     };
-    let midnightId = scheduleMidnight();
+    let dubai2amId = scheduleNext2am();
 
     return () => {
       window.clearInterval(intervalId);
-      window.clearTimeout(midnightId);
+      window.clearTimeout(dubai2amId);
     };
   }, [runArchivePass]);
 
@@ -72,7 +71,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
     return () => window.removeEventListener("storage", onStorage);
   }, [refreshEntries]);
 
-  const listMaxHeight = expandedRowYmd ? "none" : "min(24rem, 55vh)";
+  const listMaxHeight = expandedRowKey ? "none" : "min(24rem, 55vh)";
 
   return (
     <section
@@ -131,7 +130,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
             className="border-t px-3 py-2"
             style={{
               maxHeight: listMaxHeight,
-              overflowY: expandedRowYmd ? "visible" : "auto",
+              overflowY: expandedRowKey ? "visible" : "auto",
               borderColor: "var(--border-default)",
               color: "var(--text-secondary)",
               fontFamily: "var(--ws-font-sans)",
@@ -141,11 +140,14 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
             {entries.length > 0 ? (
               <div className="flex min-w-0 flex-col gap-0">
                 {entries.map((row) => {
-                  const open = expandedRowYmd === row.uaeYmd;
+                  const rowKey = getSipArchiveRowKey(row);
+                  const open = expandedRowKey === rowKey;
                   const detail = row.detail;
+                  const dateLabel =
+                    row.archiveDayEt != null ? formatSipArchiveRowDateEt(row.archiveDayEt) : formatSipArchiveRowDate(row.uaeYmd);
                   return (
                     <div
-                      key={row.uaeYmd}
+                      key={rowKey}
                       className="border-b border-[color:var(--border-default)] last:border-b-0"
                     >
                       <button
@@ -153,7 +155,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
                         className="pm-focus grid w-full min-w-0 grid-cols-[1.25rem_minmax(6.5rem,9rem)_1fr] items-baseline gap-x-2 gap-y-1 py-2 text-left transition-colors hover:bg-[color:var(--bg-elevated)] sm:grid-cols-[1.25rem_minmax(6.5rem,9rem)_1fr]"
                         style={{ color: "var(--text-primary)" }}
                         aria-expanded={open}
-                        onClick={() => setExpandedRowYmd((cur) => (cur === row.uaeYmd ? null : row.uaeYmd))}
+                        onClick={() => setExpandedRowKey((cur) => (cur === rowKey ? null : rowKey))}
                       >
                         <span
                           className="pm-mono inline-flex w-3 shrink-0 justify-center leading-none transition-transform duration-300 ease-out"
@@ -167,13 +169,13 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
                           ▼
                         </span>
                         <span className="shrink-0 font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
-                          {formatSipArchiveRowDate(row.uaeYmd)}
+                          {dateLabel}
                         </span>
                         <span
                           className="min-w-0 truncate font-medium leading-snug sm:whitespace-normal sm:break-words"
                           style={{ color: "var(--text-secondary)" }}
                         >
-                          {joinTickers(row.tickers)}
+                          {formatSipArchiveTickerSummary(row)}
                         </span>
                       </button>
                       {open ? (
@@ -188,7 +190,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
                               catalystError={detail.catalystError}
                               onOpenTickerInLists={onOpenTickerInLists}
                               mode="archive"
-                              archiveFooterNote={formatSipArchiveRowDate(row.uaeYmd)}
+                              archiveFooterNote={dateLabel}
                             />
                           ) : (
                             <div className="space-y-2">
@@ -199,7 +201,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
                               </p>
                               {row.tickers.length > 0 ? (
                                 <p className="pm-site-prose text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                                  {joinTickers(row.tickers)}
+                                  {formatSipArchiveTickerSummary(row)}
                                 </p>
                               ) : null}
                             </div>
@@ -212,8 +214,8 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
               </div>
             ) : (
               <p className="pm-site-caption leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
-                No archived days yet. After each midnight (UAE), the prior day&apos;s Stocks in Play tickers are saved
-                here.
+                No archived days yet. At 02:00 UAE time, prior Eastern session SIP lists (mid-large and small-cap) are
+                appended here when snapshots exist.
               </p>
             )}
           </div>

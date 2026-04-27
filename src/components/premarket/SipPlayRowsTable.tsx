@@ -7,7 +7,6 @@ import type { SipCatalyst } from "@/types/sip-catalyst";
 import { formatScreenerCompact } from "@/components/premarket/premarket-number-display";
 import { truncateSipRationale } from "@/lib/premarket/sip-rationale-truncate";
 import { sipCatalystBadge } from "@/components/premarket/sip-badge-map";
-import { SIP_MAX_TICKERS } from "@/lib/premarket/sip-constants";
 
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
@@ -84,6 +83,10 @@ export type SipPlayRowsTableProps = {
   archiveFooterNote?: string;
   /** Override empty-news copy for live rows with no headlines. */
   emptyNewsText?: string;
+  /** Mid-large lists can grow past API cap when merging refreshes. */
+  listMode?: "cumulative" | "capped";
+  /** Reference cap for small-cap row display (live capped mode). */
+  maxTickerDisplay?: number;
 };
 
 export default function SipPlayRowsTable({
@@ -97,6 +100,8 @@ export default function SipPlayRowsTable({
   mode,
   archiveFooterNote,
   emptyNewsText,
+  listMode = "capped",
+  maxTickerDisplay = 10,
 }: SipPlayRowsTableProps) {
   const n = rows.length;
   const displayError =
@@ -254,7 +259,9 @@ export default function SipPlayRowsTable({
       >
         {mode === "live" ? (
           <span>
-            {n} of {SIP_MAX_TICKERS} max · updated {nowEt} ET
+            {listMode === "cumulative"
+              ? `${n} name${n === 1 ? "" : "s"} (accumulated) · updated ${nowEt} ET`
+              : `${n} of ${maxTickerDisplay} max · updated ${nowEt} ET`}
           </span>
         ) : (
           <span>

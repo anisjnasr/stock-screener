@@ -22,16 +22,20 @@ import CollapsibleSection from "@/components/premarket/CollapsibleSection";
 import GapperFilterControls, { type GapperFilterControlsRef } from "@/components/premarket/GapperFilterControls";
 import { ymdInEt } from "@/lib/et-ymd";
 import SipPlayRowsTable from "@/components/premarket/SipPlayRowsTable";
-import { recordSipSnapshotForArchive } from "@/lib/premarket/sip-archive";
+import {
+  loadSipDaySnapshot,
+  mergeKeyedRecords,
+  mergeMidLargeRows,
+  saveSipDaySnapshot,
+  snapshotFromSuccess,
+  type SipPersistVariant,
+} from "@/lib/premarket/sip-daily-persistence";
 import { SIP_MAX_TICKERS, SIP_SMALL_CAP_MAX_TICKERS } from "@/lib/premarket/sip-constants";
 import {
   PREMARKET_SIP_FILTERS_CHANGED_LEGACY,
   PREMARKET_SIP_MID_LARGE_FILTERS_CHANGED,
   PREMARKET_SIP_SMALL_CAP_FILTERS_CHANGED,
 } from "@/lib/premarket/sip-events";
-
-const SIP_MID_LARGE_FIRST_AUTO_YMD_KEY = "premarket-sip-mid-large-first-auto-ymd";
-const SIP_SMALL_CAP_FIRST_AUTO_YMD_KEY = "premarket-sip-small-cap-first-auto-ymd";
 
 function makePresetId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -50,7 +54,7 @@ type StocksInPlayProps = {
 type SipVariantBlockProps = {
   title: string;
   apiPath: string;
-  firstAutoYmdKey: string;
+  sipVariant: SipPersistVariant;
   filtersChangedEventName: string;
   primaryLabel: string;
   maxRows: number;
@@ -60,13 +64,12 @@ type SipVariantBlockProps = {
   saveFilters: (f: GapperFilterState) => void;
   loadPresets: () => SavedGapperFilterPreset[];
   savePresets: (presets: SavedGapperFilterPreset[]) => void;
-  recordArchiveSnapshot?: boolean;
 };
 
 function SipVariantBlock({
   title,
   apiPath,
-  firstAutoYmdKey,
+  sipVariant,
   filtersChangedEventName,
   primaryLabel,
   maxRows,
@@ -76,7 +79,6 @@ function SipVariantBlock({
   saveFilters,
   loadPresets,
   savePresets,
-  recordArchiveSnapshot = false,
 }: SipVariantBlockProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
@@ -94,6 +96,24 @@ function SipVariantBlock({
   const filtersRef = useRef(sipFilters);
   filtersRef.current = sipFilters;
   const filterControlsRef = useRef<GapperFilterControlsRef>(null);
+  const rowsRef = useRef<GapperRow[] | null>(null);
+  rowsRef.current = rows;
+  const newsRef = useRef<Record<string, PythonNewsItem[]> | null>(null);
+  newsRef.current = news;
+  const catalystRef = useRef<Record<string, SipCatalyst> | null>(null);
+  catalystRef.current = catalyst;
+
+  useEffect(() => {
+    const etYmd = ymdInEt();
+    const snap = loadSipDaySnapshot(etYmd, sipVariant);
+    if (!snap) return;
+    setRows(snap.rows);
+    setNews(snap.news);
+    setCatalyst(snap.catalyst);
+    setNewsError(snap.newsError);
+    setCatalystError(snap.catalystError);
+    setPythonConfigured(snap.pythonConfigured);
+  }, [sipVariant]);
 
   const load = useCallback(
     async (signal: AbortSignal, scanBody: GappersRequestBody): Promise<boolean> => {
@@ -111,57 +131,54 @@ function SipVariantBlock({
         });
         const json = (await res.json()) as StocksInPlaySuccess | { ok?: false; error?: string };
         if (!res.ok || !json.ok) {
-          setRows(null);
-          setNews(null);
-          setCatalyst(null);
           setPythonConfigured(false);
           setError((json as { error?: string }).error ?? res.statusText);
           return false;
         }
-        const rowsCapped = (json.rows ?? []).slice(0, maxRows);
-        setRows(rowsCapped);
-        setNews(json.news);
-        setCatalyst(json.catalyst);
-        setCatalystError(json.catalystError ?? null);
-        setPythonConfigured(json.pythonConfigured);
-        setNewsError(json.newsError ?? null);
-        if (recordArchiveSnapshot) {
-          recordSipSnapshotForArchive({ ...json, rows: rowsCapped });
+        const ok = json as StocksInPlaySuccess;
+        const apiRows = ok.rows ?? [];
+        const etYmd = ymdInEt();
+
+        let nextRows: GapperRow[];
+        let nextNews: Record<string, PythonNewsItem[]> | null;
+        let nextCatalyst: Record<string, SipCatalyst> | null;
+
+        if (sipVariant === "mid-large") {
+          nextRows = mergeMidLargeRows(rowsRef.current ?? [], apiRows);
+          nextNews = mergeKeyedRecords(newsRef.current, ok.news);
+          nextCatalyst = mergeKeyedRecords(catalystRef.current, ok.catalyst);
+        } else {
+          nextRows = apiRows.slice(0, maxRows);
+          nextNews = ok.news ?? null;
+          nextCatalyst = ok.catalyst ?? null;
         }
+
+        setRows(nextRows);
+        setNews(nextNews);
+        setCatalyst(nextCatalyst);
+        setCatalystError(ok.catalystError ?? null);
+        setPythonConfigured(ok.pythonConfigured);
+        setNewsError(ok.newsError ?? null);
+
+        const snap = snapshotFromSuccess(etYmd, nextRows, {
+          ...ok,
+          rows: nextRows,
+          news: nextNews,
+          catalyst: nextCatalyst,
+        });
+        saveSipDaySnapshot(snap, sipVariant);
+
         return true;
       } catch (e) {
         if ((e as Error).name === "AbortError") return false;
-        setRows(null);
-        setNews(null);
-        setCatalyst(null);
         setError(e instanceof Error ? e.message : "Failed to load");
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [apiPath, maxRows, recordArchiveSnapshot]
+    [apiPath, maxRows, sipVariant]
   );
-
-  useEffect(() => {
-    const todayYmd = ymdInEt();
-    if (typeof window !== "undefined" && window.localStorage.getItem(firstAutoYmdKey) === todayYmd) {
-      return;
-    }
-    const ac = new AbortController();
-    let cancelled = false;
-    void (async () => {
-      const ok = await load(ac.signal, gapperFilterStateToRequestBody(filtersRef.current));
-      if (cancelled || !ok) return;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(firstAutoYmdKey, ymdInEt());
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [firstAutoYmdKey, load]);
 
   const updateSipFilters = useCallback(
     (next: GapperFilterState) => {
@@ -384,6 +401,8 @@ function SipVariantBlock({
               onOpenTickerInLists={onOpenTickerInLists}
               mode="live"
               emptyNewsText={emptyNewsText}
+              listMode={sipVariant === "mid-large" ? "cumulative" : "capped"}
+              maxTickerDisplay={sipVariant === "mid-large" ? SIP_MAX_TICKERS : SIP_SMALL_CAP_MAX_TICKERS}
             />
           ) : null}
         </div>
@@ -411,7 +430,7 @@ export default function StocksInPlay({
           <SipVariantBlock
             title="SIP - Mid-Large Caps"
             apiPath="/api/premarket/stocks-in-play"
-            firstAutoYmdKey={SIP_MID_LARGE_FIRST_AUTO_YMD_KEY}
+            sipVariant="mid-large"
             filtersChangedEventName={PREMARKET_SIP_MID_LARGE_FILTERS_CHANGED}
             primaryLabel="Refresh Mid-Large SIP"
             maxRows={SIP_MAX_TICKERS}
@@ -420,12 +439,11 @@ export default function StocksInPlay({
             saveFilters={saveSipMidLargeGapperFiltersToStorage}
             loadPresets={loadSavedSipMidLargeFilterPresetsFromStorage}
             savePresets={saveSavedSipMidLargeFilterPresetsToStorage}
-            recordArchiveSnapshot
           />
           <SipVariantBlock
             title="SIP - Small Caps"
             apiPath="/api/premarket/stocks-in-play-smallcaps"
-            firstAutoYmdKey={SIP_SMALL_CAP_FIRST_AUTO_YMD_KEY}
+            sipVariant="small-cap"
             filtersChangedEventName={PREMARKET_SIP_SMALL_CAP_FILTERS_CHANGED}
             primaryLabel="Refresh Small-Cap SIP"
             maxRows={SIP_SMALL_CAP_MAX_TICKERS}
