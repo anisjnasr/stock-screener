@@ -21,6 +21,7 @@ export const SCAN_COLUMNS = [
 
 export type TradingViewScanParams = {
   minPrice: number;
+  maxPrice: number;
   minMarketCap: number;
   maxMarketCap: number;
   minPmVolume: number;
@@ -40,6 +41,8 @@ export type TradingViewGapScanOptions = {
 
 export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minPrice: 5,
+  /** Upper bound on last close (USD); keep high by default so scans behave like “no max”. */
+  maxPrice: 50_000_000,
   minMarketCap: 100_000_000,
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
@@ -60,19 +63,22 @@ export function buildTradingViewScanPayload(
       ? { left: "premarket_change", operation: "eless", right: -gap.minAbsGapPct }
       : { left: "premarket_change", operation: "egreater", right: p.minGapPct };
   const sortOrder = gap?.leg === "negative" ? "asc" : "desc";
-  const filter = [
-      { left: "type", operation: "equal", right: "stock" },
-      { left: "exchange", operation: "in_range", right: ["NYSE", "NASDAQ"] },
-      { left: "close", operation: "egreater", right: p.minPrice },
-      { left: "market_cap_basic", operation: "eless", right: p.maxMarketCap },
-      { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
-      { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
-      // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
-      gapFilter,
+  const filter: Record<string, unknown>[] = [
+    { left: "type", operation: "equal", right: "stock" },
+    { left: "exchange", operation: "in_range", right: ["NYSE", "NASDAQ"] },
+    { left: "close", operation: "egreater", right: p.minPrice },
+    { left: "close", operation: "eless", right: p.maxPrice },
   ];
   if (p.minMarketCap > 0) {
-    filter.splice(3, 0, { left: "market_cap_basic", operation: "egreater", right: p.minMarketCap });
+    filter.push({ left: "market_cap_basic", operation: "egreater", right: p.minMarketCap });
   }
+  filter.push(
+    { left: "market_cap_basic", operation: "eless", right: p.maxMarketCap },
+    { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
+    { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
+    // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
+    gapFilter
+  );
 
   return {
     filter,

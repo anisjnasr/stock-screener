@@ -56,7 +56,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
   }, []);
 
   const {
-    peeks,
     macroRow,
     macroYmd,
     macroLoading,
@@ -66,7 +65,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     equitiesLoading,
     equitiesError,
     equitiesSetupHint,
-  } = usePremarketPeeks(gapperFiltersHydrated);
+  } = usePremarketPeeks();
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
 
@@ -80,7 +79,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               sectionLabel={s.label}
               collapsed={collapsed.sip}
               onToggle={() => toggle("sip")}
-              peekText={peeks.sip}
               onOpenTickerInLists={onOpenTickerInLists}
             />
           ) : s.id === "sipArchive" ? (
@@ -101,7 +99,6 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                 ? formatLatestGeneratedAtEtDisplay(macroRow?.generated_at, equitiesRow?.generated_at)
                 : undefined
             }
-            peekText={peeks[s.id]}
             collapsed={collapsed[s.id]}
             onToggle={() => toggle(s.id)}
             actions={

@@ -22,6 +22,7 @@ export type SavedGapperFilterPreset = {
 export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   capPreset: "all",
   minPrice: 5,
+  maxPrice: 50_000_000,
   minMarketCap: 0,
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
@@ -106,6 +107,7 @@ export function saveSavedGapperFilterPresetsToStorage(presets: SavedGapperFilter
 export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersRequestBody {
   return {
     minPrice: f.minPrice,
+    maxPrice: f.maxPrice,
     minMarketCap: f.minMarketCap,
     maxMarketCap: f.maxMarketCap,
     minPmVolume: f.minPmVolume,
@@ -115,14 +117,24 @@ export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersReq
   };
 }
 
-/** SIP uses its own persisted filters (must match Stocks in Play). */
-export const SIP_GAPPER_FILTERS_LS_KEY = "stockstalker-sip-gapper-filters-v1";
-export const SIP_SAVED_FILTER_PRESETS_LS_KEY = "stockstalker-sip-filter-presets-v1";
+/** SIP (mid-large) uses the legacy SIP keys to preserve existing saved user state. */
+export const SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY = "stockstalker-sip-gapper-filters-v1";
+export const SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY = "stockstalker-sip-filter-presets-v1";
+/** SIP small-caps keeps fully separate filters/presets from mid-large SIP. */
+export const SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY = "stockstalker-sip-small-cap-gapper-filters-v1";
+export const SIP_SMALL_CAP_SAVED_FILTER_PRESETS_LS_KEY = "stockstalker-sip-small-cap-filter-presets-v1";
 
-export function loadSipGapperFiltersFromStorage(): GapperFilterState {
+/**
+ * Back-compat aliases used by existing SIP callers.
+ * New code should prefer the explicit mid-large constants above.
+ */
+export const SIP_GAPPER_FILTERS_LS_KEY = SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY;
+export const SIP_SAVED_FILTER_PRESETS_LS_KEY = SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY;
+
+export function loadSipMidLargeGapperFiltersFromStorage(): GapperFilterState {
   if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
   try {
-    const raw = localStorage.getItem(SIP_GAPPER_FILTERS_LS_KEY);
+    const raw = localStorage.getItem(SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY);
     if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
     const j = JSON.parse(raw) as Partial<GapperFilterState>;
     return {
@@ -135,18 +147,66 @@ export function loadSipGapperFiltersFromStorage(): GapperFilterState {
   }
 }
 
-export function saveSipGapperFiltersToStorage(f: GapperFilterState): void {
+export function saveSipMidLargeGapperFiltersToStorage(f: GapperFilterState): void {
   try {
-    localStorage.setItem(SIP_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+    localStorage.setItem(SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
   } catch {
     /* ignore */
   }
 }
 
+export function loadSavedSipMidLargeFilterPresetsFromStorage(): SavedGapperFilterPreset[] {
+  return loadSavedFilterPresetsForKey(SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY);
+}
+
+export function saveSavedSipMidLargeFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
+  saveSavedFilterPresetsForKey(SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY, presets);
+}
+
+export function loadSipSmallCapGapperFiltersFromStorage(): GapperFilterState {
+  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
+  try {
+    const raw = localStorage.getItem(SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY);
+    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
+    const j = JSON.parse(raw) as Partial<GapperFilterState>;
+    return {
+      ...DEFAULT_GAPPER_FILTER_STATE,
+      ...j,
+      capPreset: (j.capPreset as GapperCapPreset) ?? "all",
+    };
+  } catch {
+    return DEFAULT_GAPPER_FILTER_STATE;
+  }
+}
+
+export function saveSipSmallCapGapperFiltersToStorage(f: GapperFilterState): void {
+  try {
+    localStorage.setItem(SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadSavedSipSmallCapFilterPresetsFromStorage(): SavedGapperFilterPreset[] {
+  return loadSavedFilterPresetsForKey(SIP_SMALL_CAP_SAVED_FILTER_PRESETS_LS_KEY);
+}
+
+export function saveSavedSipSmallCapFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
+  saveSavedFilterPresetsForKey(SIP_SMALL_CAP_SAVED_FILTER_PRESETS_LS_KEY, presets);
+}
+
+export function loadSipGapperFiltersFromStorage(): GapperFilterState {
+  return loadSipMidLargeGapperFiltersFromStorage();
+}
+
+export function saveSipGapperFiltersToStorage(f: GapperFilterState): void {
+  saveSipMidLargeGapperFiltersToStorage(f);
+}
+
 export function loadSavedSipFilterPresetsFromStorage(): SavedGapperFilterPreset[] {
-  return loadSavedFilterPresetsForKey(SIP_SAVED_FILTER_PRESETS_LS_KEY);
+  return loadSavedSipMidLargeFilterPresetsFromStorage();
 }
 
 export function saveSavedSipFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
-  saveSavedFilterPresetsForKey(SIP_SAVED_FILTER_PRESETS_LS_KEY, presets);
+  saveSavedSipMidLargeFilterPresetsToStorage(presets);
 }

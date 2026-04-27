@@ -91,8 +91,8 @@ function PerfCell({
   const textColor =
     value > 0 ? "var(--ws-green)" : value < 0 ? "var(--ws-red)" : "var(--ws-text-dim)";
   return (
-    <div className="flex items-center gap-1.5 min-w-[5.5rem] justify-end pr-1">
-      <div className="relative h-4 w-[72px] max-w-[72px] shrink-0" aria-hidden>
+    <div className="flex items-center gap-1 min-w-0 justify-end pr-0.5">
+      <div className="relative h-4 w-[56px] max-w-[56px] shrink-0" aria-hidden>
         <div
           className="pointer-events-none absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
           style={{ background: "var(--ws-border)", opacity: 0.6 }}
@@ -152,6 +152,9 @@ function SortTh({
   const activeAsc = active && sortDir === "asc";
   const activeDesc = active && sortDir === "desc";
   const isName = colKey === "name";
+  /** w-[1%] lets full-width tables keep these columns content-sized (avoids perf columns stretching apart). */
+  const shrink = isName ? "" : "w-[1%]";
+  const perfPad = align === "right" ? "px-0.5" : "px-1";
   return (
     <th
       scope="col"
@@ -159,7 +162,7 @@ function SortTh({
       className={
         isName
           ? NAME_COL_TH
-          : `px-1 py-1.5 text-ws-label font-semibold whitespace-nowrap border-b ${align === "right" ? "text-right" : "text-left"}`
+          : `${shrink} ${perfPad} py-1.5 text-ws-label font-semibold whitespace-nowrap border-b ${align === "right" ? "text-right" : "text-left"}`
       }
       style={{ borderColor: "var(--ws-border)", color: "var(--ws-text-dim)" }}
     >
@@ -385,7 +388,7 @@ export default function SectorPerfPanel({
         headerActionsSlot
       )}
       <div className="flex-1 min-h-0 overflow-auto w-full">
-        <table className="w-full border-collapse text-xs min-w-[720px]">
+        <table className="w-full table-auto border-collapse text-xs min-w-[640px]">
           <thead>
             <tr style={{ background: "var(--ws-bg3)" }}>
               {subTab === "industries" ? (
@@ -457,7 +460,7 @@ export default function SectorPerfPanel({
                       ) : null}
                     </td>
                   ) : null}
-                  <td className="px-1 py-1 align-middle font-mono whitespace-nowrap" style={pad}>
+                  <td className="w-[1%] px-1 py-1 align-middle font-mono whitespace-nowrap" style={pad}>
                     {row.ticker ? (
                       <button
                         type="button"
@@ -480,7 +483,7 @@ export default function SectorPerfPanel({
                     {row.name}
                   </td>
                   {MATRIX_PERF_TF.map((tf) => (
-                    <td key={tf} className="px-0 py-1 align-middle text-right">
+                    <td key={tf} className="w-[1%] px-0 py-1 align-middle text-right whitespace-nowrap">
                       <PerfCell value={row.perf[tf]} maxAbs={maxAbsByTf[tf]} />
                     </td>
                   ))}

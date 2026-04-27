@@ -11,7 +11,6 @@ export type CollapsibleSectionProps = {
   labelAccent?: CollapsibleLabelAccent;
   /** Shown in header when expanded (hidden when collapsed) */
   metadata?: string;
-  peekText: string;
   collapsed: boolean;
   onToggle: () => void;
   actions?: ReactNode;
@@ -24,7 +23,6 @@ export default function CollapsibleSection({
   label,
   labelAccent = "default",
   metadata,
-  peekText,
   collapsed,
   onToggle,
   actions,
@@ -62,7 +60,7 @@ export default function CollapsibleSection({
           role="button"
           aria-expanded={!collapsed}
           aria-controls={panelId}
-          className="pm-focus flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-elevated)]"
+          className="pm-focus flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors duration-150 hover:bg-[rgba(0,229,204,0.09)]"
           style={{ color: "var(--text-primary)" }}
           onClick={onToggle}
         >
@@ -84,11 +82,6 @@ export default function CollapsibleSection({
             {!collapsed && metadata ? (
               <span className="pm-site-caption min-w-0 truncate font-medium" style={{ color: "var(--text-tertiary)" }}>
                 {metadata}
-              </span>
-            ) : null}
-            {collapsed && peekText ? (
-              <span className="pm-site-caption min-w-0 truncate text-left font-medium leading-snug" style={{ color: "var(--text-secondary)" }}>
-                {peekText}
               </span>
             ) : null}
           </span>

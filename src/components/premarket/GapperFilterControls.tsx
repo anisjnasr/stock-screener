@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useState, type CSSProperties } from "react";
 import {
   GAPPER_CAP_PRESET_MC,
   type GapperCapPreset,
@@ -13,6 +13,11 @@ import {
   parseFlexibleFilterNumber,
 } from "@/components/premarket/premarket-number-display";
 import type { GappersRequestBody } from "@/types/gappers";
+
+export type GapperFilterControlsRef = {
+  /** Merge input drafts into filter state and invoke `onPrimaryAction` (same as the primary button). */
+  applyFiltersAndRunPrimary: () => void;
+};
 
 type GapperFilterControlsProps = {
   filters: GapperFilterState;
@@ -27,6 +32,8 @@ type GapperFilterControlsProps = {
   onDeleteSavedPreset?: (presetId: string) => void;
   primaryLabel: string;
   loading?: boolean;
+  /** Hide the teal primary button (e.g. SIP moves refresh to header). Caller should use ref `applyFiltersAndRunPrimary`. */
+  hidePrimaryButton?: boolean;
   onSecondaryRefresh?: () => void;
   secondaryLabel?: string;
   lastRefreshSeconds?: number | null;
@@ -37,6 +44,14 @@ function parseDecimalBlur(raw: string): number | null {
   if (t === "") return null;
   const x = Number(t);
   return Number.isFinite(x) ? x : null;
+}
+
+/** Readable price for filter inputs (USD per share). */
+function formatPriceFilterDisplay(n: number): string {
+  if (!Number.isFinite(n)) return "";
+  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const s = n.toFixed(4).replace(/\.?0+$/, "");
+  return s;
 }
 
 const gapFilterLabelStyle: CSSProperties = {
@@ -61,27 +76,32 @@ const gapFilterInputStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
-export default function GapperFilterControls({
-  filters,
-  onFiltersChange,
-  onPrimaryAction,
-  savedPresets,
-  selectedSavedPresetId = null,
-  onSelectSavedPresetId,
-  onApplySavedPreset,
-  onSaveCurrentPreset,
-  onRenameSavedPreset,
-  onDeleteSavedPreset,
-  primaryLabel,
-  loading = false,
-  onSecondaryRefresh,
-  secondaryLabel = "Refresh scan",
-  lastRefreshSeconds = null,
-}: GapperFilterControlsProps) {
+const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterControlsProps>(function GapperFilterControls(
+  {
+    filters,
+    onFiltersChange,
+    onPrimaryAction,
+    savedPresets,
+    selectedSavedPresetId = null,
+    onSelectSavedPresetId,
+    onApplySavedPreset,
+    onSaveCurrentPreset,
+    onRenameSavedPreset,
+    onDeleteSavedPreset,
+    primaryLabel,
+    loading = false,
+    hidePrimaryButton = false,
+    onSecondaryRefresh,
+    secondaryLabel = "Refresh scan",
+    lastRefreshSeconds = null,
+  },
+  ref
+) {
   const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
   const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
   const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
   const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
+  const [maxPriceDraft, setMaxPriceDraft] = useState<string | null>(null);
   const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
   const [minVolPctDraft, setMinVolPctDraft] = useState<string | null>(null);
@@ -95,22 +115,23 @@ export default function GapperFilterControls({
   const selectedSavedPreset =
     selectedSavedPresetId && savedPresets ? savedPresets.find((p) => p.id === selectedSavedPresetId) ?? null : null;
 
-  const clearDrafts = () => {
+  const clearDrafts = useCallback(() => {
     setMcapMinDraft(null);
     setMcapMaxDraft(null);
     setMinAvgVolDraft(null);
     setMinPriceDraft(null);
+    setMaxPriceDraft(null);
     setMinGapDraft(null);
     setMinPmVolDraft(null);
     setMinVolPctDraft(null);
-  };
+  }, []);
 
   const setCustomField = <K extends keyof GappersRequestBody>(key: K, value: number) => {
     onSelectSavedPresetId?.(null);
     onFiltersChange({ ...filters, [key]: value, capPreset: "custom" });
   };
 
-  const filtersWithDraftValues = (): GapperFilterState => {
+  const filtersWithDraftValues = useCallback((): GapperFilterState => {
     let next = { ...filters };
 
     const minMcap = mcapMinDraft != null ? parseFlexibleFilterNumber(mcapMinDraft) : null;
@@ -132,7 +153,22 @@ export default function GapperFilterControls({
     }
 
     const minPrice = minPriceDraft != null ? parseDecimalBlur(minPriceDraft) : null;
-    if (minPrice != null) next = { ...next, minPrice: Math.max(0.01, minPrice), capPreset: "custom" };
+    if (minPrice != null) {
+      next = {
+        ...next,
+        minPrice: Math.max(0.01, Math.min(minPrice, next.maxPrice ?? 50_000_000)),
+        capPreset: "custom",
+      };
+    }
+
+    const maxPrice = maxPriceDraft != null ? parseDecimalBlur(maxPriceDraft) : null;
+    if (maxPrice != null) {
+      next = {
+        ...next,
+        maxPrice: Math.min(50_000_000, Math.max(maxPrice, next.minPrice ?? 0.01)),
+        capPreset: "custom",
+      };
+    }
 
     const minGapPct = minGapDraft != null ? parseDecimalBlur(minGapDraft) : null;
     if (minGapPct != null) next = { ...next, minGapPct: Math.max(0, minGapPct), capPreset: "custom" };
@@ -147,15 +183,33 @@ export default function GapperFilterControls({
     if (minVolPct != null) next = { ...next, minVolPct: Math.max(0, minVolPct), capPreset: "custom" };
 
     return next;
-  };
+  }, [
+    filters,
+    mcapMinDraft,
+    mcapMaxDraft,
+    minPriceDraft,
+    maxPriceDraft,
+    minGapDraft,
+    minPmVolDraft,
+    minAvgVolDraft,
+    minVolPctDraft,
+  ]);
 
-  const handlePrimaryAction = () => {
+  const handlePrimaryAction = useCallback(() => {
     const next = filtersWithDraftValues();
     clearDrafts();
     onSelectSavedPresetId?.(null);
     onFiltersChange(next);
     onPrimaryAction(next);
-  };
+  }, [clearDrafts, filtersWithDraftValues, onFiltersChange, onPrimaryAction, onSelectSavedPresetId]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyFiltersAndRunPrimary: handlePrimaryAction,
+    }),
+    [handlePrimaryAction]
+  );
 
   const applyPreset = (preset: Exclude<GapperCapPreset, "custom">) => {
     clearDrafts();
@@ -241,12 +295,7 @@ export default function GapperFilterControls({
           <button
             type="button"
             onClick={handleSavePreset}
-            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)]"
-            style={{
-              borderColor: "var(--border-default)",
-              color: "var(--text-secondary)",
-              background: "transparent",
-            }}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border border-[var(--border-default)] text-[var(--text-secondary)] transition-colors duration-150 hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.1)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)]"
             aria-label="Save current filters as preset"
             title="Save current filters as preset"
           >
@@ -262,12 +311,7 @@ export default function GapperFilterControls({
             type="button"
             onClick={handleRenamePreset}
             disabled={!selectedSavedPreset}
-            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            style={{
-              borderColor: "var(--border-default)",
-              color: "var(--text-secondary)",
-              background: "transparent",
-            }}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border border-[var(--border-default)] text-[var(--text-secondary)] transition-colors duration-150 hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.1)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:cursor-not-allowed disabled:hover:border-[var(--border-default)] disabled:hover:bg-transparent disabled:hover:text-[var(--text-secondary)] disabled:opacity-45"
             aria-label="Rename selected saved preset"
             title={selectedSavedPreset ? `Rename "${selectedSavedPreset.name}"` : "Select a saved preset to rename"}
           >
@@ -282,12 +326,7 @@ export default function GapperFilterControls({
             type="button"
             onClick={handleDeletePreset}
             disabled={!selectedSavedPreset}
-            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border transition-colors hover:bg-[color:var(--ws-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            style={{
-              borderColor: "var(--border-default)",
-              color: "var(--text-secondary)",
-              background: "transparent",
-            }}
+            className="pm-focus inline-flex h-[30px] w-[30px] items-center justify-center rounded border border-[var(--border-default)] text-[var(--text-secondary)] transition-colors duration-150 hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.1)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:cursor-not-allowed disabled:hover:border-[var(--border-default)] disabled:hover:bg-transparent disabled:hover:text-[var(--text-secondary)] disabled:opacity-45"
             aria-label="Delete selected saved preset"
             title={selectedSavedPreset ? `Delete "${selectedSavedPreset.name}"` : "Select a saved preset to delete"}
           >
@@ -353,20 +392,44 @@ export default function GapperFilterControls({
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span style={gapFilterLabelStyle}>Price ≥</span>
+        <span style={gapFilterLabelStyle}>Price</span>
         <input
           type="text"
           inputMode="decimal"
           autoComplete="off"
           className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-          style={{ ...gapFilterInputStyle, width: 50 }}
-          value={minPriceDraft === null ? String(filters.minPrice) : minPriceDraft}
-          onFocus={() => setMinPriceDraft(String(filters.minPrice))}
+          style={{ ...gapFilterInputStyle, width: 56 }}
+          value={minPriceDraft === null ? formatPriceFilterDisplay(filters.minPrice ?? 0.01) : minPriceDraft}
+          onFocus={() => setMinPriceDraft(formatPriceFilterDisplay(filters.minPrice ?? 0.01))}
           onChange={(e) => setMinPriceDraft(e.target.value)}
           onBlur={(e) => {
             setMinPriceDraft(null);
             const value = parseDecimalBlur(e.currentTarget.value);
-            if (value != null) setCustomField("minPrice", Math.max(0.01, value));
+            if (value == null) return;
+            onSelectSavedPresetId?.(null);
+            const minP = Math.max(0.01, Math.min(value, filters.maxPrice ?? 50_000_000));
+            onFiltersChange({ ...filters, minPrice: minP, capPreset: "custom" });
+          }}
+        />
+        <span className="pm-mono" style={{ color: "#8a8a8a", fontSize: "var(--ws-fs-body)" }}>
+          -
+        </span>
+        <input
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+          style={{ ...gapFilterInputStyle, width: 56 }}
+          value={maxPriceDraft === null ? formatPriceFilterDisplay(filters.maxPrice ?? 50_000_000) : maxPriceDraft}
+          onFocus={() => setMaxPriceDraft(formatPriceFilterDisplay(filters.maxPrice ?? 50_000_000))}
+          onChange={(e) => setMaxPriceDraft(e.target.value)}
+          onBlur={(e) => {
+            setMaxPriceDraft(null);
+            const value = parseDecimalBlur(e.currentTarget.value);
+            if (value == null) return;
+            onSelectSavedPresetId?.(null);
+            const maxP = Math.min(50_000_000, Math.max(value, filters.minPrice ?? 0.01));
+            onFiltersChange({ ...filters, maxPrice: maxP, capPreset: "custom" });
           }}
         />
       </div>
@@ -447,26 +510,26 @@ export default function GapperFilterControls({
         />
       </div>
 
-      <div className="min-w-2 flex-1" aria-hidden />
-
-      <button
-        type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={handlePrimaryAction}
-        disabled={loading}
-        className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:opacity-90 disabled:opacity-50"
-        style={{
-          height: 30,
-          padding: "4px 12px",
-          fontFamily: "var(--ws-font-sans)",
-          fontSize: "var(--ws-fs-label)",
-          border: "1px solid var(--ws-cyan)",
-          color: "var(--ws-cyan)",
-          background: "rgba(59, 191, 207, 0.08)",
-        }}
-      >
-        {primaryLabel}
-      </button>
+      {!hidePrimaryButton ? (
+        <>
+          <div className="min-w-2 flex-1" aria-hidden />
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handlePrimaryAction}
+            disabled={loading}
+            className="shrink-0 rounded border border-[var(--border-default)] bg-transparent font-medium text-[var(--text-secondary)] transition-colors duration-150 ws-focus-ring hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:opacity-50"
+            style={{
+              height: 30,
+              padding: "4px 12px",
+              fontFamily: "var(--ws-font-sans)",
+              fontSize: "var(--ws-fs-label)",
+            }}
+          >
+            {primaryLabel}
+          </button>
+        </>
+      ) : null}
 
       {onSecondaryRefresh ? (
         <button
@@ -476,16 +539,13 @@ export default function GapperFilterControls({
             onSecondaryRefresh();
           }}
           disabled={loading}
-          className="shrink-0 rounded font-medium transition-colors ws-focus-ring hover:bg-[color:var(--ws-hover)] disabled:opacity-50"
+          className="shrink-0 rounded border border-[var(--border-default)] bg-transparent font-medium text-[var(--text-secondary)] transition-colors duration-150 ws-focus-ring hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:opacity-50"
           style={{
             height: 30,
             padding: "4px 12px",
             fontFamily: "var(--ws-font-sans)",
             fontSize: "var(--ws-fs-title)",
             lineHeight: 1,
-            border: "1px solid var(--ws-border)",
-            color: "var(--ws-text-dim)",
-            background: "var(--ws-bg)",
           }}
           title={secondaryLabel}
           aria-label={secondaryLabel}
@@ -509,4 +569,6 @@ export default function GapperFilterControls({
       ) : null}
     </div>
   );
-}
+});
+
+export default GapperFilterControls;

@@ -8,12 +8,12 @@ export function formatUsdIntInputDisplay(n: number | undefined): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** Abbreviate values ≥ 1,000,000 as `10 B`, `1.5 M` (space before suffix); below that use comma grouping. */
+/** Compact filter display: ≥ 1,000 uses `100 K`, `1.5 M`, `10 B` (space before suffix); below that plain integers. */
 export function abbreviateUsdFilterDisplay(n: number): string {
   if (!Number.isFinite(n)) return "";
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  if (abs < 1_000_000) {
+  if (abs < 1_000) {
     return `${sign}${Math.round(n).toLocaleString("en-US")}`;
   }
   return `${sign}${abbreviateMagnitude(abs)}`;

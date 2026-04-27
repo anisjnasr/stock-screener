@@ -1,6 +1,7 @@
 /** POST `/api/movers/gappers` body (all fields optional; server applies defaults). */
 export type GappersRequestBody = {
   minPrice?: number;
+  maxPrice?: number;
   minMarketCap?: number;
   maxMarketCap?: number;
   minPmVolume?: number;

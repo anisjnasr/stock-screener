@@ -94,7 +94,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
           role="button"
           aria-expanded={!collapsed}
           aria-controls={panelId}
-          className="pm-focus flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-elevated)]"
+          className="pm-focus flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors duration-150 hover:bg-[rgba(0,229,204,0.09)]"
           style={{ color: "var(--text-primary)" }}
           onClick={onToggle}
         >

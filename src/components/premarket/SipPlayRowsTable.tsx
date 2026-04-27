@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import type { GapperRow } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { SipCatalyst } from "@/types/sip-catalyst";
@@ -14,40 +14,12 @@ function fmtPct(n: number): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-const NEWS_PILL_MAX = 3;
-const NEWS_SOURCE_FIXED_HUES: Record<string, number> = {
-  "insider monkey": 118,
-  "simply wall st.": 136,
-  "simply wall st": 136,
-  "reuters": 28,
-  "marketbeat": 285,
-  "motley fool": 200,
-  "investing.com": 188,
-  "stockstory": 340,
-  "yahoo finance": 255,
-  "mt newswires": 192,
-  "investor's business daily": 38,
-  "the wall street journal": 44,
-  "quartz": 170,
+const NEWS_SOURCE_LINE_MAX = 3;
+
+const sourceLinkStyle: CSSProperties = {
+  fontFamily: "var(--ws-font-sans)",
+  fontSize: "var(--ws-fs-caption)",
 };
-
-function sourceHash(input: string): number {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-function newsPillStyleForHue(hue: number): CSSProperties {
-  return {
-    fontFamily: "var(--ws-font-sans)",
-    fontSize: "var(--ws-fs-caption)",
-    border: `1px solid hsl(${hue} 70% 36%)`,
-    background: `hsl(${hue} 48% 13%)`,
-    color: `hsl(${hue} 82% 64%)`,
-  };
-}
 
 function newsSourceLabel(it: PythonNewsItem): string {
   const pub = it.publisher?.trim();
@@ -65,25 +37,15 @@ function newsSourceLabel(it: PythonNewsItem): string {
   return "News";
 }
 
-function SourceNewsPills({
-  items,
-  sourceHueByLabel,
-}: {
-  items: PythonNewsItem[];
-  sourceHueByLabel: ReadonlyMap<string, number>;
-}) {
-  const slice = items.slice(0, NEWS_PILL_MAX);
+function SourceNewsLinks({ items }: { items: PythonNewsItem[] }) {
+  const slice = items.slice(0, NEWS_SOURCE_LINE_MAX);
   if (slice.length === 0) return null;
   return (
-    <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+    <div className="mt-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1">
       {slice.map((it, i) => {
         const label = newsSourceLabel(it);
         const href = it.link?.trim();
         const title = it.title?.trim() || label;
-        const baseClass =
-          "pm-focus inline-flex max-w-[11rem] shrink-0 truncate rounded-full px-2 py-0.5 font-semibold no-underline transition-colors";
-        const hue = sourceHueByLabel.get(label) ?? (sourceHash(label.toLowerCase()) % 360);
-        const pillStyle = newsPillStyleForHue(hue);
         if (href) {
           return (
             <a
@@ -91,8 +53,8 @@ function SourceNewsPills({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className={`${baseClass} cursor-pointer hover:border-[var(--accent-cyan)] hover:bg-[rgba(34,211,238,0.20)] hover:text-[var(--text-primary)]`}
-              style={pillStyle}
+              className="pm-focus max-w-[14rem] shrink truncate font-normal text-[var(--text-faint)] no-underline underline-offset-2 transition-colors hover:text-[var(--text-primary)] hover:underline"
+              style={sourceLinkStyle}
               title={title}
             >
               {label}
@@ -100,7 +62,7 @@ function SourceNewsPills({
           );
         }
         return (
-          <span key={i} className={`${baseClass} cursor-default opacity-80`} style={pillStyle} title={title}>
+          <span key={i} className="max-w-[14rem] shrink truncate font-normal text-[var(--text-faint)]" style={sourceLinkStyle} title={title}>
             {label}
           </span>
         );
@@ -120,6 +82,8 @@ export type SipPlayRowsTableProps = {
   mode: "live" | "archive";
   /** Shown in footer when mode is archive (e.g. formatted UAE date). */
   archiveFooterNote?: string;
+  /** Override empty-news copy for live rows with no headlines. */
+  emptyNewsText?: string;
 };
 
 export default function SipPlayRowsTable({
@@ -132,31 +96,8 @@ export default function SipPlayRowsTable({
   onOpenTickerInLists,
   mode,
   archiveFooterNote,
+  emptyNewsText,
 }: SipPlayRowsTableProps) {
-  const sourceHueByLabel = useMemo(() => {
-    const labels = new Set<string>();
-    if (news) {
-      for (const items of Object.values(news)) {
-        for (const it of items) labels.add(newsSourceLabel(it));
-      }
-    }
-    const out = new Map<string, number>();
-    const used = new Set<number>();
-    const sortedLabels = [...labels].sort((a, b) => a.localeCompare(b));
-    for (const label of sortedLabels) {
-      const fixed = NEWS_SOURCE_FIXED_HUES[label.toLowerCase()];
-      const base = fixed ?? (sourceHash(label.toLowerCase()) % 360);
-      let hue = base;
-      while (used.has(hue)) {
-        // Prime step size to reduce repeated collisions and keep hues spread.
-        hue = (hue + 29) % 360;
-      }
-      used.add(hue);
-      out.set(label, hue);
-    }
-    return out;
-  }, [news]);
-
   const n = rows.length;
   const displayError =
     (newsError ? `Headlines request failed: ${newsError}` : null) ??
@@ -196,7 +137,7 @@ export default function SipPlayRowsTable({
         <div
           className="pm-sip-col-head grid min-w-[52rem] gap-x-2 gap-y-0 border-b px-2 py-1.5"
           style={{
-            gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,1fr)",
+            gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,0.5fr)",
             borderColor: "var(--border-default)",
             background: "var(--bg-inset)",
             color: "var(--text-tertiary)",
@@ -212,7 +153,6 @@ export default function SipPlayRowsTable({
         {rows.map((r) => {
           const cat = catalyst?.[r.ticker];
           const badge = cat ? sipCatalystBadge(cat) : null;
-          const rationale = cat ? truncateSipRationale(cat.summary) : "—";
           const rowNews = news?.[r.ticker] ?? [];
           const showNewsEmpty = news !== null && pythonConfigured && !newsError && rowNews.length === 0;
           return (
@@ -220,7 +160,7 @@ export default function SipPlayRowsTable({
               key={r.ticker}
               className="grid min-w-[52rem] items-start gap-x-2 gap-y-1 border-b px-2 py-1.5"
               style={{
-                gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,1fr)",
+                gridTemplateColumns: "4.5rem 4rem 5rem 5rem minmax(7rem,1.4fr) minmax(6rem,0.5fr)",
                 borderColor: "var(--border-default)",
                 background: "var(--bg-panel)",
               }}
@@ -251,15 +191,24 @@ export default function SipPlayRowsTable({
               <div className="pm-mono text-right tabular-nums" style={{ color: "var(--text-secondary)", fontSize: "var(--ws-fs-caption)" }}>
                 {formatScreenerCompact(r.pmVolume)}
               </div>
-              <div className="pm-site-caption min-w-0 leading-snug" style={{ color: "var(--text-secondary)" }}>
-                <p className="m-0" title={cat?.summary}>
-                  {rationale}
-                </p>
+              <div className="pm-site-caption min-w-0 leading-snug">
+                {cat ? (
+                  <p className="m-0" style={{ color: "#ffffff" }} title={cat.summary}>
+                    {truncateSipRationale(cat.summary)}
+                  </p>
+                ) : showNewsEmpty ? null : (
+                  <p className="m-0" style={{ color: "var(--text-secondary)" }}>
+                    —
+                  </p>
+                )}
                 {rowNews.length > 0 ? (
-                  <SourceNewsPills items={rowNews} sourceHueByLabel={sourceHueByLabel} />
+                  <SourceNewsLinks items={rowNews} />
                 ) : showNewsEmpty ? (
-                  <p className="pm-site-caption m-0 mt-1" style={{ color: "var(--text-faint)" }}>
-                    No headlines in window.
+                  <p
+                    className={`pm-site-caption m-0 ${cat ? "mt-1" : ""}`}
+                    style={{ color: "var(--text-faint)" }}
+                  >
+                    {emptyNewsText ?? "No headlines in window."}
                   </p>
                 ) : null}
               </div>
@@ -304,12 +253,9 @@ export default function SipPlayRowsTable({
         style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
         {mode === "live" ? (
-          <>
-            <span>
-              {n} of {SIP_MAX_TICKERS} max · updated {nowEt} ET
-            </span>
-            <span className="text-right">Scheduled refresh: 7:00–9:00 AM ET weekdays (macro slot)</span>
-          </>
+          <span>
+            {n} of {SIP_MAX_TICKERS} max · updated {nowEt} ET
+          </span>
         ) : (
           <span>
             Archived SIP · {archiveFooterNote ?? "UAE date"} · {n} ticker{n === 1 ? "" : "s"}
