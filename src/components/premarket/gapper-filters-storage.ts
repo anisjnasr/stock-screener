@@ -31,11 +31,26 @@ export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   minGapPct: 1,
 };
 
-export function loadGapperFiltersFromStorage(): GapperFilterState {
-  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
+const SIP_MID_LARGE_DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
+  ...DEFAULT_GAPPER_FILTER_STATE,
+  capPreset: "custom",
+  minMarketCap: 1_000_000_000,
+};
+
+const SIP_SMALL_CAP_DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
+  ...DEFAULT_GAPPER_FILTER_STATE,
+  capPreset: "custom",
+  maxMarketCap: 1_000_000_000,
+};
+
+function loadFiltersForKey(
+  key: string,
+  fallbackDefaults: GapperFilterState = DEFAULT_GAPPER_FILTER_STATE
+): GapperFilterState {
+  if (typeof window === "undefined") return fallbackDefaults;
   try {
-    const raw = localStorage.getItem(GAPPER_FILTERS_LS_KEY);
-    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallbackDefaults;
     const j = JSON.parse(raw) as Partial<GapperFilterState>;
     return {
       ...DEFAULT_GAPPER_FILTER_STATE,
@@ -43,8 +58,12 @@ export function loadGapperFiltersFromStorage(): GapperFilterState {
       capPreset: (j.capPreset as GapperCapPreset) ?? "all",
     };
   } catch {
-    return DEFAULT_GAPPER_FILTER_STATE;
+    return fallbackDefaults;
   }
+}
+
+export function loadGapperFiltersFromStorage(): GapperFilterState {
+  return loadFiltersForKey(GAPPER_FILTERS_LS_KEY, DEFAULT_GAPPER_FILTER_STATE);
 }
 
 export function saveGapperFiltersToStorage(f: GapperFilterState): void {
@@ -132,19 +151,7 @@ export const SIP_GAPPER_FILTERS_LS_KEY = SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY;
 export const SIP_SAVED_FILTER_PRESETS_LS_KEY = SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY;
 
 export function loadSipMidLargeGapperFiltersFromStorage(): GapperFilterState {
-  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
-  try {
-    const raw = localStorage.getItem(SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY);
-    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
-    const j = JSON.parse(raw) as Partial<GapperFilterState>;
-    return {
-      ...DEFAULT_GAPPER_FILTER_STATE,
-      ...j,
-      capPreset: (j.capPreset as GapperCapPreset) ?? "all",
-    };
-  } catch {
-    return DEFAULT_GAPPER_FILTER_STATE;
-  }
+  return loadFiltersForKey(SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY, SIP_MID_LARGE_DEFAULT_GAPPER_FILTER_STATE);
 }
 
 export function saveSipMidLargeGapperFiltersToStorage(f: GapperFilterState): void {
@@ -164,19 +171,7 @@ export function saveSavedSipMidLargeFilterPresetsToStorage(presets: SavedGapperF
 }
 
 export function loadSipSmallCapGapperFiltersFromStorage(): GapperFilterState {
-  if (typeof window === "undefined") return DEFAULT_GAPPER_FILTER_STATE;
-  try {
-    const raw = localStorage.getItem(SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY);
-    if (!raw) return DEFAULT_GAPPER_FILTER_STATE;
-    const j = JSON.parse(raw) as Partial<GapperFilterState>;
-    return {
-      ...DEFAULT_GAPPER_FILTER_STATE,
-      ...j,
-      capPreset: (j.capPreset as GapperCapPreset) ?? "all",
-    };
-  } catch {
-    return DEFAULT_GAPPER_FILTER_STATE;
-  }
+  return loadFiltersForKey(SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY, SIP_SMALL_CAP_DEFAULT_GAPPER_FILTER_STATE);
 }
 
 export function saveSipSmallCapGapperFiltersToStorage(f: GapperFilterState): void {
