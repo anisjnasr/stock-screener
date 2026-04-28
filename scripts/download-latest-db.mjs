@@ -14,7 +14,7 @@
  * Run: node scripts/download-latest-db.mjs
  */
 
-import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync, statSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync, statSync, rmSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -99,16 +99,29 @@ function main() {
   }
 
   const tmpDir = join(DATA_DIR, ".download-tmp");
+  rmSync(tmpDir, { recursive: true, force: true });
   mkdirSync(tmpDir, { recursive: true });
 
   console.log(`Downloading artifact "${artifactName}"...`);
-  try {
-    execSync(`gh run download -R ${REPO} -n "${artifactName}" -D "${tmpDir}"`, {
-      stdio: "inherit",
-    });
-  } catch (err) {
-    console.error("Download failed. Make sure you have access to the repository.");
-    console.error(err instanceof Error ? err.message : String(err));
+  let downloaded = false;
+  let lastDownloadError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      execSync(`gh run download -R ${REPO} -n "${artifactName}" -D "${tmpDir}"`, {
+        stdio: "inherit",
+      });
+      downloaded = true;
+      break;
+    } catch (err) {
+      lastDownloadError = err;
+      if (attempt < 3) {
+        console.warn(`Download attempt ${attempt} failed; retrying...`);
+      }
+    }
+  }
+  if (!downloaded) {
+    console.error("Download failed after 3 attempts. Make sure you have access to the repository.");
+    console.error(lastDownloadError instanceof Error ? lastDownloadError.message : String(lastDownloadError));
     process.exit(1);
   }
 
@@ -140,8 +153,7 @@ function main() {
   try {
     unlinkSync(downloadedDb);
     readdirSync(tmpDir).forEach((f) => unlinkSync(join(tmpDir, f)));
-    // rmdir only works on empty dirs
-    try { execSync(`rmdir "${tmpDir}"`, { stdio: "pipe" }); } catch { /* ok */ }
+    rmSync(tmpDir, { recursive: true, force: true });
   } catch {
     // best effort
   }

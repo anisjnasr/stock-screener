@@ -20,6 +20,7 @@ unusualwhales@substack.com
 benzinga@substack.com
 michaeljburry@substack.com
 capitalflows@substack.com
+newsletter@info.bondblox.com
 `;
 
 /**

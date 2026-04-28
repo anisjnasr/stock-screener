@@ -15,6 +15,8 @@ export type ChartSettings = {
   type: ChartSeriesType;
   /** Show volume histogram pane. */
   showVolume: boolean;
+  /** Show daily EMA 20 overlay (on daily timeframe). */
+  showEma20: boolean;
   /** Show daily EMA 50 overlay (on daily timeframe). */
   showEma50: boolean;
   /** Show daily EMA 200 overlay (on daily timeframe). */
@@ -44,6 +46,7 @@ export type ChartSettings = {
 export const DEFAULT_CHART_SETTINGS: ChartSettings = {
   type: "candles",
   showVolume: true,
+  showEma20: true,
   showEma50: true,
   showEma200: true,
   showEma40Weekly: true,
@@ -62,6 +65,7 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
 export const LIGHT_CHART_THEME: ChartSettings = {
   type: "candles",
   showVolume: true,
+  showEma20: true,
   showEma50: true,
   showEma200: true,
   showEma40Weekly: true,

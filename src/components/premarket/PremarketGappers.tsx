@@ -19,7 +19,7 @@ import {
   type SavedGapperFilterPreset,
   saveGapperFiltersToStorage,
 } from "@/components/premarket/gapper-filters-storage";
-import GapperFilterControls from "@/components/premarket/GapperFilterControls";
+import GapperFilterControls, { type GapperFilterControlsRef } from "@/components/premarket/GapperFilterControls";
 import { formatScreenerCompact } from "@/components/premarket/premarket-number-display";
 
 function fmtPct(n: number): string {
@@ -166,8 +166,10 @@ export default function PremarketGappers({
   const [lastRefreshSeconds, setLastRefreshSeconds] = useState<number | null>(null);
   /** Row count from last successful scan (updates on Apply + Refresh). */
   const [resultsCount, setResultsCount] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [savedPresets, setSavedPresets] = useState<SavedGapperFilterPreset[]>(() => loadSavedGapperFilterPresetsFromStorage());
   const [selectedSavedPresetId, setSelectedSavedPresetId] = useState<string | null>(null);
+  const filterControlsRef = useRef<GapperFilterControlsRef>(null);
 
   const onSortHeaderClick = useCallback((key: GapperSortKey) => {
     if (sortKey === key) {
@@ -279,13 +281,77 @@ export default function PremarketGappers({
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
       <div className="space-y-3 p-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="pm-site-caption tabular-nums" style={{ color: "var(--ws-text-dim)" }}>
           Results: {resultsCount === null ? "—" : resultsCount}
         </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`pm-focus shrink-0 rounded border px-2 py-1 font-medium transition-colors duration-150 ${
+              filtersOpen
+                ? "border-[var(--ws-cyan)] bg-[rgba(0,229,204,0.12)] text-[var(--ws-cyan)] hover:bg-[rgba(0,229,204,0.18)]"
+                : "border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)]"
+            }`}
+            style={{
+              fontFamily: "var(--ws-font-sans)",
+              fontSize: "var(--ws-fs-label)",
+            }}
+            aria-expanded={filtersOpen}
+            aria-pressed={filtersOpen}
+          >
+            Filters
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (filtersOpen) {
+                filterControlsRef.current?.applyFiltersAndRunPrimary();
+              } else {
+                applyFilters(filters);
+              }
+            }}
+            disabled={loading}
+            className="pm-focus shrink-0 rounded border border-[var(--border-default)] bg-transparent font-medium text-[var(--text-secondary)] transition-colors duration-150 ws-focus-ring hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:opacity-50"
+            style={{
+              height: 30,
+              padding: "4px 12px",
+              fontFamily: "var(--ws-font-sans)",
+              fontSize: "var(--ws-fs-label)",
+            }}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            onClick={() => void run(filters)}
+            disabled={loading}
+            className="pm-focus inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded border border-[var(--border-default)] bg-transparent text-[var(--text-secondary)] transition-colors duration-150 ws-focus-ring hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)] active:border-[var(--ws-cyan)] active:bg-[rgba(0,229,204,0.12)] active:text-[var(--ws-cyan)] disabled:opacity-50"
+            title="Refresh scan"
+            aria-label="Refresh scan"
+          >
+            ↻
+          </button>
+          {lastRefreshSeconds != null ? (
+            <span
+              className="shrink-0 tabular-nums"
+              style={{
+                fontFamily: "var(--ws-font-mono)",
+                fontSize: "var(--ws-fs-caption)",
+                color: "#8a8a8a",
+              }}
+              title="Duration of the last TradingView request"
+            >
+              {lastRefreshSeconds.toFixed(2)}s
+            </span>
+          ) : null}
+        </div>
       </div>
 
+      {filtersOpen ? (
       <GapperFilterControls
+        ref={filterControlsRef}
         filters={filters}
         onFiltersChange={(next) => {
           setSelectedSavedPresetId(null);
@@ -301,10 +367,9 @@ export default function PremarketGappers({
         onDeleteSavedPreset={deleteSavedPreset}
         primaryLabel="Apply"
         loading={loading}
-        onSecondaryRefresh={() => void run(filters)}
-        secondaryLabel="Refresh scan"
-        lastRefreshSeconds={lastRefreshSeconds}
+        hidePrimaryButton
       />
+      ) : null}
 
       {error ? (
         <div

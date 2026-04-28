@@ -11,7 +11,7 @@ if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out
 
 # The wrapper script that the scheduler calls: downloads latest DB artifact, with logging
 $wrapperScript = @"
-`$ErrorActionPreference = 'Continue'
+`$ErrorActionPreference = 'Stop'
 `$repo = '$repo'
 `$logDir = '$logDir'
 `$logFile = Join-Path `$logDir ("db-sync-" + (Get-Date -Format 'yyyy-MM-dd') + ".log")
@@ -27,10 +27,16 @@ Log "=== DB sync started ==="
 try {
     Log "Downloading latest DB artifact from GitHub..."
     & node scripts/download-latest-db.mjs 2>&1 | Tee-Object -Append -FilePath `$logFile
-    if (`$LASTEXITCODE -ne 0) { Log "ERROR: download-latest-db exited with code `$LASTEXITCODE" }
-    else { Log "DB sync completed successfully" }
+    if (`$LASTEXITCODE -ne 0) {
+        Log "ERROR: download-latest-db exited with code `$LASTEXITCODE"
+        Log "=== DB sync finished ==="
+        exit `$LASTEXITCODE
+    }
+    Log "DB sync completed successfully"
 } catch {
     Log "ERROR: download-latest-db failed: `$_"
+    Log "=== DB sync finished ==="
+    exit 1
 }
 
 Log "=== DB sync finished ==="

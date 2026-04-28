@@ -1,4 +1,5 @@
 const AMERICA_NEW_YORK = "America/New_York";
+const ASIA_DUBAI = "Asia/Dubai";
 
 /**
  * Premarket UI: `23 Apr 2026, 8:09:10 AM ET` from an ISO timestamp (e.g. `generated_at`).
@@ -8,19 +9,19 @@ export function formatGeneratedAtEtDisplay(iso: string | null | undefined): stri
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "—";
   const datePart = new Intl.DateTimeFormat("en-GB", {
-    timeZone: AMERICA_NEW_YORK,
+    timeZone: ASIA_DUBAI,
     day: "numeric",
     month: "short",
     year: "numeric",
   }).format(d);
   const timePart = new Intl.DateTimeFormat("en-US", {
-    timeZone: AMERICA_NEW_YORK,
+    timeZone: ASIA_DUBAI,
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
   }).format(d);
-  return `${datePart}, ${timePart} ET`;
+  return `${datePart}, ${timePart}`;
 }
 
 /** Latest of several ISO timestamps (e.g. macro vs equities `generated_at`), formatted for premarket headers. */

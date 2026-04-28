@@ -28,6 +28,7 @@ export function usePremarketPeeks() {
   const [equitiesLoading, setEquitiesLoading] = useState(true);
   const [equitiesError, setEquitiesError] = useState<string | null>(null);
   const [equitiesSetupHint, setEquitiesSetupHint] = useState<string | null>(null);
+  const [lastRefreshAtIso, setLastRefreshAtIso] = useState<string | null>(null);
 
   const lastScheduledSlotRef = useRef<string | null>(null);
 
@@ -83,6 +84,7 @@ export function usePremarketPeeks() {
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadMacro(), loadEquities()]);
+    setLastRefreshAtIso(new Date().toISOString());
   }, [loadMacro, loadEquities]);
 
   useEffect(() => {
@@ -126,6 +128,7 @@ export function usePremarketPeeks() {
     equitiesLoading,
     equitiesError,
     equitiesSetupHint,
+    lastRefreshAtIso,
     refreshMacro: loadMacro,
     refreshEquities: loadEquities,
     refreshAll,

@@ -18,7 +18,7 @@ import {
   type GapperFilterState,
 } from "@/components/premarket/gapper-filters-storage";
 import { usePremarketPeeks } from "@/hooks/usePremarketPeeks";
-import { formatLatestGeneratedAtEtDisplay } from "@/lib/et-ymd";
+import { formatGeneratedAtEtDisplay } from "@/lib/et-ymd";
 
 const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "calendars", "earnings", "movers", "sipArchive"];
 
@@ -65,6 +65,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     equitiesLoading,
     equitiesError,
     equitiesSetupHint,
+    lastRefreshAtIso,
   } = usePremarketPeeks();
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
@@ -96,7 +97,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             labelAccent={s.labelAccent}
             metadata={
               s.id === "context" && !macroLoading && !equitiesLoading
-                ? formatLatestGeneratedAtEtDisplay(macroRow?.generated_at, equitiesRow?.generated_at)
+                ? formatGeneratedAtEtDisplay(lastRefreshAtIso)
                 : undefined
             }
             collapsed={collapsed[s.id]}

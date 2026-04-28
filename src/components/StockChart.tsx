@@ -511,6 +511,15 @@ function StockChart({
       .filter((x): x is { time: UTCTimestamp; value: number } => x !== null);
   }, [timeframe, chronological, seriesData]);
 
+  const ema20Data = useMemo(() => {
+    if (timeframe !== "daily") return [];
+    const closes = chronological.map((d) => d.close);
+    const ema = computeEMA(closes, 20);
+    return seriesData
+      .map((d, i) => (ema[i] != null ? { time: d.time, value: ema[i]! } : null))
+      .filter((x): x is { time: UTCTimestamp; value: number } => x !== null);
+  }, [timeframe, chronological, seriesData]);
+
   const ema200Data = useMemo(() => {
     if (timeframe !== "daily") return [];
     const closes = chronological.map((d) => d.close);
@@ -744,6 +753,20 @@ function StockChart({
 
     // Overlays: EMAs
     if (timeframe === "daily") {
+      if (settings.showEma20 && ema20Data.length > 0) {
+        const ema20Color = "#a855f7";
+        chart
+          .addSeries(LineSeries, {
+            color: ema20Color,
+            lineWidth: 1,
+            priceScaleId: "right",
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => null,
+          })
+          .setData(ema20Data);
+      }
       if (settings.showEma50 && ema50Data.length > 0) {
         const ema50Color = "#ef4444";
         chart
@@ -1316,6 +1339,7 @@ function StockChart({
     chronological,
     seriesData,
     volumeCandleData,
+    ema20Data,
     ema50Data,
     ema200Data,
     ema40Data,
@@ -2060,6 +2084,7 @@ function StockChart({
             style={{ top: CHART_INDICATOR_COLUMN_TOP_PX, right: CHART_PRICE_SCALE_GUTTER_PX }}
           >
             {(timeframe === "daily" ? [
+              { key: "ema20", label: "EMA(20)", color: "#a855f7", active: settings.showEma20, toggle: () => handleUpdateSettings({ showEma20: !settings.showEma20 }) },
               { key: "ema50", label: "EMA(50)", color: "#ef4444", active: settings.showEma50, toggle: () => handleUpdateSettings({ showEma50: !settings.showEma50 }) },
               { key: "ema200", label: "EMA(200)", color: "#22c55e", active: settings.showEma200, toggle: () => handleUpdateSettings({ showEma200: !settings.showEma200 }) },
             ] : timeframe === "weekly" ? [
@@ -2245,6 +2270,14 @@ function StockChart({
                 </div>
                 <div>
                   <div className="font-semibold text-zinc-700 dark:text-zinc-200 mb-1">Overlays</div>
+                  <label className="flex items-center gap-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={settings.showEma20}
+                      onChange={(e) => handleUpdateSettings({ showEma20: e.target.checked })}
+                    />
+                    <span className="text-zinc-600 dark:text-zinc-300">EMA 20 (daily)</span>
+                  </label>
                   <label className="flex items-center gap-2 mb-1">
                     <input
                       type="checkbox"

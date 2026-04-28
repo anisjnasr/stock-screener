@@ -391,14 +391,6 @@ export default function SectorPerfPanel({
         <table className="w-full table-auto border-collapse text-xs min-w-[640px]">
           <thead>
             <tr style={{ background: "var(--ws-bg3)" }}>
-              {subTab === "industries" ? (
-                <th
-                  scope="col"
-                  className="w-9 min-w-[2.25rem] border-b p-0"
-                  style={{ borderColor: "var(--ws-border)" }}
-                  aria-label="Expand"
-                />
-              ) : null}
               <SortTh label="Ticker" colKey="ticker" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeader} />
               <SortTh label="Name" colKey="name" sortKey={sortKey} sortDir={sortDir} onSort={onSortHeader} />
               {MATRIX_PERF_TF.map((tf) => (
@@ -435,49 +427,54 @@ export default function SectorPerfPanel({
                     onSymbolSelect?.(row.ticker);
                   }}
                 >
-                  {subTab === "industries" ? (
-                    <td className="w-9 min-w-[2.25rem] p-0 align-middle text-center" onClick={(e) => e.stopPropagation()}>
-                      {isParent ? (
+                  <td className="w-[1%] px-1 py-1 align-middle font-mono whitespace-nowrap" style={pad}>
+                    <div className="flex items-center gap-1">
+                      {subTab === "industries" ? (
+                        isParent ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-4 w-4 items-center justify-center ws-focus-ring rounded"
+                            style={{ color: "var(--ws-text-dim)" }}
+                            aria-expanded={open}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void toggleExpand(row.ticker);
+                            }}
+                          >
+                            <span
+                              className="inline-block transition-transform leading-[0.65]"
+                              style={{
+                                fontSize: `${MATRIX_TABLE_CHEVRON_PX}px`,
+                                color: "var(--ws-text-vdim)",
+                                transform: open ? "rotate(180deg)" : "rotate(90deg)",
+                              }}
+                              aria-hidden
+                            >
+                              ▲
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="inline-block h-4 w-4" aria-hidden />
+                        )
+                      ) : null}
+                      {row.ticker ? (
                         <button
                           type="button"
-                          className="w-full min-h-8 flex items-center justify-center ws-focus-ring"
-                          style={{ color: "var(--ws-text-dim)" }}
-                          aria-expanded={open}
-                          onClick={() => toggleExpand(row.ticker)}
+                          className="text-left ws-focus-ring rounded px-0.5"
+                          style={{ color: "var(--ws-cyan)", fontWeight: isSel ? 600 : 400 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTicker(row.ticker);
+                            onSymbolSelect?.(row.ticker);
+                            onTickerActivate?.(row.ticker);
+                          }}
                         >
-                          <span
-                            className="inline-block transition-transform leading-[0.65]"
-                            style={{
-                              fontSize: `${MATRIX_TABLE_CHEVRON_PX}px`,
-                              color: "var(--ws-text-vdim)",
-                              transform: open ? "rotate(180deg)" : "rotate(90deg)",
-                            }}
-                            aria-hidden
-                          >
-                            ▲
-                          </span>
+                          {row.ticker}
                         </button>
-                      ) : null}
-                    </td>
-                  ) : null}
-                  <td className="w-[1%] px-1 py-1 align-middle font-mono whitespace-nowrap" style={pad}>
-                    {row.ticker ? (
-                      <button
-                        type="button"
-                        className="text-left ws-focus-ring rounded px-0.5"
-                        style={{ color: "var(--ws-cyan)", fontWeight: isSel ? 600 : 400 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTicker(row.ticker);
-                          onSymbolSelect?.(row.ticker);
-                          onTickerActivate?.(row.ticker);
-                        }}
-                      >
-                        {row.ticker}
-                      </button>
-                    ) : (
-                      <span style={{ color: "var(--ws-text-vdim)" }}>{row.name}</span>
-                    )}
+                      ) : (
+                        <span style={{ color: "var(--ws-text-vdim)" }}>{row.name}</span>
+                      )}
+                    </div>
                   </td>
                   <td className={NAME_COL_TD} style={{ ...pad, color: "var(--ws-text)" }} title={row.name}>
                     {row.name}
