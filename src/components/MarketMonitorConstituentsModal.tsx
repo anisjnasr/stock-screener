@@ -46,6 +46,25 @@ function changeColumnLabel(metric: MarketMonitorMetricKey): string {
 const mmModalActionBtn =
   "font-medium rounded border border-[color:var(--ws-border)] bg-transparent text-[color:var(--ws-text)] transition-colors hover:bg-[var(--ws-hover)] hover:border-[color:var(--ws-border-hover)]";
 
+function IndustryChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M6 3.5L10.5 8L6 12.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function MarketMonitorConstituentsModal({
   open,
   onClose,
@@ -453,8 +472,8 @@ export default function MarketMonitorConstituentsModal({
                         onClick={(e) => e.stopPropagation()}
                         onChange={() => toggleAllInRows(rows)}
                       />
-                      <span className="text-[10px] w-4 shrink-0" style={{ color: "var(--ws-text-dim)" }}>
-                        {openRow ? "\u25bc" : "\u25b6"}
+                      <span className="w-4 shrink-0 flex items-center justify-center" style={{ color: "var(--ws-text-dim)" }}>
+                        <IndustryChevron open={openRow} />
                       </span>
                       <span className="flex-1 text-xs font-semibold truncate" style={{ color: "var(--ws-text)" }}>
                         {indName}
