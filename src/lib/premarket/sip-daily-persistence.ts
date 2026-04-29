@@ -48,18 +48,35 @@ export function saveSipDaySnapshot(snapshot: SipDaySnapshotV1, variant: SipPersi
   }
 }
 
-/** Merge mid-large: keep existing order and rows; append API rows whose tickers are new. */
+function gapSortValue(row: GapperRow): number {
+  return Number.isFinite(row.gapPct) ? row.gapPct : Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * Merge mid-large rows by ticker:
+ * - keep accumulated names (never drop previous rows if absent in current refresh)
+ * - refresh existing rows with latest API values when present
+ * - append new names
+ * - always sort by latest Gap % descending
+ */
 export function mergeMidLargeRows(previous: GapperRow[], apiRows: GapperRow[]): GapperRow[] {
-  const seen = new Set(previous.map((r) => r.ticker.toUpperCase()));
-  const out = [...previous];
-  for (const r of apiRows) {
-    const u = r.ticker.toUpperCase();
-    if (!seen.has(u)) {
-      seen.add(u);
-      out.push(r);
-    }
+  const previousByTicker = new Map(previous.map((r) => [r.ticker.toUpperCase(), r]));
+  const seen = new Set<string>();
+  const out: GapperRow[] = [];
+
+  for (const api of apiRows) {
+    const u = api.ticker.toUpperCase();
+    seen.add(u);
+    // Latest API snapshot should override stale values like gapPct/pmVolume.
+    out.push({ ...(previousByTicker.get(u) ?? {}), ...api });
   }
-  return out;
+
+  for (const prev of previous) {
+    const u = prev.ticker.toUpperCase();
+    if (!seen.has(u)) out.push(prev);
+  }
+
+  return out.sort((a, b) => gapSortValue(b) - gapSortValue(a));
 }
 
 /** Shallow merge; `next` wins on key collisions (latest API overlay). */

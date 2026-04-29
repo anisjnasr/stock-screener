@@ -323,13 +323,19 @@ function DayBucketBlock({
       </h3>
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <div className="min-w-0 space-y-2">
-          <p className="pm-sip-col-head m-0" style={{ color: "var(--text-tertiary)" }}>
+          <p
+            className="pm-site-caption m-0 font-semibold"
+            style={{ color: "var(--text-secondary)", letterSpacing: "0.02em" }}
+          >
             Before market open
           </p>
           <CompactEarningsTable rows={bmo} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
           {dmh.length > 0 ? (
             <div className="border-t pt-2" style={{ borderColor: "var(--border-default)" }}>
-              <p className="pm-sip-col-head mb-1" style={{ color: "var(--text-tertiary)" }}>
+              <p
+                className="pm-site-caption mb-1 font-semibold"
+                style={{ color: "var(--text-secondary)", letterSpacing: "0.02em" }}
+              >
                 During market
               </p>
               <CompactEarningsTable rows={dmh} showSlotTag onOpenTickerInLists={onOpenTickerInLists} />
@@ -337,7 +343,10 @@ function DayBucketBlock({
           ) : null}
         </div>
         <div className="min-w-0">
-          <p className="pm-sip-col-head mb-1" style={{ color: "var(--text-tertiary)" }}>
+          <p
+            className="pm-site-caption mb-1 font-semibold"
+            style={{ color: "var(--text-secondary)", letterSpacing: "0.02em" }}
+          >
             After market close
           </p>
           <CompactEarningsTable rows={amc} showSlotTag={false} onOpenTickerInLists={onOpenTickerInLists} />
