@@ -57,3 +57,4 @@ jobs:
           base_url: ${{ secrets.APP_BASE_URL }}
           cron_secret: ${{ secrets.CRON_SECRET }}
           path: /api/cron/earnings/actuals
+          max_time_seconds: "900"
