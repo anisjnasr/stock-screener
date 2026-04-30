@@ -26,9 +26,9 @@ export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   minMarketCap: 0,
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
-  minAvgVolume: 0,
   minVolPct: 0,
   minGapPct: 1,
+  rowLimit: 10,
 };
 
 const SIP_MID_LARGE_DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
@@ -130,9 +130,9 @@ export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersReq
     minMarketCap: f.minMarketCap,
     maxMarketCap: f.maxMarketCap,
     minPmVolume: f.minPmVolume,
-    minAvgVolume: f.minAvgVolume,
     minVolPct: f.minVolPct,
     minGapPct: f.minGapPct,
+    rowLimit: f.rowLimit,
   };
 }
 

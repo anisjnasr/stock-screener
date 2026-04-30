@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { DateTime } from "luxon";
 
 /** Public weekly calendar mirror used by many dashboards (not official Forex Factory). */
 export const FOREX_FACTORY_WEEKLY_XML_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml";
@@ -67,6 +68,16 @@ export function parseFfTimeToHmsEt(raw: string): string | null {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
 }
 
+function utcDateTimeToEt(dateIso: string, hmsUtc: string): { event_date: string; event_time_et: string } | null {
+  const dtUtc = DateTime.fromFormat(`${dateIso} ${hmsUtc}`, "yyyy-MM-dd HH:mm:ss", { zone: "UTC" });
+  if (!dtUtc.isValid) return null;
+  const dtEt = dtUtc.setZone("America/New_York");
+  return {
+    event_date: dtEt.toFormat("yyyy-MM-dd"),
+    event_time_et: dtEt.toFormat("HH:mm:ss"),
+  };
+}
+
 function normalizeImpact(raw: string): "High" | "Medium" | "Low" | null {
   const s = raw.trim().toLowerCase();
   if (s === "high") return "High";
@@ -124,7 +135,7 @@ export async function fetchForexFactoryCalendarXml(init?: { signal?: AbortSignal
 
 /**
  * Parse weekly XML; keep **USD** + **High** or **Medium** impact (pre-market spec).
- * Times are interpreted as **US Eastern** wall times (feed convention).
+ * Feed times are UTC wall-clock values and are normalized to ET before upsert.
  */
 export function parseForexFactoryHighMediumImpactUsd(xml: string): EconomicEventInsert[] {
   const parser = new XMLParser({
@@ -161,13 +172,16 @@ export function parseForexFactoryHighMediumImpactUsd(xml: string): EconomicEvent
     if (!eventDate) continue;
 
     const timeRaw = textOf(ev.time);
-    const eventTimeEt = parseFfTimeToHmsEt(timeRaw);
+    const timeHmsRaw = parseFfTimeToHmsEt(timeRaw);
+    const normalizedEt = timeHmsRaw ? utcDateTimeToEt(eventDate, timeHmsRaw) : null;
+    const eventDateEt = normalizedEt?.event_date ?? eventDate;
+    const eventTimeEt = normalizedEt?.event_time_et ?? null;
 
     const forecast = textOf(ev.forecast) || null;
     const previous = textOf(ev.previous) || null;
 
     out.push({
-      event_date: eventDate,
+      event_date: eventDateEt,
       event_time_et: eventTimeEt,
       event_name: eventName,
       country: "US",
@@ -175,7 +189,7 @@ export function parseForexFactoryHighMediumImpactUsd(xml: string): EconomicEvent
       forecast,
       previous,
       source: "forex_factory",
-      external_id: stableExternalId(eventDate, eventName),
+      external_id: stableExternalId(eventDateEt, eventName),
       updated_at: nowIso,
     });
   }

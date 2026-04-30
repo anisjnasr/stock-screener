@@ -11,6 +11,10 @@ import {
   type SetStateAction,
 } from "react";
 import type { GapperRow, GappersResponse } from "@/types/gappers";
+import type { SipCatalyst } from "@/types/sip-catalyst";
+import type { SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
+import type { PythonNewsItem } from "@/lib/python-service";
+import { truncateSipRationale } from "@/lib/premarket/sip-rationale-truncate";
 import {
   gapperFilterStateToRequestBody,
   loadSavedGapperFilterPresetsFromStorage,
@@ -32,7 +36,7 @@ function fmtVolPct(n: number | null): string {
   return `${n.toFixed(1)}%`;
 }
 
-type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "avgVolume90d" | "volPct" | "marketCap" | "sector";
+type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "volPct" | "marketCap" | "sector";
 type SortDir = "asc" | "desc";
 
 function defaultSortDir(key: GapperSortKey): SortDir {
@@ -74,8 +78,6 @@ function compareGapperRows(a: GapperRow, b: GapperRow, key: GapperSortKey, asc: 
       return asc ? a.lastPrice - b.lastPrice : b.lastPrice - a.lastPrice;
     case "pmVolume":
       return asc ? a.pmVolume - b.pmVolume : b.pmVolume - a.pmVolume;
-    case "avgVolume90d":
-      return cmpNum(a.avgVolume90d, b.avgVolume90d, asc);
     case "volPct":
       return cmpNum(a.volPct, b.volPct, asc);
     case "marketCap":
@@ -143,6 +145,8 @@ function GapperSortTh({
 type PremarketGappersProps = {
   onOpenTickerInLists?: (sym: string) => void;
   onJumpToEarnings?: () => void;
+  onAddToSip?: (target: SipPersistVariant, payload: { row: GapperRow; headlines: PythonNewsItem[]; catalyst: SipCatalyst | null }) => void;
+  sipMembershipByTicker?: Record<string, { large: boolean; small: boolean }>;
   filters: GapperFilterState;
   setFilters: Dispatch<SetStateAction<GapperFilterState>>;
   /** After parent hydrates gapper filters from localStorage, child runs one initial TV fetch. */
@@ -152,11 +156,19 @@ type PremarketGappersProps = {
 export default function PremarketGappers({
   onOpenTickerInLists,
   onJumpToEarnings,
+  onAddToSip,
+  sipMembershipByTicker,
   filters,
   setFilters,
   filtersHydrated,
 }: PremarketGappersProps) {
   const [rows, setRows] = useState<GapperRow[] | null>(null);
+  const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
+  const [pythonConfigured, setPythonConfigured] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [catalystByTicker, setCatalystByTicker] = useState<Record<string, SipCatalyst>>({});
+  const [catalystLoadingByTicker, setCatalystLoadingByTicker] = useState<Record<string, boolean>>({});
+  const [catalystErrorByTicker, setCatalystErrorByTicker] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const initialFetchDone = useRef(false);
@@ -200,14 +212,23 @@ export default function PremarketGappers({
       const json = (await res.json()) as GappersResponse & { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
         setRows(null);
+        setNews(null);
+        setPythonConfigured(false);
+        setNewsError(null);
         setResultsCount(null);
         setError(json.error ?? res.statusText);
         return;
       }
       setRows(json.rows);
+      setNews(json.news ?? null);
+      setPythonConfigured(Boolean(json.pythonConfigured));
+      setNewsError(json.newsError ?? null);
       setResultsCount(json.rows?.length ?? 0);
     } catch (e) {
       setRows(null);
+      setNews(null);
+      setPythonConfigured(false);
+      setNewsError(null);
       setResultsCount(null);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -386,6 +407,21 @@ export default function PremarketGappers({
         </div>
       ) : null}
 
+      {newsError ? (
+        <div
+          className="pm-site-prose rounded border px-3 py-2.5 leading-relaxed"
+          role="alert"
+          style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg)" }}
+        >
+          <p className="font-semibold" style={{ color: "var(--ws-text)" }}>
+            Headlines request failed
+          </p>
+          <p className="pm-site-caption mt-1" style={{ color: "var(--ws-text-dim)" }}>
+            {newsError}
+          </p>
+        </div>
+      ) : null}
+
       {!error && rows && rows.length === 0 && !loading ? (
         <p className="pm-site-prose" style={{ color: "var(--ws-text-dim)" }}>
           No rows match these filters (or market is closed / no pre-market data).
@@ -394,7 +430,7 @@ export default function PremarketGappers({
 
       {sortedRows && sortedRows.length > 0 ? (
         <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--ws-border)" }}>
-          <table className="pm-site-caption w-full min-w-[42rem] border-collapse">
+          <table className="pm-site-caption w-full min-w-[58rem] border-collapse">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--ws-border)", background: "var(--ws-bg)" }}>
                 <th
@@ -443,14 +479,6 @@ export default function PremarketGappers({
                   align="right"
                 />
                 <GapperSortTh
-                  label="Avg Vol (3M)"
-                  col="avgVolume90d"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={onSortHeaderClick}
-                  align="right"
-                />
-                <GapperSortTh
                   label="Vol %"
                   col="volPct"
                   sortKey={sortKey}
@@ -474,18 +502,33 @@ export default function PremarketGappers({
                   onSort={onSortHeaderClick}
                   align="left"
                 />
+                <th className="pm-sip-col-head min-w-[16rem] px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
+                  News
+                </th>
+                <th className="pm-sip-col-head w-16 px-2 py-1.5 text-center" style={{ color: "var(--ws-text-dim)" }}>
+                  Add
+                </th>
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((r) => (
-                <tr
-                  key={r.ticker}
-                  className="border-t transition-colors hover:bg-[color:var(--ws-hover)]"
-                  style={{
-                    borderColor: "var(--ws-border)",
-                    boxShadow: r.earningsRecent24h ? "inset 3px 0 0 0 #9d6fd4" : undefined,
-                  }}
-                >
+              {sortedRows.map((r) => {
+                const ticker = r.ticker.toUpperCase();
+                const rowNews = news?.[ticker] ?? [];
+                const firstHeadline = rowNews[0]?.title?.trim() ?? "";
+                const catalyst = catalystByTicker[ticker] ?? null;
+                const rowLoading = Boolean(catalystLoadingByTicker[ticker]);
+                const rowCatalystError = catalystErrorByTicker[ticker] ?? null;
+                const inLarge = Boolean(sipMembershipByTicker?.[ticker]?.large);
+                const inSmall = Boolean(sipMembershipByTicker?.[ticker]?.small);
+                return (
+                  <tr
+                    key={r.ticker}
+                    className="border-t transition-colors hover:bg-[color:var(--ws-hover)]"
+                    style={{
+                      borderColor: "var(--ws-border)",
+                      boxShadow: r.earningsRecent24h ? "inset 3px 0 0 0 #9d6fd4" : undefined,
+                    }}
+                  >
                   <td className="px-1 py-1 align-middle text-center">
                     {r.earningsRecent24h ? (
                       <button
@@ -544,12 +587,6 @@ export default function PremarketGappers({
                   </td>
                   <td
                     className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
-                    style={{ color: "var(--ws-text-dim)" }}
-                  >
-                    {formatScreenerCompact(r.avgVolume90d)}
-                  </td>
-                  <td
-                    className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums"
                     style={{ color: r.volPct != null && r.volPct > 5 ? "#5bbd6e" : "var(--ws-text-dim)" }}
                   >
                     {fmtVolPct(r.volPct)}
@@ -563,8 +600,134 @@ export default function PremarketGappers({
                   <td className="max-w-[8rem] truncate px-2 py-1.5 text-left" style={{ color: "var(--ws-text-dim)" }}>
                     {r.sector ?? "—"}
                   </td>
+                  <td className="max-w-[22rem] min-w-[16rem] px-2 py-1.5 align-top">
+                    {catalyst ? (
+                      <p className="m-0 leading-snug" style={{ color: "var(--ws-text)" }} title={catalyst.summary}>
+                        {catalyst.summary}
+                      </p>
+                    ) : firstHeadline ? (
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="m-0 min-w-0 flex-1 leading-snug" style={{ color: "var(--ws-text-dim)" }} title={firstHeadline}>
+                          {truncateSipRationale(firstHeadline)}
+                        </p>
+                        <button
+                          type="button"
+                          className="pm-focus inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border"
+                          style={{
+                            borderColor: "var(--ws-border)",
+                            color: "var(--ws-cyan)",
+                            background: "transparent",
+                          }}
+                          disabled={rowLoading}
+                          aria-label={rowLoading ? `Generating catalyst for ${ticker}` : `Expand catalyst for ${ticker}`}
+                          title={rowLoading ? "Generating catalyst..." : "Expand catalyst"}
+                          onClick={async () => {
+                            if (rowLoading || rowNews.length === 0) return;
+                            setCatalystLoadingByTicker((prev) => ({ ...prev, [ticker]: true }));
+                            setCatalystErrorByTicker((prev) => ({ ...prev, [ticker]: null }));
+                            try {
+                              const res = await fetch("/api/premarket/catalyst", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                                body: JSON.stringify({ row: r, headlines: rowNews }),
+                                cache: "no-store",
+                              });
+                              const json = (await res.json()) as
+                                | { ok: true; catalyst: SipCatalyst | null }
+                                | { ok: false; error: string };
+                              if (!res.ok || !json.ok) {
+                                setCatalystErrorByTicker((prev) => ({
+                                  ...prev,
+                                  [ticker]: json.ok ? "Catalyst request failed" : json.error,
+                                }));
+                                return;
+                              }
+                              if (!json.catalyst) {
+                                setCatalystErrorByTicker((prev) => ({
+                                  ...prev,
+                                  [ticker]: "No qualifying catalyst details were generated.",
+                                }));
+                                return;
+                              }
+                              setCatalystByTicker((prev) => ({ ...prev, [ticker]: json.catalyst }));
+                            } catch (e) {
+                              setCatalystErrorByTicker((prev) => ({
+                                ...prev,
+                                [ticker]: e instanceof Error ? e.message : "Catalyst request failed",
+                              }));
+                            } finally {
+                              setCatalystLoadingByTicker((prev) => ({ ...prev, [ticker]: false }));
+                            }
+                          }}
+                        >
+                          {rowLoading ? (
+                            <span
+                              className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true" focusable="false">
+                              <path d="M6 2.25v7.5M2.25 6h7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    ) : pythonConfigured ? (
+                      <p className="m-0 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+                        No News.
+                      </p>
+                    ) : (
+                      <p className="m-0 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+                        —
+                      </p>
+                    )}
+                    {rowCatalystError ? (
+                      <p className="m-0 mt-1 leading-snug" style={{ color: "var(--negative)" }}>
+                        {rowCatalystError}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-2 py-1.5 align-middle text-center">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="pm-focus inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border px-1"
+                        style={{
+                          borderColor: inLarge ? "var(--ws-cyan)" : "var(--ws-border)",
+                          color: inLarge ? "var(--ws-cyan)" : "var(--text-secondary)",
+                          background: "transparent",
+                          fontSize: "var(--ws-fs-caption)",
+                          opacity: onAddToSip ? 1 : 0.5,
+                        }}
+                        disabled={!onAddToSip}
+                        title={inLarge ? "In SIP Large Caps" : "Add to SIP Large Caps"}
+                        aria-label={inLarge ? `Already in SIP Large Caps: ${ticker}` : `Add ${ticker} to SIP Large Caps`}
+                        onClick={() => onAddToSip?.("mid-large", { row: r, headlines: rowNews, catalyst })}
+                      >
+                        L
+                      </button>
+                      <button
+                        type="button"
+                        className="pm-focus inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border px-1"
+                        style={{
+                          borderColor: inSmall ? "var(--ws-cyan)" : "var(--ws-border)",
+                          color: inSmall ? "var(--ws-cyan)" : "var(--text-secondary)",
+                          background: "transparent",
+                          fontSize: "var(--ws-fs-caption)",
+                          opacity: onAddToSip ? 1 : 0.5,
+                        }}
+                        disabled={!onAddToSip}
+                        title={inSmall ? "In SIP Small Caps" : "Add to SIP Small Caps"}
+                        aria-label={inSmall ? `Already in SIP Small Caps: ${ticker}` : `Add ${ticker} to SIP Small Caps`}
+                        onClick={() => onAddToSip?.("small-cap", { row: r, headlines: rowNews, catalyst })}
+                      >
+                        S
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>

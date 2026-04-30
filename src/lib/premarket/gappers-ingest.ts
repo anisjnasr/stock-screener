@@ -33,7 +33,7 @@ export async function loadGappersScanOnly(
   try {
     const raw = await fetchTradingViewGappers(scan, {
       signal: init?.signal,
-      rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
+      rowLimit: init?.rowLimit ?? scan.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
     });
     const rows = applyVolPctFilter(
       applyMcapFilter(applyPriceBandFilter(raw, scan.minPrice, scan.maxPrice), scan.minMarketCap, scan.maxMarketCap),
@@ -56,7 +56,7 @@ export async function loadGappersSipScan(
   try {
     const raw = await fetchTradingViewGappers(scan, {
       signal: init?.signal,
-      rowLimit: init?.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
+      rowLimit: init?.rowLimit ?? scan.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
     });
     const rows = applyVolPctFilter(
       applyMcapFilter(applyPriceBandFilter(raw, scan.minPrice, scan.maxPrice), scan.minMarketCap, scan.maxMarketCap),
@@ -91,9 +91,9 @@ export function normalizeGappersScanBody(raw: unknown): TradingViewScanParams {
   const minMarketCap = clamp(n(b.minMarketCap, D.minMarketCap), 0, 1e15);
   const maxMarketCap = clamp(n(b.maxMarketCap, D.maxMarketCap), minMarketCap, 1e15);
   const minPmVolume = Math.max(0, n(b.minPmVolume, D.minPmVolume));
-  const minAvgVolume = Math.max(0, n(b.minAvgVolume, D.minAvgVolume));
   const minVolPct = Math.max(0, n(b.minVolPct, D.minVolPct));
   const minGapPct = clamp(n(b.minGapPct, D.minGapPct), 0, 100);
+  const rowLimit = clamp(Math.round(n(b.rowLimit, D.rowLimit)), 1, TRADINGVIEW_GAP_SCAN_ROW_CAP);
 
   return {
     minPrice,
@@ -101,8 +101,8 @@ export function normalizeGappersScanBody(raw: unknown): TradingViewScanParams {
     minMarketCap,
     maxMarketCap: Math.max(maxMarketCap, minMarketCap),
     minPmVolume,
-    minAvgVolume,
     minVolPct,
     minGapPct,
+    rowLimit,
   };
 }

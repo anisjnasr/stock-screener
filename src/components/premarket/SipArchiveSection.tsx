@@ -214,7 +214,7 @@ export default function SipArchiveSection({ collapsed, onToggle, onOpenTickerInL
               </div>
             ) : (
               <p className="pm-site-caption leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
-                No archived days yet. At 02:00 UAE time, prior Eastern session SIP lists (mid-large and small-cap) are
+                No archived days yet. At 02:00 UAE time, prior Eastern session SIP lists (large and small caps) are
                 appended here when snapshots exist.
               </p>
             )}

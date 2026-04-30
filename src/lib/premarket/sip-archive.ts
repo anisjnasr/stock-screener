@@ -214,8 +214,8 @@ export function getSipArchiveRowKey(e: SipArchiveEntry): string {
 /** Collapsed-row summary with SIP variant prefix when present (v3). */
 export function formatSipArchiveTickerSummary(entry: SipArchiveEntry): string {
   const t = entry.tickers.length ? entry.tickers.join(" - ") : "—";
-  if (entry.sipVariant === "mid-large") return `SIP - Mid-Large Caps: ${t}`;
-  if (entry.sipVariant === "small-cap") return `SIP - Small Caps: ${t}`;
+  if (entry.sipVariant === "mid-large") return `Large Caps: ${t}`;
+  if (entry.sipVariant === "small-cap") return `Small Caps: ${t}`;
   return t;
 }
 
@@ -239,7 +239,7 @@ export async function tryAppendSipArchiveAt2amDubai(): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
   const targetEt = archiveTargetEtYmdBeforeNow();
-  let entries = loadSipArchiveEntries();
+  const entries = loadSipArchiveEntries();
 
   const hasMid = entries.some(
     (e) => (e.archiveDayEt ?? e.uaeYmd) === targetEt && e.sipVariant === "mid-large"

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { unstable_cache } from "next/cache";
 import { getTickersWithEarningsInLast24Hours } from "@/lib/premarket/earnings-recent";
 import { loadGappersScanOnly, normalizeGappersScanBody } from "@/lib/premarket/gappers-ingest";
+import { fetchPythonTickerNews, isPythonServiceConfigured } from "@/lib/python-service";
 import type { GappersResponse } from "@/types/gappers";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,29 @@ export async function POST(request: NextRequest) {
       ...r,
       earningsRecent24h: earnings.has(r.ticker),
     }));
+    const tickers = rows.map((r) => r.ticker);
+    let news: GappersResponse["news"] = null;
+    let newsError: string | null = null;
+    if (tickers.length > 0 && isPythonServiceConfigured()) {
+      try {
+        const pack = await fetchPythonTickerNews({
+          tickers,
+          hoursBack: 24,
+          signal: request.signal,
+        });
+        news = pack.data;
+      } catch (e) {
+        newsError = e instanceof Error ? e.message : "Unknown error";
+      }
+    }
 
     const out: GappersResponse = {
       ok: true,
       source: base.source,
       rows,
+      pythonConfigured: isPythonServiceConfigured(),
+      news,
+      newsError,
     };
     return NextResponse.json(out, {
       headers: {

@@ -1,4 +1,4 @@
-# Sequential morning pipeline: macro → equities → themes → theme calendar events.
+# Sequential morning pipeline: themes.
 # Runs after Newsletter ingest completes so `newsletter_archive` has the latest allowlisted messages.
 #
 # Newsletter ingest is scheduled at 06:00, 13:00, 14:00, and 16:00 UAE time.
@@ -41,44 +41,6 @@ jobs:
           fi
           echo "BASE_OK=1" >> "$GITHUB_ENV"
 
-      - name: POST /api/cron/macro-writeup
-        if: env.BASE_OK == '1'
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/macro-writeup"
-          echo "POST $URL"
-          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${SECRET}" \
-            -H "Accept: application/json")
-          echo "HTTP $code"
-          cat resp.json
-          echo
-          test "$code" = "200"
-          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
-
-      - name: POST /api/cron/equities-writeup
-        if: env.BASE_OK == '1'
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/equities-writeup"
-          echo "POST $URL"
-          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${SECRET}" \
-            -H "Accept: application/json")
-          echo "HTTP $code"
-          cat resp.json
-          echo
-          test "$code" = "200"
-          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
-
       - name: POST /api/cron/theme-extraction
         if: env.BASE_OK == '1'
         env:
@@ -98,21 +60,3 @@ jobs:
           test "$code" = "200"
           python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
 
-      - name: POST /api/cron/theme-event-search
-        if: env.BASE_OK == '1'
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/theme-event-search"
-          echo "POST $URL"
-          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${SECRET}" \
-            -H "Accept: application/json")
-          echo "HTTP $code"
-          cat resp.json
-          echo
-          test "$code" = "200"
-          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"

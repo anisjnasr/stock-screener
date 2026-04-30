@@ -1,21 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DateTime } from "luxon";
 import EventRowFlag from "./EventRowFlag";
-import { ymdInEt } from "@/lib/et-ymd";
-import { industryThemePillClass } from "@/lib/premarket/industry-theme-pill-class";
+import { addCalendarDaysYmd, ymdInEt } from "@/lib/et-ymd";
 import type { EconomicEventPublic, EconomicEventsResponse } from "@/types/economic-events";
 import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-events";
 
-function formatTimeEt(hms: string | null): string {
-  if (!hms) return "TBD";
-  const [hs, ms] = hms.split(":");
-  const h = Number(hs);
-  const m = Number(ms);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return hms;
-  const ap = h >= 12 ? "PM" : "AM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${ap} ET`;
+const ET_ZONE = "America/New_York";
+const UAE_ZONE = "Asia/Dubai";
+
+function ymdInUae(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: UAE_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+function toUaeDateTime(date: string, hms: string | null): DateTime | null {
+  if (!hms) return null;
+  const normalized = /^\d{2}:\d{2}$/.test(hms) ? `${hms}:00` : hms;
+  const dt = DateTime.fromFormat(`${date} ${normalized}`, "yyyy-MM-dd HH:mm:ss", { zone: ET_ZONE });
+  if (!dt.isValid) return null;
+  return dt.setZone(UAE_ZONE);
+}
+
+function formatTimeUae(date: string, hms: string | null): string {
+  const dt = toUaeDateTime(date, hms);
+  if (!dt) return "TBD";
+  return `${dt.toFormat("h:mm a")} UAE`;
 }
 
 function dash(v: string | null): string {
@@ -35,7 +50,9 @@ function timeForSort(hms: string | null): string {
 }
 
 function sortKeyFor(date: string, time: string | null): string {
-  return `${date}T${timeForSort(time)}`;
+  const dt = toUaeDateTime(date, time);
+  if (!dt) return `${date}T${timeForSort(time)}`;
+  return dt.toISO() ?? `${date}T${timeForSort(time)}`;
 }
 
 function ImpactDot({ impact }: { impact: string }) {
@@ -52,12 +69,6 @@ function filterLow(impact: string): boolean {
   return impact.toLowerCase() !== "low";
 }
 
-function themePillLabel(themeTag: string | null | undefined): string {
-  const tag = themeTag?.trim();
-  if (!tag) return "Theme";
-  return /\btheme$/i.test(tag) ? tag : `${tag} Theme`;
-}
-
 export default function EconomicCalendar() {
   const [econToday, setEconToday] = useState<EconomicEventPublic[]>([]);
   const [mktToday, setMktToday] = useState<MarketEventPublic[]>([]);
@@ -68,8 +79,10 @@ export default function EconomicCalendar() {
     setLoading(true);
     setError(null);
     try {
-      const econQs = new URLSearchParams({ impact: "High,Medium" });
-      const mktQs = new URLSearchParams({ impact: "High,Medium" });
+      const fromEt = addCalendarDaysYmd(ymdInEt(), -1);
+      const toEt = addCalendarDaysYmd(ymdInEt(), 1);
+      const econQs = new URLSearchParams({ impact: "High,Medium", from: fromEt, to: toEt });
+      const mktQs = new URLSearchParams({ impact: "High,Medium", from: fromEt, to: toEt });
       const [eRes, mRes] = await Promise.all([
         fetch(`/api/economic-events?${econQs.toString()}`, { cache: "no-store" }),
         fetch(`/api/market-events?${mktQs.toString()}`, { cache: "no-store" }),
@@ -96,12 +109,22 @@ export default function EconomicCalendar() {
         console.warn("[EconomicCalendar] market-events:", mJson.error ?? mRes.statusText);
       }
 
-      const todayYmd = ymdInEt();
+      const todayYmd = ymdInUae();
       const econ = econEvents
-        .filter((ev) => ev.event_date === todayYmd && filterLow(ev.impact))
+        .filter((ev) => {
+          if (!filterLow(ev.impact)) return false;
+          const dt = toUaeDateTime(ev.event_date, ev.event_time_et);
+          if (!dt) return false;
+          return dt.toFormat("yyyy-MM-dd") === todayYmd;
+        })
         .sort((a, b) => sortKeyFor(a.event_date, a.event_time_et).localeCompare(sortKeyFor(b.event_date, b.event_time_et)));
       const mkt = mktEvents
-        .filter((ev) => ev.event_date === todayYmd && filterLow(ev.impact))
+        .filter((ev) => {
+          if (!filterLow(ev.impact)) return false;
+          const dt = toUaeDateTime(ev.event_date, ev.event_time_et);
+          if (!dt) return false;
+          return dt.toFormat("yyyy-MM-dd") === todayYmd;
+        })
         .sort((a, b) => sortKeyFor(a.event_date, a.event_time_et).localeCompare(sortKeyFor(b.event_date, b.event_time_et)));
 
       setEconToday(econ);
@@ -156,7 +179,7 @@ export default function EconomicCalendar() {
     return (
       <div className="space-y-2">
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          No economic or key events for today (ET). Run calendar crons to refresh.
+          No economic or key events for today (UAE). Run calendar crons to refresh.
         </p>
         <button
           type="button"
@@ -203,10 +226,10 @@ export default function EconomicCalendar() {
                       Event
                     </th>
                     <th className="pm-sip-col-head hidden px-2 py-1 sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
-                      Fcst
+                      Forecast
                     </th>
                     <th className="pm-sip-col-head hidden px-2 py-1 sm:table-cell" style={{ color: "var(--text-tertiary)" }}>
-                      Act
+                      Actual
                     </th>
                     <th className="pm-sip-col-head w-6 px-1 py-1 text-right" style={{ color: "var(--text-tertiary)" }}>
                       <span className="sr-only">Flag</span>
@@ -220,7 +243,7 @@ export default function EconomicCalendar() {
                         className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
                         style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
                       >
-                        {formatTimeEt(row.event_time_et)}
+                        {formatTimeUae(row.event_date, row.event_time_et)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
@@ -228,7 +251,7 @@ export default function EconomicCalendar() {
                       <td className="pm-site-prose px-2 py-1 align-top leading-snug" style={{ color: "var(--text-primary)" }}>
                         {row.event_name}
                         <span className="pm-site-caption mt-0.5 block sm:hidden" style={{ color: "var(--text-tertiary)" }}>
-                          F {dash(row.forecast)} · A {dash(row.actual)}
+                          Forecast {dash(row.forecast)} · Actual {dash(row.actual)}
                         </span>
                       </td>
                       <td className="pm-site-caption hidden whitespace-pre-wrap px-2 py-1 align-top sm:table-cell" style={{ color: "var(--text-secondary)" }}>
@@ -286,7 +309,7 @@ export default function EconomicCalendar() {
                         className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
                         style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
                       >
-                        {formatTimeEt(row.event_time_et)}
+                        {formatTimeUae(row.event_date, row.event_time_et)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
@@ -305,14 +328,6 @@ export default function EconomicCalendar() {
                         ) : (
                           row.event_title
                         )}
-                        {row.event_category === "theme_driven" ? (
-                          <span
-                            className={`pm-site-caption mt-0.5 ml-1 inline-block rounded border px-1.5 py-px font-semibold ${industryThemePillClass(row.theme_tag ?? "")}`}
-                            title={row.theme_tag ? `Theme: ${row.theme_tag}` : "Theme-driven"}
-                          >
-                            {themePillLabel(row.theme_tag)}
-                          </span>
-                        ) : null}
                       </td>
                       <td className="align-top">
                         <EventRowFlag

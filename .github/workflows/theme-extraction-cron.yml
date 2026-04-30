@@ -1,8 +1,8 @@
-# POST /api/cron/theme-extraction (macro + equities + gappers → daily_themes)
+# POST /api/cron/theme-extraction (premarket inputs + gappers → daily_themes)
 #
 # Secrets: APP_BASE_URL, CRON_SECRET
 #
-# Scheduled runs: `premarket-brief-pipeline.yml` (after macro + equities).
+# Scheduled runs: `premarket-brief-pipeline.yml`.
 
 name: Theme extraction
 

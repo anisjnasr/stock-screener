@@ -99,12 +99,12 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
 ) {
   const [mcapMinDraft, setMcapMinDraft] = useState<string | null>(null);
   const [mcapMaxDraft, setMcapMaxDraft] = useState<string | null>(null);
-  const [minAvgVolDraft, setMinAvgVolDraft] = useState<string | null>(null);
   const [minPriceDraft, setMinPriceDraft] = useState<string | null>(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState<string | null>(null);
   const [minGapDraft, setMinGapDraft] = useState<string | null>(null);
   const [minPmVolDraft, setMinPmVolDraft] = useState<string | null>(null);
   const [minVolPctDraft, setMinVolPctDraft] = useState<string | null>(null);
+  const [rowLimitDraft, setRowLimitDraft] = useState<string | null>(null);
 
   const selectedPresetValue =
     selectedSavedPresetId && (savedPresets ?? []).some((p) => p.id === selectedSavedPresetId)
@@ -118,12 +118,12 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
   const clearDrafts = useCallback(() => {
     setMcapMinDraft(null);
     setMcapMaxDraft(null);
-    setMinAvgVolDraft(null);
     setMinPriceDraft(null);
     setMaxPriceDraft(null);
     setMinGapDraft(null);
     setMinPmVolDraft(null);
     setMinVolPctDraft(null);
+    setRowLimitDraft(null);
   }, []);
 
   const setCustomField = <K extends keyof GappersRequestBody>(key: K, value: number) => {
@@ -176,11 +176,11 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
     const minPmVolume = minPmVolDraft != null ? parseFlexibleFilterNumber(minPmVolDraft) : null;
     if (minPmVolume != null) next = { ...next, minPmVolume: Math.max(0, Math.round(minPmVolume)), capPreset: "custom" };
 
-    const minAvgVolume = minAvgVolDraft != null ? parseFlexibleFilterNumber(minAvgVolDraft) : null;
-    if (minAvgVolume != null) next = { ...next, minAvgVolume: Math.max(0, Math.round(minAvgVolume)), capPreset: "custom" };
-
     const minVolPct = minVolPctDraft != null ? parseDecimalBlur(minVolPctDraft) : null;
     if (minVolPct != null) next = { ...next, minVolPct: Math.max(0, minVolPct), capPreset: "custom" };
+
+    const rowLimit = rowLimitDraft != null ? parseFlexibleFilterNumber(rowLimitDraft) : null;
+    if (rowLimit != null) next = { ...next, rowLimit: Math.max(1, Math.min(50, Math.round(rowLimit))), capPreset: "custom" };
 
     return next;
   }, [
@@ -191,8 +191,8 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
     maxPriceDraft,
     minGapDraft,
     minPmVolDraft,
-    minAvgVolDraft,
     minVolPctDraft,
+    rowLimitDraft,
   ]);
 
   const handlePrimaryAction = useCallback(() => {
@@ -419,7 +419,7 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
           inputMode="decimal"
           autoComplete="off"
           className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-          style={{ ...gapFilterInputStyle, width: 56 }}
+          style={{ ...gapFilterInputStyle, width: 72 }}
           value={maxPriceDraft === null ? formatPriceFilterDisplay(filters.maxPrice ?? 50_000_000) : maxPriceDraft}
           onFocus={() => setMaxPriceDraft(formatPriceFilterDisplay(filters.maxPrice ?? 50_000_000))}
           onChange={(e) => setMaxPriceDraft(e.target.value)}
@@ -473,25 +473,6 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span style={gapFilterLabelStyle}>Avg Vol ≥</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
-          style={{ ...gapFilterInputStyle, width: 60 }}
-          value={minAvgVolDraft ?? abbreviateUsdFilterDisplay(filters.minAvgVolume ?? 0)}
-          onFocus={() => setMinAvgVolDraft(formatUsdIntInputDisplay(filters.minAvgVolume))}
-          onChange={(e) => setMinAvgVolDraft(e.target.value)}
-          onBlur={(e) => {
-            setMinAvgVolDraft(null);
-            const value = parseFlexibleFilterNumber(e.currentTarget.value);
-            if (value != null) setCustomField("minAvgVolume", Math.max(0, Math.round(value)));
-          }}
-        />
-      </div>
-
-      <div className="flex items-center gap-1.5">
         <span style={gapFilterLabelStyle}>Vol % ≥</span>
         <input
           type="text"
@@ -506,6 +487,25 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
             setMinVolPctDraft(null);
             const value = parseDecimalBlur(e.currentTarget.value);
             if (value != null) setCustomField("minVolPct", Math.max(0, value));
+          }}
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <span style={gapFilterLabelStyle}>Rows</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          className="text-right outline-none ws-focus-ring focus:border-[#3BBFCF]"
+          style={{ ...gapFilterInputStyle, width: 60 }}
+          value={rowLimitDraft ?? String(filters.rowLimit ?? 10)}
+          onFocus={() => setRowLimitDraft(String(filters.rowLimit ?? 10))}
+          onChange={(e) => setRowLimitDraft(e.target.value)}
+          onBlur={(e) => {
+            setRowLimitDraft(null);
+            const value = parseFlexibleFilterNumber(e.currentTarget.value);
+            if (value != null) setCustomField("rowLimit", Math.max(1, Math.min(50, Math.round(value))));
           }}
         />
       </div>

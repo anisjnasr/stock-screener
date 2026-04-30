@@ -1,12 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
 import DailyThemesPanel from "./DailyThemesPanel";
-import EquitiesWriteup from "./EquitiesWriteup";
-import MacroWriteup from "./MacroWriteup";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
 import SipArchiveSection from "./SipArchiveSection";
@@ -17,10 +15,14 @@ import {
   loadGapperFiltersFromStorage,
   type GapperFilterState,
 } from "@/components/premarket/gapper-filters-storage";
-import { usePremarketPeeks } from "@/hooks/usePremarketPeeks";
-import { formatGeneratedAtEtDisplay } from "@/lib/et-ymd";
+import { ymdInEt } from "@/lib/et-ymd";
+import type { GapperRow } from "@/types/gappers";
+import type { PythonNewsItem } from "@/lib/python-service";
+import type { SipCatalyst } from "@/types/sip-catalyst";
+import type { CuratedSipAddPayload } from "@/types/stocks-in-play";
+import { loadSipDaySnapshot, saveSipDaySnapshot, type SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
 
-const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "calendars", "earnings", "movers", "sipArchive"];
+const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "movers", "calendars", "earnings", "sipArchive"];
 
 type SectionConfig = {
   id: PremarketSectionId;
@@ -30,11 +32,11 @@ type SectionConfig = {
 };
 
 const SECTIONS: SectionConfig[] = [
-  { id: "context", label: "MACRO & EQUITIES", labelAccent: "cyan", stub: "" },
+  { id: "context", label: "THEMES", labelAccent: "cyan", stub: "" },
   { id: "sip", label: "Stocks in Play", labelAccent: "cyan", stub: "" },
+  { id: "movers", label: "Gap Scanner", labelAccent: "cyan", stub: "" },
   { id: "calendars", label: "Economic & key events", labelAccent: "cyan", stub: "" },
   { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
-  { id: "movers", label: "Top movers", labelAccent: "cyan", stub: "" },
   { id: "sipArchive", label: "SIP ARCHIVE", labelAccent: "cyan", stub: "" },
 ];
 
@@ -47,6 +49,11 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
 
   const [gapperFilters, setGapperFilters] = useState<GapperFilterState>(DEFAULT_GAPPER_FILTER_STATE);
   const [gapperFiltersHydrated, setGapperFiltersHydrated] = useState(false);
+  const [sipLargeRows, setSipLargeRows] = useState<GapperRow[]>([]);
+  const [sipSmallRows, setSipSmallRows] = useState<GapperRow[]>([]);
+  const [sipNewsByTicker, setSipNewsByTicker] = useState<Record<string, PythonNewsItem[]>>({});
+  const [sipCatalystByTicker, setSipCatalystByTicker] = useState<Record<string, SipCatalyst>>({});
+  const [themesRefreshToken, setThemesRefreshToken] = useState(0);
 
   useLayoutEffect(() => {
     queueMicrotask(() => {
@@ -55,18 +62,112 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     });
   }, []);
 
-  const {
-    macroRow,
-    macroYmd,
-    macroLoading,
-    macroError,
-    equitiesRow,
-    equitiesYmd,
-    equitiesLoading,
-    equitiesError,
-    equitiesSetupHint,
-    lastRefreshAtIso,
-  } = usePremarketPeeks();
+  useLayoutEffect(() => {
+    queueMicrotask(() => {
+      const etYmd = ymdInEt();
+      const large = loadSipDaySnapshot(etYmd, "mid-large");
+      const small = loadSipDaySnapshot(etYmd, "small-cap");
+      setSipLargeRows(large?.rows ?? []);
+      setSipSmallRows(small?.rows ?? []);
+      setSipNewsByTicker({ ...(large?.news ?? {}), ...(small?.news ?? {}) });
+      setSipCatalystByTicker({ ...(large?.catalyst ?? {}), ...(small?.catalyst ?? {}) });
+    });
+  }, []);
+
+  const sipMembershipByTicker = useMemo(() => {
+    const map: Record<string, { large: boolean; small: boolean }> = {};
+    for (const row of sipLargeRows) {
+      const t = row.ticker.toUpperCase();
+      map[t] = { ...(map[t] ?? { large: false, small: false }), large: true };
+    }
+    for (const row of sipSmallRows) {
+      const t = row.ticker.toUpperCase();
+      map[t] = { ...(map[t] ?? { large: false, small: false }), small: true };
+    }
+    return map;
+  }, [sipLargeRows, sipSmallRows]);
+
+  const addToSip = useCallback(
+    ({ row, headlines, catalyst, target }: CuratedSipAddPayload) => {
+      const ticker = row.ticker.toUpperCase();
+      if (target === "mid-large") {
+        setSipLargeRows((prev) => [row, ...prev.filter((r) => r.ticker.toUpperCase() !== ticker)]);
+      } else {
+        setSipSmallRows((prev) => [row, ...prev.filter((r) => r.ticker.toUpperCase() !== ticker)]);
+      }
+      if (headlines.length > 0) {
+        setSipNewsByTicker((prev) => ({ ...prev, [ticker]: headlines }));
+      }
+      if (catalyst) {
+        setSipCatalystByTicker((prev) => ({ ...prev, [ticker]: catalyst }));
+      }
+    },
+    []
+  );
+
+  const upsertSipCatalyst = useCallback((ticker: string, detail: SipCatalyst) => {
+    const t = ticker.toUpperCase();
+    setSipCatalystByTicker((prev) => ({ ...prev, [t]: detail }));
+  }, []);
+
+  const removeFromSip = useCallback((target: SipPersistVariant, ticker: string) => {
+    const t = ticker.toUpperCase();
+    if (target === "mid-large") {
+      setSipLargeRows((prev) => prev.filter((r) => r.ticker.toUpperCase() !== t));
+      return;
+    }
+    setSipSmallRows((prev) => prev.filter((r) => r.ticker.toUpperCase() !== t));
+  }, []);
+
+  useEffect(() => {
+    const etYmd = ymdInEt();
+    const pickNews = (rows: GapperRow[]) => {
+      const out: Record<string, PythonNewsItem[]> = {};
+      for (const row of rows) {
+        const t = row.ticker.toUpperCase();
+        const news = sipNewsByTicker[t];
+        if (news?.length) out[t] = news;
+      }
+      return out;
+    };
+    const pickCatalyst = (rows: GapperRow[]) => {
+      const out: Record<string, SipCatalyst> = {};
+      for (const row of rows) {
+        const t = row.ticker.toUpperCase();
+        const c = sipCatalystByTicker[t];
+        if (c) out[t] = c;
+      }
+      return out;
+    };
+    saveSipDaySnapshot(
+      {
+        v: 1,
+        etYmd,
+        savedAtMs: Date.now(),
+        rows: sipLargeRows,
+        news: pickNews(sipLargeRows),
+        catalyst: pickCatalyst(sipLargeRows),
+        newsError: null,
+        catalystError: null,
+        pythonConfigured: true,
+      },
+      "mid-large"
+    );
+    saveSipDaySnapshot(
+      {
+        v: 1,
+        etYmd,
+        savedAtMs: Date.now(),
+        rows: sipSmallRows,
+        news: pickNews(sipSmallRows),
+        catalyst: pickCatalyst(sipSmallRows),
+        newsError: null,
+        catalystError: null,
+        pythonConfigured: true,
+      },
+      "small-cap"
+    );
+  }, [sipCatalystByTicker, sipLargeRows, sipNewsByTicker, sipSmallRows]);
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
 
@@ -81,6 +182,12 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               collapsed={collapsed.sip}
               onToggle={() => toggle("sip")}
               onOpenTickerInLists={onOpenTickerInLists}
+              largeRows={sipLargeRows}
+              smallRows={sipSmallRows}
+              newsByTicker={sipNewsByTicker}
+              catalystByTicker={sipCatalystByTicker}
+              onUpsertCatalyst={upsertSipCatalyst}
+              onRemoveFromSip={removeFromSip}
             />
           ) : s.id === "sipArchive" ? (
             <SipArchiveSection
@@ -95,29 +202,40 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             id={s.id}
             label={s.label}
             labelAccent={s.labelAccent}
-            metadata={
-              s.id === "context" && !macroLoading && !equitiesLoading
-                ? formatGeneratedAtEtDisplay(lastRefreshAtIso)
-                : undefined
-            }
             collapsed={collapsed[s.id]}
             onToggle={() => toggle(s.id)}
             actions={
               s.id === "context" ? (
-                <button
-                  type="button"
-                  onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
-                  className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                  style={{
-                    borderColor: "var(--border-default)",
-                    color: "var(--text-secondary)",
-                    fontFamily: "var(--ws-font-sans)",
-                    fontSize: "var(--ws-fs-label)",
-                  }}
-                  aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
-                >
-                  {anySectionExpanded ? "Collapse all" : "Expand all"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setThemesRefreshToken((v) => v + 1)}
+                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                    style={{
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--ws-font-sans)",
+                      fontSize: "var(--ws-fs-label)",
+                    }}
+                    aria-label="Refresh themes"
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
+                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                    style={{
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--ws-font-sans)",
+                      fontSize: "var(--ws-fs-label)",
+                    }}
+                    aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
+                  >
+                    {anySectionExpanded ? "Collapse all" : "Expand all"}
+                  </button>
+                </div>
               ) : undefined
             }
           >
@@ -132,6 +250,10 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                   setFilters={setGapperFilters}
                   filtersHydrated={gapperFiltersHydrated}
                   onOpenTickerInLists={onOpenTickerInLists}
+                  sipMembershipByTicker={sipMembershipByTicker}
+                  onAddToSip={(target, payload) =>
+                    addToSip({ ...payload, target })
+                  }
                   onJumpToEarnings={() => {
                     setCollapsed("earnings", false);
                     queueMicrotask(() => {
@@ -144,21 +266,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                 />
               </div>
             ) : s.id === "context" ? (
-              <div className="s1-context">
-                <div className="min-w-0 space-y-3">
-                  <MacroWriteup loading={macroLoading} error={macroError} row={macroRow} ymd={macroYmd} />
-                  <EquitiesWriteup
-                    loading={equitiesLoading}
-                    error={equitiesError}
-                    row={equitiesRow}
-                    ymd={equitiesYmd}
-                    setupHint={equitiesSetupHint}
-                  />
-                </div>
-                <aside className="min-w-0">
-                  <DailyThemesPanel />
-                </aside>
-              </div>
+              <DailyThemesPanel refreshToken={themesRefreshToken} />
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>
             )}

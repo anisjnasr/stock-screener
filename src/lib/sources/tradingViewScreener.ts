@@ -25,9 +25,9 @@ export type TradingViewScanParams = {
   minMarketCap: number;
   maxMarketCap: number;
   minPmVolume: number;
-  minAvgVolume: number;
   minVolPct: number;
   minGapPct: number;
+  rowLimit: number;
 };
 
 /** TV `range` end (exclusive-style upper bound); capped at 150 per request. */
@@ -46,9 +46,9 @@ export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minMarketCap: 100_000_000,
   maxMarketCap: 10_000_000_000_000,
   minPmVolume: 0,
-  minAvgVolume: 0,
   minVolPct: 0,
   minGapPct: 1,
+  rowLimit: 10,
 };
 
 /** TV scanner uses `egreater` / `eless` for numeric comparisons (not `greater_equal`). */
@@ -75,7 +75,6 @@ export function buildTradingViewScanPayload(
   filter.push(
     { left: "market_cap_basic", operation: "eless", right: p.maxMarketCap },
     { left: "premarket_volume", operation: "egreater", right: p.minPmVolume },
-    { left: "average_volume_90d_calc", operation: "egreater", right: p.minAvgVolume },
     // `premarket_change` is **percent** vs prior close; `premarket_change_abs` is **dollar** move — do not mix with MIN GAP %.
     gapFilter
   );

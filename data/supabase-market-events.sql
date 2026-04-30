@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS market_events (
     'fomc', 'fed_speech', 'fed_testimony',
     'treasury_auction', 'treasury_press',
     'white_house', 'ustr',
-    'theme_driven', 'manual'
+    'manual'
   )),
   speaker TEXT,
   location TEXT,
@@ -19,9 +19,6 @@ CREATE TABLE IF NOT EXISTS market_events (
   source_url TEXT,
   source_type TEXT NOT NULL,
   external_id TEXT,
-  theme_tag TEXT,
-  theme_type TEXT CHECK (theme_type IN ('macro', 'industry')),
-  theme_rank INTEGER,
   description TEXT,
   is_flagged BOOLEAN DEFAULT false,
   flag_reason TEXT,

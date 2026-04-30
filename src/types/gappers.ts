@@ -1,3 +1,5 @@
+import type { PythonNewsItem } from "@/lib/python-service";
+
 /** POST `/api/movers/gappers` body (all fields optional; server applies defaults). */
 export type GappersRequestBody = {
   minPrice?: number;
@@ -5,9 +7,9 @@ export type GappersRequestBody = {
   minMarketCap?: number;
   maxMarketCap?: number;
   minPmVolume?: number;
-  minAvgVolume?: number;
   minVolPct?: number;
   minGapPct?: number;
+  rowLimit?: number;
 };
 
 export type GapperSource = "tradingview";
@@ -35,4 +37,7 @@ export type GappersResponse = {
   ok: true;
   source: GapperSource;
   rows: GapperRow[];
+  pythonConfigured?: boolean;
+  news?: Record<string, PythonNewsItem[]> | null;
+  newsError?: string | null;
 };

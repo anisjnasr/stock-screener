@@ -87,6 +87,10 @@ export type SipPlayRowsTableProps = {
   listMode?: "cumulative" | "capped";
   /** Reference cap for small-cap row display (live capped mode). */
   maxTickerDisplay?: number;
+  onRequestCatalyst?: (row: GapperRow) => Promise<void>;
+  catalystLoadingByTicker?: Record<string, boolean>;
+  catalystRequestErrorByTicker?: Record<string, string | null>;
+  onRemoveTicker?: (ticker: string) => void;
 };
 
 export default function SipPlayRowsTable({
@@ -102,6 +106,10 @@ export default function SipPlayRowsTable({
   emptyNewsText,
   listMode = "capped",
   maxTickerDisplay = 10,
+  onRequestCatalyst,
+  catalystLoadingByTicker,
+  catalystRequestErrorByTicker,
+  onRemoveTicker,
 }: SipPlayRowsTableProps) {
   const n = rows.length;
   const displayError =
@@ -159,6 +167,10 @@ export default function SipPlayRowsTable({
           const cat = catalyst?.[r.ticker];
           const badge = cat ? sipCatalystBadge(cat) : null;
           const rowNews = news?.[r.ticker] ?? [];
+          const rowLoading = Boolean(catalystLoadingByTicker?.[r.ticker]);
+          const rowRequestError = catalystRequestErrorByTicker?.[r.ticker] ?? null;
+          const hasHeadlines = rowNews.length > 0;
+          const firstHeadline = hasHeadlines ? rowNews[0].title.trim() : "";
           const showNewsEmpty = news !== null && pythonConfigured && !newsError && rowNews.length === 0;
           return (
             <div
@@ -199,8 +211,49 @@ export default function SipPlayRowsTable({
               <div className="pm-site-caption min-w-0 leading-snug">
                 {cat ? (
                   <p className="m-0" style={{ color: "#ffffff" }} title={cat.summary}>
-                    {truncateSipRationale(cat.summary)}
+                    {cat.summary}
                   </p>
+                ) : mode === "live" && hasHeadlines ? (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="m-0 min-w-0 flex-1" style={{ color: "var(--text-secondary)" }} title={firstHeadline}>
+                        {truncateSipRationale(firstHeadline)}
+                      </p>
+                      <button
+                        type="button"
+                        className="pm-focus inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border"
+                        style={{
+                          borderColor: "var(--border-default)",
+                          color: "var(--ws-cyan)",
+                          background: "transparent",
+                          fontSize: "var(--ws-fs-caption)",
+                        }}
+                        disabled={rowLoading}
+                        aria-label={rowLoading ? `Generating catalyst for ${r.ticker}` : `Expand catalyst for ${r.ticker}`}
+                        title={rowLoading ? "Generating catalyst..." : "Expand catalyst"}
+                        onClick={() => {
+                          if (!onRequestCatalyst) return;
+                          void onRequestCatalyst(r);
+                        }}
+                      >
+                        {rowLoading ? (
+                          <span
+                            className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true" focusable="false">
+                            <path d="M6 2.25v7.5M2.25 6h7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    {rowRequestError ? (
+                      <p className="m-0 mt-1" style={{ color: "var(--negative)" }}>
+                        {rowRequestError}
+                      </p>
+                    ) : null}
+                  </>
                 ) : showNewsEmpty ? null : (
                   <p className="m-0" style={{ color: "var(--text-secondary)" }}>
                     —
@@ -213,7 +266,7 @@ export default function SipPlayRowsTable({
                     className={`pm-site-caption m-0 ${cat ? "mt-1" : ""}`}
                     style={{ color: "var(--text-faint)" }}
                   >
-                    {emptyNewsText ?? "No headlines in window."}
+                    {emptyNewsText ?? "No News."}
                   </p>
                 ) : null}
               </div>
@@ -229,11 +282,7 @@ export default function SipPlayRowsTable({
                   >
                     {badge.label}
                   </span>
-                ) : (
-                  <span className="pm-site-caption" style={{ color: "var(--text-faint)" }}>
-                    —
-                  </span>
-                )}
+                ) : null}
                 {r.earningsRecent24h ? (
                   <span
                     className="rounded px-1 py-px uppercase"
@@ -246,6 +295,25 @@ export default function SipPlayRowsTable({
                   >
                     24h ER
                   </span>
+                ) : null}
+                {mode === "live" && onRemoveTicker ? (
+                  <button
+                    type="button"
+                    className="pm-focus inline-flex h-5 w-5 items-center justify-center rounded border"
+                    style={{
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-secondary)",
+                      background: "transparent",
+                      fontSize: "var(--ws-fs-caption)",
+                    }}
+                    aria-label={`Remove ${r.ticker} from SIP`}
+                    title={`Remove ${r.ticker}`}
+                    onClick={() => onRemoveTicker(r.ticker)}
+                  >
+                    <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true" focusable="false">
+                      <path d="M2.25 2.25l7.5 7.5M9.75 2.25l-7.5 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </button>
                 ) : null}
               </div>
             </div>

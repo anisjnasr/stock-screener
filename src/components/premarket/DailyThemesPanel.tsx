@@ -18,6 +18,15 @@ const MACRO_CAP = 3;
 const INDUSTRY_CAP = 5;
 const EXEMPLAR_TICKER_CAP = 4;
 
+function firstTwoSentences(raw: string | null | undefined): string {
+  const text = (raw ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const matches = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [];
+  const trimmed = matches.map((s) => s.trim()).filter(Boolean);
+  if (trimmed.length === 0) return text;
+  return trimmed.slice(0, 2).join(" ");
+}
+
 function uniqueExemplarTickers(raw: string[] | null | undefined, max: number): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -35,11 +44,12 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
   const tickers = uniqueExemplarTickers(t.exemplar_tickers, EXEMPLAR_TICKER_CAP);
   const industryKey = t.industry?.trim() ?? "";
   const pillClass = industryThemePillClass(industryKey);
+  const summary = firstTwoSentences(t.theme_description);
   const showPillRow = tickers.length > 0 || Boolean(industryKey);
 
   return (
     <li className="border-b py-1.5 last:border-b-0" style={{ borderColor: "var(--border-default)" }}>
-      <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-1.5">
+      <div className="grid grid-cols-[auto_1fr] items-start gap-x-1.5">
         <span
           className="col-start-1 row-start-1 inline-flex w-3 shrink-0 justify-center leading-none pm-mono"
           style={{ fontSize: "var(--ws-fs-caption)", color: "var(--text-tertiary)" }}
@@ -48,7 +58,7 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
           ›
         </span>
         <div className="col-start-2 row-start-1 flex min-w-0 items-baseline gap-1.5">
-          <span className="pm-site-prose min-w-0 flex-1 font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
+          <span className="pm-site-prose min-w-0 font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
             {t.theme_title}
           </span>
           {t.is_new ? (
@@ -57,8 +67,13 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
             </span>
           ) : null}
         </div>
+        {summary ? (
+          <p className="col-start-2 row-start-2 mt-0.5 m-0 pm-site-caption leading-snug" style={{ color: "var(--text-secondary)" }}>
+            {summary}
+          </p>
+        ) : null}
         {showPillRow ? (
-          <div className="col-start-2 row-start-2 mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
+          <div className="col-start-2 row-start-3 mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
             {tickers.length > 0
               ? tickers.map((sym) => (
                   <span
@@ -87,7 +102,7 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
   );
 }
 
-export default function DailyThemesPanel() {
+export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: number }) {
   const [themes, setThemes] = useState<DailyThemeRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [setupHint, setSetupHint] = useState<string | null>(null);
@@ -120,6 +135,11 @@ export default function DailyThemesPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (refreshToken <= 0) return;
+    void load();
+  }, [load, refreshToken]);
 
   const { macroThemes, industryThemes } = useMemo(() => {
     const list = themes ?? [];
@@ -173,19 +193,6 @@ export default function DailyThemesPanel() {
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
           No themes yet.
         </p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="pm-focus mt-2 rounded border px-2 py-1 font-medium"
-          style={{
-            borderColor: "var(--border-default)",
-            color: "var(--text-tertiary)",
-            fontFamily: "var(--ws-font-sans)",
-            fontSize: "var(--ws-fs-caption)",
-          }}
-        >
-          Refresh
-        </button>
       </div>
     );
   }
@@ -195,45 +202,34 @@ export default function DailyThemesPanel() {
       className="rounded border px-2 py-2"
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
-      {macroThemes.length ? (
-        <div className="mb-2">
-          <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-cyan)" }}>
-            MACRO THEMES
-          </p>
-          <ul className="m-0 list-none p-0">
-            {macroThemes.map((t) => (
-              <CompactThemeRow key={t.id} t={t} />
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {macroThemes.length ? (
+          <div className="min-w-0">
+            <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-cyan)" }}>
+              MACRO THEMES
+            </p>
+            <ul className="m-0 list-none p-0">
+              {macroThemes.map((t) => (
+                <CompactThemeRow key={t.id} t={t} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-      {industryThemes.length ? (
-        <div>
-          <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-amber)" }}>
-            INDUSTRY THEMES
-          </p>
-          <ul className="m-0 list-none p-0">
-            {industryThemes.map((t) => (
-              <CompactThemeRow key={t.id} t={t} />
-            ))}
-          </ul>
-        </div>
-      ) : null}
+        {industryThemes.length ? (
+          <div className="min-w-0">
+            <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-amber)" }}>
+              INDUSTRY THEMES
+            </p>
+            <ul className="m-0 list-none p-0">
+              {industryThemes.map((t) => (
+                <CompactThemeRow key={t.id} t={t} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
 
-      <button
-        type="button"
-        onClick={() => void load()}
-        className="pm-focus mt-2 w-full rounded border py-1 font-medium"
-        style={{
-          borderColor: "var(--border-default)",
-          color: "var(--text-tertiary)",
-          fontFamily: "var(--ws-font-sans)",
-          fontSize: "var(--ws-fs-caption)",
-        }}
-      >
-        Refresh
-      </button>
     </div>
   );
 }

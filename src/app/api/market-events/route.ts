@@ -14,7 +14,6 @@ const ALLOWED_CATEGORIES = new Set<MarketEventCategory>([
   "treasury_press",
   "white_house",
   "ustr",
-  "theme_driven",
   "manual",
 ]);
 
@@ -70,10 +69,11 @@ export async function GET(request: NextRequest) {
   let q = supabase
     .from("market_events")
     .select(
-      "id, event_date, event_time_et, event_title, event_category, speaker, location, impact, source_url, source_type, description, theme_tag, theme_type, theme_rank"
+      "id, event_date, event_time_et, event_title, event_category, speaker, location, impact, source_url, source_type, description"
     )
     .gte("event_date", from)
     .lte("event_date", to)
+    .neq("event_category", "theme_driven")
     .order("event_date", { ascending: true })
     .order("event_time_et", { ascending: true, nullsFirst: false });
 
