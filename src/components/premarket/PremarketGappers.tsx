@@ -642,14 +642,15 @@ export default function PremarketGappers({
                                 }));
                                 return;
                               }
-                              if (!json.catalyst) {
+                              const catalyst = json.catalyst;
+                              if (!catalyst) {
                                 setCatalystErrorByTicker((prev) => ({
                                   ...prev,
                                   [ticker]: "No qualifying catalyst details were generated.",
                                 }));
                                 return;
                               }
-                              setCatalystByTicker((prev) => ({ ...prev, [ticker]: json.catalyst }));
+                              setCatalystByTicker((prev) => ({ ...prev, [ticker]: catalyst }));
                             } catch (e) {
                               setCatalystErrorByTicker((prev) => ({
                                 ...prev,

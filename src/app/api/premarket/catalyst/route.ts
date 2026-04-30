@@ -32,22 +32,22 @@ function normalizeGapperRow(raw: unknown): GapperRow | null {
 
 function normalizeHeadlines(raw: unknown): PythonNewsItem[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const o = item as Record<string, unknown>;
-      const title = String(o.title ?? "").trim();
-      if (!title) return null;
-      return {
-        title,
-        publisher: o.publisher != null ? String(o.publisher) : null,
-        published_at: typeof o.published_at === "number" ? o.published_at : null,
-        link: o.link != null ? String(o.link) : null,
-        type: o.type != null ? String(o.type) : null,
-      } satisfies PythonNewsItem;
-    })
-    .filter((row): row is PythonNewsItem => Boolean(row))
-    .slice(0, 12);
+  const out: PythonNewsItem[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const title = String(o.title ?? "").trim();
+    if (!title) continue;
+    out.push({
+      title,
+      publisher: o.publisher != null ? String(o.publisher) : null,
+      published_at: typeof o.published_at === "number" ? o.published_at : null,
+      link: o.link != null ? String(o.link) : null,
+      type: o.type != null ? String(o.type) : null,
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
 }
 
 export async function POST(request: Request): Promise<Response> {
