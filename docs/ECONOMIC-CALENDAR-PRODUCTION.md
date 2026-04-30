@@ -42,7 +42,7 @@ If you get **401**, the `CRON_SECRET` you passed does not match production. If *
 
 ## Part B — GitHub Actions (daily cron, no Render add-on)
 
-The workflow **Economic Calendar Ingest** ([`.github/workflows/economic-calendar-cron.yml`](../.github/workflows/economic-calendar-cron.yml)) POSTs to your **public** app URL once per day (UTC) and also ingests market policy events. The workflow **Economic Actuals Web Search** ([`.github/workflows/economic-actuals-cron.yml`](../.github/workflows/economic-actuals-cron.yml)) checks for missing actuals after scheduled releases. Until you add secrets, **scheduled** runs exit successfully without calling your app; **manual** runs fail with a clear error.
+The workflow **Economic Calendar Ingest** ([`.github/workflows/economic-calendar-cron.yml`](../.github/workflows/economic-calendar-cron.yml)) POSTs to your **public** app URL once per day (UTC) and also ingests market policy events. Until you add secrets, **scheduled** runs exit successfully without calling your app; **manual** runs fail with a clear error.
 
 ### B1. Add repository secrets
 
@@ -83,7 +83,6 @@ Use this if you prefer everything on Render and do not want GitHub to call your 
 | Goal | Command / place |
 |------|-------------------|
 | Local smoke (dev server on 3000) | `npm run economic-calendar:trigger` |
-| Smoke actuals from laptop | `npm run economic-actuals:trigger -- --url https://your-host` |
 | Smoke production from laptop | `npm run economic-calendar:trigger -- --url https://your-host` |
 | Manual cloud cron | GitHub **Actions** → **Economic Calendar Ingest** → **Run workflow** |
 | Read API (browser / app) | `GET /api/economic-events?impact=High` (uses anon key + RLS) |

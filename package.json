@@ -52,7 +52,6 @@
     "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
     "economic-calendar:trigger": "node scripts/trigger-economic-calendar.mjs",
     "earnings:trigger": "node scripts/trigger-earnings-crons.mjs",
-    "economic-actuals:trigger": "node scripts/trigger-economic-actuals.mjs",
     "market-events:trigger": "node scripts/trigger-market-events.mjs",
     "newsletter:ingest:trigger": "node scripts/trigger-newsletter-ingest.mjs",
     "newsletter:macro:trigger": "node scripts/trigger-macro-writeup.mjs",
