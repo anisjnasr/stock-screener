@@ -1,0 +1,100 @@
+name: "Post cron endpoint"
+description: "POST a protected cron endpoint with retries and response validation"
+inputs:
+  base_url:
+    description: "Public app base URL (no trailing slash preferred)"
+    required: false
+    default: ""
+  cron_secret:
+    description: "Bearer secret for cron routes"
+    required: false
+    default: ""
+  path:
+    description: "Endpoint path starting with /"
+    required: true
+  json_body:
+    description: "Optional JSON request body"
+    required: false
+    default: ""
+  expected_ok_field:
+    description: "Top-level response field expected to be true; empty to skip"
+    required: false
+    default: "ok"
+  retry_count:
+    description: "curl retry count for transient failures"
+    required: false
+    default: "3"
+  retry_delay_seconds:
+    description: "Seconds between retries"
+    required: false
+    default: "2"
+  max_time_seconds:
+    description: "Maximum curl runtime"
+    required: false
+    default: "180"
+runs:
+  using: "composite"
+  steps:
+    - name: POST endpoint
+      shell: bash
+      env:
+        BASE: ${{ inputs.base_url }}
+        SECRET: ${{ inputs.cron_secret }}
+        PATH_TO_POST: ${{ inputs.path }}
+        JSON_BODY: ${{ inputs.json_body }}
+        EXPECTED_OK_FIELD: ${{ inputs.expected_ok_field }}
+        RETRY_COUNT: ${{ inputs.retry_count }}
+        RETRY_DELAY_SECONDS: ${{ inputs.retry_delay_seconds }}
+        MAX_TIME_SECONDS: ${{ inputs.max_time_seconds }}
+        EVENT_NAME: ${{ github.event_name }}
+        RESP_FILE: ${{ runner.temp }}/post-cron-response.json
+      run: |
+        set -euo pipefail
+
+        if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
+          echo "::notice::Skipping POST ${PATH_TO_POST}: APP_BASE_URL or CRON_SECRET is not set."
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET."
+            exit 1
+          fi
+          exit 0
+        fi
+
+        if [[ "${PATH_TO_POST}" != /* ]]; then
+          echo "::error::Input 'path' must start with '/'. Got: ${PATH_TO_POST}"
+          exit 1
+        fi
+
+        BASE_TRIMMED="${BASE%/}"
+        URL="${BASE_TRIMMED}${PATH_TO_POST}"
+
+        echo "POST ${URL}"
+
+        CURL_ARGS=(
+          -sS
+          -o "${RESP_FILE}"
+          -w "%{http_code}"
+          -X POST "${URL}"
+          --retry "${RETRY_COUNT}"
+          --retry-all-errors
+          --retry-delay "${RETRY_DELAY_SECONDS}"
+          --connect-timeout 20
+          --max-time "${MAX_TIME_SECONDS}"
+          -H "Authorization: Bearer ${SECRET}"
+          -H "Accept: application/json"
+        )
+        if [ -n "${JSON_BODY:-}" ]; then
+          CURL_ARGS+=(-H "Content-Type: application/json" -d "${JSON_BODY}")
+        fi
+
+        CODE="$(curl "${CURL_ARGS[@]}")"
+        echo "HTTP ${CODE}"
+        cat "${RESP_FILE}" || true
+        echo
+
+        if [ "${CODE}" != "200" ]; then
+          echo "::error::Expected HTTP 200 for ${PATH_TO_POST}, got ${CODE}"
+          exit 1
+        fi
+
+        python3 -c "import json, os; resp_path=os.environ['RESP_FILE']; expected_field=os.environ.get('EXPECTED_OK_FIELD','ok').strip(); payload=json.load(open(resp_path, encoding='utf-8')); assert (not expected_field) or (payload.get(expected_field) is True), f\"Expected response field '{expected_field}' to be true, got: {payload.get(expected_field)!r}; payload={payload}\""

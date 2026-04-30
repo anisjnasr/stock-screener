@@ -1,0 +1,182 @@
+name: "Render DB sync"
+description: "Trigger Render DB sync endpoint with preflight and polling"
+inputs:
+  render_app_url:
+    description: "Render app base URL"
+    required: false
+    default: ""
+  admin_secret:
+    description: "Bearer secret for /api/admin/sync-db"
+    required: false
+    default: ""
+  artifact:
+    description: "Artifact key expected by sync endpoint (e.g. daily, ownership)"
+    required: true
+  existing_max_polls:
+    description: "Max polls while waiting for an already-running sync"
+    required: false
+    default: "140"
+  new_max_polls:
+    description: "Max polls for the newly-triggered sync"
+    required: false
+    default: "140"
+  poll_interval_seconds:
+    description: "Seconds between polling attempts"
+    required: false
+    default: "30"
+  stale_threshold_polls:
+    description: "Consecutive unchanged updatedAt polls before fail"
+    required: false
+    default: "60"
+  max_consecutive_failures:
+    description: "Consecutive polling HTTP failures before fail"
+    required: false
+    default: "20"
+runs:
+  using: "composite"
+  steps:
+    - name: Sync Render DB
+      shell: bash
+      env:
+        RENDER_APP_URL: ${{ inputs.render_app_url }}
+        ADMIN_SECRET: ${{ inputs.admin_secret }}
+        ARTIFACT: ${{ inputs.artifact }}
+        EXISTING_MAX_POLLS: ${{ inputs.existing_max_polls }}
+        NEW_MAX_POLLS: ${{ inputs.new_max_polls }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll_interval_seconds }}
+        STALE_THRESHOLD_POLLS: ${{ inputs.stale_threshold_polls }}
+        MAX_CONSECUTIVE_FAILURES: ${{ inputs.max_consecutive_failures }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${RENDER_APP_URL:-}" ] || [ -z "${ADMIN_SECRET:-}" ]; then
+          echo "::notice::Skipping DB sync: RENDER_APP_URL or ADMIN_SECRET is not configured."
+          exit 0
+        fi
+
+        poll_sync_status() {
+          local label="$1"
+          local max_polls="$2"
+          local sleep_sec="$3"
+          local consec_fails=0
+          local consec_same_updated=0
+          local last_updated=""
+
+          for i in $(seq 1 "$max_polls"); do
+            status_code=$(curl -sS -o /tmp/sync-status.json -w "%{http_code}" \
+              --retry 3 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --connect-timeout 20 \
+              --max-time 120 \
+              -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
+              -H "Authorization: Bearer ${ADMIN_SECRET}" \
+              -H "Content-Type: application/json" || echo "000")
+
+            if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+              consec_fails=$((consec_fails + 1))
+              echo "::warning::${label} poll $i failed with HTTP $status_code (consecutive=$consec_fails)"
+              if [ "$consec_fails" -ge "${MAX_CONSECUTIVE_FAILURES}" ]; then
+                echo "::error::${label} polling failed $consec_fails times in a row"
+                cat /tmp/sync-status.json || true
+                return 1
+              fi
+              sleep "$sleep_sec"
+              continue
+            fi
+
+            consec_fails=0
+            state=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
+            artifact=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.artifact ? d.status.artifact : ''));")
+            updated=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-status.json','utf8')); process.stdout.write(String(d.status && d.status.updatedAt ? d.status.updatedAt : ''));")
+            echo "${label} poll $i/$max_polls: state=$state artifact=$artifact updatedAt=$updated"
+
+            if [ "$state" = "running" ] && [ -n "$updated" ] && [ -n "$last_updated" ] && [ "$updated" = "$last_updated" ]; then
+              consec_same_updated=$((consec_same_updated + 1))
+            else
+              consec_same_updated=0
+            fi
+            last_updated="$updated"
+
+            if [ "$state" = "running" ] && [ "$consec_same_updated" -ge "${STALE_THRESHOLD_POLLS}" ]; then
+              echo "::error::${label}: updatedAt unchanged for ${STALE_THRESHOLD_POLLS} polls while state=running."
+              cat /tmp/sync-status.json
+              return 1
+            fi
+            if [ "$state" = "completed" ]; then
+              return 0
+            fi
+            if [ "$state" = "failed" ]; then
+              echo "::error::DB sync failed on Render"
+              cat /tmp/sync-status.json
+              return 1
+            fi
+            if [ "$i" -eq "$max_polls" ]; then
+              echo "::error::${label} polling timed out after $max_polls attempts"
+              cat /tmp/sync-status.json
+              return 1
+            fi
+            sleep "$sleep_sec"
+          done
+        }
+
+        existing_status=$(curl -sS -o /tmp/sync-existing.json -w "%{http_code}" \
+          --retry 3 \
+          --retry-all-errors \
+          --retry-delay 2 \
+          --connect-timeout 20 \
+          --max-time 60 \
+          -X GET "${RENDER_APP_URL}/api/admin/sync-db" \
+          -H "Authorization: Bearer ${ADMIN_SECRET}" \
+          -H "Content-Type: application/json" || echo "000")
+
+        if [ "$existing_status" -ge 200 ] && [ "$existing_status" -lt 300 ]; then
+          existing_state=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-existing.json','utf8')); process.stdout.write(String(d.status && d.status.state ? d.status.state : 'unknown'));")
+          if [ "$existing_state" = "running" ]; then
+            echo "::warning::Existing Render sync already running; waiting for completion before starting a new sync."
+            poll_sync_status "existing-sync" "${EXISTING_MAX_POLLS}" "${POLL_INTERVAL_SECONDS}" || exit 1
+          fi
+        fi
+
+        echo "Running Render preflight check..."
+        preflight_status=$(curl -sS -o /tmp/sync-preflight.json -w "%{http_code}" \
+          --retry 3 \
+          --retry-all-errors \
+          --retry-delay 2 \
+          --connect-timeout 20 \
+          --max-time 120 \
+          -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=${ARTIFACT}&preflight=true" \
+          -H "Authorization: Bearer ${ADMIN_SECRET}" \
+          -H "Content-Type: application/json")
+        echo "Preflight status: $preflight_status"
+        cat /tmp/sync-preflight.json
+        if [ "$preflight_status" -lt 200 ] || [ "$preflight_status" -ge 300 ]; then
+          echo "::error::Render preflight failed with status $preflight_status"
+          exit 1
+        fi
+
+        enough=$(node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('/tmp/sync-preflight.json','utf8')); process.stdout.write(String(Boolean(d.snapshot && d.snapshot.enoughSpace)));")
+        if [ "$enough" != "true" ]; then
+          echo "::error::Render preflight reports insufficient disk for safe sync."
+          exit 1
+        fi
+
+        echo "Triggering async DB sync on Render..."
+        trigger_status=$(curl -sS -o /tmp/sync-trigger.json -w "%{http_code}" \
+          --retry 3 \
+          --retry-all-errors \
+          --retry-delay 2 \
+          --connect-timeout 20 \
+          --max-time 120 \
+          -X POST "${RENDER_APP_URL}/api/admin/sync-db?artifact=${ARTIFACT}&wait=false" \
+          -H "Authorization: Bearer ${ADMIN_SECRET}" \
+          -H "Content-Type: application/json")
+        echo "Trigger response status: $trigger_status"
+        cat /tmp/sync-trigger.json
+        if [ "$trigger_status" -lt 200 ] || [ "$trigger_status" -ge 300 ]; then
+          echo "::error::DB sync trigger failed with status $trigger_status"
+          exit 1
+        fi
+
+        poll_sync_status "new-sync" "${NEW_MAX_POLLS}" "${POLL_INTERVAL_SECONDS}" || exit 1
+        echo "DB sync completed successfully on Render"

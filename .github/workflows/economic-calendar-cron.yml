@@ -21,46 +21,42 @@ concurrency:
   group: economic-calendar-ingest
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: POST economic and market calendar crons
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
-            echo "::notice::Skipping ingest: APP_BASE_URL or CRON_SECRET is not set."
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
-              exit 1
-            fi
-            exit 0
-          fi
-          BASE_TRIMMED="${BASE%/}"
-          post() {
-            local path="$1"
-            local file="resp-${path//\//_}.json"
-            local url="${BASE_TRIMMED}${path}"
-            echo "POST $url"
-            code=$(curl -sS -o "$file" -w "%{http_code}" -X POST "$url" \
-              -H "Authorization: Bearer ${SECRET}" \
-              -H "Accept: application/json")
-            echo "HTTP $code"
-            cat "$file"
-            echo
-            if [ "$code" != "200" ]; then
-              echo "::error::Expected HTTP 200 for $path, got $code"
-              exit 1
-            fi
-            python3 -c "import json; j=json.load(open('$file')); assert j.get('ok') is True, j"
-          }
-
-          post "/api/cron/economic-calendar"
-          post "/api/cron/market-events/fed"
-          post "/api/cron/market-events/treasury"
-          post "/api/cron/market-events/white-house"
-          post "/api/cron/market-events/ustr"
+      - uses: actions/checkout@v4
+      - name: POST /api/cron/economic-calendar
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/economic-calendar
+      - name: POST /api/cron/market-events/fed
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/market-events/fed
+      - name: POST /api/cron/market-events/treasury
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/market-events/treasury
+      - name: POST /api/cron/market-events/white-house
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/market-events/white-house
+      - name: POST /api/cron/market-events/ustr
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/market-events/ustr

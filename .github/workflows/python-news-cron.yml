@@ -19,39 +19,19 @@ concurrency:
   group: python-news-cron
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   pull:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
       - name: POST /api/cron/python-news
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
-            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
-              exit 1
-            fi
-            exit 0
-          fi
-          BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/python-news"
-          BODY='{"tickers":["SPY","QQQ","IWM","NVDA","MSFT","AAPL","META","GOOGL","AMZN","AVGO","AMD","JPM","XOM","UNH"],"hours_back":24}'
-          echo "POST $URL"
-          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${SECRET}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            -d "$BODY")
-          echo "HTTP $code"
-          cat resp.json
-          echo
-          if [ "$code" != "200" ]; then
-            echo "::error::Expected HTTP 200, got $code"
-            exit 1
-          fi
-          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/python-news
+          json_body: '{"tickers":["SPY","QQQ","IWM","NVDA","MSFT","AAPL","META","GOOGL","AMZN","AVGO","AMD","JPM","XOM","UNH"],"hours_back":24}'

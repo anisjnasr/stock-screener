@@ -13,36 +13,18 @@ concurrency:
   group: theme-extraction-cron
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   extract:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
       - name: POST /api/cron/theme-extraction
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
-            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET."
-              exit 1
-            fi
-            exit 0
-          fi
-          BASE_TRIMMED="${BASE%/}"
-          URL="${BASE_TRIMMED}/api/cron/theme-extraction"
-          echo "POST $URL"
-          code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${SECRET}" \
-            -H "Accept: application/json")
-          echo "HTTP $code"
-          cat resp.json
-          echo
-          if [ "$code" != "200" ]; then
-            echo "::error::Expected HTTP 200, got $code"
-            exit 1
-          fi
-          python3 -c "import json,sys; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/theme-extraction

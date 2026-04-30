@@ -27,62 +27,33 @@ concurrency:
   group: earnings-calendar-cron
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
-      - name: POST earnings crons
-        env:
-          BASE: ${{ secrets.APP_BASE_URL }}
-          SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE:-}" ] || [ -z "${SECRET:-}" ]; then
-            echo "::notice::Skipping: APP_BASE_URL or CRON_SECRET is not set."
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Add repository Actions secrets APP_BASE_URL and CRON_SECRET (see workflow header comment)."
-              exit 1
-            fi
-            exit 0
-          fi
-          BASE_TRIMMED="${BASE%/}"
-
-          post() {
-            local path="$1"
-            local url="${BASE_TRIMMED}${path}"
-            echo ""
-            echo "POST $url"
-            code=$(curl -sS -o resp.json -w "%{http_code}" -X POST "$url" \
-              -H "Authorization: Bearer ${SECRET}" \
-              -H "Accept: application/json")
-            echo "HTTP $code"
-            cat resp.json
-            echo
-            if [ "$code" != "200" ]; then
-              echo "::error::Expected HTTP 200 for $path, got $code"
-              exit 1
-            fi
-            python3 -c "import json; j=json.load(open('resp.json')); assert j.get('ok') is True, j"
-          }
-
-          EVENT="${{ github.event_name }}"
-          SCHEDULE="${{ github.event.schedule }}"
-
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            post /api/cron/earnings/universe
-            post /api/cron/earnings/ingest
-            post /api/cron/earnings/actuals
-            exit 0
-          fi
-
-          if [ "$SCHEDULE" = "0 8 1 * *" ]; then
-            post /api/cron/earnings/universe
-          elif [ "$SCHEDULE" = "0 11 * * 1-5" ]; then
-            post /api/cron/earnings/ingest
-          elif [ "$SCHEDULE" = "0 21 * * 1-5" ]; then
-            post /api/cron/earnings/actuals
-          else
-            echo "::warning::Unknown schedule payload: $SCHEDULE"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - name: POST /api/cron/earnings/universe
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 1 * *'
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/earnings/universe
+      - name: POST /api/cron/earnings/ingest
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 11 * * 1-5'
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/earnings/ingest
+      - name: POST /api/cron/earnings/actuals
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * 1-5'
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/earnings/actuals
