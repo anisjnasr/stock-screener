@@ -471,7 +471,11 @@ export async function POST(req: Request) {
   if (!symbol || !prompt) {
     return NextResponse.json({ error: "symbol and prompt are required" }, { status: 400 });
   }
-  const dataSources = Array.isArray(body.dataSources) ? body.dataSources : ["database"];
+  const dataSourcesRaw = Array.isArray(body.dataSources) ? body.dataSources : ["database"];
+  const dataSources: Array<"database" | "web"> = dataSourcesRaw.filter(
+    (source): source is "database" | "web" => source === "database" || source === "web"
+  );
+  if (dataSources.length === 0) dataSources.push("database");
   const dataLookback = parseDataLookback(body.dataLookback);
   const requestedModel: ModelChoice =
     body.model === "opus" || body.model === "sonnet"
