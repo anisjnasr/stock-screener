@@ -19,13 +19,25 @@ export type SavedGapperFilterPreset = {
   filters: GapperFilterState;
 };
 
+function parseClientNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+const DEFAULT_MIN_PM_VOLUME = parseClientNonNegativeInt(
+  process.env.NEXT_PUBLIC_PREMARKET_MIN_PM_VOLUME_DEFAULT,
+  25_000
+);
+
 export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   capPreset: "all",
   minPrice: 5,
   maxPrice: 50_000_000,
   minMarketCap: 0,
   maxMarketCap: 10_000_000_000_000,
-  minPmVolume: 0,
+  minPmVolume: DEFAULT_MIN_PM_VOLUME,
   minVolPct: 0,
   minGapPct: 1,
   rowLimit: 10,

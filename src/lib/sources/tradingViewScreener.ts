@@ -39,13 +39,23 @@ export type TradingViewGapScanOptions = {
   minAbsGapPct: number;
 };
 
+function parseEnvNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (typeof raw !== "string" || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+const DEFAULT_MIN_PM_VOLUME = parseEnvNonNegativeInt("PREMARKET_MIN_PM_VOLUME_DEFAULT", 25_000);
+
 export const DEFAULT_TRADINGVIEW_SCAN: TradingViewScanParams = {
   minPrice: 5,
   /** Upper bound on last close (USD); keep high by default so scans behave like “no max”. */
   maxPrice: 50_000_000,
   minMarketCap: 100_000_000,
   maxMarketCap: 10_000_000_000_000,
-  minPmVolume: 0,
+  minPmVolume: DEFAULT_MIN_PM_VOLUME,
   minVolPct: 0,
   minGapPct: 1,
   rowLimit: 10,

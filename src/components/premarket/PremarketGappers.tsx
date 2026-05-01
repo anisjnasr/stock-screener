@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -34,6 +35,48 @@ function fmtPct(n: number): string {
 function fmtVolPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
+}
+
+function parseClientNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+function parseEtHmToMinutes(raw: string | undefined, fallbackMinutes: number): number {
+  if (!raw) return fallbackMinutes;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallbackMinutes;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallbackMinutes;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallbackMinutes;
+  return hour * 60 + minute;
+}
+
+const ET_PREMARKET_START_MINUTES = parseEtHmToMinutes(process.env.NEXT_PUBLIC_PREMARKET_ET_START_HHMM, 4 * 60);
+const ET_PREMARKET_END_MINUTES = parseEtHmToMinutes(process.env.NEXT_PUBLIC_PREMARKET_ET_END_HHMM, 9 * 60 + 30);
+const PREMARKET_AUTO_REFRESH_MS =
+  Math.max(15, parseClientNonNegativeInt(process.env.NEXT_PUBLIC_PREMARKET_AUTO_REFRESH_SECONDS, 60)) * 1000;
+
+function isEtPremarketWindow(now: Date = new Date()): boolean {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const weekdayShort = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "");
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekday = dayMap[weekdayShort] ?? -1;
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || weekday < 1 || weekday > 5) return false;
+  const minutes = hour * 60 + minute;
+  return minutes >= ET_PREMARKET_START_MINUTES && minutes < ET_PREMARKET_END_MINUTES;
 }
 
 type GapperSortKey = "ticker" | "companyName" | "gapPct" | "lastPrice" | "pmVolume" | "volPct" | "marketCap" | "sector";
@@ -247,6 +290,24 @@ export default function PremarketGappers({
     if (!filtersHydrated || initialFetchDone.current) return;
     initialFetchDone.current = true;
     void run(filters);
+  }, [filtersHydrated, filters, run]);
+
+  useEffect(() => {
+    if (!filtersHydrated) return;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!isEtPremarketWindow()) return;
+      void run(filters);
+    };
+    const id = window.setInterval(tick, PREMARKET_AUTO_REFRESH_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [filtersHydrated, filters, run]);
 
   const applyFilters = (next: GapperFilterState) => {
