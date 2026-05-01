@@ -10,6 +10,8 @@ export type GappersRequestBody = {
   minVolPct?: number;
   minGapPct?: number;
   rowLimit?: number;
+  /** When false, skip Python news lookup entirely. */
+  includeNews?: boolean;
 };
 
 export type GapperSource = "tradingview";
@@ -38,6 +40,8 @@ export type GappersResponse = {
   source: GapperSource;
   rows: GapperRow[];
   pythonConfigured?: boolean;
+  /** True when the request attempted headline lookup. */
+  newsSearched?: boolean;
   news?: Record<string, PythonNewsItem[]> | null;
   newsError?: string | null;
 };

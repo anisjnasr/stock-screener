@@ -39,6 +39,8 @@ type GapperFilterControlsProps = {
   lastRefreshSeconds?: number | null;
 };
 
+type NumericGapperRequestKey = Exclude<keyof GappersRequestBody, "includeNews">;
+
 function parseDecimalBlur(raw: string): number | null {
   const t = raw.trim();
   if (t === "") return null;
@@ -126,7 +128,7 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
     setRowLimitDraft(null);
   }, []);
 
-  const setCustomField = <K extends keyof GappersRequestBody>(key: K, value: number) => {
+  const setCustomField = <K extends NumericGapperRequestKey>(key: K, value: number) => {
     onSelectSavedPresetId?.(null);
     onFiltersChange({ ...filters, [key]: value, capPreset: "custom" });
   };
@@ -508,6 +510,27 @@ const GapperFilterControls = forwardRef<GapperFilterControlsRef, GapperFilterCon
             if (value != null) setCustomField("rowLimit", Math.max(1, Math.min(50, Math.round(value))));
           }}
         />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <span style={gapFilterLabelStyle}>News Search</span>
+        <button
+          type="button"
+          onClick={() => {
+            onSelectSavedPresetId?.(null);
+            onFiltersChange({ ...filters, includeNews: !(filters.includeNews !== false) });
+          }}
+          className={`pm-focus inline-flex h-[30px] items-center rounded border px-2.5 font-medium transition-colors duration-150 ${
+            filters.includeNews !== false
+              ? "border-[var(--ws-cyan)] bg-[rgba(0,229,204,0.12)] text-[var(--ws-cyan)] hover:bg-[rgba(0,229,204,0.18)]"
+              : "border-[var(--border-default)] bg-transparent text-[var(--text-secondary)] hover:border-[rgba(0,229,204,0.45)] hover:bg-[rgba(0,229,204,0.08)] hover:text-[var(--ws-cyan)]"
+          }`}
+          style={{ fontFamily: "var(--ws-font-sans)", fontSize: "var(--ws-fs-label)" }}
+          aria-pressed={filters.includeNews !== false}
+          title={filters.includeNews !== false ? "Disable headline search on scans" : "Enable headline search on scans"}
+        >
+          {filters.includeNews !== false ? "On" : "Off"}
+        </button>
       </div>
 
       {!hidePrimaryButton ? (

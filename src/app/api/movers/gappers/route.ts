@@ -7,6 +7,19 @@ import type { GappersResponse } from "@/types/gappers";
 
 export const dynamic = "force-dynamic";
 
+function normalizeIncludeNews(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return true;
+  const v = (raw as Record<string, unknown>).includeNews;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") {
+    const t = v.trim().toLowerCase();
+    if (t === "false" || t === "0" || t === "off" || t === "no") return false;
+    if (t === "true" || t === "1" || t === "on" || t === "yes") return true;
+  }
+  return true;
+}
+
 /**
  * Pre-market gappers: TradingView `america/scan` only (no fallback if TV fails).
  * POST JSON body — see `GappersRequestBody` in `@/types/gappers`.
@@ -21,6 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   const scan = normalizeGappersScanBody(body);
+  const includeNews = normalizeIncludeNews(body);
   const cacheKey = JSON.stringify(scan);
 
   try {
@@ -38,7 +52,7 @@ export async function POST(request: NextRequest) {
     const tickers = rows.map((r) => r.ticker);
     let news: GappersResponse["news"] = null;
     let newsError: string | null = null;
-    if (tickers.length > 0 && isPythonServiceConfigured()) {
+    if (includeNews && tickers.length > 0 && isPythonServiceConfigured()) {
       try {
         const pack = await fetchPythonTickerNews({
           tickers,
@@ -55,6 +69,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       source: base.source,
       rows,
+      newsSearched: includeNews,
       pythonConfigured: isPythonServiceConfigured(),
       news,
       newsError,

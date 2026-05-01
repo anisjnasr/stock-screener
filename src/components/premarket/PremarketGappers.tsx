@@ -165,6 +165,7 @@ export default function PremarketGappers({
   const [rows, setRows] = useState<GapperRow[] | null>(null);
   const [news, setNews] = useState<Record<string, PythonNewsItem[]> | null>(null);
   const [pythonConfigured, setPythonConfigured] = useState(false);
+  const [newsSearched, setNewsSearched] = useState(filters.includeNews !== false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [catalystByTicker, setCatalystByTicker] = useState<Record<string, SipCatalyst>>({});
   const [catalystLoadingByTicker, setCatalystLoadingByTicker] = useState<Record<string, boolean>>({});
@@ -200,6 +201,8 @@ export default function PremarketGappers({
 
   const run = useCallback(async (f: GapperFilterState) => {
     const t0 = performance.now();
+    const includeNews = f.includeNews !== false;
+    setNewsSearched(includeNews);
     setLoading(true);
     setError(null);
     try {
@@ -214,6 +217,7 @@ export default function PremarketGappers({
         setRows(null);
         setNews(null);
         setPythonConfigured(false);
+        setNewsSearched(includeNews);
         setNewsError(null);
         setResultsCount(null);
         setError(json.error ?? res.statusText);
@@ -222,12 +226,14 @@ export default function PremarketGappers({
       setRows(json.rows);
       setNews(json.news ?? null);
       setPythonConfigured(Boolean(json.pythonConfigured));
+      setNewsSearched(json.newsSearched ?? includeNews);
       setNewsError(json.newsError ?? null);
       setResultsCount(json.rows?.length ?? 0);
     } catch (e) {
       setRows(null);
       setNews(null);
       setPythonConfigured(false);
+      setNewsSearched(includeNews);
       setNewsError(null);
       setResultsCount(null);
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -604,6 +610,10 @@ export default function PremarketGappers({
                     {catalyst ? (
                       <p className="m-0 leading-snug" style={{ color: "var(--ws-text)" }} title={catalyst.summary}>
                         {catalyst.summary}
+                      </p>
+                    ) : !newsSearched ? (
+                      <p className="m-0 leading-snug" style={{ color: "var(--ws-text-dim)" }}>
+                        No search done
                       </p>
                     ) : firstHeadline ? (
                       <div className="flex items-start justify-between gap-2">

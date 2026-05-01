@@ -29,6 +29,7 @@ export const DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
   minVolPct: 0,
   minGapPct: 1,
   rowLimit: 10,
+  includeNews: true,
 };
 
 const SIP_MID_LARGE_DEFAULT_GAPPER_FILTER_STATE: GapperFilterState = {
@@ -133,6 +134,7 @@ export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersReq
     minVolPct: f.minVolPct,
     minGapPct: f.minGapPct,
     rowLimit: f.rowLimit,
+    includeNews: f.includeNews !== false,
   };
 }
 
