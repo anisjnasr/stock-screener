@@ -35,6 +35,10 @@ type AiCompletionCacheEntry = {
   cachedAtMs: number;
   expiresAtMs: number;
 };
+type AiCompletionCacheStats = {
+  hits: number;
+  misses: number;
+};
 
 type ReqBody = {
   prompt?: string;
@@ -136,6 +140,14 @@ function getAiCompletionCache(): Map<string, AiCompletionCacheEntry> {
   };
   if (!g.__aiCompletionCache) g.__aiCompletionCache = new Map<string, AiCompletionCacheEntry>();
   return g.__aiCompletionCache;
+}
+
+function getAiCompletionCacheStats(): AiCompletionCacheStats {
+  const g = globalThis as typeof globalThis & {
+    __aiCompletionCacheStats?: AiCompletionCacheStats;
+  };
+  if (!g.__aiCompletionCacheStats) g.__aiCompletionCacheStats = { hits: 0, misses: 0 };
+  return g.__aiCompletionCacheStats;
 }
 
 function pruneAiCompletionCache(cache: Map<string, AiCompletionCacheEntry>, nowMs: number): void {
@@ -475,11 +487,19 @@ export async function POST(req: Request) {
     dataLookback,
   });
   const cache = getAiCompletionCache();
+  const cacheStats = getAiCompletionCacheStats();
   const nowMs = Date.now();
   pruneAiCompletionCache(cache, nowMs);
   const cached = cache.get(cacheKey);
 
   if (cached && cached.expiresAtMs > nowMs) {
+    cacheStats.hits += 1;
+    const total = cacheStats.hits + cacheStats.misses;
+    const hitRate = total > 0 ? Math.round((cacheStats.hits / total) * 100) : 0;
+    console.info(
+      "[ai-completion] cache-hit",
+      JSON.stringify({ symbol, model: requestedModel, hits: cacheStats.hits, misses: cacheStats.misses, hitRatePct: hitRate })
+    );
     const cachedStream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(jsonLine({ type: "meta", modelUsed: cached.modelUsed, cached: true }));
@@ -503,6 +523,7 @@ export async function POST(req: Request) {
       },
     });
   }
+  cacheStats.misses += 1;
 
   const anthropic = new Anthropic({ apiKey });
 
@@ -673,6 +694,12 @@ export async function POST(req: Request) {
               webStatus: webTelemetry.status,
               webDurationMs: webTelemetry.durationMs,
               cached: false,
+              cacheHits: cacheStats.hits,
+              cacheMisses: cacheStats.misses,
+              cacheHitRatePct:
+                cacheStats.hits + cacheStats.misses > 0
+                  ? Math.round((cacheStats.hits / (cacheStats.hits + cacheStats.misses)) * 100)
+                  : 0,
             })
           );
           controller.enqueue(jsonLine({ type: "done" }));
