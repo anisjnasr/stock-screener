@@ -227,7 +227,7 @@ async function runChunk(anthropic: Anthropic, blocks: string, themesSummary: str
   const raw = await streamClaudeText(anthropic, {
     system: "You tag SIP candidates using two headline checks. Output strict JSON only. Never fabricate facts not in the input.",
     user,
-    maxTokens: 8192,
+    maxTokens: 3000,
     model: PREMARKET_CLAUDE_MODEL,
   });
 

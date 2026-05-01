@@ -1,5 +1,5 @@
 -- Phase 4: newsletter archive + daily macro writeup. Run in Supabase SQL Editor after core schema.
--- Ingest: POST /api/cron/newsletter-ingest (service role). Macro: POST /api/cron/macro-writeup (service role).
+-- Ingest: POST /api/cron/newsletter-ingest (service role). Themes: POST /api/cron/theme-extraction (service role).
 -- newsletter_archive is server-only (no anon read). daily_macro_writeup is public-read for Pre-market UI.
 
 CREATE TABLE IF NOT EXISTS newsletter_archive (

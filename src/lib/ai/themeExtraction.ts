@@ -108,7 +108,7 @@ export async function generateAndStoreDailyThemes(
       system:
         "You identify durable market themes for professional traders. Output strict JSON only — object with key \"themes\" array. No markdown.",
       user,
-      maxTokens: 6000,
+      maxTokens: 2200,
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Theme model failed" };

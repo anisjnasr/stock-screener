@@ -54,7 +54,6 @@
     "earnings:trigger": "node scripts/trigger-earnings-crons.mjs",
     "market-events:trigger": "node scripts/trigger-market-events.mjs",
     "newsletter:ingest:trigger": "node scripts/trigger-newsletter-ingest.mjs",
-    "newsletter:macro:trigger": "node scripts/trigger-macro-writeup.mjs",
     "newsletter:pipeline:trigger": "node scripts/trigger-newsletter-pipeline.mjs",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
     "market-monitor:stats": "node scripts/market-monitor-stats.mjs",

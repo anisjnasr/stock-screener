@@ -1,11 +1,35 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { generateSipCatalystMap } from "@/lib/ai/sipCatalyst";
+import { ymdInEt } from "@/lib/et-ymd";
 import type { GapperRow } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { SipCatalystDetailRequest, SipCatalystDetailResponse } from "@/types/stocks-in-play";
+import type { SipCatalyst } from "@/types/sip-catalyst";
 
 export const runtime = "nodejs";
+
+type CatalystCacheEntry = {
+  etYmd: string;
+  catalyst: SipCatalyst | null;
+  cachedAtMs: number;
+};
+
+function getCatalystCache(): Map<string, CatalystCacheEntry> {
+  const g = globalThis as typeof globalThis & {
+    __stockToolSipCatalystCache?: Map<string, CatalystCacheEntry>;
+  };
+  if (!g.__stockToolSipCatalystCache) {
+    g.__stockToolSipCatalystCache = new Map();
+  }
+  return g.__stockToolSipCatalystCache;
+}
+
+function pruneCatalystCache(cache: Map<string, CatalystCacheEntry>, etYmd: string): void {
+  for (const [ticker, entry] of cache.entries()) {
+    if (entry.etYmd !== etYmd) cache.delete(ticker);
+  }
+}
 
 function normalizeGapperRow(raw: unknown): GapperRow | null {
   if (!raw || typeof raw !== "object") return null;
@@ -73,6 +97,18 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ ok: true, ticker: row.ticker, catalyst: null } satisfies SipCatalystDetailResponse);
   }
 
+  const etYmd = ymdInEt();
+  const cache = getCatalystCache();
+  pruneCatalystCache(cache, etYmd);
+  const cached = cache.get(row.ticker);
+  if (cached && cached.etYmd === etYmd) {
+    return NextResponse.json({
+      ok: true,
+      ticker: row.ticker,
+      catalyst: cached.catalyst,
+    } satisfies SipCatalystDetailResponse);
+  }
+
   const themesSummary = typeof raw.themesSummary === "string" ? raw.themesSummary.trim() : "";
 
   try {
@@ -83,10 +119,12 @@ export async function POST(request: Request): Promise<Response> {
       { [row.ticker]: headlines },
       themesSummary
     );
+    const catalyst = catalystByTicker[row.ticker] ?? null;
+    cache.set(row.ticker, { etYmd, catalyst, cachedAtMs: Date.now() });
     return NextResponse.json({
       ok: true,
       ticker: row.ticker,
-      catalyst: catalystByTicker[row.ticker] ?? null,
+      catalyst,
     } satisfies SipCatalystDetailResponse);
   } catch (error) {
     return NextResponse.json(

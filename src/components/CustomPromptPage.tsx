@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CustomPage } from "@/lib/custom-pages-storage";
-import { updateCustomPage } from "@/lib/custom-pages-storage";
 
-type ModelChoice = "auto" | "sonnet" | "opus";
+type ModelChoice = "sonnet" | "opus";
 type ModelUsed = "sonnet" | "opus";
 type SearchSuggestion = { symbol: string; name?: string; exchange?: string };
 type SourceTelemetry = {
@@ -351,11 +350,6 @@ export default function CustomPromptPage({
           }
           if (evt.type === "meta" && evt.modelUsed) {
             setModelUsed(evt.modelUsed);
-            // If this run used auto/recommended, lock in the chosen model for future runs.
-            if (modelChoice === "auto") {
-              updateCustomPage(page.id, { aiModel: evt.modelUsed });
-              setModelChoice(evt.modelUsed);
-            }
           }
           if (evt.type === "meta" && evt.sourceTelemetry) {
             setSourceTelemetry(evt.sourceTelemetry);
@@ -372,7 +366,7 @@ export default function CustomPromptPage({
         setLoading(false);
       }
     }
-  }, [modelChoice, page.id, page.aiModel, page.dataLookback, page.dataSources, page.prompt]);
+  }, [modelChoice, page.aiModel, page.dataLookback, page.dataSources, page.prompt]);
 
   const handleSubmitOrRun = useCallback((nextRaw: string) => {
     const next = nextRaw.trim().toUpperCase();
@@ -487,7 +481,6 @@ export default function CustomPromptPage({
               style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
               aria-label="Model override"
             >
-              <option value="auto">Recommended (Auto)</option>
               <option value="sonnet">Sonnet</option>
               <option value="opus">Opus</option>
             </select>
@@ -524,7 +517,7 @@ export default function CustomPromptPage({
 
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--ws-bg3)", color: "var(--ws-text)" }}>
-          Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice === "auto" ? "Recommended (auto-selecting...)" : modelChoice}
+          Model: {modelUsed ? (modelUsed === "opus" ? "Opus" : "Sonnet") : modelChoice}
         </span>
         {!!sourceTelemetry?.enabled && (
           <span

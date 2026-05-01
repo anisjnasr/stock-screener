@@ -5,7 +5,7 @@ const STORAGE_KEY_CUSTOM_PAGES = "stock-research-custom-pages";
 export type CustomPage = {
   id: string;
   name: string;
-  aiModel: "auto" | "sonnet" | "opus";
+  aiModel: "sonnet" | "opus";
   dataSources: ("database" | "web")[];
   dataLookback: DataLookback;
   prompt: string;
@@ -63,7 +63,7 @@ function sanitizePage(input: Partial<CustomPage>): CustomPage {
   return {
     id: typeof input.id === "string" && input.id.trim() ? input.id : crypto.randomUUID(),
     name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : "New AI page",
-    aiModel: input.aiModel === "opus" || input.aiModel === "auto" ? input.aiModel : "sonnet",
+    aiModel: input.aiModel === "opus" ? "opus" : "sonnet",
     dataSources: dataSources.length > 0 ? dataSources : ["database"],
     dataLookback: normalizeLookback(input.dataLookback),
     prompt: typeof input.prompt === "string" ? input.prompt : DEFAULT_INSIGHT_PROMPT_TEMPLATE,

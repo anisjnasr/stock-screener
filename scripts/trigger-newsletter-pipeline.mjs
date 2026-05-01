@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Smoke test Phase 4: POST newsletter-ingest, then POST macro-writeup (same order as crons).
+ * Smoke test premarket pipeline: POST newsletter-ingest, then POST theme-extraction.
  *
  * Loads optional `.env.local` from repo root.
  *
@@ -80,21 +80,21 @@ if (ingest.json) console.log(JSON.stringify(ingest.json, null, 2));
 else console.log(ingest.text);
 
 if (!ingest.res.ok || !ingest.json?.ok) {
-  console.error("\n:: Ingest failed — fix before macro step.");
+  console.error("\n:: Ingest failed — fix before theme step.");
   process.exit(1);
 }
 
-console.log("\n--- macro writeup ---\n");
+console.log("\n--- theme extraction ---\n");
 
-const macro = await post("/api/cron/macro-writeup");
-console.log(`POST ${macro.endpoint}`);
-console.log(`HTTP ${macro.res.status}`);
-if (macro.json) console.log(JSON.stringify(macro.json, null, 2));
-else console.log(macro.text);
+const themes = await post("/api/cron/theme-extraction");
+console.log(`POST ${themes.endpoint}`);
+console.log(`HTTP ${themes.res.status}`);
+if (themes.json) console.log(JSON.stringify(themes.json, null, 2));
+else console.log(themes.text);
 
-if (!macro.res.ok || !macro.json?.ok) {
-  console.error("\n:: Macro writeup failed.");
+if (!themes.res.ok || !themes.json?.ok) {
+  console.error("\n:: Theme extraction failed.");
   process.exit(1);
 }
 
-console.log("\n:: Phase 4 pipeline smoke test OK (ingest + macro).");
+console.log("\n:: Premarket pipeline smoke test OK (ingest + themes).");

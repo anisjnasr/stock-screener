@@ -16,7 +16,7 @@ type Props = {
 
 export default function AIInsightFormCard({ mode, initialPage, onSubmit, onCancelEdit }: Props) {
   const [name, setName] = useState("");
-  const [aiModel, setAiModel] = useState<"auto" | "sonnet" | "opus">("auto");
+  const [aiModel, setAiModel] = useState<"sonnet" | "opus">("sonnet");
   const [useDatabase, setUseDatabase] = useState(true);
   const [useWeb, setUseWeb] = useState(false);
   const [lookbackValue, setLookbackValue] = useState("1");
@@ -37,7 +37,7 @@ export default function AIInsightFormCard({ mode, initialPage, onSubmit, onCance
       return;
     }
     setName("");
-    setAiModel("auto");
+    setAiModel("sonnet");
     setUseDatabase(true);
     setUseWeb(false);
     setLookbackValue("1");
@@ -78,11 +78,10 @@ export default function AIInsightFormCard({ mode, initialPage, onSubmit, onCance
           AI model default
           <select
             value={aiModel}
-            onChange={(e) => setAiModel(e.target.value as "auto" | "sonnet" | "opus")}
+            onChange={(e) => setAiModel(e.target.value as "sonnet" | "opus")}
             className="mt-1 w-full rounded px-2 py-1 text-sm"
             style={{ background: "var(--ws-bg3)", color: "var(--ws-text)", border: "1px solid var(--ws-border)" }}
           >
-            <option value="auto">Recommended (Auto)</option>
             <option value="sonnet">Sonnet</option>
             <option value="opus">Opus</option>
           </select>
