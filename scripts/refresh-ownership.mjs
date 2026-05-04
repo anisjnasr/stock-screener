@@ -11,10 +11,10 @@ import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
-import { ensureQuartersDownloaded, QUARTERS_12 } from "./sec-13f-download.mjs";
+import { ensureQuartersDownloaded, listAvailableQuarters, listLocalQuarterZips } from "./sec-13f-download.mjs";
 import { resolveCusipMap } from "./sec-13f-cusip-map.mjs";
 import { aggregateHoldings } from "./sec-13f-aggregate.mjs";
-import { dataDir as DATA_DIR, dbPath as DB_PATH, root } from "./_db-paths.mjs";
+import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
 
 const USING_CUSTOM_DB = Boolean(process.env.SCREENER_DB_PATH);
 
@@ -88,14 +88,20 @@ async function main() {
 
   console.log("1. Ensuring 13F data...");
   const nQuarters = LATEST_ONLY ? 1 : QUARTERS_ARG && Number.isFinite(QUARTERS_ARG) ? Math.max(1, QUARTERS_ARG) : 8;
-  const quarterList = LATEST_ONLY ? QUARTERS_12.slice(0, 1) : QUARTERS_12.slice(0, nQuarters);
-  const quarterPaths = NO_DOWNLOAD
-    ? quarterList.map((q) => ({ quarter: q, path: join(DATA_DIR, "13f", `${q.key}.zip`) })).filter(
-        (p) => existsSync(p.path)
-      )
-    : await ensureQuartersDownloaded(nQuarters);
+  let quarterPaths;
+  if (NO_DOWNLOAD) {
+    const local = listLocalQuarterZips();
+    quarterPaths = local.slice(0, nQuarters);
+  } else {
+    const available = await listAvailableQuarters();
+    if (available.length === 0) {
+      throw new Error("SEC 13F listing returned no datasets.");
+    }
+    const quarterList = (LATEST_ONLY ? available.slice(0, 1) : available.slice(0, nQuarters));
+    quarterPaths = await ensureQuartersDownloaded(quarterList);
+  }
   if (quarterPaths.length === 0) {
-    console.error("No 13F ZIPs found. Run without --no-download to download, or add data/13f/*.zip");
+    console.error("No 13F ZIPs found. Run without --no-download to discover/download latest quarters, or add data/13f/*.zip");
     process.exit(1);
   }
   console.log("   Using", quarterPaths.length, "quarter(s)");

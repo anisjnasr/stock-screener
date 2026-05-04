@@ -9,7 +9,8 @@ import AdmZip from "adm-zip";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { SEC_USER_AGENT, QUARTERS_12 } from "./sec-13f-config.mjs";
+import { SEC_USER_AGENT } from "./sec-13f-config.mjs";
+import { listAvailableQuarters } from "./sec-13f-download.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -26,7 +27,11 @@ async function download(url) {
 async function main() {
   if (!existsSync(DATA_13F)) mkdirSync(DATA_13F, { recursive: true });
 
-  const quarter = QUARTERS_12[QUARTERS_12.length - 1];
+  const available = await listAvailableQuarters();
+  if (available.length === 0) {
+    throw new Error("No SEC 13F datasets discovered.");
+  }
+  const quarter = available[0];
   console.log("Downloading", quarter.key, quarter.url);
   const buf = await download(quarter.url);
   const zipPath = join(DATA_13F, `${quarter.key}.zip`);

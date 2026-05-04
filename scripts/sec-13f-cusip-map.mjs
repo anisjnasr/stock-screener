@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { parseQuarter13F } from "./sec-13f-parse.mjs";
-import { DATA_13F_DIR, QUARTERS_12 } from "./sec-13f-download.mjs";
+import { listLocalQuarterZips } from "./sec-13f-download.mjs";
 import { dataDir as DATA_DIR, dbPath as DB_PATH } from "./_db-paths.mjs";
 
 const CUSIP_MAP_PATH = join(DATA_DIR, "cusip-to-symbol.json");
@@ -116,10 +116,10 @@ function matchIssuerToSymbol(issuerName, nameToSymbol, firstTwoWordsIndex) {
  */
 function* uniqueCusipIssuers() {
   const seen = new Set();
-  for (const q of QUARTERS_12) {
-    const p = join(DATA_13F_DIR, `${q.key}.zip`);
-    if (!existsSync(p)) continue;
-    for (const row of parseQuarter13F(p, q.reportDate)) {
+  const localZips = listLocalQuarterZips();
+  for (const entry of localZips) {
+    if (!existsSync(entry.path)) continue;
+    for (const row of parseQuarter13F(entry.path, entry.quarter.reportDate)) {
       const key = `${row.cusip}\t${row.issuerName}`;
       if (seen.has(key)) continue;
       seen.add(key);
