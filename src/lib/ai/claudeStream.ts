@@ -2,6 +2,53 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const PREMARKET_CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
+function extractFirstJsonValue(raw: string): string | null {
+  const starts: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "{" || ch === "[") starts.push(i);
+  }
+
+  for (const start of starts) {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") inString = false;
+        continue;
+      }
+
+      if (ch === "\"") {
+        inString = true;
+        continue;
+      }
+      if (ch === "{" || ch === "[") {
+        stack.push(ch === "{" ? "}" : "]");
+        continue;
+      }
+      if (ch === "}" || ch === "]") {
+        if (stack.length === 0) break;
+        const expected = stack.pop();
+        if (expected !== ch) break;
+        if (stack.length === 0) {
+          return raw.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export async function streamClaudeText(
   anthropic: Anthropic,
   params: {
@@ -33,7 +80,23 @@ export async function streamClaudeText(
 /** Extract JSON from model output (optional ```json fence). */
 export function parseModelJson<T>(raw: string): T {
   const t = raw.trim();
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const inner = fence ? fence[1].trim() : t;
-  return JSON.parse(inner) as T;
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidates = [t];
+  if (fence) candidates.push(fence[1].trim());
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      const recovered = extractFirstJsonValue(candidate);
+      if (!recovered) continue;
+      try {
+        return JSON.parse(recovered) as T;
+      } catch {
+        /* try next candidate */
+      }
+    }
+  }
+
+  throw new Error("Model output did not contain valid JSON");
 }

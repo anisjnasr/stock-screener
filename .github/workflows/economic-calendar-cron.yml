@@ -13,8 +13,8 @@ name: Economic Calendar Ingest
 
 on:
   schedule:
-    # Daily 06:30 UTC (~1:30am ET standard / 2:30am daylight — before RTH; weekly XML is idempotent)
-    - cron: "30 6 * * *"
+    # Weekly Monday 06:30 UTC (~1:30am ET standard / 2:30am daylight) to ingest the full weekly XML.
+    - cron: "30 6 * * 1"
   workflow_dispatch:
 
 concurrency:

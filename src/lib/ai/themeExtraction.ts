@@ -102,22 +102,37 @@ export async function generateAndStoreDailyThemes(
     "Include exactly 5 macro and 5 industry objects (10 total).",
   ].join("\n");
 
-  let raw: string;
-  try {
-    raw = await streamClaudeText(anthropic, {
+  const requestThemesRaw = async (isRetry: boolean): Promise<string> => {
+    const retrySuffix = isRetry
+      ? "\n\nYour previous response was invalid JSON. Return one JSON object only with a top-level 'themes' array and no extra text."
+      : "";
+    return streamClaudeText(anthropic, {
       system:
         "You identify durable market themes for professional traders. Output strict JSON only — object with key \"themes\" array. No markdown.",
-      user,
-      maxTokens: 2200,
+      user: `${user}${retrySuffix}`,
+      maxTokens: 3400,
     });
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Theme model failed" };
+  };
+
+  let parsed: { themes?: unknown } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let raw: string;
+    try {
+      raw = await requestThemesRaw(attempt > 0);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Theme model failed" };
+    }
+
+    try {
+      parsed = parseModelJson<{ themes?: unknown }>(raw);
+      break;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "parse error";
+      console.warn(`[theme-extraction] parse attempt ${attempt + 1} failed: ${msg}`);
+    }
   }
 
-  let parsed: { themes?: unknown };
-  try {
-    parsed = parseModelJson<{ themes?: unknown }>(raw);
-  } catch {
+  if (!parsed) {
     return { ok: false, error: "Theme model returned non-JSON" };
   }
 

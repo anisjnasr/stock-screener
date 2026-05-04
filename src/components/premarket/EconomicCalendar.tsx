@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DateTime } from "luxon";
 import EventRowFlag from "./EventRowFlag";
 import { addCalendarDaysYmd, ymdInEt } from "@/lib/et-ymd";
@@ -9,6 +9,7 @@ import type { MarketEventPublic, MarketEventsResponse } from "@/types/market-eve
 
 const ET_ZONE = "America/New_York";
 const UAE_ZONE = "Asia/Dubai";
+type CalendarRangeView = "today" | "tomorrow" | "week";
 
 function ymdInUae(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -27,10 +28,10 @@ function toUaeDateTime(date: string, hms: string | null): DateTime | null {
   return dt.setZone(UAE_ZONE);
 }
 
-function formatTimeUae(date: string, hms: string | null): string {
+function formatWhenUae(date: string, hms: string | null, includeDay: boolean): string {
   const dt = toUaeDateTime(date, hms);
-  if (!dt) return "TBD";
-  return `${dt.toFormat("h:mm a")} UAE`;
+  if (!dt) return includeDay ? `${date} · TBD` : "TBD";
+  return includeDay ? `${dt.toFormat("ccc")} ${dt.toFormat("h:mm a")} UAE` : `${dt.toFormat("h:mm a")} UAE`;
 }
 
 function dash(v: string | null): string {
@@ -70,17 +71,18 @@ function filterLow(impact: string): boolean {
 }
 
 export default function EconomicCalendar() {
-  const [econToday, setEconToday] = useState<EconomicEventPublic[]>([]);
-  const [mktToday, setMktToday] = useState<MarketEventPublic[]>([]);
+  const [econEvents, setEconEvents] = useState<EconomicEventPublic[]>([]);
+  const [mktEvents, setMktEvents] = useState<MarketEventPublic[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<CalendarRangeView>("today");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const fromEt = addCalendarDaysYmd(ymdInEt(), -1);
-      const toEt = addCalendarDaysYmd(ymdInEt(), 1);
+      const toEt = addCalendarDaysYmd(ymdInEt(), 7);
       const econQs = new URLSearchParams({ impact: "High,Medium", from: fromEt, to: toEt });
       const mktQs = new URLSearchParams({ impact: "High,Medium", from: fromEt, to: toEt });
       const [eRes, mRes] = await Promise.all([
@@ -96,8 +98,8 @@ export default function EconomicCalendar() {
       const mktEvents = mktOk ? mJson.events ?? [] : [];
 
       if (!econOk && !mktOk) {
-        setEconToday([]);
-        setMktToday([]);
+        setEconEvents([]);
+        setMktEvents([]);
         setError(eJson.error ?? mJson.error ?? "Failed to load calendar");
         return;
       }
@@ -109,29 +111,26 @@ export default function EconomicCalendar() {
         console.warn("[EconomicCalendar] market-events:", mJson.error ?? mRes.statusText);
       }
 
-      const todayYmd = ymdInUae();
       const econ = econEvents
         .filter((ev) => {
           if (!filterLow(ev.impact)) return false;
           const dt = toUaeDateTime(ev.event_date, ev.event_time_et);
-          if (!dt) return false;
-          return dt.toFormat("yyyy-MM-dd") === todayYmd;
+          return Boolean(dt);
         })
         .sort((a, b) => sortKeyFor(a.event_date, a.event_time_et).localeCompare(sortKeyFor(b.event_date, b.event_time_et)));
       const mkt = mktEvents
         .filter((ev) => {
           if (!filterLow(ev.impact)) return false;
           const dt = toUaeDateTime(ev.event_date, ev.event_time_et);
-          if (!dt) return false;
-          return dt.toFormat("yyyy-MM-dd") === todayYmd;
+          return Boolean(dt);
         })
         .sort((a, b) => sortKeyFor(a.event_date, a.event_time_et).localeCompare(sortKeyFor(b.event_date, b.event_time_et)));
 
-      setEconToday(econ);
-      setMktToday(mkt);
+      setEconEvents(econ);
+      setMktEvents(mkt);
     } catch (e) {
-      setEconToday([]);
-      setMktToday([]);
+      setEconEvents([]);
+      setMktEvents([]);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -142,7 +141,30 @@ export default function EconomicCalendar() {
     void load();
   }, [load]);
 
-  const total = econToday.length + mktToday.length;
+  const { econFiltered, mktFiltered } = useMemo(() => {
+    const todayYmd = ymdInUae();
+    const tomorrowYmd = addCalendarDaysYmd(todayYmd, 1);
+    const weekEndYmd = addCalendarDaysYmd(todayYmd, 6);
+    const inRange = (dateYmd: string): boolean => {
+      if (view === "today") return dateYmd === todayYmd;
+      if (view === "tomorrow") return dateYmd === tomorrowYmd;
+      return dateYmd >= todayYmd && dateYmd <= weekEndYmd;
+    };
+    const filterByView = <T extends { event_date: string; event_time_et: string | null }>(rows: T[]): T[] =>
+      rows.filter((ev) => {
+        const dt = toUaeDateTime(ev.event_date, ev.event_time_et);
+        if (!dt) return false;
+        return inRange(dt.toFormat("yyyy-MM-dd"));
+      });
+    return {
+      econFiltered: filterByView(econEvents),
+      mktFiltered: filterByView(mktEvents),
+    };
+  }, [econEvents, mktEvents, view]);
+
+  const total = econFiltered.length + mktFiltered.length;
+  const activeRangeLabel = view === "today" ? "today" : view === "tomorrow" ? "tomorrow" : "this week";
+  const showDayInWhen = view !== "today";
 
   if (loading) {
     return (
@@ -179,7 +201,7 @@ export default function EconomicCalendar() {
     return (
       <div className="space-y-2">
         <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          No economic or key events for today (UAE). Run calendar crons to refresh.
+          No economic or key events for {activeRangeLabel} (UAE). Run calendar crons to refresh.
         </p>
         <button
           type="button"
@@ -202,15 +224,40 @@ export default function EconomicCalendar() {
 
   return (
     <div className="space-y-3">
+      <div
+        className="pm-site-caption flex flex-wrap gap-2 rounded border px-2 py-1.5"
+        style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)" }}
+      >
+        {([
+          ["today", "Today"],
+          ["tomorrow", "Tomorrow"],
+          ["week", "This Week"],
+        ] as const).map(([id, label]) => {
+          const active = view === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setView(id)}
+              aria-pressed={active}
+              className={`pm-focus rounded-full border px-2 py-0.5 font-semibold ${active ? "earn-pill-mixed" : "earn-pill-upcoming"}`}
+              style={{ fontFamily: "var(--ws-font-sans)", fontSize: "var(--ws-fs-caption)" }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="min-w-0">
           <h3 className="pm-section-label mb-1" style={{ color: "var(--accent-cyan)" }}>
             Economic
           </h3>
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
-            {econToday.length === 0 ? (
+            {econFiltered.length === 0 ? (
               <p className="pm-site-caption px-2 py-2" style={{ color: "var(--text-tertiary)" }}>
-                No high-impact releases today.
+                No high-impact releases for {activeRangeLabel}.
               </p>
             ) : (
               <table className="w-full min-w-[18rem] border-collapse text-left">
@@ -237,13 +284,13 @@ export default function EconomicCalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {econToday.map((row) => (
+                  {econFiltered.map((row) => (
                     <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-default)" }}>
                       <td
                         className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
                         style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
                       >
-                        {formatTimeUae(row.event_date, row.event_time_et)}
+                        {formatWhenUae(row.event_date, row.event_time_et, showDayInWhen)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
@@ -264,7 +311,7 @@ export default function EconomicCalendar() {
                         <EventRowFlag
                           eventType="economic"
                           eventId={row.id}
-                          onFlagged={() => setEconToday((prev) => prev.filter((r) => r.id !== row.id))}
+                          onFlagged={() => setEconEvents((prev) => prev.filter((r) => r.id !== row.id))}
                         />
                       </td>
                     </tr>
@@ -280,9 +327,9 @@ export default function EconomicCalendar() {
             Key events
           </h3>
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
-            {mktToday.length === 0 ? (
+            {mktFiltered.length === 0 ? (
               <p className="pm-site-caption px-2 py-2" style={{ color: "var(--text-tertiary)" }}>
-                No key policy events today.
+                No key policy events for {activeRangeLabel}.
               </p>
             ) : (
               <table className="w-full min-w-[18rem] border-collapse text-left">
@@ -303,13 +350,13 @@ export default function EconomicCalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {mktToday.map((row) => (
+                  {mktFiltered.map((row) => (
                     <tr key={row.id} className="border-t" style={{ borderColor: "var(--border-default)" }}>
                       <td
                         className="whitespace-nowrap px-2 py-1 align-top tabular-nums pm-mono"
                         style={{ color: "var(--text-primary)", fontSize: "var(--ws-fs-caption)" }}
                       >
-                        {formatTimeUae(row.event_date, row.event_time_et)}
+                        {formatWhenUae(row.event_date, row.event_time_et, showDayInWhen)}
                       </td>
                       <td className="px-2 py-1 align-top">
                         <ImpactDot impact={row.impact} />
@@ -333,7 +380,7 @@ export default function EconomicCalendar() {
                         <EventRowFlag
                           eventType="market"
                           eventId={row.id}
-                          onFlagged={() => setMktToday((prev) => prev.filter((r) => r.id !== row.id))}
+                          onFlagged={() => setMktEvents((prev) => prev.filter((r) => r.id !== row.id))}
                         />
                       </td>
                     </tr>
