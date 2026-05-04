@@ -419,29 +419,36 @@ function ColumnPickerContent({
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [columnSearch, setColumnSearch] = useState("");
+  const labelForColumn = useCallback(
+    (col: ColumnId) => (COLUMN_LABELS as Record<string, string>)[col] ?? String(col),
+    []
+  );
 
   const hidden = useMemo(
-    () => ALL_COLUMN_IDS.filter((id) => !localOrder.includes(id)),
-    [localOrder]
+    () =>
+      ALL_COLUMN_IDS
+        .filter((id) => !localOrder.includes(id))
+        .sort((a, b) => labelForColumn(a).localeCompare(labelForColumn(b))),
+    [localOrder, labelForColumn]
   );
 
   const visibleFiltered = useMemo(() => {
     const q = columnSearch.trim().toLowerCase();
     if (!q) return localOrder;
     return localOrder.filter((col) => {
-      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+      const label = labelForColumn(col);
       return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
     });
-  }, [localOrder, columnSearch]);
+  }, [localOrder, columnSearch, labelForColumn]);
 
   const hiddenFiltered = useMemo(() => {
     const q = columnSearch.trim().toLowerCase();
     if (!q) return hidden;
     return hidden.filter((col) => {
-      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+      const label = labelForColumn(col);
       return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
     });
-  }, [hidden, columnSearch]);
+  }, [hidden, columnSearch, labelForColumn]);
 
   const toggleVisible = (col: ColumnId) => {
     setLocalOrder((prev) =>
@@ -1654,6 +1661,11 @@ export default function WatchlistPanel({
     []
   );
 
+  const includeFinancialExtrasForListFetch = useMemo(
+    () => hasFinancialColumns(visibleColumns),
+    [visibleColumns]
+  );
+
   const fetchRowsForSymbols = useCallback(
     async (symbols: string[]) => {
       if (!symbols.length) {
@@ -1671,6 +1683,9 @@ export default function WatchlistPanel({
           const params = new URLSearchParams();
           params.set("symbols", chunk.join(","));
           params.set("limit", "5000");
+          if (includeFinancialExtrasForListFetch) {
+            params.set("full", "1");
+          }
           return fetch(`/api/screener?${params.toString()}`).then(async (res) => {
             if (!res.ok) return { rows: [] as Record<string, unknown>[] };
             const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
@@ -1705,7 +1720,7 @@ export default function WatchlistPanel({
         setLoading(false);
       }
     },
-    [mapItemToRow, mapScreenerRowToWatchlistRow]
+    [includeFinancialExtrasForListFetch, mapItemToRow, mapScreenerRowToWatchlistRow]
   );
 
   const fetchIndustryRankingsRows = useCallback(async () => {
@@ -1911,13 +1926,17 @@ export default function WatchlistPanel({
   const fetchFullUniverse = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/screener?limit=20000");
+      const params = new URLSearchParams({ limit: "20000" });
+      if (includeFinancialExtrasForListFetch) {
+        params.set("full", "1");
+      }
+      const res = await fetch(`/api/screener?${params.toString()}`);
       if (!res.ok) throw new Error();
       const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
       const newRows: WatchlistRow[] = (data.rows ?? []).map((r) => mapScreenerRowToWatchlistRow(r));
       setRows(newRows);
     } catch { setRows([]); } finally { setLoading(false); }
-  }, [mapScreenerRowToWatchlistRow]);
+  }, [includeFinancialExtrasForListFetch, mapScreenerRowToWatchlistRow]);
 
   const isMinimized = panelHeightPx <= MIN_PANEL_HEIGHT_PX;
   const tableSourceScreenId = tableSource.screen?.id;
@@ -2813,12 +2832,26 @@ export default function WatchlistPanel({
 
   const customizeColumnsFiltered = useMemo(() => {
     const q = colCustomizeSearch.trim().toLowerCase();
-    if (!q) return ALL_COLUMN_IDS;
-    return ALL_COLUMN_IDS.filter((col) => {
-      const label = (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
-      return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
-    });
-  }, [colCustomizeSearch]);
+    const labelFor = (col: ColumnId): string =>
+      (COLUMN_LABELS as Record<string, string>)[col] ?? String(col);
+
+    const alpha = [...ALL_COLUMN_IDS].sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+    const filtered = q
+      ? alpha.filter((col) => {
+          const label = labelFor(col);
+          return label.toLowerCase().includes(q) || String(col).toLowerCase().includes(q);
+        })
+      : alpha;
+
+    const active = new Set(tableColumns as ColumnId[]);
+    const selected: ColumnId[] = [];
+    const unselected: ColumnId[] = [];
+    for (const col of filtered) {
+      if (active.has(col)) selected.push(col);
+      else unselected.push(col);
+    }
+    return [...selected, ...unselected];
+  }, [colCustomizeSearch, tableColumns]);
 
   const handleSort = useCallback((col: TableColumnId) => {
     if (sortKey === col) {
@@ -4634,10 +4667,17 @@ export default function WatchlistPanel({
                         return next;
                       })
                     }
-                    className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors hover:brightness-150"
-                    style={{ color: "rgba(201,209,217,0.5)" }}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded border transition-all duration-150 hover:brightness-150"
+                    style={{
+                      color: showTableMenu ? "var(--ws-cyan, #00e5cc)" : "rgba(201,209,217,0.5)",
+                      background: showTableMenu ? "rgba(0, 229, 204, 0.10)" : "transparent",
+                      borderColor: showTableMenu ? "rgba(0, 229, 204, 0.45)" : "transparent",
+                      boxShadow: showTableMenu ? "0 0 0 1px rgba(0, 229, 204, 0.18), 0 0 10px rgba(0, 229, 204, 0.18)" : "none",
+                      transform: showTableMenu ? "translateY(-0.5px)" : "none",
+                    }}
                     title="Table options"
                     aria-label="Table options"
+                    aria-expanded={showTableMenu}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                   </button>

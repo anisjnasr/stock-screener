@@ -80,6 +80,14 @@ body {
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+/* Consistent click affordance across the app */
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
 /* Dark-themed scrollbars (vertical and horizontal) */
 .dark * {
   scrollbar-width: thin;
