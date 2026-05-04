@@ -187,19 +187,19 @@ export async function GET(request: NextRequest) {
             ...(profileNorm ?? {}),
             ...(stockRecord ?? {}),
             sector:
-              profileNorm?.sector ??
               companyClass?.sector ??
               stockRecord?.sector ??
+              profileNorm?.sector ??
               (profile as { sector?: string } | null | undefined)?.sector,
             industry:
-              profileNorm?.industry ??
               companyClass?.industry ??
               stockRecord?.industry ??
+              profileNorm?.industry ??
               (profile as { industry?: string } | null | undefined)?.industry,
             exchange:
-              profileNorm?.exchange ??
               companyClass?.exchange ??
               stockRecord?.exchange ??
+              profileNorm?.exchange ??
               (profile as { exchange?: string } | null | undefined)?.exchange,
           }
         : undefined;
@@ -277,11 +277,10 @@ export async function GET(request: NextRequest) {
           industry_rank_12m: dbRow.industry_rank_12m ?? null,
         }
       : null;
+    // Industry rank lookup must use DB/yfinance classification first.
     const profileIndustry =
-      profileNorm?.industry ??
       companyClass?.industry ??
       stockRecord?.industry ??
-      (profile as { industry?: string } | null | undefined)?.industry ??
       dbRow?.industry ??
       null;
     const computedIndustryRanks =
