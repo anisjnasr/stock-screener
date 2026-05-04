@@ -75,7 +75,7 @@ export default function EconomicCalendar() {
   const [mktEvents, setMktEvents] = useState<MarketEventPublic[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<CalendarRangeView>("today");
+  const [view, setView] = useState<CalendarRangeView>("week");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,29 +192,6 @@ export default function EconomicCalendar() {
           }}
         >
           Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (total === 0) {
-    return (
-      <div className="space-y-2">
-        <p className="pm-site-prose" style={{ color: "var(--text-secondary)" }}>
-          No economic or key events for {activeRangeLabel} (UAE). Run calendar crons to refresh.
-        </p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium"
-          style={{
-            borderColor: "var(--border-default)",
-            color: "var(--text-primary)",
-            fontFamily: "var(--ws-font-sans)",
-            fontSize: "var(--ws-fs-label)",
-          }}
-        >
-          Refresh
         </button>
       </div>
     );
