@@ -67,6 +67,7 @@ type IndustryRankUniverse = {
 
 type DbProfileMetrics = {
   marketCap: number | null;
+  freeFloat: number | null;
   avgVolume20d: number | null;
   avgDollarVolume1m: number | null;
   atrPct21d: number | null;
@@ -323,6 +324,11 @@ export default function RightRail({
     (typeof profile?.mktCap === "number" && Number.isFinite(profile.mktCap) ? profile.mktCap : null);
   const marketCapLabel =
     capValue != null && Number.isFinite(capValue) && capValue > 0 ? fmtMarketCapNoDollar(capValue) : "—";
+  const floatValue =
+    dbProfileMetrics?.freeFloat ??
+    (typeof profile?.floatShares === "number" && Number.isFinite(profile.floatShares) ? profile.floatShares : null);
+  const floatLabel =
+    floatValue != null && Number.isFinite(floatValue) && floatValue > 0 ? fmtMarketCapNoDollar(floatValue) : "—";
   const avgVol20dLabel =
     dbProfileMetrics?.avgVolume20d != null && Number.isFinite(dbProfileMetrics.avgVolume20d)
       ? Math.round(dbProfileMetrics.avgVolume20d).toLocaleString("en-US")
@@ -570,7 +576,11 @@ export default function RightRail({
                 </span>
 
                 <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>
-                <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{marketCapLabel}</span>
+                  <span className="font-medium shrink-0" style={{ color: "rgba(201,209,217,0.7)" }}>Float</span>
+                  <span className="font-medium font-mono tabular-nums" style={{ color: "var(--ws-text)" }}>{floatLabel}</span>
+                </span>
 
                 <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Avg Vol</span>
                 <span className="flex min-w-0 items-baseline gap-2">

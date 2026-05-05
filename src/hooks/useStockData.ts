@@ -51,6 +51,7 @@ export type StockData = {
   } | null;
   dbProfileMetrics?: {
     marketCap: number | null;
+    freeFloat: number | null;
     avgVolume20d: number | null;
     avgDollarVolume1m: number | null;
     atrPct21d: number | null;

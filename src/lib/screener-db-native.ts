@@ -1024,6 +1024,7 @@ export function getAllIndustryNames(): string[] {
 
 export type StockProfileDbMetrics = {
   marketCap: number | null;
+  freeFloat: number | null;
   avgVolume20d: number | null;
   avgDollarVolume1m: number | null;
   atrPct21d: number | null;
@@ -1042,6 +1043,7 @@ export function getStockProfileDbMetrics(symbol: string, date?: string): {
       `
       SELECT
         q.market_cap AS market_cap,
+        q.free_float AS free_float,
         i.avg_volume_1m AS avg_volume_1m,
         i.avg_dollar_volume_1m AS avg_dollar_volume_1m,
         q.atr_pct_21d AS atr_pct_21d
@@ -1053,13 +1055,20 @@ export function getStockProfileDbMetrics(symbol: string, date?: string): {
       `
     )
     .get(String(symbol).toUpperCase(), targetDate) as
-    | { market_cap?: number | null; avg_volume_1m?: number | null; avg_dollar_volume_1m?: number | null; atr_pct_21d?: number | null }
+    | {
+        market_cap?: number | null;
+        free_float?: number | null;
+        avg_volume_1m?: number | null;
+        avg_dollar_volume_1m?: number | null;
+        atr_pct_21d?: number | null;
+      }
     | undefined;
   if (!row) return { date: targetDate, metrics: null };
   return {
     date: targetDate,
     metrics: {
       marketCap: typeof row.market_cap === "number" ? row.market_cap : null,
+      freeFloat: typeof row.free_float === "number" ? row.free_float : null,
       avgVolume20d: typeof row.avg_volume_1m === "number" ? row.avg_volume_1m : null,
       avgDollarVolume1m: typeof row.avg_dollar_volume_1m === "number" ? row.avg_dollar_volume_1m : null,
       atrPct21d: typeof row.atr_pct_21d === "number" ? row.atr_pct_21d : null,

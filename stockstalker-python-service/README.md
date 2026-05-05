@@ -57,20 +57,7 @@ curl -s http://127.0.0.1:8000/news -H "Authorization: Bearer dev-secret-32chars-
 ## Next.js integration (Phase 12B)
 
 - **Library:** `src/lib/python-service.ts` — `fetchPythonTickerNews()`, `isPythonServiceConfigured()`.
-- **Cron proxy (testing / batch jobs):** `POST /api/cron/python-news` with **Bearer `CRON_SECRET`** and body  
-  `{ "tickers": ["AAPL","MSFT"], "hours_back": 24 }`  
-  Forwards to the Python service using `PYTHON_SERVICE_URL` + `PYTHON_SERVICE_KEY`.
-
-Example (production):
-
-```bash
-curl -sS -X POST "$APP/api/cron/python-news" \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"tickers":["AAPL"],"hours_back":48}'
-```
-
-Stocks in Play can import `fetchPythonTickerNews` directly from server code without hitting this proxy route.
+- **Usage path:** Gap scans call `fetchPythonTickerNews()` directly from server code when the News toggle is on.
 
 ## Limits
 

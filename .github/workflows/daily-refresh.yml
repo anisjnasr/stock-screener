@@ -163,6 +163,12 @@ jobs:
           MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
         timeout-minutes: 90
 
+      # Free-float (shares) refresh via yfinance for the latest quote date.
+      - name: Refresh free float (yfinance)
+        if: ${{ github.event.inputs.skip_daily != 'true' }}
+        run: node scripts/refresh-free-float-yfinance.mjs
+        timeout-minutes: 60
+
       # Financials refresh (optional, for quarterly runs)
       - name: Refresh financials
         if: ${{ github.event.inputs.run_financials == 'true' }}

@@ -53,7 +53,7 @@ This document lists all data points in the screener database: those from your or
 | 52-week high | `high_52w` | ✓ | **Formula:** \(\max(\text{high})\) over the last 252 trading days. |
 | Off 52-week high | `off_52w_high_pct` | ✓ | **Formula (signed):** \((P_{\text{close}} - \text{high\_52w}) / \text{high\_52w} \times 100\). Negative when price is below the 52w high, zero at the high, positive if close exceeds the trailing 52w high. |
 | ATR % (21 days) | `atr_pct_21d` | ✓ | **Formula:** \(\text{ATR}(21) / P_{\text{close}} \times 100\). See [ATR](#atr-average-true-range) below. |
-| Free float | `free_float` | ✓ | Not populated by current scripts. |
+| Free float | `free_float` | ✓ | Populated on latest quote rows by daily yfinance refresh (`scripts/refresh-free-float-yfinance.mjs`). |
 | Date | `date` | — | Snapshot date (part of key). |
 
 ---
