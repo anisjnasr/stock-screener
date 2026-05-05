@@ -372,24 +372,49 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
       LIMIT 2
     ) x
   )`;
+  // Recompute quarterly revenue YoY directly from sales series for consistency with fundamentals panel.
   const latestQuarterlySalesGrowthExpr = `(
-    SELECT fq.sales_growth_yoy
-    FROM financials fq
-    WHERE fq.symbol = c.symbol
-      AND fq.period_type = 'quarterly'
-      AND fq.sales_growth_yoy IS NOT NULL
-    ORDER BY fq.period_end DESC
+    SELECT y.growth
+    FROM (
+      SELECT
+        fq.period_end AS period_end,
+        CASE
+          WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
+          ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
+        END AS growth
+      FROM financials fq
+      LEFT JOIN financials fp
+        ON fp.symbol = fq.symbol
+        AND fp.period_type = 'quarterly'
+        AND fp.period_end = date(fq.period_end, '-1 year')
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+    ) y
+    WHERE y.growth IS NOT NULL
+    ORDER BY y.period_end DESC
     LIMIT 1
   )`;
   const avgQuarterlySalesGrowthExpr = (periods: number) => `(
-    SELECT AVG(x.sales_growth_yoy)
+    SELECT AVG(x.growth)
     FROM (
-      SELECT fq.sales_growth_yoy
-      FROM financials fq
-      WHERE fq.symbol = c.symbol
-        AND fq.period_type = 'quarterly'
-        AND fq.sales_growth_yoy IS NOT NULL
-      ORDER BY fq.period_end DESC
+      SELECT y.period_end, y.growth
+      FROM (
+        SELECT
+          fq.period_end AS period_end,
+          CASE
+            WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
+            ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
+          END AS growth
+        FROM financials fq
+        LEFT JOIN financials fp
+          ON fp.symbol = fq.symbol
+          AND fp.period_type = 'quarterly'
+          AND fp.period_end = date(fq.period_end, '-1 year')
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+      ) y
+      WHERE y.growth IS NOT NULL
+      ORDER BY y.period_end DESC
       LIMIT ${periods}
     ) x
   )`;
