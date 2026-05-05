@@ -1,6 +1,6 @@
 # Triggers production calendar ingests:
 #   - /api/cron/economic-calendar (Forex Factory → Supabase)
-#   - /api/cron/market-events/* (Fed, Treasury, White House, USTR → Supabase)
+#   - /api/cron/market-events/* (Fed, Treasury, Pentagon, White House, USTR → Supabase)
 # Operator guide: docs/ECONOMIC-CALENDAR-PRODUCTION.md
 #
 # Setup (repository Settings → Secrets and variables → Actions):
@@ -48,6 +48,12 @@ jobs:
           base_url: ${{ secrets.APP_BASE_URL }}
           cron_secret: ${{ secrets.CRON_SECRET }}
           path: /api/cron/market-events/treasury
+      - name: POST /api/cron/market-events/pentagon
+        uses: ./.github/actions/post-cron-endpoint
+        with:
+          base_url: ${{ secrets.APP_BASE_URL }}
+          cron_secret: ${{ secrets.CRON_SECRET }}
+          path: /api/cron/market-events/pentagon
       - name: POST /api/cron/market-events/white-house
         uses: ./.github/actions/post-cron-endpoint
         with:

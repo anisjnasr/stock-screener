@@ -61,6 +61,7 @@ import {
 import { formatDisplayDate } from "@/lib/date-format";
 import { toTitleCase } from "@/lib/text-format";
 import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
+import type { FilterField } from "@/lib/screener-fields";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
 import { FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
 import { computeFlagStripPosition } from "@/lib/flag-picker-position";
@@ -101,6 +102,25 @@ const FINANCIAL_COLUMN_IDS = new Set<ColumnId>([
 
 function hasFinancialColumns(columns: readonly string[]): boolean {
   return columns.some((col) => FINANCIAL_COLUMN_IDS.has(col as ColumnId));
+}
+
+function IndustryChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M6 3.5L10.5 8L6 12.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 /** Row shape: core fields + all optional screener/quote columns (camelCase). */
@@ -727,6 +747,8 @@ export default function WatchlistPanel({
   const [columnSets, setColumnSets] = useState<ColumnSet[]>([]);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showTableMenu, setShowTableMenu] = useState(false);
+  const [groupRowsByIndustry, setGroupRowsByIndustry] = useState(false);
+  const [expandedIndustryGroups, setExpandedIndustryGroups] = useState<Set<string>>(new Set());
   const [showColSetSubmenu, setShowColSetSubmenu] = useState(false);
   const [showColCustomizeSubmenu, setShowColCustomizeSubmenu] = useState(false);
   const [colCustomizeSearch, setColCustomizeSearch] = useState("");
@@ -2432,52 +2454,96 @@ export default function WatchlistPanel({
     }));
   }, []);
 
+  const isFilterFieldActive = useCallback(
+    (field: FilterField): boolean => {
+      const filters = newScreenForm.filters;
+      if (field.type === "numeric" || field.type === "pct" || field.type === "percentile") {
+        const hasMin = field.minKey != null && filters[field.minKey] != null && filters[field.minKey] !== "";
+        const hasMax = field.maxKey != null && filters[field.maxKey] != null && filters[field.maxKey] !== "";
+        return hasMin || hasMax;
+      }
+      if (field.type === "categorical") {
+        const v = filters[field.key];
+        return v != null && v !== "";
+      }
+      if (field.type === "text") {
+        const v = filters[field.key];
+        return v != null && String(v).trim() !== "";
+      }
+      if (field.type === "pctOperatorRow") {
+        const row = newScreenForm.pctOperatorRows?.[field.key];
+        const val = (row?.value ?? "").toString().trim();
+        return val !== "";
+      }
+      if (field.type === "includeExcludeMulti") {
+        const row = newScreenForm.includeExcludeRows?.[field.key];
+        return Boolean(row && row.selected.length > 0);
+      }
+      if (field.type === "dateRange") {
+        const fromVal = filters[field.fromKey];
+        const toVal = filters[field.toKey];
+        const hasMode =
+          field.fromKey === "ipo_date_from" &&
+          (String(filters[IPO_FROM_MODE_KEY] ?? "date") !== "date" ||
+            String(filters[IPO_TO_MODE_KEY] ?? "date") !== "date");
+        return (fromVal != null && fromVal !== "") || (toVal != null && toVal !== "") || hasMode;
+      }
+      if (field.type === "universeSelect") {
+        return Boolean(newScreenForm.universe && newScreenForm.universe !== "all");
+      }
+      if (field.type === "checkbox") {
+        return filters[field.filterKey] === "1";
+      }
+      return false;
+    },
+    [newScreenForm.filters, newScreenForm.pctOperatorRows, newScreenForm.includeExcludeRows, newScreenForm.universe]
+  );
+
   /** Count filled inputs and total fields for a category. Returns { filled, total } for display as "filled/total". */
   const getCategoryCounts = useCallback(
     (cat: (typeof SCREENER_FILTER_CATEGORIES)[0]) => {
-      const filters = newScreenForm.filters;
       let filled = 0;
       for (const field of cat.fields) {
-        if (field.type === "numeric" || field.type === "pct") {
-          const hasMin = field.minKey != null && filters[field.minKey] != null && filters[field.minKey] !== "";
-          const hasMax = field.maxKey != null && filters[field.maxKey] != null && filters[field.maxKey] !== "";
-          if (hasMin || hasMax) filled++;
-        } else if (field.type === "categorical") {
-          const v = filters[field.key];
-          if (v != null && v !== "") filled++;
-        } else if (field.type === "text") {
-          const v = filters[field.key];
-          if (v != null && String(v).trim() !== "") filled++;
-        } else if (field.type === "percentile") {
-          const hasMin = field.minKey != null && filters[field.minKey] != null && filters[field.minKey] !== "";
-          const hasMax = field.maxKey != null && filters[field.maxKey] != null && filters[field.maxKey] !== "";
-          if (hasMin || hasMax) filled++;
-        } else if (field.type === "pctOperatorRow") {
-          const row = newScreenForm.pctOperatorRows?.[field.key];
-          const val = (row?.value ?? "").toString().trim();
-          if (val !== "") filled++;
-        } else if (field.type === "includeExcludeMulti") {
-          const row = newScreenForm.includeExcludeRows?.[field.key];
-          if (row && row.selected.length > 0) filled++;
-        } else if (field.type === "dateRange") {
-          const fromVal = filters[field.fromKey];
-          const toVal = filters[field.toKey];
-          const hasMode =
-            field.fromKey === "ipo_date_from" &&
-            (String(filters[IPO_FROM_MODE_KEY] ?? "date") !== "date" ||
-              String(filters[IPO_TO_MODE_KEY] ?? "date") !== "date");
-          if ((fromVal != null && fromVal !== "") || (toVal != null && toVal !== "") || hasMode) filled++;
-        } else if (field.type === "universeSelect") {
-          if (newScreenForm.universe && newScreenForm.universe !== "all") filled++;
-        } else if (field.type === "checkbox") {
-          if (filters[field.filterKey] === "1") filled++;
-        }
+        if (field.type === "sectionHeading") continue;
+        if (isFilterFieldActive(field)) filled++;
       }
       const total = cat.fields.filter((f) => f.type !== "sectionHeading").length;
       return { filled, total };
     },
-    [newScreenForm.filters, newScreenForm.pctOperatorRows, newScreenForm.includeExcludeRows, newScreenForm.universe]
+    [isFilterFieldActive]
   );
+
+  const selectedScreenerSectionFields = useMemo(() => {
+    if (!selectedScreenerSectionId) return null;
+    const category = SCREENER_FILTER_CATEGORIES.find((c) => c.id === selectedScreenerSectionId);
+    if (!category) return null;
+
+    const ordered: FilterField[] = [];
+    let pendingHeading: FilterField | null = null;
+    let buffer: FilterField[] = [];
+    const flush = () => {
+      if (pendingHeading) ordered.push(pendingHeading);
+      if (buffer.length > 0) {
+        const active = buffer.filter((field) => isFilterFieldActive(field));
+        const inactive = buffer.filter((field) => !isFilterFieldActive(field));
+        ordered.push(...active, ...inactive);
+      }
+      pendingHeading = null;
+      buffer = [];
+    };
+
+    for (const field of category.fields) {
+      if (field.type === "sectionHeading") {
+        flush();
+        pendingHeading = field;
+      } else {
+        buffer.push(field);
+      }
+    }
+    flush();
+
+    return ordered;
+  }, [selectedScreenerSectionId, isFilterFieldActive]);
 
   const formatNumberInput = (raw: string | number | undefined, isPct: boolean, decimalPlaces?: number): string => {
     if (raw === undefined || raw === "") return "";
@@ -2739,6 +2805,44 @@ export default function WatchlistPanel({
     });
     return copy;
   }, [topBottomFilteredRows, sortKey, sortDir, flags]);
+
+  const groupedRowsByIndustry = useMemo(() => {
+    const groups = new Map<string, WatchlistRow[]>();
+    for (const row of sortedRows) {
+      const key = row.industry?.trim() ? row.industry.trim() : "Unknown";
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(row);
+    }
+    return [...groups.entries()]
+      .map(([industry, rows]) => ({ industry, rows }))
+      .sort((a, b) => {
+        const diff = b.rows.length - a.rows.length;
+        return diff !== 0 ? diff : a.industry.localeCompare(b.industry);
+      });
+  }, [sortedRows]);
+
+  const tableDisplayEntries = useMemo(() => {
+    if (!groupRowsByIndustry) {
+      return sortedRows.map((row) => ({ type: "row" as const, row }));
+    }
+    const out: Array<
+      | { type: "group"; industry: string; count: number }
+      | { type: "row"; row: WatchlistRow }
+    > = [];
+    for (const g of groupedRowsByIndustry) {
+      out.push({ type: "group", industry: g.industry, count: g.rows.length });
+      if (expandedIndustryGroups.has(g.industry)) {
+        for (const row of g.rows) out.push({ type: "row", row });
+      }
+    }
+    return out;
+  }, [groupRowsByIndustry, groupedRowsByIndustry, expandedIndustryGroups, sortedRows]);
+
+  useEffect(() => {
+    if (!groupRowsByIndustry) setExpandedIndustryGroups(new Set());
+  }, [groupRowsByIndustry]);
 
   useEffect(() => {
     onOrderedSymbolsChange?.(sortedRows.map((r) => r.symbol));
@@ -4299,8 +4403,7 @@ export default function WatchlistPanel({
                     </div>
                     {/* Right column: variables for selected section - fixed height, scroll when needed */}
                     <div className="flex-1 min-w-0 h-[460px] overflow-y-auto overflow-x-hidden border border-zinc-200 dark:border-zinc-600 rounded-lg p-3 space-y-1.5">
-                      {selectedScreenerSectionId &&
-                        SCREENER_FILTER_CATEGORIES.find((c) => c.id === selectedScreenerSectionId)?.fields?.map((field) => {
+                      {selectedScreenerSectionFields?.map((field) => {
                               if (field.type === "numeric" || field.type === "pct") {
                                 const isPct = field.type === "pct";
                                 return (
@@ -4652,6 +4755,33 @@ export default function WatchlistPanel({
             {/* Table action icons portaled into WorkspaceHeader sub-bar */}
             {headerActionsSlot && createPortal(
               <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGroupRowsByIndustry((v) => {
+                      const next = !v;
+                      if (next) setExpandedIndustryGroups(new Set());
+                      return next;
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 h-7 px-2 rounded border transition-all duration-150 hover:brightness-150"
+                  style={{
+                    color: groupRowsByIndustry ? "var(--ws-cyan, #00e5cc)" : "rgba(201,209,217,0.72)",
+                    background: groupRowsByIndustry ? "rgba(0, 229, 204, 0.10)" : "transparent",
+                    borderColor: groupRowsByIndustry ? "rgba(0, 229, 204, 0.45)" : "var(--ws-border, rgba(255,255,255,0.10))",
+                    boxShadow: groupRowsByIndustry ? "0 0 0 1px rgba(0, 229, 204, 0.18), 0 0 10px rgba(0, 229, 204, 0.16)" : "none",
+                  }}
+                  title={groupRowsByIndustry ? "Ungroup by industry" : "Group by industry"}
+                  aria-label={groupRowsByIndustry ? "Ungroup by industry" : "Group by industry"}
+                  aria-pressed={groupRowsByIndustry}
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                    <path d="M1.5 3.25A.75.75 0 0 1 2.25 2.5h4a.75.75 0 0 1 0 1.5h-4a.75.75 0 0 1-.75-.75zm0 4A.75.75 0 0 1 2.25 6.5h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1-.75-.75zm0 4a.75.75 0 0 1 .75-.75h12a.75.75 0 0 1 0 1.5h-12a.75.75 0 0 1-.75-.75z"/>
+                  </svg>
+                  <span className="text-[11px] font-semibold tracking-wide">
+                    {groupRowsByIndustry ? "Ungroup" : "Group"}
+                  </span>
+                </button>
                 <div ref={tableMenuRef} className="relative">
                   <button
                     type="button"
@@ -5230,7 +5360,43 @@ export default function WatchlistPanel({
                     </tr>
                     )
                   ) : (
-                    sortedRows.map((row) => {
+                    tableDisplayEntries.map((entry) => {
+                      if (entry.type === "group") {
+                        const open = expandedIndustryGroups.has(entry.industry);
+                        return (
+                          <tr
+                            key={`industry-group-${entry.industry}`}
+                            style={{
+                              boxShadow: "inset 0 -1px 0 var(--ws-border, rgba(255,255,255,0.06))",
+                              background: "rgba(255,255,255,0.03)",
+                            }}
+                          >
+                            <td colSpan={tableColumns.length + 1} className="py-1.5 pl-2 pr-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedIndustryGroups((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(entry.industry)) next.delete(entry.industry);
+                                    else next.add(entry.industry);
+                                    return next;
+                                  })
+                                }
+                                className="inline-flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-[rgba(255,255,255,0.05)]"
+                                style={{ color: "var(--ws-text-dim)" }}
+                                aria-expanded={open}
+                              >
+                                <IndustryChevron open={open} />
+                                <span className="text-xs font-semibold tracking-wide">{entry.industry}</span>
+                                <span className="text-xs font-semibold tabular-nums tracking-wide" style={{ color: "var(--ws-text-dim)" }}>
+                                  ({entry.count})
+                                </span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const row = entry.row;
                       const flag = flags[row.symbol] ?? null;
                       const pickerOpen = flagPickerSymbol === row.symbol;
                       const isActiveSymbol =

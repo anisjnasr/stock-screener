@@ -4,6 +4,7 @@ export type MarketEventCategory =
   | "fed_testimony"
   | "treasury_auction"
   | "treasury_press"
+  | "pentagon_press"
   | "white_house"
   | "ustr"
   | "manual";
