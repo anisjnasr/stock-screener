@@ -1,4 +1,5 @@
 import type { GappersRequestBody } from "@/types/gappers";
+import { cloudSyncSetting } from "@/lib/cloud-sync";
 
 export const GAPPER_FILTERS_LS_KEY = "stockstalker-gapper-filters-v1";
 export const GAPPER_SAVED_FILTER_PRESETS_LS_KEY = "stockstalker-gapper-filter-presets-v1";
@@ -82,6 +83,7 @@ export function loadGapperFiltersFromStorage(): GapperFilterState {
 export function saveGapperFiltersToStorage(f: GapperFilterState): void {
   try {
     localStorage.setItem(GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+    cloudSyncSetting("gapper_filters", f);
   } catch {
     /* ignore */
   }
@@ -134,6 +136,7 @@ export function loadSavedGapperFilterPresetsFromStorage(): SavedGapperFilterPres
 
 export function saveSavedGapperFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
   saveSavedFilterPresetsForKey(GAPPER_SAVED_FILTER_PRESETS_LS_KEY, presets);
+  cloudSyncSetting("gapper_filter_presets", presets);
 }
 
 export function gapperFilterStateToRequestBody(f: GapperFilterState): GappersRequestBody {
@@ -171,6 +174,7 @@ export function loadSipMidLargeGapperFiltersFromStorage(): GapperFilterState {
 export function saveSipMidLargeGapperFiltersToStorage(f: GapperFilterState): void {
   try {
     localStorage.setItem(SIP_MID_LARGE_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+    cloudSyncSetting("sip_mid_large_gapper_filters", f);
   } catch {
     /* ignore */
   }
@@ -182,6 +186,7 @@ export function loadSavedSipMidLargeFilterPresetsFromStorage(): SavedGapperFilte
 
 export function saveSavedSipMidLargeFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
   saveSavedFilterPresetsForKey(SIP_MID_LARGE_SAVED_FILTER_PRESETS_LS_KEY, presets);
+  cloudSyncSetting("sip_mid_large_filter_presets", presets);
 }
 
 export function loadSipSmallCapGapperFiltersFromStorage(): GapperFilterState {
@@ -191,6 +196,7 @@ export function loadSipSmallCapGapperFiltersFromStorage(): GapperFilterState {
 export function saveSipSmallCapGapperFiltersToStorage(f: GapperFilterState): void {
   try {
     localStorage.setItem(SIP_SMALL_CAP_GAPPER_FILTERS_LS_KEY, JSON.stringify(f));
+    cloudSyncSetting("sip_small_cap_gapper_filters", f);
   } catch {
     /* ignore */
   }
@@ -202,6 +208,7 @@ export function loadSavedSipSmallCapFilterPresetsFromStorage(): SavedGapperFilte
 
 export function saveSavedSipSmallCapFilterPresetsToStorage(presets: SavedGapperFilterPreset[]): void {
   saveSavedFilterPresetsForKey(SIP_SMALL_CAP_SAVED_FILTER_PRESETS_LS_KEY, presets);
+  cloudSyncSetting("sip_small_cap_filter_presets", presets);
 }
 
 export function loadSipGapperFiltersFromStorage(): GapperFilterState {

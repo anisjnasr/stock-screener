@@ -333,6 +333,22 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.panel_mode !== undefined) s.setItem("stock-research-watchlist-panel", st.panel_mode as string);
   if (st.panel_height !== undefined) s.setItem("stock-research-watchlist-panel-height-px", String(st.panel_height));
   if (st.sidebar_width !== undefined) s.setItem("stock-research-watchlist-sidebar-width-px", String(st.sidebar_width));
+  if (st.gapper_filters !== undefined) s.setItem("stockstalker-gapper-filters-v1", JSON.stringify(st.gapper_filters));
+  if (st.gapper_filter_presets !== undefined) {
+    s.setItem("stockstalker-gapper-filter-presets-v1", JSON.stringify(st.gapper_filter_presets));
+  }
+  if (st.sip_mid_large_gapper_filters !== undefined) {
+    s.setItem("stockstalker-sip-gapper-filters-v1", JSON.stringify(st.sip_mid_large_gapper_filters));
+  }
+  if (st.sip_mid_large_filter_presets !== undefined) {
+    s.setItem("stockstalker-sip-filter-presets-v1", JSON.stringify(st.sip_mid_large_filter_presets));
+  }
+  if (st.sip_small_cap_gapper_filters !== undefined) {
+    s.setItem("stockstalker-sip-small-cap-gapper-filters-v1", JSON.stringify(st.sip_small_cap_gapper_filters));
+  }
+  if (st.sip_small_cap_filter_presets !== undefined) {
+    s.setItem("stockstalker-sip-small-cap-filter-presets-v1", JSON.stringify(st.sip_small_cap_filter_presets));
+  }
   if (st.layout_preferences !== undefined) {
     const lp = st.layout_preferences as Record<string, unknown>;
     if (lp.chartLeftPx !== undefined) s.setItem("ws-chart-left-px", String(lp.chartLeftPx));
@@ -393,6 +409,12 @@ export function pushLocalStorageToCloud(): void {
     ["stock-research-watchlist-panel", "panel_mode"],
     ["stock-research-watchlist-panel-height-px", "panel_height"],
     ["stock-research-watchlist-sidebar-width-px", "sidebar_width"],
+    ["stockstalker-gapper-filters-v1", "gapper_filters"],
+    ["stockstalker-gapper-filter-presets-v1", "gapper_filter_presets"],
+    ["stockstalker-sip-gapper-filters-v1", "sip_mid_large_gapper_filters"],
+    ["stockstalker-sip-filter-presets-v1", "sip_mid_large_filter_presets"],
+    ["stockstalker-sip-small-cap-gapper-filters-v1", "sip_small_cap_gapper_filters"],
+    ["stockstalker-sip-small-cap-filter-presets-v1", "sip_small_cap_filter_presets"],
   ];
 
   for (const [lsKey, dbKey] of settingKeys) {
