@@ -251,24 +251,49 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
       LIMIT 2
     ) x
   )`;
+  // Recompute quarterly EPS YoY directly from EPS series so scan values match the fundamentals panel.
   const latestQuarterlyEpsGrowthExpr = `(
-    SELECT fq.eps_growth_yoy
-    FROM financials fq
-    WHERE fq.symbol = c.symbol
-      AND fq.period_type = 'quarterly'
-      AND fq.eps_growth_yoy IS NOT NULL
-    ORDER BY fq.period_end DESC
+    SELECT y.growth
+    FROM (
+      SELECT
+        fq.period_end AS period_end,
+        CASE
+          WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
+          ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
+        END AS growth
+      FROM financials fq
+      LEFT JOIN financials fp
+        ON fp.symbol = fq.symbol
+        AND fp.period_type = 'quarterly'
+        AND fp.period_end = date(fq.period_end, '-1 year')
+      WHERE fq.symbol = c.symbol
+        AND fq.period_type = 'quarterly'
+    ) y
+    WHERE y.growth IS NOT NULL
+    ORDER BY y.period_end DESC
     LIMIT 1
   )`;
   const avgQuarterlyEpsGrowthExpr = (periods: number) => `(
-    SELECT AVG(x.eps_growth_yoy)
+    SELECT AVG(x.growth)
     FROM (
-      SELECT fq.eps_growth_yoy
-      FROM financials fq
-      WHERE fq.symbol = c.symbol
-        AND fq.period_type = 'quarterly'
-        AND fq.eps_growth_yoy IS NOT NULL
-      ORDER BY fq.period_end DESC
+      SELECT y.period_end, y.growth
+      FROM (
+        SELECT
+          fq.period_end AS period_end,
+          CASE
+            WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
+            ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
+          END AS growth
+        FROM financials fq
+        LEFT JOIN financials fp
+          ON fp.symbol = fq.symbol
+          AND fp.period_type = 'quarterly'
+          AND fp.period_end = date(fq.period_end, '-1 year')
+        WHERE fq.symbol = c.symbol
+          AND fq.period_type = 'quarterly'
+      ) y
+      WHERE y.growth IS NOT NULL
+      ORDER BY y.period_end DESC
       LIMIT ${periods}
     ) x
   )`;
