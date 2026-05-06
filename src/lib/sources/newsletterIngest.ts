@@ -187,15 +187,16 @@ export async function ingestMorningNewslettersForDate(
 
   let skippedFetchErrors = 0;
   for (const id of ids) {
-    let full;
+    let full: gmail_v1.Schema$Message | null = null;
     let fetchErr: unknown = null;
     for (let attempt = 1; attempt <= GMAIL_GET_MAX_ATTEMPTS; attempt++) {
       try {
-        full = await gmail.users.messages.get({
+        const response = await gmail.users.messages.get({
           userId: "me",
           id,
           format: "full",
         });
+        full = response.data ?? null;
         fetchErr = null;
         break;
       } catch (e) {
@@ -215,7 +216,12 @@ export async function ingestMorningNewslettersForDate(
       console.warn(`[newsletter-ingest] skipped message ${id}: ${errMessage(fetchErr)}`);
       continue;
     }
-    const gmsg = full.data;
+    if (!full) {
+      skippedFetchErrors += 1;
+      console.warn(`[newsletter-ingest] skipped message ${id}: Gmail returned empty payload`);
+      continue;
+    }
+    const gmsg = full;
     if (!gmsg.id) continue;
     examined += 1;
     const internal = Number(gmsg.internalDate);
