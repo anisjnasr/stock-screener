@@ -5,9 +5,43 @@ import { loadNewsletterAllowlistFromRepo } from "@/lib/premarket/newsletter-allo
 import { parseEmailAddressFromFromHeader } from "@/lib/sources/gmailParse";
 
 const BODY_MAX_CHARS = 400_000;
+const GMAIL_LIST_MAX_ATTEMPTS = 2;
+const GMAIL_GET_MAX_ATTEMPTS = 2;
+const RETRY_BASE_DELAY_MS = 800;
 
 function decodeB64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function hasInvalidGrantError(e: unknown): boolean {
+  const msg = errMessage(e).toLowerCase();
+  return msg.includes("invalid_grant");
+}
+
+function isLikelyTransientGmailError(e: unknown): boolean {
+  const msg = errMessage(e).toLowerCase();
+  if (
+    msg.includes("rate limit") ||
+    msg.includes("429") ||
+    msg.includes("timeout") ||
+    msg.includes("econnreset") ||
+    msg.includes("socket hang up")
+  ) {
+    return true;
+  }
+  return msg.includes(" 500") || msg.includes(" 502") || msg.includes(" 503") || msg.includes(" 504");
+}
+
+function oauthFixHint(baseMessage: string): string {
+  return `${baseMessage}. OAuth refresh token is invalid/revoked. Re-auth Gmail and update GMAIL_REFRESH_TOKEN in the host environment.`;
 }
 
 function extractFromPart(part: gmail_v1.Schema$MessagePart): { plain?: string; html?: string } {
@@ -113,17 +147,34 @@ export async function ingestMorningNewslettersForDate(
     return { ok: false, error: e instanceof Error ? e.message : "Gmail client error" };
   }
 
-  let ids: string[];
-  try {
-    const list = await gmail.users.messages.list({
-      userId: "me",
-      maxResults: 120,
-      q: "newer_than:2d",
-    });
-    ids = list.data.messages?.map((m) => m.id).filter(Boolean) as string[];
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `Gmail messages.list failed: ${msg}` };
+  let ids: string[] = [];
+  {
+    let listErr: unknown = null;
+    for (let attempt = 1; attempt <= GMAIL_LIST_MAX_ATTEMPTS; attempt++) {
+      try {
+        const list = await gmail.users.messages.list({
+          userId: "me",
+          maxResults: 120,
+          q: "newer_than:2d",
+        });
+        ids = list.data.messages?.map((m) => m.id).filter(Boolean) as string[];
+        listErr = null;
+        break;
+      } catch (e) {
+        listErr = e;
+        if (hasInvalidGrantError(e)) {
+          return { ok: false, error: oauthFixHint("Gmail messages.list failed: invalid_grant") };
+        }
+        if (attempt < GMAIL_LIST_MAX_ATTEMPTS && isLikelyTransientGmailError(e)) {
+          await sleep(RETRY_BASE_DELAY_MS * attempt);
+          continue;
+        }
+        break;
+      }
+    }
+    if (listErr) {
+      return { ok: false, error: `Gmail messages.list failed: ${errMessage(listErr)}` };
+    }
   }
 
   if (!ids?.length) {
@@ -134,17 +185,35 @@ export async function ingestMorningNewslettersForDate(
   let examined = 0;
   let allowlisted = 0;
 
+  let skippedFetchErrors = 0;
   for (const id of ids) {
     let full;
-    try {
-      full = await gmail.users.messages.get({
-        userId: "me",
-        id,
-        format: "full",
-      });
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      return { ok: false, error: `Gmail messages.get(${id}) failed: ${err}` };
+    let fetchErr: unknown = null;
+    for (let attempt = 1; attempt <= GMAIL_GET_MAX_ATTEMPTS; attempt++) {
+      try {
+        full = await gmail.users.messages.get({
+          userId: "me",
+          id,
+          format: "full",
+        });
+        fetchErr = null;
+        break;
+      } catch (e) {
+        fetchErr = e;
+        if (hasInvalidGrantError(e)) {
+          return { ok: false, error: oauthFixHint(`Gmail messages.get(${id}) failed: invalid_grant`) };
+        }
+        if (attempt < GMAIL_GET_MAX_ATTEMPTS && isLikelyTransientGmailError(e)) {
+          await sleep(RETRY_BASE_DELAY_MS * attempt);
+          continue;
+        }
+        break;
+      }
+    }
+    if (fetchErr) {
+      skippedFetchErrors += 1;
+      console.warn(`[newsletter-ingest] skipped message ${id}: ${errMessage(fetchErr)}`);
+      continue;
     }
     const gmsg = full.data;
     if (!gmsg.id) continue;
@@ -177,5 +246,8 @@ export async function ingestMorningNewslettersForDate(
     inserted += 1;
   }
 
+  if (skippedFetchErrors > 0) {
+    console.warn(`[newsletter-ingest] completed with skipped Gmail message fetch errors: ${skippedFetchErrors}`);
+  }
   return { ok: true, inserted, examined, allowlisted };
 }
