@@ -53,7 +53,7 @@ export type EarningsCalendarPublic = {
   prior_quarter_rev_surprise_pct: number | null;
 };
 
-export type EarningsCalendarBucket = "yesterday" | "today" | "tomorrow";
+export type EarningsCalendarBucket = "yesterday" | "today" | "tomorrow" | "week";
 
 export type EarningsCalendarResponse = {
   anchor: string;

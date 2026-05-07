@@ -9,7 +9,7 @@
 #
 # Schedules (UTC):
 #   1st of month 08:00  — refresh universe (~03:00 ET standard time)
-#   Mon–Fri 11:00       — forward window ingest (~06:00 ET)
+#   Mon–Fri 11:00       — full-week ingest window (~06:00 ET)
 #   Mon–Fri 21:00       — actuals refresh (~16:00–17:00 ET)
 #
 # workflow_dispatch runs universe → ingest → actuals in order (bootstrap or catch-up).

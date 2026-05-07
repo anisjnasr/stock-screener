@@ -6,6 +6,7 @@ import type { EarningsCalendarBucket, EarningsCalendarPublic, EarningsCalendarRe
 
 type EarningsSortKey = "ticker" | "name" | "eps" | "rev";
 type SortDir = "asc" | "desc";
+type EarningsRangeView = "yesterday" | "today" | "tomorrow" | "week";
 
 function defaultEarningsSortDir(k: EarningsSortKey): SortDir {
   return k === "eps" || k === "rev" ? "desc" : "asc";
@@ -95,13 +96,27 @@ function EarningsSortTh({
   );
 }
 
-const BUCKET_ORDER: EarningsCalendarBucket[] = ["yesterday", "today", "tomorrow"];
+const BUCKET_ORDER: EarningsCalendarBucket[] = ["yesterday", "today", "tomorrow", "week"];
 
 const BUCKET_TITLE: Record<EarningsCalendarBucket, string> = {
   yesterday: "Yesterday",
   today: "Today",
   tomorrow: "Tomorrow",
+  week: "This Week",
 };
+
+function formatWeekDateLabel(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ymd;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  if (!Number.isFinite(dt.getTime())) return ymd;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(dt);
+}
 
 function slotKey(t: string | null): "bmo" | "amc" | "dmh" {
   if (t === "bmo" || t === "amc" || t === "dmh") return t;
@@ -292,11 +307,11 @@ function CompactEarningsTable({
 }
 
 function DayBucketBlock({
-  bucket,
+  title,
   rows,
   onOpenTickerInLists,
 }: {
-  bucket: EarningsCalendarBucket;
+  title: string;
   rows: EarningsCalendarPublic[];
   onOpenTickerInLists?: (sym: string) => void;
 }) {
@@ -319,7 +334,7 @@ function DayBucketBlock({
       style={{ borderColor: "var(--border-default)", background: "var(--bg-inset)" }}
     >
       <h3 className="pm-section-label mb-2" style={{ color: "var(--text-primary)" }}>
-        {BUCKET_TITLE[bucket]}
+        {title}
       </h3>
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <div className="min-w-0 space-y-2">
@@ -364,6 +379,7 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
   const [data, setData] = useState<EarningsCalendarResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<EarningsRangeView>("week");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -422,6 +438,18 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
 
   if (!data) return null;
 
+  const dayRows = view === "week" ? [] : data.buckets[view];
+  const weekRowsByDate =
+    view === "week"
+      ? data.buckets.week.reduce<Record<string, EarningsCalendarPublic[]>>((acc, row) => {
+          const key = row.report_date;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(row);
+          return acc;
+        }, {})
+      : {};
+  const weekDates = view === "week" ? Object.keys(weekRowsByDate).sort((a, b) => a.localeCompare(b)) : [];
+
   return (
     <div className="space-y-3">
       <div
@@ -434,10 +462,46 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
         <span className="earn-pill-upcoming rounded-full px-2 py-0.5">Upcoming</span>
       </div>
 
+      <div
+        className="pm-site-caption flex flex-wrap gap-2 rounded border px-2 py-1.5"
+        style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)" }}
+      >
+        {BUCKET_ORDER.map((id) => {
+          const active = view === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setView(id)}
+              aria-pressed={active}
+              className={`pm-focus rounded-full border px-2 py-0.5 font-semibold ${active ? "earn-pill-mixed" : "earn-pill-upcoming"}`}
+              style={{ fontFamily: "var(--ws-font-sans)", fontSize: "var(--ws-fs-caption)" }}
+            >
+              {BUCKET_TITLE[id]}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-col gap-4">
-        {BUCKET_ORDER.map((b) => (
-          <DayBucketBlock key={b} bucket={b} rows={data.buckets[b]} onOpenTickerInLists={onOpenTickerInLists} />
-        ))}
+        {view === "week" ? (
+          weekDates.length > 0 ? (
+            weekDates.map((dateKey) => (
+              <DayBucketBlock
+                key={dateKey}
+                title={formatWeekDateLabel(dateKey)}
+                rows={weekRowsByDate[dateKey] ?? []}
+                onOpenTickerInLists={onOpenTickerInLists}
+              />
+            ))
+          ) : (
+            <p className="pm-site-caption px-1" style={{ color: "var(--text-tertiary)" }}>
+              No big-name earnings for this week.
+            </p>
+          )
+        ) : (
+          <DayBucketBlock title={BUCKET_TITLE[view]} rows={dayRows} onOpenTickerInLists={onOpenTickerInLists} />
+        )}
       </div>
 
       <div

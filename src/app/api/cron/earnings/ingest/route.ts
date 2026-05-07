@@ -8,7 +8,7 @@ function unauthorized() {
 }
 
 /**
- * Finnhub calendar/earnings → `earnings_calendar` for today ET through +2 calendar days.
+ * Finnhub calendar/earnings → `earnings_calendar` for today ET through +6 calendar days (full week window).
  * POST — Bearer CRON_SECRET. Requires `FINNHUB_API_KEY` and a populated `big_name_universe`.
  */
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const today = ymdInEt();
-    const to = addCalendarDaysYmd(today, 2);
+    const to = addCalendarDaysYmd(today, 6);
     const { upserted, errors, parsed } = await ingestEarningsForWindow(supabase, today, to, {
       signal: request.signal,
     });

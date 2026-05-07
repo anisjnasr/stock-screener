@@ -9,6 +9,7 @@ type ThemesApi =
       ok: true;
       ymd: string;
       themes: DailyThemeRow[];
+      themesUpdatedAt: string | null;
       setupRequired?: boolean;
       setupMessage?: string;
     }
@@ -38,6 +39,21 @@ function uniqueExemplarTickers(raw: string[] | null | undefined, max: number): s
     if (out.length >= max) break;
   }
   return out;
+}
+
+function formatThemesUpdatedAt(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/New_York",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }
 
 function CompactThemeRow({ t }: { t: DailyThemeRow }) {
@@ -104,6 +120,7 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
 
 export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: number }) {
   const [themes, setThemes] = useState<DailyThemeRow[] | null>(null);
+  const [themesUpdatedAt, setThemesUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,6 +129,7 @@ export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: 
     setLoading(true);
     setError(null);
     setSetupHint(null);
+    setThemesUpdatedAt(null);
     try {
       const res = await fetch("/api/premarket/daily-themes", { cache: "no-store" });
       const json = (await res.json()) as ThemesApi;
@@ -121,6 +139,7 @@ export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: 
         return;
       }
       setThemes(json.themes);
+      setThemesUpdatedAt(formatThemesUpdatedAt(json.themesUpdatedAt));
       if (json.setupRequired && json.setupMessage) {
         setSetupHint(json.setupMessage);
       }
@@ -229,7 +248,11 @@ export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: 
           </div>
         ) : null}
       </div>
-
+      {themesUpdatedAt ? (
+        <p className="pm-site-caption mb-0 mt-2 pm-mono" style={{ color: "var(--text-tertiary)" }}>
+          Updated: {themesUpdatedAt}
+        </p>
+      ) : null}
     </div>
   );
 }

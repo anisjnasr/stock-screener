@@ -7,6 +7,20 @@ import type { DailyThemeRow } from "@/types/daily-themes";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function latestGeneratedAt(rows: DailyThemeRow[]): string | null {
+  let latestMs = Number.NEGATIVE_INFINITY;
+  let latestIso: string | null = null;
+  for (const row of rows) {
+    const ms = Date.parse(row.generated_at);
+    if (!Number.isFinite(ms)) continue;
+    if (ms > latestMs) {
+      latestMs = ms;
+      latestIso = row.generated_at;
+    }
+  }
+  return latestIso;
+}
+
 /**
  * Public read of the latest daily themes, or an exact `?date=YYYY-MM-DD` set.
  */
@@ -31,6 +45,7 @@ export async function GET(request: NextRequest) {
           ok: true,
           ymd: ymdInEt(),
           themes: [] as DailyThemeRow[],
+          themesUpdatedAt: null,
           setupRequired: true,
           setupMessage:
             "Database table `daily_themes` is missing. In Supabase -> SQL Editor, run `data/supabase-premarket-brief-tables.sql` from this repo, then reload.",
@@ -56,6 +71,7 @@ export async function GET(request: NextRequest) {
         ok: true,
         ymd,
         themes: [] as DailyThemeRow[],
+        themesUpdatedAt: null,
         setupRequired: true,
         setupMessage:
           "Database table `daily_themes` is missing. In Supabase → SQL Editor, run `data/supabase-premarket-brief-tables.sql` from this repo, then reload.",
@@ -68,5 +84,6 @@ export async function GET(request: NextRequest) {
     ok: true,
     ymd,
     themes: (data ?? []) as DailyThemeRow[],
+    themesUpdatedAt: latestGeneratedAt((data ?? []) as DailyThemeRow[]),
   });
 }

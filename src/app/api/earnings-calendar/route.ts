@@ -70,8 +70,8 @@ async function loadMcapOver50b(supabase: NonNullable<ReturnType<typeof getSupaba
 }
 
 /**
- * Big-name earnings for ET yesterday / today / tomorrow (anon + RLS SELECT).
- * Eligibility: tickers with market cap &gt; $50B in `big_name_universe`. Sorted by market cap desc per day bucket.
+ * Big-name earnings for ET yesterday / today / tomorrow plus this week (today..+6) (anon + RLS SELECT).
+ * Eligibility: tickers with market cap &gt; $50B in `big_name_universe`. Sorted by market cap desc per bucket.
  */
 export async function GET() {
   const supabase = getSupabase();
@@ -87,13 +87,15 @@ export async function GET() {
   const anchor = ymdInEt();
   const yesterday = addCalendarDaysYmd(anchor, -1);
   const tomorrow = addCalendarDaysYmd(anchor, 1);
+  const weekEnd = addCalendarDaysYmd(anchor, 6);
 
   const { data, error } = await supabase
     .from("earnings_calendar")
     .select(
       "id, ticker, company_name, report_date, report_time, quarter, year, eps_estimate, revenue_estimate, eps_actual, revenue_actual, current_quarter_eps_surprise_pct, current_quarter_rev_surprise_pct, prior_quarter_eps_surprise_pct, prior_quarter_rev_surprise_pct"
     )
-    .in("report_date", [yesterday, anchor, tomorrow])
+    .gte("report_date", yesterday)
+    .lte("report_date", weekEnd)
     .order("ticker", { ascending: true });
 
   if (error) {
@@ -105,6 +107,7 @@ export async function GET() {
     yesterday: [],
     today: [],
     tomorrow: [],
+    week: [],
   };
 
   for (const raw of data ?? []) {
@@ -113,16 +116,18 @@ export async function GET() {
     if (!mcapByTicker.has(row.ticker)) continue;
     row.market_cap_usd = mcapByTicker.get(row.ticker) ?? null;
     if (row.report_date === yesterday) buckets.yesterday.push(row);
-    else if (row.report_date === anchor) buckets.today.push(row);
-    else if (row.report_date === tomorrow) buckets.tomorrow.push(row);
+    if (row.report_date === anchor) buckets.today.push(row);
+    if (row.report_date === tomorrow) buckets.tomorrow.push(row);
+    if (row.report_date >= anchor && row.report_date <= weekEnd) buckets.week.push(row);
   }
 
-  const flat = [...buckets.yesterday, ...buckets.today, ...buckets.tomorrow];
+  const flat = [...buckets.yesterday, ...buckets.week];
   await attachPriorQuarterActuals(supabase, flat);
 
   buckets.yesterday = sortBucketByMcap(buckets.yesterday, mcapByTicker);
   buckets.today = sortBucketByMcap(buckets.today, mcapByTicker);
   buckets.tomorrow = sortBucketByMcap(buckets.tomorrow, mcapByTicker);
+  buckets.week = sortBucketByMcap(buckets.week, mcapByTicker);
 
   const body: EarningsCalendarResponse = { anchor, buckets };
 
