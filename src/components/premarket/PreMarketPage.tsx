@@ -44,6 +44,28 @@ type PreMarketPageProps = {
   onOpenTickerInLists?: (sym: string) => void;
 };
 
+type ManualPremarketRefreshResponse = {
+  ok: boolean;
+  elapsedMs?: number;
+  newsletter?: {
+    inserted?: number;
+    examined?: number;
+  };
+  themes?: {
+    themeCount?: number;
+  };
+  error?: string;
+};
+
+const OPERATOR_SECRET_SESSION_KEY = "premarket.adminSecret";
+
+function formatElapsedLabel(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProps) {
   const { collapsed, toggle, setCollapsed, collapseAll, expandAll } = usePremarketLayout();
 
@@ -54,12 +76,22 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
   const [sipNewsByTicker, setSipNewsByTicker] = useState<Record<string, PythonNewsItem[]>>({});
   const [sipCatalystByTicker, setSipCatalystByTicker] = useState<Record<string, SipCatalyst>>({});
   const [themesRefreshToken, setThemesRefreshToken] = useState(0);
+  const [themesRefreshBusy, setThemesRefreshBusy] = useState(false);
+  const [themesRefreshMessage, setThemesRefreshMessage] = useState<string | null>(null);
+  const [themesRefreshElapsedMs, setThemesRefreshElapsedMs] = useState(0);
+  const [themesRefreshStartedAtMs, setThemesRefreshStartedAtMs] = useState<number | null>(null);
+  const [hasStoredAdminSecret, setHasStoredAdminSecret] = useState(false);
 
   useLayoutEffect(() => {
     queueMicrotask(() => {
       setGapperFilters(loadGapperFiltersFromStorage());
       setGapperFiltersHydrated(true);
     });
+  }, []);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem(OPERATOR_SECRET_SESSION_KEY)?.trim() ?? "";
+    setHasStoredAdminSecret(Boolean(stored));
   }, []);
 
   useLayoutEffect(() => {
@@ -171,6 +203,89 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
 
+  useEffect(() => {
+    if (!themesRefreshBusy || themesRefreshStartedAtMs == null) return;
+    const id = window.setInterval(() => {
+      setThemesRefreshElapsedMs(Date.now() - themesRefreshStartedAtMs);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [themesRefreshBusy, themesRefreshStartedAtMs]);
+
+  const runManualPremarketRefresh = useCallback(async (adminSecret: string): Promise<ManualPremarketRefreshResponse> => {
+    const res = await fetch("/api/admin/premarket-refresh", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${adminSecret}`,
+      },
+    });
+    const json = (await res.json().catch(() => ({ ok: false, error: res.statusText }))) as ManualPremarketRefreshResponse;
+    if (!res.ok) return { ok: false, error: json.error ?? res.statusText };
+    return json;
+  }, []);
+
+  const clearStoredAdminSecret = useCallback(() => {
+    sessionStorage.removeItem(OPERATOR_SECRET_SESSION_KEY);
+    setHasStoredAdminSecret(false);
+    setThemesRefreshMessage("Cleared stored ADMIN_SECRET for this tab.");
+  }, []);
+
+  const triggerThemesRefresh = useCallback(async () => {
+    if (themesRefreshBusy) return;
+    const startedAtMs = Date.now();
+    setThemesRefreshStartedAtMs(startedAtMs);
+    setThemesRefreshElapsedMs(0);
+    setThemesRefreshBusy(true);
+    setThemesRefreshMessage("Running newsletter ingest and theme generation...");
+    try {
+      let adminSecret = sessionStorage.getItem(OPERATOR_SECRET_SESSION_KEY)?.trim() ?? "";
+      if (!adminSecret) {
+        const entered = window.prompt("Enter ADMIN_SECRET to run manual pre-market refresh:");
+        adminSecret = entered?.trim() ?? "";
+        if (!adminSecret) {
+          setThemesRefreshMessage("Manual pre-market refresh cancelled.");
+          return;
+        }
+        sessionStorage.setItem(OPERATOR_SECRET_SESSION_KEY, adminSecret);
+        setHasStoredAdminSecret(true);
+      }
+
+      let result = await runManualPremarketRefresh(adminSecret);
+      if (!result.ok) {
+        if ((result.error ?? "").toLowerCase().includes("unauthorized")) {
+          sessionStorage.removeItem(OPERATOR_SECRET_SESSION_KEY);
+          setHasStoredAdminSecret(false);
+          const entered = window.prompt("ADMIN_SECRET was rejected. Re-enter ADMIN_SECRET:");
+          const retrySecret = entered?.trim() ?? "";
+          if (!retrySecret) {
+            setThemesRefreshMessage("Manual pre-market refresh cancelled.");
+            return;
+          }
+          sessionStorage.setItem(OPERATOR_SECRET_SESSION_KEY, retrySecret);
+          setHasStoredAdminSecret(true);
+          result = await runManualPremarketRefresh(retrySecret);
+        }
+      }
+
+      if (!result.ok) {
+        setThemesRefreshMessage(result.error ?? "Pre-market refresh failed.");
+        return;
+      }
+
+      const elapsedMs = result.elapsedMs ?? Date.now() - startedAtMs;
+      setThemesRefreshMessage(
+        `Refresh complete in ${formatElapsedLabel(elapsedMs)} (${result.newsletter?.inserted ?? 0} inserted, ${result.themes?.themeCount ?? 0} themes).`
+      );
+      setThemesRefreshElapsedMs(elapsedMs);
+      setThemesRefreshToken((v) => v + 1);
+    } catch (e) {
+      setThemesRefreshMessage(e instanceof Error ? e.message : "Manual pre-market refresh failed.");
+    } finally {
+      setThemesRefreshBusy(false);
+      setThemesRefreshStartedAtMs(null);
+    }
+  }, [runManualPremarketRefresh, themesRefreshBusy]);
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg-base)" }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
@@ -206,35 +321,62 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             onToggle={() => toggle(s.id)}
             actions={
               s.id === "context" ? (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setThemesRefreshToken((v) => v + 1)}
-                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                    style={{
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--ws-font-sans)",
-                      fontSize: "var(--ws-fs-label)",
-                    }}
-                    aria-label="Refresh themes"
-                  >
-                    Refresh
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
-                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                    style={{
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--ws-font-sans)",
-                      fontSize: "var(--ws-fs-label)",
-                    }}
-                    aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
-                  >
-                    {anySectionExpanded ? "Collapse all" : "Expand all"}
-                  </button>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void triggerThemesRefresh()}
+                      disabled={themesRefreshBusy}
+                      className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
+                      style={{
+                        borderColor: "var(--border-default)",
+                        color: "var(--text-secondary)",
+                        fontFamily: "var(--ws-font-sans)",
+                        fontSize: "var(--ws-fs-label)",
+                      }}
+                      aria-label="Run newsletter ingest and refresh themes"
+                    >
+                      {themesRefreshBusy ? "Running..." : "Refresh"}
+                    </button>
+                    <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
+                      {formatElapsedLabel(themesRefreshElapsedMs)}
+                    </span>
+                    {hasStoredAdminSecret ? (
+                      <button
+                        type="button"
+                        onClick={clearStoredAdminSecret}
+                        className="pm-focus shrink-0 cursor-pointer rounded border px-2 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                        style={{
+                          borderColor: "var(--border-default)",
+                          color: "var(--text-secondary)",
+                          fontFamily: "var(--ws-font-sans)",
+                          fontSize: "var(--ws-fs-label)",
+                        }}
+                        aria-label="Clear stored admin key"
+                      >
+                        Clear key
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
+                      className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                      style={{
+                        borderColor: "var(--border-default)",
+                        color: "var(--text-secondary)",
+                        fontFamily: "var(--ws-font-sans)",
+                        fontSize: "var(--ws-fs-label)",
+                      }}
+                      aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
+                    >
+                      {anySectionExpanded ? "Collapse all" : "Expand all"}
+                    </button>
+                  </div>
+                  {themesRefreshMessage ? (
+                    <span className="pm-site-caption text-right" style={{ color: "var(--text-tertiary)" }}>
+                      {themesRefreshMessage}
+                    </span>
+                  ) : null}
                 </div>
               ) : undefined
             }

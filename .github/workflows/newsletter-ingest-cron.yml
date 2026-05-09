@@ -2,16 +2,12 @@
 #
 # Secrets: APP_BASE_URL, CRON_SECRET (see workflow header in economic-calendar-cron.yml)
 #
-# Runs at 06:00, 13:30, 14:00, 14:30, and 16:00 UAE time on weekdays.
+# Manual-only trigger from site/operator actions.
 # Successful completion triggers `premarket-brief-pipeline.yml`.
 
 name: Newsletter ingest
 
 on:
-  schedule:
-    # 06:00, 13:30, 14:00, 14:30, 16:00 UAE time (UTC+4).
-    - cron: "0 2,10,12 * * 1-5"
-    - cron: "30 9,10 * * 1-5"
   workflow_dispatch:
 
 concurrency:
