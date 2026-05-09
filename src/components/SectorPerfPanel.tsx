@@ -120,7 +120,10 @@ function PerfCell({
           />
         )}
       </div>
-      <span className="font-mono text-ws-body tabular-nums shrink-0" style={{ color: textColor, fontSize: "11px" }}>
+      <span
+        className="w-[56px] text-right font-mono text-ws-body tabular-nums shrink-0"
+        style={{ color: textColor, fontSize: "11px" }}
+      >
         {fmtPct(value)}
       </span>
     </div>

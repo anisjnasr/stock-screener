@@ -1066,6 +1066,14 @@ async function main() {
     }
   }
 
+  try {
+    console.log("Precomputing industry constituents performance cache...");
+    runScript("scripts/precompute-industry-constituents-perf.mjs");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`Warning: industry constituents performance precompute failed (${msg}).`);
+  }
+
   if (REFRESH_OWNERSHIP_FOR_NEW_IPOS && newIpoCandidates.length > 0) {
     try {
       const symbolsArg = newIpoCandidates.map((r) => r.symbol).join(",");
