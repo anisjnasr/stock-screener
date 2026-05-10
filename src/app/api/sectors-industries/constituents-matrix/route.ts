@@ -32,13 +32,12 @@ export async function GET(request: NextRequest) {
 
     const db = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
-      const cacheTableExists = Number(
-        db
-          .prepare(
-            "SELECT COUNT(1) AS c FROM sqlite_master WHERE type = 'table' AND name = 'industry_constituents_perf_cache'"
-          )
-          .get()?.c ?? 0
-      ) > 0;
+      const cacheTableRow = db
+        .prepare(
+          "SELECT COUNT(1) AS c FROM sqlite_master WHERE type = 'table' AND name = 'industry_constituents_perf_cache'"
+        )
+        .get() as { c?: number } | undefined;
+      const cacheTableExists = Number(cacheTableRow?.c ?? 0) > 0;
       if (!cacheTableExists) {
         return NextResponse.json(
           {
