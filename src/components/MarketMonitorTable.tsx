@@ -4,6 +4,7 @@ import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
 import MarketMonitorConstituentsModal, {
   type MarketMonitorListCreatedInfo,
 } from "@/components/MarketMonitorConstituentsModal";
+import { industryThemePillClass } from "@/lib/premarket/industry-theme-pill-class";
 
 const MARKET_MONITOR_FETCH_VERSION = "7x-atr-v1";
 
@@ -54,11 +55,6 @@ function fmtRatio(n: number | null | undefined): string {
   return n.toFixed(2);
 }
 
-function fmtUniverseBreadthPct(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  return `${n.toFixed(1)}%`;
-}
-
 function quantile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -97,11 +93,6 @@ function getRatioExtremeCellClass(
   return "";
 }
 
-function getUniverseBreadthFloorClass(value: number | null | undefined, floor: number, inclusive: boolean): string {
-  if (value == null || !Number.isFinite(value)) return "";
-  return inclusive ? (value <= floor ? "ws-mm-heat-red-strong" : "") : (value < floor ? "ws-mm-heat-red-strong" : "");
-}
-
 function formatDateDmy(input: string): string {
   const d = new Date(input.trim());
   if (Number.isNaN(d.getTime())) return input;
@@ -116,7 +107,6 @@ function formatDateDmy(input: string): string {
 const MM_TAB_DATE_CH = 11;
 const MM_TAB_MIN_INT_CH = 2;
 const MM_TAB_MIN_RATIO_CH = 4;
-const MM_TAB_MIN_PCT_CH = 5;
 
 function maxFormattedCh(rows: MarketMonitorRow[], values: (row: MarketMonitorRow) => string[], minCh: number): number {
   let max = minCh;
@@ -155,6 +145,29 @@ function MmNumericCellCenter({ children, className = "" }: { children: ReactNode
 
 function MmDateCellLeft({ children }: { children: ReactNode }) {
   return <div className="flex w-full justify-start items-center px-1 py-1">{children}</div>;
+}
+
+function MmTopIndustryCell({ row }: { row: MarketMonitorRow }) {
+  const top = row.top4PctIndustry;
+  if (!top?.industry) {
+    return (
+      <div className="flex w-full justify-start items-center px-1 py-1">
+        <span style={{ color: "var(--ws-text-vdim)" }}>—</span>
+      </div>
+    );
+  }
+
+  const sideLabel = top.side === "up" ? "4% Up" : "4% Down";
+  return (
+    <div className="flex w-full justify-start items-center px-1 py-1">
+      <span
+        className={`inline-flex max-w-[14rem] min-w-0 items-center truncate rounded-full border px-1.5 py-px font-semibold text-ws-caption ${industryThemePillClass(top.industry)}`}
+        title={`${top.industry} · ${sideLabel} · ${top.count.toLocaleString()} stocks`}
+      >
+        {top.industry}
+      </span>
+    </div>
+  );
 }
 
 /** Up/down pairs (4%, Q, M): every row is green or red when up ≠ down; extreme fill when dominance is very lopsided. */
@@ -243,8 +256,6 @@ export default function MarketMonitorTable({
         maxFormattedCh(tableRowsToShow, (row) => [fmtInt(value(row))], MM_TAB_MIN_INT_CH);
       const ratioWidth = (value: (row: MarketMonitorRow) => number | null | undefined) =>
         maxFormattedCh(tableRowsToShow, (row) => [fmtRatio(value(row))], MM_TAB_MIN_RATIO_CH);
-      const pctWidth = (value: (row: MarketMonitorRow) => number | null | undefined) =>
-        maxFormattedCh(tableRowsToShow, (row) => [fmtUniverseBreadthPct(value(row))], MM_TAB_MIN_PCT_CH);
 
       return {
         up4pct: intWidth((row) => row.up4pct),
@@ -261,8 +272,6 @@ export default function MarketMonitorTable({
         nnh52wLows: intWidth((row) => row.nnh52wLows ?? 0),
         count7xAtr50d: intWidth((row) => row.count7xAtr50d ?? 0),
         countEpisodicPivot: intWidth((row) => row.countEpisodicPivot ?? 0),
-        universePctAbove50d: pctWidth((row) => row.universePctAbove50d),
-        universePctAbove200d: pctWidth((row) => row.universePctAbove200d),
         universe: intWidth((row) => row.universe),
       };
     },
@@ -323,7 +332,7 @@ export default function MarketMonitorTable({
         <table className="min-w-max whitespace-nowrap text-ws-body text-center border-collapse">
           <thead>
             <tr>
-              <th scope="col" className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-r text-center" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th scope="col" colSpan={2} className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-r text-center" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
               <th
                 scope="colgroup"
                 className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 text-center text-ws-body font-bold tracking-wide"
@@ -335,7 +344,7 @@ export default function MarketMonitorTable({
               <th
                 scope="colgroup"
                 className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-l text-center text-ws-body font-bold tracking-wide"
-                colSpan={10}
+                colSpan={8}
                 style={{ background: "var(--ws-mm-header-green)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Secondary Breadth Indicators
@@ -345,6 +354,7 @@ export default function MarketMonitorTable({
             <tr>
               {[
                 "Date",
+                "Top Industry",
                 "Up %",
                 "Down %",
                 "5D Ratio",
@@ -359,17 +369,15 @@ export default function MarketMonitorTable({
                 "52W Lows",
                 "7× ATR",
                 "EP",
-                ">50D",
-                ">200D",
               ].map((label, idx) => {
-                const isGold = idx === 0 || (idx >= 1 && idx <= 6);
-                const isGreen = idx >= 7 && idx <= 16;
+                const isGold = idx >= 0 && idx <= 7;
+                const isGreen = idx >= 8 && idx <= 15;
                 const hdr = isGold
                   ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
                   : isGreen
                     ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
                     : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
-                const edge = idx === 0 || idx === 7 ? " border-l border-r" : "";
+                const edge = idx === 0 || idx === 8 ? " border-l border-r" : "";
                 const align = idx === 0 ? "text-left" : "text-center";
                 return (
                   <th
@@ -406,6 +414,9 @@ export default function MarketMonitorTable({
                   <MmDateCellLeft>
                     <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left">{formatDateDmy(row.date)}</MmTabularInner>
                   </MmDateCellLeft>
+                </td>
+                <td className="p-0 whitespace-nowrap border-r" style={{ borderColor: "var(--ws-border)" }}>
+                  <MmTopIndustryCell row={row} />
                 </td>
                 <td className="p-0">
                   {drillable ? (
@@ -606,38 +617,6 @@ export default function MarketMonitorTable({
                   ) : (
                     <MmNumericCellCenter>
                       <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
-                    </MmNumericCellCenter>
-                  )}
-                </td>
-                <td className={`p-0 ${getUniverseBreadthFloorClass(row.universePctAbove50d, 30, true)}`}>
-                  {drillable ? (
-                    <button
-                      type="button"
-                      className="ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit"
-                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
-                      onClick={() => openMmModal("universe_above_50d", row.date)}
-                    >
-                      <MmTabularInner widthCh={columnValueWidths.universePctAbove50d}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
-                    </button>
-                  ) : (
-                    <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.universePctAbove50d}>{fmtUniverseBreadthPct(row.universePctAbove50d)}</MmTabularInner>
-                    </MmNumericCellCenter>
-                  )}
-                </td>
-                <td className={`p-0 ${getUniverseBreadthFloorClass(row.universePctAbove200d, 30, false)}`}>
-                  {drillable ? (
-                    <button
-                      type="button"
-                      className="ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit"
-                      style={{ font: "inherit", border: "none", cursor: "pointer" }}
-                      onClick={() => openMmModal("universe_above_200d", row.date)}
-                    >
-                      <MmTabularInner widthCh={columnValueWidths.universePctAbove200d}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
-                    </button>
-                  ) : (
-                    <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.universePctAbove200d}>{fmtUniverseBreadthPct(row.universePctAbove200d)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>

@@ -236,6 +236,125 @@ button:disabled {
   outline-offset: -2px;
 }
 
+/* Shared industry pills, matching the premarket daily-theme color structure. */
+.theme-industry-pill-neutral {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--ws-text-dim);
+  border-color: var(--ws-border);
+}
+.theme-industry-pill-neutral:hover {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+.theme-industry-pill-tech {
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--ws-cyan);
+  border-color: rgba(34, 211, 238, 0.38);
+}
+.theme-industry-pill-tech:hover {
+  background: rgba(34, 211, 238, 0.24);
+  border-color: rgba(34, 211, 238, 0.55);
+}
+.theme-industry-pill-healthcare {
+  background: rgba(45, 212, 191, 0.14);
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.38);
+}
+.theme-industry-pill-healthcare:hover {
+  background: rgba(45, 212, 191, 0.24);
+  border-color: rgba(45, 212, 191, 0.52);
+}
+.theme-industry-pill-financial {
+  background: rgba(192, 132, 252, 0.14);
+  color: var(--ws-purple);
+  border-color: rgba(192, 132, 252, 0.38);
+}
+.theme-industry-pill-financial:hover {
+  background: rgba(192, 132, 252, 0.22);
+  border-color: rgba(192, 132, 252, 0.52);
+}
+.theme-industry-pill-energy {
+  background: rgba(251, 146, 60, 0.14);
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.4);
+}
+.theme-industry-pill-energy:hover {
+  background: rgba(251, 146, 60, 0.24);
+  border-color: rgba(251, 146, 60, 0.55);
+}
+.theme-industry-pill-cleanenergy {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.38);
+}
+.theme-industry-pill-cleanenergy:hover {
+  background: rgba(74, 222, 128, 0.22);
+  border-color: rgba(74, 222, 128, 0.52);
+}
+.theme-industry-pill-utilities {
+  background: rgba(56, 189, 248, 0.14);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.38);
+}
+.theme-industry-pill-utilities:hover {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.52);
+}
+.theme-industry-pill-realestate {
+  background: rgba(52, 211, 153, 0.14);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.38);
+}
+.theme-industry-pill-realestate:hover {
+  background: rgba(52, 211, 153, 0.22);
+  border-color: rgba(52, 211, 153, 0.52);
+}
+.theme-industry-pill-consumer {
+  background: rgba(251, 113, 133, 0.14);
+  color: #fb7185;
+  border-color: rgba(251, 113, 133, 0.38);
+}
+.theme-industry-pill-consumer:hover {
+  background: rgba(251, 113, 133, 0.22);
+  border-color: rgba(251, 113, 133, 0.52);
+}
+.theme-industry-pill-staples {
+  background: rgba(163, 230, 53, 0.12);
+  color: #a3e635;
+  border-color: rgba(163, 230, 53, 0.35);
+}
+.theme-industry-pill-staples:hover {
+  background: rgba(163, 230, 53, 0.2);
+  border-color: rgba(163, 230, 53, 0.48);
+}
+.theme-industry-pill-industrial {
+  background: rgba(129, 140, 248, 0.14);
+  color: #a5b4fc;
+  border-color: rgba(129, 140, 248, 0.38);
+}
+.theme-industry-pill-industrial:hover {
+  background: rgba(129, 140, 248, 0.22);
+  border-color: rgba(165, 180, 252, 0.52);
+}
+.theme-industry-pill-materials {
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.38);
+}
+.theme-industry-pill-materials:hover {
+  background: rgba(234, 179, 8, 0.2);
+  border-color: rgba(250, 204, 21, 0.5);
+}
+.theme-industry-pill-communication {
+  background: rgba(232, 121, 249, 0.14);
+  color: #e879f9;
+  border-color: rgba(232, 121, 249, 0.38);
+}
+.theme-industry-pill-communication:hover {
+  background: rgba(232, 121, 249, 0.22);
+  border-color: rgba(232, 121, 249, 0.52);
+}
+
 /* AI insight output typography */
 .ai-markdown-output {
   line-height: 1.6;

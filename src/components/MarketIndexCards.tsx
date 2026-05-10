@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { MarketMonitorApiPayload, MarketMonitorRow } from "@/app/api/market-monitor/route";
+import { formatUniverseBreadthPct, getUniverseBreadthFloorClass } from "@/lib/market-monitor-display";
 
 export const MARKET_INDEX_SYMBOLS = ["SPY", "QQQ", "IWM"] as const;
 export type MarketIndexSymbol = (typeof MARKET_INDEX_SYMBOLS)[number];
@@ -21,6 +23,8 @@ type WatchlistQuotesApiItem = {
   } | null;
   profile?: { mktCap?: number } | null;
 };
+
+type LatestUniverseBreadth = Pick<MarketMonitorRow, "universePctAbove50d" | "universePctAbove200d">;
 
 function numOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -54,6 +58,7 @@ export default function MarketIndexCards({
 }) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [latestUniverseBreadth, setLatestUniverseBreadth] = useState<LatestUniverseBreadth | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +79,37 @@ export default function MarketIndexCards({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/market-monitor?v=index-breadth-v1", { cache: "no-store" })
+      .then((r) => r.json() as Promise<MarketMonitorApiPayload>)
+      .then((data) => {
+        if (cancelled) return;
+        const latest = data.rows?.[0] ?? null;
+        setLatestUniverseBreadth(
+          latest
+            ? {
+                universePctAbove50d: latest.universePctAbove50d,
+                universePctAbove200d: latest.universePctAbove200d,
+              }
+            : null
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setLatestUniverseBreadth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const quoteBySymbol = Object.fromEntries(quotes.map((q) => [q.symbol, q])) as Record<string, Quote | undefined>;
+  const above50d = latestUniverseBreadth?.universePctAbove50d ?? null;
+  const above200d = latestUniverseBreadth?.universePctAbove200d ?? null;
+  const breadthItems = [
+    { label: ">50D", value: above50d, className: getUniverseBreadthFloorClass(above50d, 30, true) },
+    { label: ">200D", value: above200d, className: getUniverseBreadthFloorClass(above200d, 30, false) },
+  ];
 
   return (
     <div
@@ -128,6 +163,28 @@ export default function MarketIndexCards({
             );
           })
         )}
+      </div>
+      <div className="mt-1.5 flex min-w-max flex-nowrap items-center justify-center gap-1.5 text-ws-caption tabular-nums">
+        {breadthItems.map((item) => {
+          const display = formatUniverseBreadthPct(item.value) || "—";
+          return (
+            <div
+              key={item.label}
+              className={`inline-flex items-center gap-1 rounded border px-1.5 py-px ${
+                item.className || "bg-[var(--ws-bg3)]"
+              }`}
+              style={{ borderColor: item.className ? "transparent" : "var(--ws-border)" }}
+              title={`${item.label} latest universe breadth`}
+            >
+              <span className="font-semibold" style={{ color: item.className ? "inherit" : "var(--ws-text-dim)" }}>
+                {item.label}
+              </span>
+              <span className="font-mono font-semibold" style={{ color: item.className ? "inherit" : "var(--ws-text)" }}>
+                {display}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

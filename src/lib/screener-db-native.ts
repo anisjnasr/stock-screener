@@ -2714,6 +2714,19 @@ export type MarketMonitorConstituentRow = {
   changePct: number;
 };
 
+export type MarketMonitorTop4PctIndustrySide = "up" | "down";
+
+export type MarketMonitorTop4PctIndustry = {
+  industry: string;
+  side: MarketMonitorTop4PctIndustrySide;
+  count: number;
+};
+
+export type MarketMonitorTop4PctIndustriesByDate = Record<
+  string,
+  Partial<Record<MarketMonitorTop4PctIndustrySide, MarketMonitorTop4PctIndustry>>
+>;
+
 /** Same 252-trading-day window as `computeUniverseNNH(..., 252)` / `getNetNewHighSeriesMarketMonitor(252, ...)`. */
 const NNh_52W_LOOKBACK = 252;
 
@@ -3044,6 +3057,107 @@ export function getMarketMonitorConstituents(
     price: Number(r.price ?? 0),
     changePct: Number(r.changePct ?? 0),
   }));
+}
+
+/** Top non-biotech industries among the 4% up/down Market Monitor constituents, grouped per session. */
+export function getTopMarketMonitor4PctIndustries(
+  startDate: string,
+  endDate: string
+): MarketMonitorTop4PctIndustriesByDate {
+  const db = getDb();
+  if (!db) return {};
+
+  const hasIsEtf = (db.prepare(
+    "SELECT COUNT(*) AS c FROM pragma_table_info('companies') WHERE name = 'is_etf'"
+  ).get() as { c: number })?.c > 0;
+  const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
+
+  const from = new Date(`${startDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 10);
+  const bufferStartDate = from.toISOString().slice(0, 10);
+
+  const sql = `
+    WITH base AS (
+      SELECT
+        d.symbol,
+        d.date,
+        d.close AS C,
+        d.volume AS V,
+        LAG(d.close, 1) OVER w AS C1,
+        LAG(d.volume, 1) OVER w AS V1,
+        TRIM(COALESCE(co.industry, '')) AS industry
+      FROM daily_bars d
+      INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
+      LEFT JOIN quote_daily q ON q.symbol = d.symbol AND q.date = d.date
+      WHERE d.date BETWEEN ? AND ?
+        AND (${MM_EFFECTIVE_MARKET_CAP_SQL}) >= ?
+      WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
+    ),
+    matches AS (
+      SELECT date, 'up' AS side, industry, COUNT(*) AS stockCount
+      FROM base
+      WHERE date BETWEEN ? AND ?
+        AND industry <> ''
+        AND LOWER(industry) NOT LIKE '%biotech%'
+        AND C1 > 0
+        AND 100.0*(C-C1)/C1 >= 4
+        AND V >= 1000
+        AND V > V1
+      GROUP BY date, industry
+      UNION ALL
+      SELECT date, 'down' AS side, industry, COUNT(*) AS stockCount
+      FROM base
+      WHERE date BETWEEN ? AND ?
+        AND industry <> ''
+        AND LOWER(industry) NOT LIKE '%biotech%'
+        AND C1 > 0
+        AND 100.0*(C-C1)/C1 <= -4
+        AND V >= 1000
+        AND V > V1
+      GROUP BY date, industry
+    ),
+    ranked AS (
+      SELECT
+        date,
+        side,
+        industry,
+        stockCount,
+        ROW_NUMBER() OVER (PARTITION BY date, side ORDER BY stockCount DESC, industry ASC) AS rn
+      FROM matches
+    )
+    SELECT date, side, industry, stockCount
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY date DESC, side ASC
+  `;
+
+  const rows = db.prepare(sql).all(
+    bufferStartDate,
+    endDate,
+    MM_MIN_MARKET_CAP_USD,
+    startDate,
+    endDate,
+    startDate,
+    endDate
+  ) as Array<{
+    date: string;
+    side: MarketMonitorTop4PctIndustrySide;
+    industry: string;
+    stockCount: number;
+  }>;
+
+  const byDate: MarketMonitorTop4PctIndustriesByDate = {};
+  for (const row of rows) {
+    const date = String(row.date);
+    const side = row.side === "down" ? "down" : "up";
+    byDate[date] ??= {};
+    byDate[date][side] = {
+      industry: String(row.industry ?? ""),
+      side,
+      count: Number(row.stockCount ?? 0),
+    };
+  }
+  return byDate;
 }
 
 /* ── Precomputed aggregation table readers ── */

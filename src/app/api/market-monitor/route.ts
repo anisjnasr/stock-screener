@@ -5,7 +5,9 @@ import { getDataDir } from "@/lib/data-path";
 import {
   getLatestCompletedTradingDate,
   getPrecomputedMarketMonitor,
+  getTopMarketMonitor4PctIndustries,
   type MarketMonitorDailyRow,
+  type MarketMonitorTop4PctIndustry,
 } from "@/lib/screener-db-native";
 import { recordPerf } from "@/lib/perf-monitor";
 
@@ -31,6 +33,7 @@ export type MarketMonitorRow = {
   /** Present after `market_monitor_daily` backfill with new columns. */
   count7xAtr50d?: number;
   countEpisodicPivot?: number;
+  top4PctIndustry?: MarketMonitorTop4PctIndustry | null;
 };
 
 export type MarketMonitorApiPayload = {
@@ -55,7 +58,7 @@ export type MarketMonitorApiPayload = {
 };
 
 const CACHE_PATH = join(getDataDir(), "market-monitor-cache.json");
-const CACHE_VERSION = 23;
+const CACHE_VERSION = 24;
 const RESPONSE_CACHE_TTL_MS = 30 * 1000;
 
 const STALE_HINT =
@@ -106,6 +109,14 @@ function marketMonitorRowFromPrecomputedDaily(r: MarketMonitorDailyRow): MarketM
   };
 }
 
+function chooseTop4PctIndustry(
+  row: MarketMonitorRow,
+  industriesByDate: ReturnType<typeof getTopMarketMonitor4PctIndustries>
+): MarketMonitorTop4PctIndustry | null {
+  const side = row.up4pct >= row.down4pct ? "up" : "down";
+  return industriesByDate[row.date]?.[side] ?? null;
+}
+
 function buildNetNewHighsFromPrecomputed(precomputed: MarketMonitorDailyRow[]) {
   const sorted = [...precomputed].sort((a, b) => a.date.localeCompare(b.date));
   return {
@@ -145,7 +156,12 @@ function buildPayloadFromPrecomputed(
   expectedTradingDay: string,
   queryStartDate: string
 ): MarketMonitorApiPayload {
-  const rowsDesc = precomputed.map(marketMonitorRowFromPrecomputedDaily).filter((r) => r.date >= queryStartDate);
+  const baseRowsDesc = precomputed.map(marketMonitorRowFromPrecomputedDaily).filter((r) => r.date >= queryStartDate);
+  const topIndustriesByDate = getTopMarketMonitor4PctIndustries(queryStartDate, expectedTradingDay);
+  const rowsDesc = baseRowsDesc.map((row) => ({
+    ...row,
+    top4PctIndustry: chooseTop4PctIndustry(row, topIndustriesByDate),
+  }));
   const dataAsOf = rowsDesc.length > 0 ? rowsDesc[0].date : null;
   const startDate = rowsDesc.length > 0 ? rowsDesc[rowsDesc.length - 1].date : null;
   const stale = Boolean(dataAsOf && dataAsOf < expectedTradingDay);
