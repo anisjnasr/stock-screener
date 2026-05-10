@@ -5,8 +5,16 @@ import MarketMonitorConstituentsModal, {
   type MarketMonitorListCreatedInfo,
 } from "@/components/MarketMonitorConstituentsModal";
 import { industryThemePillClass } from "@/lib/premarket/industry-theme-pill-class";
+import { normalizeIndustryDisplayName } from "@/lib/text-format";
 
 const MARKET_MONITOR_FETCH_VERSION = "7x-atr-v1";
+
+/** Lets `height:100%` children fill the row’s tallest cell (`td { height: 1px }` table layout trick). */
+const MM_BODY_TD = "p-0 align-middle h-px max-h-none";
+
+/** Inner fill: stretch to row height and vertically center one-line values. */
+const MM_CELL_FILL =
+  "flex h-full min-h-0 w-full box-border items-center justify-center py-0.5";
 
 const MM_MODAL_TITLES: Record<MarketMonitorMetricKey, string> = {
   up4pct: "4% Up",
@@ -108,6 +116,26 @@ const MM_TAB_DATE_CH = 11;
 const MM_TAB_MIN_INT_CH = 2;
 const MM_TAB_MIN_RATIO_CH = 4;
 
+const MM_TABLE_HEADERS_AFTER_DATE = [
+  "Up %",
+  "Down %",
+  "5D Ratio",
+  "10D Ratio",
+  "Up 25% (Q)",
+  "Down 25% (Q)",
+  "Up 25% (M)",
+  "Down 25% (M)",
+  "Up 50% (M)",
+  "Down 50% (M)",
+  "52W Highs",
+  "52W Lows",
+  "7× ATR",
+  "EP",
+] as const;
+
+/** Column subheaders for top industry cells (aligned with Up %, Up 25% Q/M, Up 50% M breadth metrics). */
+const MM_TOP_INDUSTRY_HEADERS = ["Up %", "Up 25% (Q)", "Up 25% (M)", "Up 50% (M)"] as const;
+
 function maxFormattedCh(rows: MarketMonitorRow[], values: (row: MarketMonitorRow) => string[], minCh: number): number {
   let max = minCh;
   for (const row of rows) {
@@ -140,32 +168,46 @@ function MmTabularInner({
 }
 
 function MmNumericCellCenter({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`flex w-full justify-center items-center py-1 ${className}`.trim()}>{children}</div>;
+  return <div className={`${MM_CELL_FILL} ${className}`.trim()}>{children}</div>;
 }
 
 function MmDateCellLeft({ children }: { children: ReactNode }) {
-  return <div className="flex w-full justify-start items-center px-1 py-1">{children}</div>;
+  return <div className={`${MM_CELL_FILL} justify-start px-1`.trim()}>{children}</div>;
 }
 
-function MmTopIndustryCell({ row }: { row: MarketMonitorRow }) {
-  const top = row.top4PctIndustry;
-  if (!top?.industry) {
-    return (
-      <div className="flex w-full justify-start items-center px-1 py-1">
-        <span style={{ color: "var(--ws-text-vdim)" }}>—</span>
-      </div>
-    );
-  }
-
-  const sideLabel = top.side === "up" ? "4% Up" : "4% Down";
+function MmIndustryPill({ industry }: { industry: string }) {
+  const label = normalizeIndustryDisplayName(industry);
   return (
-    <div className="flex w-full justify-start items-center px-1 py-1">
-      <span
-        className={`inline-flex max-w-[14rem] min-w-0 items-center truncate rounded-full border px-1.5 py-px font-semibold text-ws-caption ${industryThemePillClass(top.industry)}`}
-        title={`${top.industry} · ${sideLabel} · ${top.count.toLocaleString()} stocks`}
-      >
-        {top.industry}
-      </span>
+    <span
+      className={`inline-flex w-max max-w-none shrink-0 whitespace-nowrap items-center rounded-full border px-1.5 py-px font-semibold leading-tight ${industryThemePillClass(label)}`}
+      style={{ fontSize: "var(--ws-fs-caption)" }}
+      title={label}
+    >
+      {label}
+    </span>
+  );
+}
+
+function getTopIndustryValues(tops: MarketMonitorRow["topUpIndustries"]): (string | null)[] {
+  const t = tops ?? {
+    up4pct: null,
+    up25pct_qtr: null,
+    up25pct_month: null,
+    up50pct_month: null,
+  };
+  return [t.up4pct, t.up25pct_qtr, t.up25pct_month, t.up50pct_month];
+}
+
+function MmTopIndustryBodyCell({ industry }: { industry: string | null }) {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-start py-0.5 pl-1.5 pr-1">
+      {industry ? (
+        <MmIndustryPill industry={industry} />
+      ) : (
+        <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+          —
+        </span>
+      )}
     </div>
   );
 }
@@ -204,6 +246,7 @@ export default function MarketMonitorTable({
     ratio10dHigh: null,
   });
   const [staleBanner, setStaleBanner] = useState<string | null>(null);
+  const [topIndustriesExpanded, setTopIndustriesExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,6 +342,8 @@ export default function MarketMonitorTable({
     setMmModal({ date: rowDate, metric });
   };
 
+  const topIndustryColSpan = topIndustriesExpanded ? 4 : 1;
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible px-1 sm:px-2 py-2 sm:py-3" style={{ background: "var(--ws-bg2)" }}>
       {mmModal && onSymbolSelect && (
@@ -332,7 +377,40 @@ export default function MarketMonitorTable({
         <table className="min-w-max whitespace-nowrap text-ws-body text-center border-collapse">
           <thead>
             <tr>
-              <th scope="col" colSpan={2} className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-r text-center" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
+              <th
+                scope="col"
+                className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-r"
+                style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }}
+              />
+              <th
+                scope="colgroup"
+                colSpan={topIndustryColSpan}
+                className="sticky top-0 z-10 border-b-2 border-r px-2 py-1.5 text-left text-ws-body font-bold tracking-wide"
+                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0">Top industries</span>
+                  <button
+                    type="button"
+                    className="ws-focus-ring shrink-0 rounded px-1 py-px text-ws-caption font-semibold tabular-nums leading-none"
+                    style={{
+                      color: "var(--ws-cyan)",
+                      border: "1px solid var(--ws-border)",
+                      background: "var(--ws-bg3)",
+                    }}
+                    aria-expanded={topIndustriesExpanded}
+                    aria-label={
+                      topIndustriesExpanded
+                        ? "Show only top industry for Up %"
+                        : "Show top industries for Up %, Up 25% (Q), Up 25% (M), Up 50% (M)"
+                    }
+                    title={topIndustriesExpanded ? "Collapse to Up % only" : "Expand all four metrics"}
+                    onClick={() => setTopIndustriesExpanded((e) => !e)}
+                  >
+                    {topIndustriesExpanded ? "−" : "+"}
+                  </button>
+                </div>
+              </th>
               <th
                 scope="colgroup"
                 className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 text-center text-ws-body font-bold tracking-wide"
@@ -352,38 +430,34 @@ export default function MarketMonitorTable({
               <th scope="col" className="sticky top-0 z-10 px-1.5 py-1.5 border-b-2 border-l text-center" style={{ background: "var(--ws-bg)", borderColor: "var(--ws-border)" }} />
             </tr>
             <tr>
-              {[
-                "Date",
-                "Top Industry",
-                "Up %",
-                "Down %",
-                "5D Ratio",
-                "10D Ratio",
-                "Up 25% (Q)",
-                "Down 25% (Q)",
-                "Up 25% (M)",
-                "Down 25% (M)",
-                "Up 50% (M)",
-                "Down 50% (M)",
-                "52W Highs",
-                "52W Lows",
-                "7× ATR",
-                "EP",
-              ].map((label, idx) => {
-                const isGold = idx >= 0 && idx <= 7;
-                const isGreen = idx >= 8 && idx <= 15;
-                const hdr = isGold
-                  ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
-                  : isGreen
-                    ? { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" }
-                    : { background: "var(--ws-bg2)", color: "var(--ws-text)" };
-                const edge = idx === 0 || idx === 8 ? " border-l border-r" : "";
-                const align = idx === 0 ? "text-left" : "text-center";
+              <th
+                scope="col"
+                className="sticky top-[2.125rem] z-10 px-1 py-0.5 border-b border-l border-r text-left text-ws-body font-bold"
+                style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+              >
+                Date
+              </th>
+              {(topIndustriesExpanded ? MM_TOP_INDUSTRY_HEADERS : [MM_TOP_INDUSTRY_HEADERS[0]]).map((label, hi) => (
+                <th
+                  key={`mm-top-ind-${hi}`}
+                  scope="col"
+                  className="sticky top-[2.125rem] z-10 border-b border-r px-1 py-0.5 text-left text-ws-body font-bold"
+                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+                >
+                  {label}
+                </th>
+              ))}
+              {MM_TABLE_HEADERS_AFTER_DATE.map((label, i) => {
+                const hdr =
+                  i <= 5
+                    ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
+                    : { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" };
+                const edge = i === 6 ? " border-l border-r" : "";
                 return (
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b ${align} text-ws-body font-bold${edge}`}
+                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b text-center text-ws-body font-bold${edge}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
@@ -408,21 +482,32 @@ export default function MarketMonitorTable({
               const pairM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
               const pair50 = getPairCellClassFull(row.up50pct_month, row.down50pct_month);
               const pair52w = getPairCellClassFull(row.nnh52wHighs ?? 0, row.nnh52wLows ?? 0);
+              const topIndustryVals = getTopIndustryValues(row.topUpIndustries);
+              const topCells = topIndustriesExpanded ? topIndustryVals : [topIndustryVals[0]];
               return (
               <tr key={row.date} className="border-b" style={{ borderColor: "var(--ws-border)" }}>
-                <td className="p-0 whitespace-nowrap border-l border-r" style={{ borderColor: "var(--ws-border)" }}>
+                <td
+                  className={`${MM_BODY_TD} whitespace-nowrap border-l border-r`}
+                  style={{ borderColor: "var(--ws-border)" }}
+                >
                   <MmDateCellLeft>
                     <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left">{formatDateDmy(row.date)}</MmTabularInner>
                   </MmDateCellLeft>
                 </td>
-                <td className="p-0 whitespace-nowrap border-r" style={{ borderColor: "var(--ws-border)" }}>
-                  <MmTopIndustryCell row={row} />
-                </td>
-                <td className="p-0">
+                {topCells.map((ind, ti) => (
+                  <td
+                    key={ti}
+                    className={`${MM_BODY_TD} border-r`}
+                    style={{ borderColor: "var(--ws-border)" }}
+                  >
+                    <MmTopIndustryBodyCell industry={ind} />
+                  </td>
+                ))}
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair4}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair4}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up4pct", row.date)}
                     >
@@ -434,11 +519,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair4}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair4}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down4pct", row.date)}
                     >
@@ -450,21 +535,25 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className={`p-0 ${getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}`}>
-                  <MmNumericCellCenter>
+                <td className={MM_BODY_TD}>
+                  <MmNumericCellCenter
+                    className={getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}
+                  >
                     <MmTabularInner widthCh={columnValueWidths.ratio5d}>{fmtRatio(row.ratio5d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
-                <td className={`p-0 ${getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}`}>
-                  <MmNumericCellCenter>
+                <td className={MM_BODY_TD}>
+                  <MmNumericCellCenter
+                    className={getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}
+                  >
                     <MmTabularInner widthCh={columnValueWidths.ratio10d}>{fmtRatio(row.ratio10d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pairQ}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairQ}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_qtr", row.date)}
                     >
@@ -476,11 +565,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pairQ}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairQ}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_qtr", row.date)}
                     >
@@ -492,11 +581,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
+                <td className={`${MM_BODY_TD} border-l`} style={{ borderColor: "var(--ws-border)" }}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pairM}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairM}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_month", row.date)}
                     >
@@ -508,11 +597,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pairM}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairM}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_month", row.date)}
                     >
@@ -524,11 +613,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair50}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair50}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up50pct_month", row.date)}
                     >
@@ -540,11 +629,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair50}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair50}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down50pct_month", row.date)}
                     >
@@ -556,11 +645,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
+                <td className={`${MM_BODY_TD} border-l`} style={{ borderColor: "var(--ws-border)" }}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair52w}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair52w}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_highs", row.date)}
                     >
@@ -572,11 +661,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit ${pair52w}`}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair52w}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_lows", row.date)}
                     >
@@ -588,11 +677,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillableSignals ? (
                     <button
                       type="button"
-                      className="ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit"
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_7x_atr_50d", row.date)}
                     >
@@ -604,11 +693,11 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0">
+                <td className={MM_BODY_TD}>
                   {drillableSignals ? (
                     <button
                       type="button"
-                      className="ws-mm-cell-drill w-full flex justify-center items-center py-1 text-inherit"
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_episodic_pivot", row.date)}
                     >
@@ -620,7 +709,7 @@ export default function MarketMonitorTable({
                     </MmNumericCellCenter>
                   )}
                 </td>
-                <td className="p-0 border-l" style={{ borderColor: "var(--ws-border)" }}>
+                <td className={`${MM_BODY_TD} border-l`} style={{ borderColor: "var(--ws-border)" }}>
                   <MmNumericCellCenter>
                     <MmTabularInner widthCh={columnValueWidths.universe}>{fmtInt(row.universe)}</MmTabularInner>
                   </MmNumericCellCenter>

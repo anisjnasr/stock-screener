@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { type WorkspaceSection } from "@/types/workspace";
 import NewsSidebar from "@/components/NewsSidebar";
-import { toTitleCase } from "@/lib/text-format";
+import { normalizeIndustryDisplayName } from "@/lib/text-format";
 import type { CustomPage } from "@/lib/custom-pages-storage";
 import AIInsightFormCard, { type InsightInput } from "@/components/AIInsightFormCard";
 import CustomPromptPage from "@/components/CustomPromptPage";
@@ -572,7 +572,7 @@ export default function RightRail({
 
                 <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Industry</span>
                 <span className="font-medium truncate min-w-0" style={{ color: "var(--ws-text)" }}>
-                  {profile?.industry ? toTitleCase(safe(profile.industry)) : "—"}
+                  {profile?.industry ? normalizeIndustryDisplayName(safe(profile.industry)) : "—"}
                 </span>
 
                 <span className="font-medium" style={{ color: "rgba(201,209,217,0.7)" }}>Market Cap</span>

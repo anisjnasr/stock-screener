@@ -59,7 +59,7 @@ import {
   UNIVERSE_OPTIONS,
 } from "@/lib/screener-storage";
 import { formatDisplayDate } from "@/lib/date-format";
-import { toTitleCase } from "@/lib/text-format";
+import { normalizeIndustryDisplayName, toTitleCase } from "@/lib/text-format";
 import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
 import type { FilterField } from "@/lib/screener-fields";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
@@ -379,7 +379,7 @@ function formatCellValue(
     };
     return map[code] ?? String(v).trim();
   }
-  if (col === "industry") return toTitleCase(String(v));
+  if (col === "industry") return normalizeIndustryDisplayName(String(v)) || String(v);
   if (
     col === "changePct" ||
     col === "atrPct" ||

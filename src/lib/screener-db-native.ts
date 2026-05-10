@@ -2714,18 +2714,19 @@ export type MarketMonitorConstituentRow = {
   changePct: number;
 };
 
-export type MarketMonitorTop4PctIndustrySide = "up" | "down";
-
-export type MarketMonitorTop4PctIndustry = {
-  industry: string;
-  side: MarketMonitorTop4PctIndustrySide;
-  count: number;
+/** Top non-biotech industry names (stock-count winners) for MM “up” breadth metrics, per session. */
+export type MarketMonitorTopUpIndustryRow = {
+  up4pct: string | null;
+  up25pct_qtr: string | null;
+  up25pct_month: string | null;
+  up50pct_month: string | null;
 };
 
-export type MarketMonitorTop4PctIndustriesByDate = Record<
-  string,
-  Partial<Record<MarketMonitorTop4PctIndustrySide, MarketMonitorTop4PctIndustry>>
->;
+export type MarketMonitorTopUpIndustriesByDate = Record<string, MarketMonitorTopUpIndustryRow>;
+
+function emptyMarketMonitorTopUpIndustryRow(): MarketMonitorTopUpIndustryRow {
+  return { up4pct: null, up25pct_qtr: null, up25pct_month: null, up50pct_month: null };
+}
 
 /** Same 252-trading-day window as `computeUniverseNNH(..., 252)` / `getNetNewHighSeriesMarketMonitor(252, ...)`. */
 const NNh_52W_LOOKBACK = 252;
@@ -3059,11 +3060,14 @@ export function getMarketMonitorConstituents(
   }));
 }
 
-/** Top non-biotech industries among the 4% up/down Market Monitor constituents, grouped per session. */
-export function getTopMarketMonitor4PctIndustries(
+/**
+ * Top non-biotech industry (by stock count) for each MM up metric per session.
+ * Predicates match `getMarketMonitorConstituents` / aggregate SQL.
+ */
+export function getTopMarketMonitorUpMetricIndustries(
   startDate: string,
   endDate: string
-): MarketMonitorTop4PctIndustriesByDate {
+): MarketMonitorTopUpIndustriesByDate {
   const db = getDb();
   if (!db) return {};
 
@@ -3073,7 +3077,7 @@ export function getTopMarketMonitor4PctIndustries(
   const etfFilter = hasIsEtf ? "AND co.is_etf = 0" : "";
 
   const from = new Date(`${startDate}T00:00:00Z`);
-  from.setUTCDate(from.getUTCDate() - 10);
+  from.setUTCDate(from.getUTCDate() - 120);
   const bufferStartDate = from.toISOString().slice(0, 10);
 
   const sql = `
@@ -3083,8 +3087,12 @@ export function getTopMarketMonitor4PctIndustries(
         d.date,
         d.close AS C,
         d.volume AS V,
-        LAG(d.close, 1) OVER w AS C1,
+        LAG(d.close, 1)  OVER w AS C1,
+        LAG(d.close, 20) OVER w AS C20,
+        LAG(d.close, 65) OVER w AS C65,
         LAG(d.volume, 1) OVER w AS V1,
+        AVG(d.close)  OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_c_20,
+        AVG(CAST(d.volume AS REAL)) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_v_20,
         TRIM(COALESCE(co.industry, '')) AS industry
       FROM daily_bars d
       INNER JOIN companies co ON co.symbol = d.symbol ${etfFilter}
@@ -3094,7 +3102,7 @@ export function getTopMarketMonitor4PctIndustries(
       WINDOW w AS (PARTITION BY d.symbol ORDER BY d.date)
     ),
     matches AS (
-      SELECT date, 'up' AS side, industry, COUNT(*) AS stockCount
+      SELECT date, 'up4pct' AS mk, industry, COUNT(*) AS stockCount
       FROM base
       WHERE date BETWEEN ? AND ?
         AND industry <> ''
@@ -3105,30 +3113,49 @@ export function getTopMarketMonitor4PctIndustries(
         AND V > V1
       GROUP BY date, industry
       UNION ALL
-      SELECT date, 'down' AS side, industry, COUNT(*) AS stockCount
+      SELECT date, 'up25pct_qtr' AS mk, industry, COUNT(*) AS stockCount
       FROM base
       WHERE date BETWEEN ? AND ?
         AND industry <> ''
         AND LOWER(industry) NOT LIKE '%biotech%'
-        AND C1 > 0
-        AND 100.0*(C-C1)/C1 <= -4
-        AND V >= 1000
-        AND V > V1
+        AND C65 > 0
+        AND avg_c_20 * avg_v_20 >= 2500
+        AND 100.0*(C-C65)/C65 >= 25
+      GROUP BY date, industry
+      UNION ALL
+      SELECT date, 'up25pct_month' AS mk, industry, COUNT(*) AS stockCount
+      FROM base
+      WHERE date BETWEEN ? AND ?
+        AND industry <> ''
+        AND LOWER(industry) NOT LIKE '%biotech%'
+        AND C20 >= 5
+        AND avg_c_20 * avg_v_20 >= 2500
+        AND 100.0*(C-C20)/C20 >= 25
+      GROUP BY date, industry
+      UNION ALL
+      SELECT date, 'up50pct_month' AS mk, industry, COUNT(*) AS stockCount
+      FROM base
+      WHERE date BETWEEN ? AND ?
+        AND industry <> ''
+        AND LOWER(industry) NOT LIKE '%biotech%'
+        AND C20 >= 5
+        AND avg_c_20 * avg_v_20 >= 2500
+        AND 100.0*(C-C20)/C20 >= 50
       GROUP BY date, industry
     ),
     ranked AS (
       SELECT
         date,
-        side,
+        mk,
         industry,
         stockCount,
-        ROW_NUMBER() OVER (PARTITION BY date, side ORDER BY stockCount DESC, industry ASC) AS rn
+        ROW_NUMBER() OVER (PARTITION BY date, mk ORDER BY stockCount DESC, industry ASC) AS rn
       FROM matches
     )
-    SELECT date, side, industry, stockCount
+    SELECT date, mk, industry
     FROM ranked
     WHERE rn = 1
-    ORDER BY date DESC, side ASC
+    ORDER BY date DESC, mk ASC
   `;
 
   const rows = db.prepare(sql).all(
@@ -3138,24 +3165,24 @@ export function getTopMarketMonitor4PctIndustries(
     startDate,
     endDate,
     startDate,
+    endDate,
+    startDate,
+    endDate,
+    startDate,
     endDate
-  ) as Array<{
-    date: string;
-    side: MarketMonitorTop4PctIndustrySide;
-    industry: string;
-    stockCount: number;
-  }>;
+  ) as Array<{ date: string; mk: string; industry: string }>;
 
-  const byDate: MarketMonitorTop4PctIndustriesByDate = {};
+  const byDate: MarketMonitorTopUpIndustriesByDate = {};
   for (const row of rows) {
     const date = String(row.date);
-    const side = row.side === "down" ? "down" : "up";
-    byDate[date] ??= {};
-    byDate[date][side] = {
-      industry: String(row.industry ?? ""),
-      side,
-      count: Number(row.stockCount ?? 0),
-    };
+    const industry = String(row.industry ?? "");
+    if (!industry) continue;
+    byDate[date] ??= emptyMarketMonitorTopUpIndustryRow();
+    const bucket = byDate[date];
+    if (row.mk === "up4pct") bucket.up4pct = industry;
+    else if (row.mk === "up25pct_qtr") bucket.up25pct_qtr = industry;
+    else if (row.mk === "up25pct_month") bucket.up25pct_month = industry;
+    else if (row.mk === "up50pct_month") bucket.up50pct_month = industry;
   }
   return byDate;
 }
