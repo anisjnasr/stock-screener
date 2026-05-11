@@ -10,6 +10,7 @@ import {
   hydrateLocalStorage,
   pushLocalStorageToCloud,
   syncSetting,
+  syncMissingPremarketSipFromLocal,
   type Profile,
   type AuthResult,
 } from "@/lib/profile-storage";
@@ -85,6 +86,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
           if (data) {
             hydrateLocalStorage(data);
             syncMissingGapSettingsFromLocal(data.settings);
+            syncMissingPremarketSipFromLocal(data.settings);
             window.dispatchEvent(new CustomEvent("profile-changed"));
           }
         })
@@ -111,6 +113,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (hasCloudData) {
           hydrateLocalStorage(data);
           syncMissingGapSettingsFromLocal(data.settings);
+          syncMissingPremarketSipFromLocal(data.settings);
         } else {
           pushLocalStorageToCloud();
         }

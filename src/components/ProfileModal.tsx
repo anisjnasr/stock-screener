@@ -143,7 +143,7 @@ export default function ProfileModal() {
               </div>
             </div>
             <div className="text-ws-label mb-4 px-3 py-2 rounded-lg" style={{ background: "var(--ws-bg3)", color: "var(--ws-text-dim)" }}>
-              Your watchlists, scans, flags, and settings are saved to the cloud and will be available on any device you log into.
+              Your watchlists, scans, flags, pre-market SIP (current session), and settings are saved to the cloud and will be available on any device you log into.
             </div>
             <div className="flex gap-2">
               <button

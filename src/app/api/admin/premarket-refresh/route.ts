@@ -7,10 +7,6 @@ import { ingestMorningNewslettersForDate } from "@/lib/sources/newsletterIngest"
 
 export const runtime = "nodejs";
 
-function unauthorized() {
-  return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-}
-
 function parseYmd(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   const y = (body as { ymd?: unknown }).ymd;
@@ -19,15 +15,14 @@ function parseYmd(body: unknown): string | null {
 }
 
 /**
- * Manual operator action used by premarket Themes refresh:
+ * Manual premarket Themes refresh from the UI:
  * 1) ingest newsletter archive
  * 2) regenerate daily themes
+ *
+ * Not gated by ADMIN_SECRET (same exposure as the rest of the app). Heavy work;
+ * protect the deployment network/Vercel/Render as appropriate.
  */
 export async function POST(request: NextRequest) {
-  const adminSecret = process.env.ADMIN_SECRET?.trim();
-  const auth = request.headers.get("authorization");
-  if (!adminSecret || auth !== `Bearer ${adminSecret}`) return unauthorized();
-
   const supabase = getSupabaseService();
   if (!supabase) {
     return NextResponse.json(

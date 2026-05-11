@@ -8,6 +8,7 @@ import type { SipCatalyst } from "@/types/sip-catalyst";
 import CollapsibleSection from "@/components/premarket/CollapsibleSection";
 import SipPlayRowsTable from "@/components/premarket/SipPlayRowsTable";
 import type { SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
+import { useProfile } from "@/contexts/ProfileContext";
 
 type StocksInPlayProps = {
   sectionLabel?: string;
@@ -163,6 +164,7 @@ export default function StocksInPlay({
   onUpsertCatalyst,
   onRemoveFromSip,
 }: StocksInPlayProps) {
+  const { profile } = useProfile();
   return (
     <CollapsibleSection
       id="sip"
@@ -173,6 +175,11 @@ export default function StocksInPlay({
     >
       {!collapsed ? (
         <div className="space-y-3">
+          <p className="pm-site-caption -mb-1" style={{ color: "var(--text-tertiary)" }}>
+            {profile
+              ? "Today's SIP syncs to your signed-in profile for the current Eastern session (reload or revisit Pre-market after signing in on another device)."
+              : "Sign in to sync today's SIP across devices. Until then, lists stay in this browser only."}
+          </p>
           <CuratedSipBlock
             title="Large Caps"
             sipVariant="mid-large"

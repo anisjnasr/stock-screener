@@ -188,7 +188,8 @@ function GapperSortTh({
 type PremarketGappersProps = {
   onOpenTickerInLists?: (sym: string) => void;
   onJumpToEarnings?: () => void;
-  onAddToSip?: (target: SipPersistVariant, payload: { row: GapperRow; headlines: PythonNewsItem[]; catalyst: SipCatalyst | null }) => void;
+  /** Add on first click, remove from that list on second click. */
+  onToggleSip?: (target: SipPersistVariant, payload: { row: GapperRow; headlines: PythonNewsItem[]; catalyst: SipCatalyst | null }) => void;
   sipMembershipByTicker?: Record<string, { large: boolean; small: boolean }>;
   filters: GapperFilterState;
   setFilters: Dispatch<SetStateAction<GapperFilterState>>;
@@ -199,7 +200,7 @@ type PremarketGappersProps = {
 export default function PremarketGappers({
   onOpenTickerInLists,
   onJumpToEarnings,
-  onAddToSip,
+  onToggleSip,
   sipMembershipByTicker,
   filters,
   setFilters,
@@ -769,12 +770,12 @@ export default function PremarketGappers({
                           color: inLarge ? "var(--ws-cyan)" : "var(--text-secondary)",
                           background: "transparent",
                           fontSize: "var(--ws-fs-caption)",
-                          opacity: onAddToSip ? 1 : 0.5,
+                          opacity: onToggleSip ? 1 : 0.5,
                         }}
-                        disabled={!onAddToSip}
-                        title={inLarge ? "In SIP Large Caps" : "Add to SIP Large Caps"}
-                        aria-label={inLarge ? `Already in SIP Large Caps: ${ticker}` : `Add ${ticker} to SIP Large Caps`}
-                        onClick={() => onAddToSip?.("mid-large", { row: r, headlines: rowNews, catalyst })}
+                        disabled={!onToggleSip}
+                        title={inLarge ? "Remove from SIP Large Caps" : "Add to SIP Large Caps"}
+                        aria-label={inLarge ? `Remove ${ticker} from SIP Large Caps` : `Add ${ticker} to SIP Large Caps`}
+                        onClick={() => onToggleSip?.("mid-large", { row: r, headlines: rowNews, catalyst })}
                       >
                         L
                       </button>
@@ -786,12 +787,12 @@ export default function PremarketGappers({
                           color: inSmall ? "var(--ws-cyan)" : "var(--text-secondary)",
                           background: "transparent",
                           fontSize: "var(--ws-fs-caption)",
-                          opacity: onAddToSip ? 1 : 0.5,
+                          opacity: onToggleSip ? 1 : 0.5,
                         }}
-                        disabled={!onAddToSip}
-                        title={inSmall ? "In SIP Small Caps" : "Add to SIP Small Caps"}
-                        aria-label={inSmall ? `Already in SIP Small Caps: ${ticker}` : `Add ${ticker} to SIP Small Caps`}
-                        onClick={() => onAddToSip?.("small-cap", { row: r, headlines: rowNews, catalyst })}
+                        disabled={!onToggleSip}
+                        title={inSmall ? "Remove from SIP Small Caps" : "Add to SIP Small Caps"}
+                        aria-label={inSmall ? `Remove ${ticker} from SIP Small Caps` : `Add ${ticker} to SIP Small Caps`}
+                        onClick={() => onToggleSip?.("small-cap", { row: r, headlines: rowNews, catalyst })}
                       >
                         S
                       </button>

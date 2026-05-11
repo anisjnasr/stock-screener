@@ -20,7 +20,8 @@ import type { GapperRow } from "@/types/gappers";
 import type { PythonNewsItem } from "@/lib/python-service";
 import type { SipCatalyst } from "@/types/sip-catalyst";
 import type { CuratedSipAddPayload } from "@/types/stocks-in-play";
-import { loadSipDaySnapshot, saveSipDaySnapshot, type SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
+import { loadSipDaySnapshot, saveSipDaySnapshot, buildLiveSipSnapshot, type SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
+import { getActiveProfile, syncPremarketSipBundle } from "@/lib/profile-storage";
 
 const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "movers", "calendars", "earnings", "sipArchive"];
 
@@ -57,8 +58,6 @@ type ManualPremarketRefreshResponse = {
   error?: string;
 };
 
-const OPERATOR_SECRET_SESSION_KEY = "premarket.adminSecret";
-
 function formatElapsedLabel(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const mins = Math.floor(total / 60);
@@ -77,10 +76,8 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
   const [sipCatalystByTicker, setSipCatalystByTicker] = useState<Record<string, SipCatalyst>>({});
   const [themesRefreshToken, setThemesRefreshToken] = useState(0);
   const [themesRefreshBusy, setThemesRefreshBusy] = useState(false);
-  const [themesRefreshMessage, setThemesRefreshMessage] = useState<string | null>(null);
   const [themesRefreshElapsedMs, setThemesRefreshElapsedMs] = useState(0);
   const [themesRefreshStartedAtMs, setThemesRefreshStartedAtMs] = useState<number | null>(null);
-  const [hasStoredAdminSecret, setHasStoredAdminSecret] = useState(false);
 
   useLayoutEffect(() => {
     queueMicrotask(() => {
@@ -89,22 +86,29 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     });
   }, []);
 
-  useEffect(() => {
-    const stored = sessionStorage.getItem(OPERATOR_SECRET_SESSION_KEY)?.trim() ?? "";
-    setHasStoredAdminSecret(Boolean(stored));
+  const hydrateSipStateFromStorage = useCallback(() => {
+    const etYmd = ymdInEt();
+    const large = loadSipDaySnapshot(etYmd, "mid-large");
+    const small = loadSipDaySnapshot(etYmd, "small-cap");
+    setSipLargeRows(large?.rows ?? []);
+    setSipSmallRows(small?.rows ?? []);
+    setSipNewsByTicker({ ...(large?.news ?? {}), ...(small?.news ?? {}) });
+    setSipCatalystByTicker({ ...(large?.catalyst ?? {}), ...(small?.catalyst ?? {}) });
   }, []);
 
   useLayoutEffect(() => {
-    queueMicrotask(() => {
-      const etYmd = ymdInEt();
-      const large = loadSipDaySnapshot(etYmd, "mid-large");
-      const small = loadSipDaySnapshot(etYmd, "small-cap");
-      setSipLargeRows(large?.rows ?? []);
-      setSipSmallRows(small?.rows ?? []);
-      setSipNewsByTicker({ ...(large?.news ?? {}), ...(small?.news ?? {}) });
-      setSipCatalystByTicker({ ...(large?.catalyst ?? {}), ...(small?.catalyst ?? {}) });
-    });
-  }, []);
+    queueMicrotask(() => hydrateSipStateFromStorage());
+  }, [hydrateSipStateFromStorage]);
+
+  useEffect(() => {
+    const onHydrate = () => hydrateSipStateFromStorage();
+    window.addEventListener("profile-changed", onHydrate);
+    window.addEventListener("premarket-sip-cloud-hydrated", onHydrate);
+    return () => {
+      window.removeEventListener("profile-changed", onHydrate);
+      window.removeEventListener("premarket-sip-cloud-hydrated", onHydrate);
+    };
+  }, [hydrateSipStateFromStorage]);
 
   const sipMembershipByTicker = useMemo(() => {
     const map: Record<string, { large: boolean; small: boolean }> = {};
@@ -151,54 +155,46 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     setSipSmallRows((prev) => prev.filter((r) => r.ticker.toUpperCase() !== t));
   }, []);
 
+  const toggleGapperSip = useCallback(
+    (target: SipPersistVariant, payload: { row: GapperRow; headlines: PythonNewsItem[]; catalyst: SipCatalyst | null }) => {
+      const { row, headlines, catalyst } = payload;
+      const ticker = row.ticker.toUpperCase();
+      const inLarge = sipLargeRows.some((r) => r.ticker.toUpperCase() === ticker);
+      const inSmall = sipSmallRows.some((r) => r.ticker.toUpperCase() === ticker);
+      const inThisList = target === "mid-large" ? inLarge : inSmall;
+
+      if (inThisList) {
+        removeFromSip(target, ticker);
+        const stillInOtherList = target === "mid-large" ? inSmall : inLarge;
+        if (!stillInOtherList) {
+          setSipNewsByTicker((prev) => {
+            const next = { ...prev };
+            delete next[ticker];
+            return next;
+          });
+          setSipCatalystByTicker((prev) => {
+            const next = { ...prev };
+            delete next[ticker];
+            return next;
+          });
+        }
+        return;
+      }
+
+      addToSip({ row, headlines, catalyst, target });
+    },
+    [addToSip, removeFromSip, sipLargeRows, sipSmallRows]
+  );
+
   useEffect(() => {
     const etYmd = ymdInEt();
-    const pickNews = (rows: GapperRow[]) => {
-      const out: Record<string, PythonNewsItem[]> = {};
-      for (const row of rows) {
-        const t = row.ticker.toUpperCase();
-        const news = sipNewsByTicker[t];
-        if (news?.length) out[t] = news;
-      }
-      return out;
-    };
-    const pickCatalyst = (rows: GapperRow[]) => {
-      const out: Record<string, SipCatalyst> = {};
-      for (const row of rows) {
-        const t = row.ticker.toUpperCase();
-        const c = sipCatalystByTicker[t];
-        if (c) out[t] = c;
-      }
-      return out;
-    };
-    saveSipDaySnapshot(
-      {
-        v: 1,
-        etYmd,
-        savedAtMs: Date.now(),
-        rows: sipLargeRows,
-        news: pickNews(sipLargeRows),
-        catalyst: pickCatalyst(sipLargeRows),
-        newsError: null,
-        catalystError: null,
-        pythonConfigured: true,
-      },
-      "mid-large"
-    );
-    saveSipDaySnapshot(
-      {
-        v: 1,
-        etYmd,
-        savedAtMs: Date.now(),
-        rows: sipSmallRows,
-        news: pickNews(sipSmallRows),
-        catalyst: pickCatalyst(sipSmallRows),
-        newsError: null,
-        catalystError: null,
-        pythonConfigured: true,
-      },
-      "small-cap"
-    );
+    const snapLarge = buildLiveSipSnapshot(etYmd, sipLargeRows, sipNewsByTicker, sipCatalystByTicker);
+    const snapSmall = buildLiveSipSnapshot(etYmd, sipSmallRows, sipNewsByTicker, sipCatalystByTicker);
+    saveSipDaySnapshot(snapLarge, "mid-large");
+    saveSipDaySnapshot(snapSmall, "small-cap");
+    if (getActiveProfile()) {
+      syncPremarketSipBundle({ v: 1, etYmd, midLarge: snapLarge, smallCap: snapSmall });
+    }
   }, [sipCatalystByTicker, sipLargeRows, sipNewsByTicker, sipSmallRows]);
 
   const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
@@ -211,23 +207,14 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     return () => window.clearInterval(id);
   }, [themesRefreshBusy, themesRefreshStartedAtMs]);
 
-  const runManualPremarketRefresh = useCallback(async (adminSecret: string): Promise<ManualPremarketRefreshResponse> => {
+  const runManualPremarketRefresh = useCallback(async (): Promise<ManualPremarketRefreshResponse> => {
     const res = await fetch("/api/admin/premarket-refresh", {
       method: "POST",
       cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${adminSecret}`,
-      },
     });
     const json = (await res.json().catch(() => ({ ok: false, error: res.statusText }))) as ManualPremarketRefreshResponse;
     if (!res.ok) return { ok: false, error: json.error ?? res.statusText };
     return json;
-  }, []);
-
-  const clearStoredAdminSecret = useCallback(() => {
-    sessionStorage.removeItem(OPERATOR_SECRET_SESSION_KEY);
-    setHasStoredAdminSecret(false);
-    setThemesRefreshMessage("Cleared stored ADMIN_SECRET for this tab.");
   }, []);
 
   const triggerThemesRefresh = useCallback(async () => {
@@ -236,50 +223,18 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     setThemesRefreshStartedAtMs(startedAtMs);
     setThemesRefreshElapsedMs(0);
     setThemesRefreshBusy(true);
-    setThemesRefreshMessage("Running newsletter ingest and theme generation...");
     try {
-      let adminSecret = sessionStorage.getItem(OPERATOR_SECRET_SESSION_KEY)?.trim() ?? "";
-      if (!adminSecret) {
-        const entered = window.prompt("Enter ADMIN_SECRET to run manual pre-market refresh:");
-        adminSecret = entered?.trim() ?? "";
-        if (!adminSecret) {
-          setThemesRefreshMessage("Manual pre-market refresh cancelled.");
-          return;
-        }
-        sessionStorage.setItem(OPERATOR_SECRET_SESSION_KEY, adminSecret);
-        setHasStoredAdminSecret(true);
-      }
-
-      let result = await runManualPremarketRefresh(adminSecret);
-      if (!result.ok) {
-        if ((result.error ?? "").toLowerCase().includes("unauthorized")) {
-          sessionStorage.removeItem(OPERATOR_SECRET_SESSION_KEY);
-          setHasStoredAdminSecret(false);
-          const entered = window.prompt("ADMIN_SECRET was rejected. Re-enter ADMIN_SECRET:");
-          const retrySecret = entered?.trim() ?? "";
-          if (!retrySecret) {
-            setThemesRefreshMessage("Manual pre-market refresh cancelled.");
-            return;
-          }
-          sessionStorage.setItem(OPERATOR_SECRET_SESSION_KEY, retrySecret);
-          setHasStoredAdminSecret(true);
-          result = await runManualPremarketRefresh(retrySecret);
-        }
-      }
+      const result = await runManualPremarketRefresh();
 
       if (!result.ok) {
-        setThemesRefreshMessage(result.error ?? "Pre-market refresh failed.");
         return;
       }
 
       const elapsedMs = result.elapsedMs ?? Date.now() - startedAtMs;
-      setThemesRefreshMessage(
-        `Refresh complete in ${formatElapsedLabel(elapsedMs)} (${result.newsletter?.inserted ?? 0} inserted, ${result.themes?.themeCount ?? 0} themes).`
-      );
       setThemesRefreshElapsedMs(elapsedMs);
       setThemesRefreshToken((v) => v + 1);
-    } catch (e) {
-      setThemesRefreshMessage(e instanceof Error ? e.message : "Manual pre-market refresh failed.");
+    } catch {
+      // Non-public app; errors are visible in server logs / network tab if needed.
     } finally {
       setThemesRefreshBusy(false);
       setThemesRefreshStartedAtMs(null);
@@ -321,62 +276,39 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
             onToggle={() => toggle(s.id)}
             actions={
               s.id === "context" ? (
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void triggerThemesRefresh()}
-                      disabled={themesRefreshBusy}
-                      className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
-                      style={{
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-secondary)",
-                        fontFamily: "var(--ws-font-sans)",
-                        fontSize: "var(--ws-fs-label)",
-                      }}
-                      aria-label="Run newsletter ingest and refresh themes"
-                    >
-                      {themesRefreshBusy ? "Running..." : "Refresh"}
-                    </button>
-                    <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
-                      {formatElapsedLabel(themesRefreshElapsedMs)}
-                    </span>
-                    {hasStoredAdminSecret ? (
-                      <button
-                        type="button"
-                        onClick={clearStoredAdminSecret}
-                        className="pm-focus shrink-0 cursor-pointer rounded border px-2 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                        style={{
-                          borderColor: "var(--border-default)",
-                          color: "var(--text-secondary)",
-                          fontFamily: "var(--ws-font-sans)",
-                          fontSize: "var(--ws-fs-label)",
-                        }}
-                        aria-label="Clear stored admin key"
-                      >
-                        Clear key
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
-                      className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                      style={{
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-secondary)",
-                        fontFamily: "var(--ws-font-sans)",
-                        fontSize: "var(--ws-fs-label)",
-                      }}
-                      aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
-                    >
-                      {anySectionExpanded ? "Collapse all" : "Expand all"}
-                    </button>
-                  </div>
-                  {themesRefreshMessage ? (
-                    <span className="pm-site-caption text-right" style={{ color: "var(--text-tertiary)" }}>
-                      {themesRefreshMessage}
-                    </span>
-                  ) : null}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void triggerThemesRefresh()}
+                    disabled={themesRefreshBusy}
+                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
+                    style={{
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--ws-font-sans)",
+                      fontSize: "var(--ws-fs-label)",
+                    }}
+                    aria-label="Run newsletter ingest and refresh themes"
+                  >
+                    {themesRefreshBusy ? "Running..." : "Refresh"}
+                  </button>
+                  <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
+                    {formatElapsedLabel(themesRefreshElapsedMs)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
+                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+                    style={{
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--ws-font-sans)",
+                      fontSize: "var(--ws-fs-label)",
+                    }}
+                    aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
+                  >
+                    {anySectionExpanded ? "Collapse all" : "Expand all"}
+                  </button>
                 </div>
               ) : undefined
             }
@@ -393,9 +325,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                   filtersHydrated={gapperFiltersHydrated}
                   onOpenTickerInLists={onOpenTickerInLists}
                   sipMembershipByTicker={sipMembershipByTicker}
-                  onAddToSip={(target, payload) =>
-                    addToSip({ ...payload, target })
-                  }
+                  onToggleSip={toggleGapperSip}
                   onJumpToEarnings={() => {
                     setCollapsed("earnings", false);
                     queueMicrotask(() => {
