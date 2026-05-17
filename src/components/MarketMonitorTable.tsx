@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import type { MarketMonitorRow, MarketMonitorApiPayload } from "@/app/api/market-monitor/route";
 import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
 import MarketMonitorConstituentsModal, {
@@ -136,6 +146,110 @@ const MM_TABLE_HEADERS_AFTER_DATE = [
 /** Column subheaders for top industry cells (aligned with Up %, Up 25% Q/M, Up 50% M breadth metrics). */
 const MM_TOP_INDUSTRY_HEADERS = ["Up %", "Up 25% (Q)", "Up 25% (M)", "Up 50% (M)"] as const;
 
+const MM_COL_WIDTH_LS_KEY = "stockstalker-mm-col-widths-v2";
+const MM_COL_MIN_W = 40;
+const MM_COL_MAX_W = 960;
+
+/** Logical column IDs for resizing (colgroup / second header row). */
+type MmColKey =
+  | "date"
+  | "top0"
+  | "top1"
+  | "top2"
+  | "top3"
+  | "b0"
+  | "b1"
+  | "b2"
+  | "b3"
+  | "b4"
+  | "b5"
+  | "b6"
+  | "b7"
+  | "b8"
+  | "b9"
+  | "b10"
+  | "b11"
+  | "b12"
+  | "b13"
+  | "universe";
+
+type MmColWidthMap = Partial<Record<MmColKey, number>>;
+
+/** Approximation for `ch` → px used when autofitting breadth columns alongside header text. */
+const MM_CH_APPROX_PX = 7.25;
+
+/** Canvas font strings approximating table header vs body typography. */
+const MM_MEASURE_FONT_HEADER = '700 12px ui-sans-serif, system-ui, sans-serif';
+const MM_MEASURE_FONT_BODY = '400 12px ui-sans-serif, system-ui, sans-serif';
+const MM_MEASURE_FONT_PILL = '600 11px ui-sans-serif, system-ui, sans-serif';
+
+const MM_AUTOFIT_HDR_PAD_PX = 18;
+const MM_AUTOFIT_BODY_PAD_PX = 14;
+const MM_AUTOFIT_TOP_PILL_PAD_PX = 28;
+
+/** Width keys must stay aligned with {@link MM_TABLE_HEADERS_AFTER_DATE} order. */
+const MM_AUTOFIT_BREADTH = [
+  { colKey: "b0" as const, cwKey: "up4pct" as const, text: (r: MarketMonitorRow) => fmtInt(r.up4pct) },
+  { colKey: "b1" as const, cwKey: "down4pct" as const, text: (r: MarketMonitorRow) => fmtInt(r.down4pct) },
+  { colKey: "b2" as const, cwKey: "ratio5d" as const, text: (r: MarketMonitorRow) => fmtRatio(r.ratio5d) },
+  { colKey: "b3" as const, cwKey: "ratio10d" as const, text: (r: MarketMonitorRow) => fmtRatio(r.ratio10d) },
+  { colKey: "b4" as const, cwKey: "up25pctQtr" as const, text: (r: MarketMonitorRow) => fmtInt(r.up25pct_qtr) },
+  { colKey: "b5" as const, cwKey: "down25pctQtr" as const, text: (r: MarketMonitorRow) => fmtInt(r.down25pct_qtr) },
+  { colKey: "b6" as const, cwKey: "up25pctMonth" as const, text: (r: MarketMonitorRow) => fmtInt(r.up25pct_month) },
+  { colKey: "b7" as const, cwKey: "down25pctMonth" as const, text: (r: MarketMonitorRow) => fmtInt(r.down25pct_month) },
+  { colKey: "b8" as const, cwKey: "up50pctMonth" as const, text: (r: MarketMonitorRow) => fmtInt(r.up50pct_month) },
+  { colKey: "b9" as const, cwKey: "down50pctMonth" as const, text: (r: MarketMonitorRow) => fmtInt(r.down50pct_month) },
+  { colKey: "b10" as const, cwKey: "nnh52wHighs" as const, text: (r: MarketMonitorRow) => fmtInt(r.nnh52wHighs ?? 0) },
+  { colKey: "b11" as const, cwKey: "nnh52wLows" as const, text: (r: MarketMonitorRow) => fmtInt(r.nnh52wLows ?? 0) },
+  { colKey: "b12" as const, cwKey: "count7xAtr50d" as const, text: (r: MarketMonitorRow) => fmtInt(r.count7xAtr50d ?? 0) },
+  { colKey: "b13" as const, cwKey: "countEpisodicPivot" as const, text: (r: MarketMonitorRow) => fmtInt(r.countEpisodicPivot ?? 0) },
+] as const;
+
+function loadMmColWidths(): MmColWidthMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(MM_COL_WIDTH_LS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: MmColWidthMap = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof k !== "string" || typeof v !== "number" || !Number.isFinite(v)) continue;
+      out[k as MmColKey] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Keep module-level measuring canvas outside React render. */
+let mmMeasureCtx: CanvasRenderingContext2D | null | undefined;
+
+function mmTextWidthPx(text: string, font: string): number {
+  if (typeof document === "undefined") return text.length * 7;
+  if (mmMeasureCtx === undefined) {
+    const c = document.createElement("canvas");
+    mmMeasureCtx = c.getContext("2d");
+  }
+  if (!mmMeasureCtx) return text.length * 7;
+  mmMeasureCtx.font = font;
+  return mmMeasureCtx.measureText(text).width;
+}
+
+function clampMmColW(px: number): number {
+  return Math.round(Math.min(MM_COL_MAX_W, Math.max(MM_COL_MIN_W, px)));
+}
+
+function mmColStyle(px: number | undefined): CSSProperties | undefined {
+  if (px == null) return undefined;
+  return { width: px, minWidth: px };
+}
+
+function mmTopColKey(i: 0 | 1 | 2 | 3): MmColKey {
+  return `top${i}` as MmColKey;
+}
+
 function maxFormattedCh(rows: MarketMonitorRow[], values: (row: MarketMonitorRow) => string[], minCh: number): number {
   let max = minCh;
   for (const row of rows) {
@@ -148,22 +262,52 @@ function maxFormattedCh(rows: MarketMonitorRow[], values: (row: MarketMonitorRow
 
 function MmTabularInner({
   widthCh,
+  widthPx,
   children,
   className = "",
   textAlign = "right",
 }: {
   widthCh: number;
+  widthPx?: number;
   children: ReactNode;
   className?: string;
   textAlign?: "left" | "right";
 }) {
+  const sizingStyle: CSSProperties =
+    widthPx != null
+      ? { width: `${widthPx}px`, minWidth: `${widthPx}px`, boxSizing: "border-box" }
+      : { width: `${widthCh}ch`, minWidth: `${widthCh}ch` };
+
   return (
     <span
       className={`inline-block text-right tabular-nums ${className}`.trim()}
-      style={{ width: `${widthCh}ch`, minWidth: `${widthCh}ch`, textAlign }}
+      style={{ ...sizingStyle, textAlign }}
     >
       {children}
     </span>
+  );
+}
+
+/** Invisible splitter on header cell edge: drag to resize, double‑click for auto‑fit width. */
+function MmColResizeGrip({
+  onPointerDown,
+  onDoubleClick,
+}: {
+  onPointerDown: (e: ReactPointerEvent<HTMLSpanElement>) => void;
+  onDoubleClick: (e: React.MouseEvent<HTMLSpanElement>) => void;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute top-0 right-0 z-40 h-full w-[6px] translate-x-[4px] cursor-col-resize select-none touch-none"
+      role="presentation"
+      onPointerDown={onPointerDown}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDoubleClick(e);
+      }}
+    />
   );
 }
 
@@ -321,6 +465,147 @@ export default function MarketMonitorTable({
     [tableRowsToShow]
   );
 
+  const dragMmColRef = useRef<{ key: MmColKey; startX: number; startW: number } | null>(null);
+  const [colWidthsPx, setColWidthsPx] = useState<MmColWidthMap>(() => loadMmColWidths());
+  const colWidthsPxRef = useRef<MmColWidthMap | null>(null);
+
+  useLayoutEffect(() => {
+    colWidthsPxRef.current = colWidthsPx;
+  }, [colWidthsPx]);
+
+  const mmFitColPx = useCallback(
+    (key: MmColKey): number => {
+      if (key === "date") {
+        let wPx = mmTextWidthPx("Date", MM_MEASURE_FONT_HEADER) + MM_AUTOFIT_HDR_PAD_PX;
+        for (const row of tableRowsToShow) {
+          wPx = Math.max(
+            wPx,
+            mmTextWidthPx(formatDateDmy(row.date), MM_MEASURE_FONT_BODY) + MM_AUTOFIT_BODY_PAD_PX
+          );
+        }
+        return clampMmColW(Math.ceil(wPx));
+      }
+
+      if (key === "universe") {
+        let wPx =
+          mmTextWidthPx("Stock Universe", MM_MEASURE_FONT_HEADER) + MM_AUTOFIT_HDR_PAD_PX;
+        const chFloor =
+          Math.ceil(columnValueWidths.universe * MM_CH_APPROX_PX + MM_AUTOFIT_BODY_PAD_PX);
+        for (const row of tableRowsToShow) {
+          wPx = Math.max(wPx, mmTextWidthPx(fmtInt(row.universe), MM_MEASURE_FONT_BODY) + MM_AUTOFIT_BODY_PAD_PX);
+        }
+        return clampMmColW(Math.ceil(Math.max(wPx, chFloor)));
+      }
+
+      const topMatch = /^top([0-3])$/.exec(key);
+      if (topMatch) {
+        const idx = Number(topMatch[1]) as 0 | 1 | 2 | 3;
+        const hdr = MM_TOP_INDUSTRY_HEADERS[idx];
+        let wPx = mmTextWidthPx(hdr, MM_MEASURE_FONT_HEADER) + MM_AUTOFIT_HDR_PAD_PX;
+        for (const row of tableRowsToShow) {
+          const v = getTopIndustryValues(row.topUpIndustries)[idx];
+          if (!v) continue;
+          const label = normalizeIndustryDisplayName(v);
+          wPx = Math.max(
+            wPx,
+            mmTextWidthPx(label, MM_MEASURE_FONT_PILL) + MM_AUTOFIT_TOP_PILL_PAD_PX
+          );
+        }
+        return clampMmColW(Math.ceil(Math.max(wPx, MM_COL_MIN_W)));
+      }
+
+      const bi = MM_AUTOFIT_BREADTH.findIndex((row) => row.colKey === key);
+      if (bi !== -1) {
+        const spec = MM_AUTOFIT_BREADTH[bi];
+        const hdrLabel = MM_TABLE_HEADERS_AFTER_DATE[bi];
+        let wPx =
+          mmTextWidthPx(hdrLabel, MM_MEASURE_FONT_HEADER) + MM_AUTOFIT_HDR_PAD_PX;
+        const cw =
+          Math.ceil(columnValueWidths[spec.cwKey] * MM_CH_APPROX_PX + MM_AUTOFIT_BODY_PAD_PX);
+        wPx = Math.max(wPx, cw);
+        for (const row of tableRowsToShow) {
+          const txt = spec.text(row);
+          if (txt !== "") {
+            wPx = Math.max(
+              wPx,
+              mmTextWidthPx(txt, MM_MEASURE_FONT_BODY) + MM_AUTOFIT_BODY_PAD_PX
+            );
+          }
+        }
+        return clampMmColW(Math.ceil(wPx));
+      }
+
+      return MM_COL_MIN_W;
+    },
+    [columnValueWidths, tableRowsToShow]
+  );
+
+  const mmApplyAutoFit = useCallback(
+    (k: MmColKey) => {
+      const w = mmFitColPx(k);
+      setColWidthsPx((p) => ({ ...p, [k]: w }));
+    },
+    [mmFitColPx]
+  );
+
+  const mmBeginResize = useCallback((e: ReactPointerEvent<HTMLSpanElement>, k: MmColKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    const rect = th?.getBoundingClientRect();
+    if (!rect?.width || !Number.isFinite(rect.width)) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      //
+    }
+    dragMmColRef.current = {
+      key: k,
+      startX: e.clientX,
+      startW: colWidthsPxRef.current?.[k] ?? rect.width,
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MM_COL_WIDTH_LS_KEY, JSON.stringify(colWidthsPx));
+    } catch {
+      //
+    }
+  }, [colWidthsPx]);
+
+  useEffect(() => {
+    function finishDrag() {
+      if (!dragMmColRef.current) return;
+      dragMmColRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+
+    function onMove(ev: PointerEvent) {
+      const d = dragMmColRef.current;
+      if (!d) return;
+      const next = clampMmColW(d.startW + (ev.clientX - d.startX));
+      setColWidthsPx((prev) => {
+        if (prev[d.key] === next) return prev;
+        return { ...prev, [d.key]: next };
+      });
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("pointercancel", finishDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finishDrag);
+      window.removeEventListener("pointercancel", finishDrag);
+      finishDrag();
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ background: "var(--ws-bg2)" }}>
@@ -375,6 +660,17 @@ export default function MarketMonitorTable({
         style={{ background: "var(--ws-bg)", border: "1px solid var(--ws-border)" }}
       >
         <table className="min-w-max whitespace-nowrap text-ws-body text-center border-collapse">
+          <colgroup>
+            <col style={mmColStyle(colWidthsPx.date)} />
+            {(topIndustriesExpanded ? [0, 1, 2, 3] : [0]).map((ti) => {
+              const tk = mmTopColKey(ti as 0 | 1 | 2 | 3);
+              return <col key={tk} style={mmColStyle(colWidthsPx[tk])} />;
+            })}
+            {MM_AUTOFIT_BREADTH.map((row) => (
+              <col key={row.colKey} style={mmColStyle(colWidthsPx[row.colKey])} />
+            ))}
+            <col style={mmColStyle(colWidthsPx.universe)} />
+          </colgroup>
           <thead>
             <tr>
               <th
@@ -432,44 +728,65 @@ export default function MarketMonitorTable({
             <tr>
               <th
                 scope="col"
-                className="sticky top-[2.125rem] z-10 px-1 py-0.5 border-b border-l border-r text-left text-ws-body font-bold"
+                className="sticky top-[2.125rem] z-10 relative px-1 py-0.5 border-b border-l border-r text-left text-ws-body font-bold"
                 style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
               >
                 Date
+                <MmColResizeGrip
+                  onPointerDown={(e) => mmBeginResize(e, "date")}
+                  onDoubleClick={() => mmApplyAutoFit("date")}
+                />
               </th>
-              {(topIndustriesExpanded ? MM_TOP_INDUSTRY_HEADERS : [MM_TOP_INDUSTRY_HEADERS[0]]).map((label, hi) => (
-                <th
-                  key={`mm-top-ind-${hi}`}
-                  scope="col"
-                  className="sticky top-[2.125rem] z-10 border-b border-r px-1 py-0.5 text-left text-ws-body font-bold"
-                  style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
-                >
-                  {label}
-                </th>
-              ))}
+              {(topIndustriesExpanded ? MM_TOP_INDUSTRY_HEADERS : [MM_TOP_INDUSTRY_HEADERS[0]]).map((label, hi) => {
+                const ti = (topIndustriesExpanded ? hi : 0) as 0 | 1 | 2 | 3;
+                const ck = mmTopColKey(ti);
+                return (
+                  <th
+                    key={`mm-top-ind-${hi}`}
+                    scope="col"
+                    className="sticky top-[2.125rem] z-10 relative border-b border-r px-1 py-0.5 text-left text-ws-body font-bold"
+                    style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+                  >
+                    {label}
+                    <MmColResizeGrip
+                      onPointerDown={(e) => mmBeginResize(e, ck)}
+                      onDoubleClick={() => mmApplyAutoFit(ck)}
+                    />
+                  </th>
+                );
+              })}
               {MM_TABLE_HEADERS_AFTER_DATE.map((label, i) => {
                 const hdr =
                   i <= 5
                     ? { background: "var(--ws-mm-header-gold)", color: "var(--ws-mm-header-text)" }
                     : { background: "var(--ws-mm-header-green)", color: "var(--ws-mm-header-text)" };
                 const edge = i === 6 ? " border-l border-r" : "";
+                const bk = MM_AUTOFIT_BREADTH[i].colKey;
                 return (
                   <th
                     scope="col"
                     key={label}
-                    className={`sticky top-[2.125rem] z-10 px-1 py-0.5 border-b text-center text-ws-body font-bold${edge}`}
+                    className={`sticky top-[2.125rem] z-10 relative px-1 py-0.5 border-b text-center text-ws-body font-bold${edge}`}
                     style={{ ...hdr, borderColor: "var(--ws-border)" }}
                   >
                     {label}
+                    <MmColResizeGrip
+                      onPointerDown={(e) => mmBeginResize(e, bk)}
+                      onDoubleClick={() => mmApplyAutoFit(bk)}
+                    />
                   </th>
                 );
               })}
               <th
                 scope="col"
-                className="sticky top-[2.125rem] z-10 px-1 py-0.5 border-b border-l text-center text-ws-body font-bold"
+                className="sticky top-[2.125rem] z-10 relative px-1 py-0.5 border-b border-l text-center text-ws-body font-bold"
                 style={{ background: "var(--ws-mm-header-gold)", borderColor: "var(--ws-border)", color: "var(--ws-mm-header-text)" }}
               >
                 Stock Universe
+                <MmColResizeGrip
+                  onPointerDown={(e) => mmBeginResize(e, "universe")}
+                  onDoubleClick={() => mmApplyAutoFit("universe")}
+                />
               </th>
             </tr>
           </thead>
@@ -491,7 +808,7 @@ export default function MarketMonitorTable({
                   style={{ borderColor: "var(--ws-border)" }}
                 >
                   <MmDateCellLeft>
-                    <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left">{formatDateDmy(row.date)}</MmTabularInner>
+                    <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left" widthPx={colWidthsPx.date}>{formatDateDmy(row.date)}</MmTabularInner>
                   </MmDateCellLeft>
                 </td>
                 {topCells.map((ind, ti) => (
@@ -511,11 +828,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up4pct", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.up4pct}>{fmtInt(row.up4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up4pct} widthPx={colWidthsPx.b0}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair4}>
-                      <MmTabularInner widthCh={columnValueWidths.up4pct}>{fmtInt(row.up4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up4pct} widthPx={colWidthsPx.b0}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -527,11 +844,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down4pct", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.down4pct}>{fmtInt(row.down4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down4pct} widthPx={colWidthsPx.b1}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair4}>
-                      <MmTabularInner widthCh={columnValueWidths.down4pct}>{fmtInt(row.down4pct)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down4pct} widthPx={colWidthsPx.b1}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -539,14 +856,14 @@ export default function MarketMonitorTable({
                   <MmNumericCellCenter
                     className={getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}
                   >
-                    <MmTabularInner widthCh={columnValueWidths.ratio5d}>{fmtRatio(row.ratio5d)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.ratio5d} widthPx={colWidthsPx.b2}>{fmtRatio(row.ratio5d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
                 <td className={MM_BODY_TD}>
                   <MmNumericCellCenter
                     className={getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}
                   >
-                    <MmTabularInner widthCh={columnValueWidths.ratio10d}>{fmtRatio(row.ratio10d)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.ratio10d} widthPx={colWidthsPx.b3}>{fmtRatio(row.ratio10d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
                 <td className={MM_BODY_TD}>
@@ -557,11 +874,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_qtr", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr} widthPx={colWidthsPx.b4}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairQ}>
-                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctQtr} widthPx={colWidthsPx.b4}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -573,11 +890,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_qtr", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr} widthPx={colWidthsPx.b5}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairQ}>
-                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctQtr} widthPx={colWidthsPx.b5}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -589,11 +906,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up25pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth}>{fmtInt(row.up25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth} widthPx={colWidthsPx.b6}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairM}>
-                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth}>{fmtInt(row.up25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up25pctMonth} widthPx={colWidthsPx.b6}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -605,11 +922,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down25pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth}>{fmtInt(row.down25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth} widthPx={colWidthsPx.b7}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pairM}>
-                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth}>{fmtInt(row.down25pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down25pctMonth} widthPx={colWidthsPx.b7}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -621,11 +938,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("up50pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth}>{fmtInt(row.up50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth} widthPx={colWidthsPx.b8}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair50}>
-                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth}>{fmtInt(row.up50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.up50pctMonth} widthPx={colWidthsPx.b8}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -637,11 +954,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("down50pct_month", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth}>{fmtInt(row.down50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth} widthPx={colWidthsPx.b9}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair50}>
-                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth}>{fmtInt(row.down50pct_month)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.down50pctMonth} widthPx={colWidthsPx.b9}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -653,11 +970,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_highs", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs} widthPx={colWidthsPx.b10}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair52w}>
-                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wHighs} widthPx={colWidthsPx.b10}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -669,11 +986,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("nnh52w_lows", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows} widthPx={colWidthsPx.b11}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter className={pair52w}>
-                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.nnh52wLows} widthPx={colWidthsPx.b11}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -685,11 +1002,11 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_7x_atr_50d", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d} widthPx={colWidthsPx.b12}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.count7xAtr50d} widthPx={colWidthsPx.b12}>{fmtInt(row.count7xAtr50d ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
@@ -701,17 +1018,17 @@ export default function MarketMonitorTable({
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
                       onClick={() => openMmModal("count_episodic_pivot", row.date)}
                     >
-                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot} widthPx={colWidthsPx.b13}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
                     <MmNumericCellCenter>
-                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
+                      <MmTabularInner widthCh={columnValueWidths.countEpisodicPivot} widthPx={colWidthsPx.b13}>{fmtInt(row.countEpisodicPivot ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
                 </td>
                 <td className={`${MM_BODY_TD} border-l`} style={{ borderColor: "var(--ws-border)" }}>
                   <MmNumericCellCenter>
-                    <MmTabularInner widthCh={columnValueWidths.universe}>{fmtInt(row.universe)}</MmTabularInner>
+                    <MmTabularInner widthCh={columnValueWidths.universe} widthPx={colWidthsPx.universe}>{fmtInt(row.universe)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
               </tr>
