@@ -155,14 +155,16 @@ curl -s http://127.0.0.1:8000/news -H "Authorization: Bearer dev-secret-32chars-
 | `ANTHROPIC_LARGE_CAP_MODEL` | No | Default `claude-sonnet-4-6` in `render.yaml`; e.g. `claude-opus-4-7`. |
 | `SUPABASE_URL` | For `/large-cap/analyze` cache | Same project URL as `NEXT_PUBLIC_SUPABASE_URL`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | For `/large-cap/analyze` cache | Service role key (never expose to browser). |
-| `SCREENER_DB_PATH` | Recommended on Render | Path to `screener.db` for Large Cap digest. |
+| `SCREENER_DB_PATH` | Yes on Render | Path to `screener.db` for Large Cap digest (`/app/data/screener.db` in `render.yaml`). |
+| `SCREENER_DATA_DIR` | No | Data directory; default `/app/data` on Render. |
 | `PORT` | Auto | Set by Render; uvicorn listens on it. |
 
 ## Deploy on Render
 
-1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service`.
+1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **20GB persistent disk** at `/app/data`.
 2. After first deploy, set **`INTERNAL_API_KEY`**, **`ANTHROPIC_API_KEY`**, and Supabase cache vars on the Python service environment (Render dashboard).
-3. On the **Next.js** service, set:
+3. **One-time DB copy:** StockStalker and `stockstalker-python` each have their **own** disk. After the Python disk exists, copy `screener.db` onto it (e.g. from your PC via Render Shell, or re-run your usual DB upload flow targeting this service). Until `screener.db` is present at `/app/data/screener.db`, `/large-cap/digest` returns 503.
+4. On the **Next.js** service, set:
    - `PYTHON_SERVICE_URL` — public URL of this service (no trailing slash), e.g. `https://stockstalker-python.onrender.com`
    - `PYTHON_SERVICE_KEY` — **same value** as `INTERNAL_API_KEY`
 

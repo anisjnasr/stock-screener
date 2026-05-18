@@ -71,3 +71,14 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Large Cap digest reads local screener.db (separate disk from StockStalker — sync DB after first deploy).
+      - key: SCREENER_DB_PATH
+        value: /app/data/screener.db
+      - key: SCREENER_DATA_DIR
+        value: /app/data
+
+    # Persistent disk for screener.db — separate volume from StockStalker; populate once (see README).
+    disk:
+      name: screener-data-python
+      mountPath: /app/data
+      sizeGB: 20
