@@ -1,6 +1,6 @@
 """
-StockStalker Python microservice — Phase 12A (master spec).
-GET /health  |  POST /news (Bearer INTERNAL_API_KEY)
+StockStalker Python microservice — news + Large Cap digest, Claude synthesis, Supabase cache.
+GET /health  |  POST /news  |  POST /large-cap/digest  |  POST /large-cap/synthesize  |  POST /large-cap/analyze
 """
 
 from __future__ import annotations
@@ -10,22 +10,31 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import anthropic
 import yfinance as yf
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
+
+from large_cap.cached_analysis import run_large_cap_analysis_cached
+from large_cap.claude_synthesis import synthesize_large_cap_verdict
+from large_cap.digest_builder import build_large_cap_digest
+from large_cap.supabase_cache import SupabaseCacheError
 
 app = FastAPI(title="StockStalker Python", version="0.1.0")
 
 
 @app.get("/")
 def root() -> dict[str, object]:
-    """Root URL for browser checks — API lives under /health and /news."""
+    """Root URL for browser checks — core routes under /health, /news, /large-cap/digest."""
     return {
         "service": "stockstalker-python",
         "version": app.version,
         "endpoints": {
             "GET /health": "Liveness (no auth)",
             "POST /news": "Ticker news JSON (Bearer INTERNAL_API_KEY)",
+            "POST /large-cap/digest": "Large Cap digest JSON (Bearer INTERNAL_API_KEY)",
+            "POST /large-cap/synthesize": "Claude verdict from digest (Bearer INTERNAL_API_KEY, ANTHROPIC_API_KEY)",
+            "POST /large-cap/analyze": "Digest + cache + Claude (Bearer INTERNAL_API_KEY, Supabase + Anthropic)",
             "GET /docs": "OpenAPI / Swagger UI",
         },
     }
@@ -63,6 +72,71 @@ class NewsItem(BaseModel):
 
 class NewsResponse(BaseModel):
     data: dict[str, list[NewsItem]]
+
+
+class PremarketSnapshotIn(BaseModel):
+    """Mapped from Massive snapshot row (`parseSnapshotTickerRow`) — see TS LargeCapPremarketQuotePayload."""
+
+    last_price: float
+    prev_close_from_snapshot: float
+    gap_pct: float
+    pm_volume: float
+    avg_volume_baseline_shares: Optional[float] = None
+
+
+class LargeCapDigestRequest(BaseModel):
+    ticker: str = Field(..., description="Symbol, e.g. AAPL")
+    data_mode: str = Field(default="historical", description="historical | historical_premarket")
+    analysis_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD session date for this digest (Eastern); default today ET",
+    )
+    premarket_snapshot: Optional[PremarketSnapshotIn] = Field(
+        default=None,
+        description="Massive snapshot fields when data_mode includes pre-market",
+    )
+
+
+class LargeCapDigestResponse(BaseModel):
+    ok: bool = True
+    digest: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class LargeCapSynthesizeRequest(BaseModel):
+    """Body: full digest JSON (e.g. from POST /large-cap/digest)."""
+
+    digest: dict[str, Any] = Field(..., description="Large Cap digest object")
+    model: Optional[str] = Field(default=None, description="Override Anthropic model id")
+
+
+class LargeCapSynthesizeResponse(BaseModel):
+    ok: bool = True
+    verdict: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class LargeCapAnalyzeRequest(BaseModel):
+    profile_id: str = Field(..., description="StockStalker profiles.id UUID")
+    ticker: str = Field(..., description="Symbol, e.g. AAPL")
+    data_mode: str = Field(default="historical", description="historical | historical_premarket")
+    analysis_date: Optional[str] = Field(default=None, description="YYYY-MM-DD session date (Eastern)")
+    premarket_snapshot: Optional[PremarketSnapshotIn] = None
+    force_refresh: bool = Field(default=False, description="Bypass digest hash cache check")
+    model: Optional[str] = Field(default=None, description="Optional Anthropic model override")
+
+
+class LargeCapAnalyzeResponse(BaseModel):
+    ok: bool = True
+    cache_hit: bool = False
+    claude_call_made: bool = False
+    digest_hash: Optional[str] = None
+    trading_date: Optional[str] = None
+    data_mode: Optional[str] = None
+    analyzed_at: Optional[str] = None
+    digest: dict[str, Any] = Field(default_factory=dict)
+    verdict: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
 
 
 def _normalize_ticker(raw: str) -> str | None:
@@ -181,3 +255,145 @@ def post_news(
         time.sleep(0.05)
 
     return NewsResponse(data=result)
+
+
+@app.post("/large-cap/digest", response_model=LargeCapDigestResponse)
+def post_large_cap_digest(
+    req: LargeCapDigestRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> LargeCapDigestResponse:
+    """Return deterministic digest JSON from local screener.db (see large_cap/digest_builder.py)."""
+    _require_internal_key(authorization)
+
+    sym = _normalize_ticker(req.ticker)
+    if not sym:
+        raise HTTPException(status_code=400, detail="Invalid or empty ticker")
+
+    mode = (req.data_mode or "historical").strip().lower()
+    if mode not in ("historical", "historical_premarket"):
+        raise HTTPException(
+            status_code=400,
+            detail="data_mode must be historical or historical_premarket",
+        )
+    try:
+        snap_dict = req.premarket_snapshot.model_dump() if req.premarket_snapshot else None
+        d = build_large_cap_digest(
+            sym,
+            mode,  # type: ignore[arg-type]
+            analysis_date=req.analysis_date,
+            premarket_snapshot=snap_dict,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return LargeCapDigestResponse(ok=True, digest=d, error=None)
+
+
+@app.post("/large-cap/synthesize", response_model=LargeCapSynthesizeResponse)
+def post_large_cap_synthesize(
+    req: LargeCapSynthesizeRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> LargeCapSynthesizeResponse:
+    """
+    Run Claude on a pre-built digest. Requires ANTHROPIC_API_KEY on the server.
+    Returns blueprint §9 JSON (validated); on failure returns ok=false without raising if you prefer —
+    here we use HTTP errors for API transport issues.
+    """
+    _require_internal_key(authorization)
+
+    if not req.digest or not isinstance(req.digest, dict):
+        raise HTTPException(status_code=400, detail="digest must be a non-empty object")
+
+    try:
+        v = synthesize_large_cap_verdict(req.digest, model=req.model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Anthropic authentication failed (check ANTHROPIC_API_KEY): {e}",
+        ) from e
+    except anthropic.RateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    except anthropic.APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Anthropic API error: {e}") from e
+    except anthropic.APIConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"Anthropic connection error: {e}") from e
+    except anthropic.APITimeoutError as e:
+        raise HTTPException(status_code=504, detail=f"Anthropic timeout: {e}") from e
+    except anthropic.AnthropicError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return LargeCapSynthesizeResponse(ok=True, verdict=v, error=None)
+
+
+@app.post("/large-cap/analyze", response_model=LargeCapAnalyzeResponse)
+def post_large_cap_analyze(
+    req: LargeCapAnalyzeRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> LargeCapAnalyzeResponse:
+    """
+    Build digest, compare digest hash to Supabase cache, call Claude on miss, upsert cache.
+    Logs cache HIT/MISS (blueprint §8c).
+    """
+    _require_internal_key(authorization)
+
+    sym = _normalize_ticker(req.ticker)
+    if not sym:
+        raise HTTPException(status_code=400, detail="Invalid or empty ticker")
+
+    mode = (req.data_mode or "historical").strip().lower()
+    if mode not in ("historical", "historical_premarket"):
+        raise HTTPException(
+            status_code=400,
+            detail="data_mode must be historical or historical_premarket",
+        )
+
+    snap_dict = req.premarket_snapshot.model_dump() if req.premarket_snapshot else None
+
+    try:
+        result = run_large_cap_analysis_cached(
+            req.profile_id,
+            sym,
+            mode,  # type: ignore[arg-type]
+            analysis_date=req.analysis_date,
+            premarket_snapshot=snap_dict,
+            force_refresh=req.force_refresh,
+            claude_model=req.model,
+        )
+    except SupabaseCacheError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Anthropic authentication failed (check ANTHROPIC_API_KEY): {e}",
+        ) from e
+    except anthropic.RateLimitError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    except anthropic.APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Anthropic API error: {e}") from e
+    except anthropic.APIConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"Anthropic connection error: {e}") from e
+    except anthropic.APITimeoutError as e:
+        raise HTTPException(status_code=504, detail=f"Anthropic timeout: {e}") from e
+    except anthropic.AnthropicError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return LargeCapAnalyzeResponse(
+        ok=True,
+        cache_hit=result["cache_hit"],
+        claude_call_made=result["claude_call_made"],
+        digest_hash=result["digest_hash"],
+        trading_date=result["trading_date"],
+        data_mode=result["data_mode"],
+        analyzed_at=result["analyzed_at"],
+        digest=result["digest"],
+        verdict=result["verdict"],
+        error=None,
+    )

@@ -62,3 +62,12 @@ services:
     envVars:
       - key: INTERNAL_API_KEY
         sync: false
+      # Large Cap Analysis — Claude API (same key can be used as main app if desired)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_LARGE_CAP_MODEL
+        value: claude-sonnet-4-6
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

@@ -75,7 +75,7 @@ export default function EconomicCalendar() {
   const [mktEvents, setMktEvents] = useState<MarketEventPublic[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<CalendarRangeView>("week");
+  const [view, setView] = useState<CalendarRangeView>("today");
 
   const load = useCallback(async () => {
     setLoading(true);

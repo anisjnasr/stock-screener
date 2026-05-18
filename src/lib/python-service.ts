@@ -67,6 +67,164 @@ export function isPythonServiceConfigured(): boolean {
   return Boolean(process.env.PYTHON_SERVICE_URL?.trim() && process.env.PYTHON_SERVICE_KEY?.trim());
 }
 
+/** Mirrors Python `premarket_snapshot` body field — Massive snapshot row mapped in TS. */
+export type LargeCapPremarketSnapshotForPython = {
+  last_price: number;
+  prev_close_from_snapshot: number;
+  gap_pct: number;
+  pm_volume: number;
+  avg_volume_baseline_shares: number | null;
+};
+
+export type PythonLargeCapDigestResponse = {
+  ok: boolean;
+  digest?: Record<string, unknown>;
+  error?: string | null;
+};
+
+export type PythonLargeCapAnalyzeResponse = {
+  ok: boolean;
+  cache_hit?: boolean;
+  claude_call_made?: boolean;
+  digest_hash?: string | null;
+  trading_date?: string | null;
+  data_mode?: string | null;
+  analyzed_at?: string | null;
+  digest?: Record<string, unknown>;
+  verdict?: Record<string, unknown>;
+  error?: string | null;
+};
+
+/**
+ * POST `/large-cap/analyze` — digest + Supabase hash cache + Claude on miss.
+ */
+export async function fetchPythonLargeCapAnalyze(init: {
+  profileId: string;
+  ticker: string;
+  dataMode: "historical" | "historical_premarket";
+  analysisDate?: string | null;
+  premarketSnapshot?: LargeCapPremarketSnapshotForPython | null;
+  forceRefresh?: boolean;
+  model?: string | null;
+  signal?: AbortSignal;
+}): Promise<PythonLargeCapAnalyzeResponse> {
+  const base = process.env.PYTHON_SERVICE_URL?.trim();
+  const key = process.env.PYTHON_SERVICE_KEY?.trim();
+  if (!base || !key) {
+    throw new Error("PYTHON_SERVICE_URL and PYTHON_SERVICE_KEY must be set");
+  }
+
+  const ticker = String(init.ticker).trim().toUpperCase();
+  const profileId = String(init.profileId).trim();
+  if (!ticker) throw new Error("ticker is required");
+  if (!profileId) throw new Error("profileId is required");
+
+  const url = `${normalizeBaseUrl(base)}/large-cap/analyze`;
+  const body: Record<string, unknown> = {
+    profile_id: profileId,
+    ticker,
+    data_mode: init.dataMode,
+    analysis_date: init.analysisDate ?? null,
+    force_refresh: Boolean(init.forceRefresh),
+    model: init.model ?? null,
+  };
+  if (init.premarketSnapshot != null) {
+    body.premarket_snapshot = init.premarketSnapshot;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: init.signal,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`Python /large-cap/analyze: invalid JSON (${res.status})`);
+  }
+
+  const obj = parsed as PythonLargeCapAnalyzeResponse & { detail?: string };
+  if (!res.ok) {
+    throw new Error(
+      `Python /large-cap/analyze HTTP ${res.status}: ${obj.detail || obj.error || text.slice(0, 400)}`
+    );
+  }
+  if (!obj.ok) {
+    throw new Error(obj.error || "Python /large-cap/analyze returned ok=false");
+  }
+  return obj;
+}
+
+/**
+ * POST `/large-cap/digest` on the Python service (server-only).
+ */
+export async function fetchPythonLargeCapDigest(init: {
+  ticker: string;
+  dataMode: "historical" | "historical_premarket";
+  analysisDate?: string | null;
+  premarketSnapshot?: LargeCapPremarketSnapshotForPython | null;
+  signal?: AbortSignal;
+}): Promise<PythonLargeCapDigestResponse> {
+  const base = process.env.PYTHON_SERVICE_URL?.trim();
+  const key = process.env.PYTHON_SERVICE_KEY?.trim();
+  if (!base || !key) {
+    throw new Error("PYTHON_SERVICE_URL and PYTHON_SERVICE_KEY must be set");
+  }
+
+  const ticker = String(init.ticker).trim().toUpperCase();
+  if (!ticker) {
+    throw new Error("ticker is required");
+  }
+
+  const url = `${normalizeBaseUrl(base)}/large-cap/digest`;
+  const body: Record<string, unknown> = {
+    ticker,
+    data_mode: init.dataMode,
+    analysis_date: init.analysisDate ?? null,
+  };
+  if (init.premarketSnapshot != null) {
+    body.premarket_snapshot = init.premarketSnapshot;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: init.signal,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`Python /large-cap/digest: invalid JSON (${res.status})`);
+  }
+
+  const obj = parsed as PythonLargeCapDigestResponse;
+  if (!res.ok) {
+    throw new Error(`Python /large-cap/digest HTTP ${res.status}: ${text.slice(0, 400)}`);
+  }
+  if (!obj.ok) {
+    throw new Error(obj.error || "Python /large-cap/digest returned ok=false");
+  }
+  return obj;
+}
+
 /**
  * POST /news on the Python service. Call only from server (API routes, crons, RSC).
  * Sends tickers in chunks of {@link MAX_TICKERS_PER_NEWS_REQUEST} and merges `data`.
