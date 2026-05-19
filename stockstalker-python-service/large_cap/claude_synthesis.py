@@ -49,22 +49,27 @@ Rules:
 - Set the trigger, target, and invalidation of each scenario at genuinely meaningful, distinct price levels. The target should be a level the move would plausibly *reach*, and the invalidation a level that would genuinely *disprove* the scenario — they should not be jammed close together. Well-spaced, meaningful levels also make each call cleanly verifiable after the fact.
 - Output **only** valid JSON matching the schema you are given. No preamble, no markdown, no code fences.
 
-Structure your output as two distinct things — a narrative and a set of scenarios. Do not blend them:
-- The **narrative** is the *context read*: what kind of setup the stock is in right now (its base structure, where it sits in its ranges, the gap, the trend) and — importantly — what the historical analogues suggest. It explains *why* today is or isn't interesting. It does not list forward price paths.
+Structure your output as structured narrative sections, decision key levels, and scenarios. Do not blend forward price paths into the narrative sections:
+- **narrative_sections** — short, scannable context (1–2 sentences per section max). No bullet lists. No forward scenario paths here.
+  - **big_picture**: multi-timescale structure, trend, and where the stock sits in its ranges.
+  - **recent_action**: last few sessions — range expansion, rejection, pause, or drift into key levels.
+  - **historical_analogues**: what comparable prior setups did next; cite match_count honestly; if low_sample or match_count is 0, say so plainly.
+  - **pre_market**: gap, last price vs prior close, volume vs baseline, and whether pre-market upgraded/downgraded the historical read. If pre-market data is absent, write one sentence stating historical-only assessment.
+- **decision_levels** — exactly **1–3** rows that determine today's scenarios. Each row has three parts: **role** (Trigger, Target, Invalidation, Range, etc.), **source** (the structural origin from the digest — name the exact level, e.g. Prior day high, Top of consolidation area, Recent swing low, 20-day EMA; never use vague labels like "Primary scenario"), and either a **price** or **zone_low + zone_high** for a range band. Pick prices from digest key levels; the source must explain which digest level you chose.
 - The **scenarios** are the *discrete forward paths*: concrete, distinct ways the session could resolve, each anchored to specific price levels.
 
 Use the historical analogues — this is central to the tool's value:
 - The digest contains an `historical_analogues` block: prior days when this same stock was in a similar setup, and what each did next, with summary tendencies across the set.
-- Weave the relevant findings into the **narrative** — e.g. "in the last N comparable gap-ups, the stock followed through on most and reversed on one", and cite a specific dated instance or two when useful.
+- Put analogue findings in **narrative_sections.historical_analogues** — e.g. "in the last N comparable gap-ups, the stock followed through on most and reversed on one", and cite a specific dated instance or two when useful.
 - Let the analogue tendencies inform your **confidence tags** and which scenario you rank first. If the precedents lean strongly one way, the matching scenario earns higher confidence.
-- **Honesty about sample size is mandatory.** If the analogue block has a `low_sample` flag or a low `match_count`, say so plainly in the narrative ("only 2 close precedents, so treat this as weak evidence") and do not present a thin sample as a reliable pattern. If `match_count` is 0, say there are no clear precedents and rely on structure alone. Never invent or imply analogues that are not in the digest.
+- **Honesty about sample size is mandatory.** If the analogue block has a `low_sample` flag or a low `match_count`, say so plainly in **historical_analogues** ("only 2 close precedents, so treat this as weak evidence") and do not present a thin sample as a reliable pattern. If `match_count` is 0, say there are no clear precedents and rely on structure alone. Never invent or imply analogues that are not in the digest.
 
 For a **Trade** verdict, provide exactly 3 scenarios, ranked most-probable first, each with a confidence tag of "High", "Medium", or "Low".
 - **The scenarios must genuinely span the range of outcomes — a stock can always fail to do what is expected.** They must not be three variations of the same direction. Whenever the setup points one way (e.g. a pre-market gap up), the scenario set must still include the ways it fails: one scenario for the expected move following through, one for it failing/reversing, and one for it going nowhere (consolidating, no trend). For a gap-up that is: gap-up-and-breakout, gap-up-and-fail/reverse, gap-up-and-consolidate. Apply the mirror logic to a gap-down.
 - The three confidence tags should honestly reflect how lopsided the setup is. A clean, well-supported setup might read High / Medium / Low. A genuinely uncertain one might read Medium / Medium / Low — and that is correct; do not manufacture a High to look decisive.
 - Each scenario has a short title and a one-line description referencing its levels.
 
-For a **No Trade** verdict, provide an empty scenarios list. The narrative still applies — a one- to two-sentence explanation of why the stock looks rangebound or lacks an edge (and what the analogues show, if relevant).
+For a **No Trade** verdict, provide an empty scenarios list. The narrative sections still apply — explain why the stock looks rangebound or lacks an edge.
 """
 
 USER_MESSAGE_SCHEMA_REMINDER = """Output a single JSON object with exactly these keys and types:
@@ -72,7 +77,9 @@ USER_MESSAGE_SCHEMA_REMINDER = """Output a single JSON object with exactly these
 - verdict: \"Trade\" or \"No Trade\"
 - verdict_reason: string, one concise sentence (short one-liner for UI)
 - bias: \"Bullish\", \"Bearish\", or \"Neutral\"
-- narrative: string, 2–4 sentences for Trade; No Trade still needs a brief explanation. No forward price-path list here.
+- narrative_sections: object with keys big_picture, recent_action, historical_analogues, pre_market (each a string, 1–2 sentences; no forward price-path list)
+- decision_levels: array of 1–3 items for Trade (0–2 for No Trade). Each { role: string (Trigger|Target|Invalidation|Range|Support|Resistance), source: string naming the digest structural level (e.g. Prior day high, Top of consolidation area, Recent swing low, 55-session range high — never "Primary scenario"), price: number } OR { role, source, zone_low: number, zone_high: number } for a range band. Do not dump every digest level.
+- narrative: string, optional legacy summary — omit if narrative_sections is complete
 - scenarios: array. If verdict is Trade: exactly 3 objects ranked 1–3 with fields rank (1–3), confidence (\"High\"|\"Medium\"|\"Low\"), title, description, key_levels { trigger, target, invalidation } (numbers), expected_move_pct (number), direction (\"Long\"|\"Short\"|\"Either\"). If No Trade: empty array [].
 
 Do not wrap in markdown. No text before or after the JSON."""
@@ -84,6 +91,47 @@ class KeyLevels(BaseModel):
     trigger: float
     target: float
     invalidation: float
+
+
+class NarrativeSectionsOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    big_picture: str = Field(min_length=1)
+    recent_action: str = Field(min_length=1)
+    historical_analogues: str = Field(min_length=1)
+    pre_market: str = Field(min_length=1)
+
+
+class DecisionLevelOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Optional[str] = Field(default=None, max_length=80)
+    source: Optional[str] = Field(default=None, max_length=120)
+    label: Optional[str] = Field(default=None, max_length=120)
+    price: Optional[float] = None
+    zone_low: Optional[float] = None
+    zone_high: Optional[float] = None
+    low_label: Optional[str] = Field(default=None, max_length=120)
+    high_label: Optional[str] = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def price_or_zone(self) -> DecisionLevelOut:
+        has_price = self.price is not None
+        has_zone = self.zone_low is not None and self.zone_high is not None
+        if has_price and has_zone:
+            raise ValueError("decision_levels item must use price OR zone bounds, not both")
+        if not has_price and not has_zone:
+            raise ValueError("decision_levels item requires price or zone_low and zone_high")
+        if not (
+            (self.role and self.role.strip() and self.source and self.source.strip())
+            or (self.label and self.label.strip())
+        ):
+            raise ValueError("decision_levels item requires role+source or legacy label")
+        if has_zone:
+            assert self.zone_low is not None and self.zone_high is not None
+            if self.zone_low > self.zone_high:
+                raise ValueError("zone_low must be <= zone_high")
+        return self
 
 
 class ScenarioOut(BaseModel):
@@ -107,11 +155,20 @@ class LargeCapVerdictJson(BaseModel):
     verdict: Literal["Trade", "No Trade"]
     verdict_reason: str = Field(min_length=1)
     bias: Literal["Bullish", "Bearish", "Neutral"]
-    narrative: str = Field(min_length=1)
+    narrative: Optional[str] = None
+    narrative_sections: Optional[NarrativeSectionsOut] = None
+    decision_levels: Optional[list[DecisionLevelOut]] = None
     scenarios: list[ScenarioOut]
 
     @model_validator(mode="after")
-    def scenarios_len_matches_verdict(self) -> LargeCapVerdictJson:
+    def narrative_and_scenarios_valid(self) -> LargeCapVerdictJson:
+        if self.narrative_sections is None and not (self.narrative and self.narrative.strip()):
+            raise ValueError("Provide narrative_sections or legacy narrative string")
+        if self.decision_levels is not None:
+            if len(self.decision_levels) > 3:
+                raise ValueError("decision_levels may contain at most 3 items")
+            if self.verdict == "Trade" and len(self.decision_levels) < 1:
+                raise ValueError("Trade verdict requires 1–3 decision_levels")
         if self.verdict == "No Trade":
             if len(self.scenarios) != 0:
                 raise ValueError("No Trade verdict requires scenarios to be an empty array")
@@ -144,7 +201,15 @@ def parse_verdict_json(text: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Claude JSON root must be an object")
     validated = LargeCapVerdictJson.model_validate(data)
-    return validated.model_dump()
+    out = validated.model_dump(exclude_none=True)
+    sections = out.get("narrative_sections")
+    if sections and not out.get("narrative"):
+        out["narrative"] = " ".join(
+            str(sections.get(k, "")).strip()
+            for k in ("big_picture", "recent_action", "historical_analogues", "pre_market")
+            if str(sections.get(k, "")).strip()
+        )
+    return out
 
 
 def synthesize_large_cap_verdict(

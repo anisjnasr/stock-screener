@@ -76,8 +76,11 @@ services:
         value: /app/data/screener.db
       - key: SCREENER_DATA_DIR
         value: /app/data
+      # Main Stock Scanner URL — Python pulls screener.db from /api/admin/screener-db-export after main sync.
+      - key: STOCK_SCANNER_APP_URL
+        sync: false
 
-    # Persistent disk for screener.db — separate volume from StockStalker; populate once (see README).
+    # Persistent disk for screener.db — separate volume from StockStalker; auto-synced from main app.
     disk:
       name: screener-data-python
       mountPath: /app/data

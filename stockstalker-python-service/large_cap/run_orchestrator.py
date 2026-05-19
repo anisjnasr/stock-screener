@@ -77,6 +77,7 @@ def _analyze_one(
     premarket_snapshot: Optional[dict[str, Any]],
     force_refresh: bool,
     claude_model: Optional[str],
+    expected_db_latest: Optional[str],
     analyze_fn: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
     return analyze_fn(
@@ -87,6 +88,7 @@ def _analyze_one(
         premarket_snapshot=premarket_snapshot,
         force_refresh=force_refresh,
         claude_model=claude_model,
+        expected_db_latest=expected_db_latest,
     )
 
 
@@ -99,6 +101,7 @@ def iter_large_cap_run_events(
     premarket_snapshots: Optional[dict[str, dict[str, Any]]] = None,
     force_refresh: bool = False,
     claude_model: Optional[str] = None,
+    expected_db_latest: Optional[str] = None,
     concurrency: int = DEFAULT_CONCURRENCY,
     analyze_fn: Callable[..., dict[str, Any]] | None = None,
 ) -> Iterator[dict[str, Any]]:
@@ -144,6 +147,7 @@ def iter_large_cap_run_events(
             premarket_snapshot=snap,
             force_refresh=force_refresh,
             claude_model=claude_model,
+            expected_db_latest=expected_db_latest,
             analyze_fn=fn,
         )
         return sym, result

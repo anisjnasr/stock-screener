@@ -18,7 +18,11 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 from zoneinfo import ZoneInfo
 
-DataMode = Literal["historical", "historical_premarket"]
+from large_cap.db_session_date import (
+    assert_db_covers_latest,
+    get_latest_reliable_completed_date,
+    resolve_analysis_date_ymd,
+)
 
 ET = ZoneInfo("America/New_York")
 
@@ -426,6 +430,7 @@ def build_large_cap_digest(
     analysis_date: Optional[str] = None,
     as_of_ymd: Optional[str] = None,
     premarket_snapshot: Optional[dict[str, Any]] = None,
+    expected_db_latest: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Build a single-stock digest for Claude.
@@ -433,17 +438,14 @@ def build_large_cap_digest(
     :param ticker: US equity symbol (e.g. AAPL)
     :param data_mode: historical | historical_premarket
     :param analysis_date: trading session date this digest is **for** (US/Eastern calendar day).
-        Defaults to today's date in America/New_York.
+        When omitted, resolved from calendar today and the latest completed session in screener.db.
     :param as_of_ymd: alias override for analysis_date (if both set, analysis_date wins)
     :param premarket_snapshot: optional row from Massive full-market snapshot (mapped in TS).
+    :param expected_db_latest: if set, fail when local screener.db is behind this YYYY-MM-DD session.
     """
     sym = ticker.strip().upper()
     if not sym:
         raise ValueError("ticker is required")
-
-    ad = (analysis_date or as_of_ymd or default_analysis_date_ymd()).strip()
-    if len(ad) != 10 or ad[4] != "-" or ad[7] != "-":
-        raise ValueError("analysis_date must be YYYY-MM-DD")
 
     db_path = screener_db_path()
     if not db_path.is_file():
@@ -451,6 +453,12 @@ def build_large_cap_digest(
 
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
+        assert_db_covers_latest(conn, expected_db_latest)
+        ad = resolve_analysis_date_ymd(conn, analysis_date or as_of_ymd)
+        db_latest = get_latest_reliable_completed_date(conn)
+        if len(ad) != 10 or ad[4] != "-" or ad[7] != "-":
+            raise ValueError("analysis_date must be YYYY-MM-DD")
+
         company_sym, company_name = _fetch_company(conn, sym)
         if not company_sym:
             raise ValueError(f"Unknown symbol in screener DB: {sym}")
@@ -539,6 +547,7 @@ def build_large_cap_digest(
                 "data_mode": data_mode,
                 "prior_session_date": prior.date,
                 "latest_completed_session_date_in_digest": prior.date,
+                "db_latest_completed_session": db_latest,
             },
             "recent_price_structure": {
                 "prior_day": {

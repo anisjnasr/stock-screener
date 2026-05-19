@@ -104,6 +104,7 @@ export async function fetchPythonLargeCapAnalyze(init: {
   ticker: string;
   dataMode: "historical" | "historical_premarket";
   analysisDate?: string | null;
+  dbLatestCompletedDate?: string | null;
   premarketSnapshot?: LargeCapPremarketSnapshotForPython | null;
   forceRefresh?: boolean;
   model?: string | null;
@@ -126,6 +127,7 @@ export async function fetchPythonLargeCapAnalyze(init: {
     ticker,
     data_mode: init.dataMode,
     analysis_date: init.analysisDate ?? null,
+    db_latest_completed_date: init.dbLatestCompletedDate ?? null,
     force_refresh: Boolean(init.forceRefresh),
     model: init.model ?? null,
   };
@@ -172,6 +174,7 @@ export async function fetchPythonLargeCapDigest(init: {
   ticker: string;
   dataMode: "historical" | "historical_premarket";
   analysisDate?: string | null;
+  dbLatestCompletedDate?: string | null;
   premarketSnapshot?: LargeCapPremarketSnapshotForPython | null;
   signal?: AbortSignal;
 }): Promise<PythonLargeCapDigestResponse> {
@@ -191,6 +194,7 @@ export async function fetchPythonLargeCapDigest(init: {
     ticker,
     data_mode: init.dataMode,
     analysis_date: init.analysisDate ?? null,
+    db_latest_completed_date: init.dbLatestCompletedDate ?? null,
   };
   if (init.premarketSnapshot != null) {
     body.premarket_snapshot = init.premarketSnapshot;
@@ -216,9 +220,11 @@ export async function fetchPythonLargeCapDigest(init: {
     throw new Error(`Python /large-cap/digest: invalid JSON (${res.status})`);
   }
 
-  const obj = parsed as PythonLargeCapDigestResponse;
+  const obj = parsed as PythonLargeCapDigestResponse & { detail?: string };
   if (!res.ok) {
-    throw new Error(`Python /large-cap/digest HTTP ${res.status}: ${text.slice(0, 400)}`);
+    throw new Error(
+      `Python /large-cap/digest HTTP ${res.status}: ${obj.detail || text.slice(0, 400)}`
+    );
   }
   if (!obj.ok) {
     throw new Error(obj.error || "Python /large-cap/digest returned ok=false");
@@ -231,6 +237,7 @@ export type LargeCapRunStreamInit = {
   tickers: string[];
   dataMode: "historical" | "historical_premarket";
   analysisDate?: string | null;
+  dbLatestCompletedDate?: string | null;
   premarketSnapshots?: Record<string, LargeCapPremarketSnapshotForPython> | null;
   forceRefresh?: boolean;
   concurrency?: number;
@@ -265,6 +272,7 @@ export async function streamPythonLargeCapRun(init: LargeCapRunStreamInit): Prom
     tickers,
     data_mode: init.dataMode,
     analysis_date: init.analysisDate ?? null,
+    db_latest_completed_date: init.dbLatestCompletedDate ?? null,
     force_refresh: Boolean(init.forceRefresh),
     model: init.model ?? null,
   };
@@ -357,6 +365,83 @@ export async function fetchPythonLargeCapArchiveList(init: {
     throw new Error("Python /large-cap/archive/list: missing rows array");
   }
   return rows as PythonLargeCapArchiveRow[];
+}
+
+export type PythonLargeCapCacheHydrateRow = {
+  ticker: string;
+  cache_hit: boolean;
+  analyzed_at?: string;
+  digest?: Record<string, unknown>;
+  verdict?: Record<string, unknown>;
+};
+
+export async function fetchPythonLargeCapCacheHydrate(init: {
+  profileId: string;
+  tickers: string[];
+  dataMode: "historical" | "historical_premarket";
+  analysisDate?: string | null;
+  dbLatestCompletedDate?: string | null;
+  premarketSnapshots?: Record<string, LargeCapPremarketSnapshotForPython> | null;
+  signal?: AbortSignal;
+}): Promise<PythonLargeCapCacheHydrateRow[]> {
+  const base = process.env.PYTHON_SERVICE_URL?.trim();
+  const key = process.env.PYTHON_SERVICE_KEY?.trim();
+  if (!base || !key) {
+    throw new Error("PYTHON_SERVICE_URL and PYTHON_SERVICE_KEY must be set");
+  }
+
+  const profileId = String(init.profileId).trim();
+  if (!profileId) throw new Error("profileId is required");
+  const tickers = [
+    ...new Set(
+      init.tickers
+        .map((t) => String(t).trim().toUpperCase())
+        .filter((t) => t.length > 0 && t.length <= 12)
+    ),
+  ];
+  if (tickers.length === 0) return [];
+
+  const url = `${normalizeBaseUrl(base)}/large-cap/cache/hydrate`;
+  const body: Record<string, unknown> = {
+    profile_id: profileId,
+    tickers,
+    data_mode: init.dataMode,
+    analysis_date: init.analysisDate ?? null,
+    db_latest_completed_date: init.dbLatestCompletedDate ?? null,
+  };
+  if (init.premarketSnapshots && Object.keys(init.premarketSnapshots).length > 0) {
+    body.premarket_snapshots = init.premarketSnapshots;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: init.signal,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Python /large-cap/cache/hydrate HTTP ${res.status}: ${text.slice(0, 400)}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Python /large-cap/cache/hydrate: invalid JSON");
+  }
+
+  const rows = (parsed as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) {
+    throw new Error("Python /large-cap/cache/hydrate: missing rows array");
+  }
+  return rows as PythonLargeCapCacheHydrateRow[];
 }
 
 /**

@@ -19,6 +19,7 @@ from large_cap.supabase_cache import (
     is_supabase_cache_configured,
     upsert_cached_analysis,
 )
+from large_cap.narrative_structure import ensure_structured_narrative
 from large_cap.supabase_archive import SupabaseArchiveError, maybe_write_trade_archive
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def run_large_cap_analysis_cached(
     premarket_snapshot: Optional[dict[str, Any]] = None,
     force_refresh: bool = False,
     claude_model: Optional[str] = None,
+    expected_db_latest: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     One ticker: digest build, cache gate, optional Claude call, cache write.
@@ -68,6 +70,7 @@ def run_large_cap_analysis_cached(
         data_mode,
         analysis_date=analysis_date,
         premarket_snapshot=premarket_snapshot,
+        expected_db_latest=expected_db_latest,
     )
 
     trading_date = str(digest.get("identity", {}).get("analysis_date") or "").strip()
@@ -86,7 +89,7 @@ def run_large_cap_analysis_cached(
     if cached and cached.get("digest_hash") == digest_hash:
         cache_hit = True
         claude_call_made = False
-        verdict = cached["verdict_json"]
+        verdict = ensure_structured_narrative(cached["verdict_json"], digest, data_mode=data_mode)
         analyzed_at = str(cached.get("analyzed_at") or "")
         logger.info(
             "large_cap_cache HIT profile_id=%s ticker=%s trading_date=%s digest_hash=%s",
@@ -108,6 +111,7 @@ def run_large_cap_analysis_cached(
             cached is not None,
         )
         verdict = synthesize_large_cap_verdict(digest, model=claude_model)
+        verdict = ensure_structured_narrative(verdict, digest, data_mode=data_mode)
         analyzed_at = upsert_cached_analysis(
             pid,
             sym,
@@ -146,4 +150,52 @@ def run_large_cap_analysis_cached(
         "digest": digest,
         "verdict": verdict,
         "archive_written": archive_written,
+    }
+
+
+def try_hydrate_cached_analysis(
+    profile_id: str,
+    ticker: str,
+    data_mode: DataMode,
+    *,
+    analysis_date: Optional[str] = None,
+    premarket_snapshot: Optional[dict[str, Any]] = None,
+    expected_db_latest: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """
+    Return cached analysis for display when digest hash still matches; never calls Claude.
+    """
+    if not is_supabase_cache_configured():
+        return None
+
+    pid = _validate_profile_id(profile_id)
+    sym = ticker.strip().upper()
+    if not sym:
+        return None
+
+    digest = build_large_cap_digest(
+        sym,
+        data_mode,
+        analysis_date=analysis_date,
+        premarket_snapshot=premarket_snapshot,
+        expected_db_latest=expected_db_latest,
+    )
+    trading_date = str(digest.get("identity", {}).get("analysis_date") or "").strip()
+    if not trading_date:
+        return None
+
+    digest_hash = compute_digest_hash(digest)
+    cached = get_cached_analysis(pid, sym, trading_date)
+    if not cached or cached.get("digest_hash") != digest_hash:
+        return None
+
+    return {
+        "cache_hit": True,
+        "claude_call_made": False,
+        "digest_hash": digest_hash,
+        "trading_date": trading_date,
+        "data_mode": data_mode,
+        "analyzed_at": str(cached.get("analyzed_at") or ""),
+        "digest": digest,
+        "verdict": ensure_structured_narrative(cached["verdict_json"], digest, data_mode=data_mode),
     }

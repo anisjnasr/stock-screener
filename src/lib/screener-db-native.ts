@@ -1812,6 +1812,33 @@ export function getLatestCompletedTradingDate(): string | null {
   return upper;
 }
 
+/** Latest reliable EOD session in screener.db (inclusive of today ET). Used by Large Cap analysis. */
+export function getLatestLargeCapDbSessionDate(): string | null {
+  const db = getDb();
+  if (!db) return null;
+  const nyToday = getTodayDateInNewYork();
+  const companyCountRow = db.prepare("SELECT COUNT(*) AS c FROM companies").get() as
+    | { c: number }
+    | undefined;
+  const companyCount = Number(companyCountRow?.c ?? 0);
+  const minCoverage = companyCount > 0 ? Math.max(200, Math.floor(companyCount * 0.8)) : 200;
+  const recent = db
+    .prepare(
+      `
+      SELECT date, COUNT(DISTINCT symbol) AS cnt
+      FROM daily_bars
+      WHERE date <= ?
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 30
+      `
+    )
+    .all(nyToday) as Array<{ date: string; cnt: number }>;
+  if (recent.length === 0) return null;
+  const reliable = recent.find((r) => Number(r.cnt ?? 0) >= minCoverage);
+  return String(reliable?.date ?? recent[0]!.date);
+}
+
 export function getWeightedCategoryPerformance(
   groupBy: "sector" | "industry",
   timeframe: PerformanceTimeframe,

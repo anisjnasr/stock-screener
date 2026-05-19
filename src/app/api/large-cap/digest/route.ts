@@ -4,6 +4,7 @@ import {
   type LargeCapPremarketQuotePayload,
 } from "@/lib/premarket/large-cap-premarket-snapshot";
 import { fetchPythonLargeCapDigest, isPythonServiceConfigured } from "@/lib/python-service";
+import { largeCapPythonRequestDates } from "@/lib/premarket/large-cap-analysis-date";
 
 export const dynamic = "force-dynamic";
 
@@ -57,10 +58,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysisDate =
-    typeof body.analysis_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.analysis_date.trim())
-      ? body.analysis_date.trim()
-      : null;
+  const { analysisDate, dbLatestCompletedDate } = largeCapPythonRequestDates(body.analysis_date);
 
   let premarketSnapshot: LargeCapPremarketQuotePayload | null = null;
   let snapshotTickerCount: number | undefined;
@@ -87,6 +85,7 @@ export async function POST(request: NextRequest) {
       ticker,
       dataMode: modeRaw,
       analysisDate,
+      dbLatestCompletedDate,
       premarketSnapshot: modeRaw === "historical_premarket" ? premarketSnapshot : null,
       signal: request.signal,
     });

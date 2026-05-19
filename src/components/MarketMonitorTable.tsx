@@ -319,11 +319,13 @@ function MmDateCellLeft({ children }: { children: ReactNode }) {
   return <div className={`${MM_CELL_FILL} justify-start px-1`.trim()}>{children}</div>;
 }
 
-function MmIndustryPill({ industry }: { industry: string }) {
+function MmIndustryPill({ industry, constrained = false }: { industry: string; constrained?: boolean }) {
   const label = normalizeIndustryDisplayName(industry);
   return (
     <span
-      className={`inline-flex w-max max-w-none shrink-0 whitespace-nowrap items-center rounded-full border px-1.5 py-px font-semibold leading-tight ${industryThemePillClass(label)}`}
+      className={`inline-flex items-center rounded-full border px-1.5 py-px font-semibold leading-tight ${industryThemePillClass(label)} ${
+        constrained ? "min-w-0 max-w-full truncate" : "w-max max-w-none shrink-0 whitespace-nowrap"
+      }`}
       style={{ fontSize: "var(--ws-fs-caption)" }}
       title={label}
     >
@@ -342,11 +344,19 @@ function getTopIndustryValues(tops: MarketMonitorRow["topUpIndustries"]): (strin
   return [t.up4pct, t.up25pct_qtr, t.up25pct_month, t.up50pct_month];
 }
 
-function MmTopIndustryBodyCell({ industry }: { industry: string | null }) {
+function MmTopIndustryBodyCell({ industry, widthPx }: { industry: string | null; widthPx?: number }) {
+  const sizingStyle: CSSProperties | undefined =
+    widthPx != null
+      ? { width: widthPx, minWidth: widthPx, maxWidth: widthPx, boxSizing: "border-box" }
+      : undefined;
+
   return (
-    <div className="flex h-full min-h-0 items-center justify-start py-0.5 pl-1.5 pr-1">
+    <div
+      className="flex h-full min-h-0 items-center justify-start overflow-hidden py-0.5 pl-1.5 pr-1"
+      style={sizingStyle}
+    >
       {industry ? (
-        <MmIndustryPill industry={industry} />
+        <MmIndustryPill industry={industry} constrained={widthPx != null} />
       ) : (
         <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
           —
@@ -681,7 +691,7 @@ export default function MarketMonitorTable({
               <th
                 scope="colgroup"
                 colSpan={topIndustryColSpan}
-                className="sticky top-0 z-10 border-b-2 border-r px-2 py-1.5 text-left text-ws-body font-bold tracking-wide"
+                className="sticky top-0 z-10 relative border-b-2 border-r px-2 py-1.5 text-left text-ws-body font-bold tracking-wide"
                 style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
               >
                 <div className="flex min-w-0 items-center justify-between gap-2">
@@ -706,6 +716,12 @@ export default function MarketMonitorTable({
                     {topIndustriesExpanded ? "−" : "+"}
                   </button>
                 </div>
+                {!topIndustriesExpanded ? (
+                  <MmColResizeGrip
+                    onPointerDown={(e) => mmBeginResize(e, "top0")}
+                    onDoubleClick={() => mmApplyAutoFit("top0")}
+                  />
+                ) : null}
               </th>
               <th
                 scope="colgroup"
@@ -744,8 +760,13 @@ export default function MarketMonitorTable({
                   <th
                     key={`mm-top-ind-${hi}`}
                     scope="col"
-                    className="sticky top-[2.125rem] z-10 relative border-b border-r px-1 py-0.5 text-left text-ws-body font-bold"
-                    style={{ background: "var(--ws-bg2)", borderColor: "var(--ws-border)", color: "var(--ws-text)" }}
+                    className="sticky top-[2.125rem] z-10 relative overflow-hidden border-b border-r px-1 py-0.5 text-left text-ws-body font-bold"
+                    style={{
+                      background: "var(--ws-bg2)",
+                      borderColor: "var(--ws-border)",
+                      color: "var(--ws-text)",
+                      ...mmColStyle(colWidthsPx[ck]),
+                    }}
                   >
                     {label}
                     <MmColResizeGrip
@@ -811,15 +832,19 @@ export default function MarketMonitorTable({
                     <MmTabularInner widthCh={MM_TAB_DATE_CH} textAlign="left" widthPx={colWidthsPx.date}>{formatDateDmy(row.date)}</MmTabularInner>
                   </MmDateCellLeft>
                 </td>
-                {topCells.map((ind, ti) => (
-                  <td
-                    key={ti}
-                    className={`${MM_BODY_TD} border-r`}
-                    style={{ borderColor: "var(--ws-border)" }}
-                  >
-                    <MmTopIndustryBodyCell industry={ind} />
-                  </td>
-                ))}
+                {topCells.map((ind, ti) => {
+                  const colIdx = (topIndustriesExpanded ? ti : 0) as 0 | 1 | 2 | 3;
+                  const ck = mmTopColKey(colIdx);
+                  return (
+                    <td
+                      key={ti}
+                      className={`${MM_BODY_TD} overflow-hidden border-r`}
+                      style={{ borderColor: "var(--ws-border)", ...mmColStyle(colWidthsPx[ck]) }}
+                    >
+                      <MmTopIndustryBodyCell industry={ind} widthPx={colWidthsPx[ck]} />
+                    </td>
+                  );
+                })}
                 <td className={MM_BODY_TD}>
                   {drillable ? (
                     <button

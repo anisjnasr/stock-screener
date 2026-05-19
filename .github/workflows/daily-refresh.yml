@@ -422,6 +422,33 @@ jobs:
           poll_interval_seconds: "30"
           stale_threshold_polls: "60"
 
+      - name: Sync DB to Python service
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_APP_URL:-}" ] || [ -z "${ADMIN_SECRET:-}" ]; then
+            echo "::notice::Skipping Python DB sync: RENDER_APP_URL or ADMIN_SECRET not configured."
+            exit 0
+          fi
+          echo "Triggering Python screener.db sync from main app..."
+          status=$(curl -sS -o /tmp/python-sync.json -w "%{http_code}" \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            --connect-timeout 20 \
+            --max-time 120 \
+            -X POST "${RENDER_APP_URL}/api/admin/sync-python-db?wait=false" \
+            -H "Authorization: Bearer ${ADMIN_SECRET}" \
+            -H "Content-Type: application/json")
+          echo "Python sync trigger status: $status"
+          cat /tmp/python-sync.json
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Python DB sync trigger failed with HTTP $status"
+            exit 1
+          fi
+
       - name: Verify live MM signals after sync
         if: ${{ github.event.inputs.full_mm_recompute == 'true' }}
         env:

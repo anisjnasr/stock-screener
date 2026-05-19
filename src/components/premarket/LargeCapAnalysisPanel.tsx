@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect -- hydrate watchlists + settings from localStorage */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getActiveProfile } from "@/lib/profile-storage";
 import {
   consumeLargeCapRunStream,
@@ -14,10 +14,58 @@ import {
   type LargeCapSettings,
 } from "@/lib/premarket/large-cap-settings-storage";
 import { sortLargeCapRows } from "@/lib/premarket/large-cap-row-sort";
+import {
+  buildNarrativeBlocks,
+  formatDecisionLevelPrice,
+  LC_KEY_LEVELS_GRID,
+  LC_SECTION_HEADER_COLOR,
+  type NarrativeBlock,
+} from "@/lib/premarket/large-cap-narrative-display";
+import { ymdInEt } from "@/lib/et-ymd";
+import {
+  loadLargeCapSession,
+  saveLargeCapSession,
+  type LargeCapSessionRow,
+} from "@/lib/premarket/large-cap-session-storage";
 import { loadWatchlists, type Watchlist } from "@/lib/watchlist-storage";
 import LargeCapArchivePanel from "./LargeCapArchivePanel";
 
 type RowStatus = "pending" | "loading" | "done" | "error";
+
+/** Fixed width for ticker / price cluster (must not depend on company name length). */
+const LC_TICKER_PANEL_W = "9.5rem";
+const LC_SCENARIOS_COL_W = "26rem";
+const LC_SUBSECTION_HEADER_CLASS = "pm-section-label text-xs font-medium";
+
+function confidenceStyle(conf: string): { color: string; bg: string; label: string } {
+  const c = conf.trim().toLowerCase();
+  if (c === "high") return { color: "#4ade80", bg: "rgba(74,222,128,0.15)", label: "High" };
+  if (c === "medium" || c === "med") return { color: "#fbbf24", bg: "rgba(251,191,36,0.15)", label: "Med" };
+  return { color: "var(--text-tertiary)", bg: "rgba(255,255,255,0.06)", label: "Low" };
+}
+
+function biasStyle(bias: string): { color: string; arrow: string } {
+  const b = bias.trim();
+  if (b === "Bullish") return { color: "#4ade80", arrow: "↑" };
+  if (b === "Bearish") return { color: "#f87171", arrow: "↓" };
+  return { color: "#fbbf24", arrow: "→" };
+}
+
+function directionStyle(direction: string): { color: string; bg: string; label: string } {
+  const d = direction.trim().toLowerCase();
+  if (d === "long") return { color: "#4ade80", bg: "rgba(74,222,128,0.18)", label: "LONG" };
+  if (d === "short") return { color: "#f87171", bg: "rgba(248,113,113,0.18)", label: "SHORT" };
+  return { color: "#fbbf24", bg: "rgba(251,191,36,0.15)", label: "EITHER" };
+}
+
+function BiasLabel({ bias }: { bias: string }) {
+  const biasUi = biasStyle(bias);
+  return (
+    <span className={LC_SUBSECTION_HEADER_CLASS} style={{ color: biasUi.color }}>
+      {bias} {biasUi.arrow}
+    </span>
+  );
+}
 
 export type LargeCapRow = {
   ticker: string;
@@ -33,7 +81,7 @@ export type LargeCapRow = {
 
 function formatPrice(n: unknown): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
-  return n.toFixed(2);
+  return `$${n.toFixed(2)}`;
 }
 
 function formatPct(n: unknown): string {
@@ -85,6 +133,45 @@ function applyRunEvent(rows: Map<string, LargeCapRow>, event: LargeCapRunEvent):
   }
 }
 
+function rowToSessionRow(row: LargeCapRow): LargeCapSessionRow | null {
+  if (row.status !== "done" && row.status !== "error") return null;
+  return {
+    status: row.status,
+    stale: row.stale,
+    error: row.error,
+    cache_hit: row.cache_hit,
+    analyzed_at: row.analyzed_at,
+    digest: row.digest,
+    verdict: row.verdict,
+  };
+}
+
+function sessionRowToLargeCapRow(ticker: string, row: LargeCapSessionRow): LargeCapRow {
+  return { ticker, ...row };
+}
+
+function persistSession(
+  profileId: string,
+  settingsKey: string,
+  tradingDateEt: string,
+  rows: LargeCapRow[],
+  lastRunAt: string | null
+): void {
+  const stored: Record<string, LargeCapSessionRow> = {};
+  for (const row of rows) {
+    const snap = rowToSessionRow(row);
+    if (snap) stored[row.ticker] = snap;
+  }
+  saveLargeCapSession({
+    version: 1,
+    profileId,
+    settingsKey,
+    tradingDateEt,
+    lastRunAt,
+    rows: stored,
+  });
+}
+
 export default function LargeCapAnalysisPanel() {
   const [settings, setSettings] = useState<LargeCapSettings>(() => loadLargeCapSettings());
   const [lists, setLists] = useState<Watchlist[]>([]);
@@ -93,7 +180,11 @@ export default function LargeCapAnalysisPanel() {
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [runSettingsKey, setRunSettingsKey] = useState<string | null>(null);
   const [archiveRefreshToken, setArchiveRefreshToken] = useState(0);
+  const [selectedTickers, setSelectedTickers] = useState<Set<string>>(() => new Set());
+  const [collapsedTickers, setCollapsedTickers] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
+  const hydrateAttemptedRef = useRef<string | null>(null);
+  const tradingDateEt = ymdInEt();
 
   const settingsKey = `${settings.selectedListId ?? ""}|${settings.dataMode}`;
 
@@ -119,11 +210,28 @@ export default function LargeCapAnalysisPanel() {
       setRows([]);
       return;
     }
+    const profile = getActiveProfile();
+    const session =
+      profile?.id != null
+        ? loadLargeCapSession(profile.id, settingsKey, tradingDateEt)
+        : null;
+
     setRows((prev) => {
       const byTicker = new Map(prev.map((r) => [r.ticker, r]));
-      return tickers.map((t) => byTicker.get(t) ?? { ticker: t, status: "pending" });
+      return tickers.map((t) => {
+        const cached = session?.rows[t];
+        if (cached) return sessionRowToLargeCapRow(t, cached);
+        return byTicker.get(t) ?? { ticker: t, status: "pending" };
+      });
     });
-  }, [tickers.join("|")]);
+
+    if (session?.lastRunAt) {
+      setLastRunAt(session.lastRunAt);
+      setRunSettingsKey(settingsKey);
+    }
+    setSelectedTickers(new Set());
+    setCollapsedTickers(new Set());
+  }, [tickers.join("|"), settingsKey, tradingDateEt]);
 
   useEffect(() => {
     if (runSettingsKey && runSettingsKey !== settingsKey) {
@@ -162,6 +270,8 @@ export default function LargeCapAnalysisPanel() {
         return sortLargeCapRows(Array.from(map.values()));
       });
 
+      let completedAt: string | null = null;
+
       try {
         const res = await fetch("/api/large-cap/run", {
           method: "POST",
@@ -185,13 +295,20 @@ export default function LargeCapAnalysisPanel() {
             setRows((prev) => {
               const map = new Map(prev.map((r) => [r.ticker, r]));
               applyRunEvent(map, event);
-              return sortLargeCapRows(Array.from(map.values()));
+              const next = sortLargeCapRows(Array.from(map.values()));
+              persistSession(profile.id, settingsKey, tradingDateEt, next, completedAt);
+              return next;
             });
           }
         });
 
-        setLastRunAt(new Date().toISOString());
+        completedAt = new Date().toISOString();
+        setLastRunAt(completedAt);
         setArchiveRefreshToken((t) => t + 1);
+        setRows((prev) => {
+          persistSession(profile.id, settingsKey, tradingDateEt, prev, completedAt);
+          return prev;
+        });
       } catch (e) {
         if (ac.signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
@@ -209,10 +326,137 @@ export default function LargeCapAnalysisPanel() {
         }
       }
     },
-    [settings.dataMode, settingsKey]
+    [settings.dataMode, settingsKey, tradingDateEt]
   );
 
-  const onRunAll = () => void runTickers(tickers);
+  const hydrateFromServerCache = useCallback(async () => {
+    const profile = getActiveProfile();
+    if (!profile?.id || tickers.length === 0) return;
+
+    try {
+      const res = await fetch("/api/large-cap/cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile_id: profile.id,
+          tickers,
+          data_mode: settings.dataMode,
+        }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        rows?: Array<{
+          ticker: string;
+          cache_hit?: boolean;
+          analyzed_at?: string;
+          digest?: Record<string, unknown>;
+          verdict?: Record<string, unknown>;
+        }>;
+      };
+      if (!res.ok || !json.ok || !Array.isArray(json.rows) || json.rows.length === 0) return;
+
+      const hydratedAt = json.rows.reduce<string | null>((latest, row) => {
+        if (!row.analyzed_at) return latest;
+        if (!latest || row.analyzed_at > latest) return row.analyzed_at;
+        return latest;
+      }, null);
+
+      setRows((prev) => {
+        const map = new Map(prev.map((r) => [r.ticker, r]));
+        for (const row of json.rows!) {
+          if (!row.ticker) continue;
+          map.set(row.ticker, {
+            ticker: row.ticker,
+            status: "done",
+            stale: false,
+            cache_hit: row.cache_hit ?? true,
+            analyzed_at: row.analyzed_at,
+            digest: row.digest,
+            verdict: row.verdict,
+          });
+        }
+        const next = sortLargeCapRows(Array.from(map.values()));
+        persistSession(profile.id, settingsKey, tradingDateEt, next, hydratedAt);
+        return next;
+      });
+
+      if (hydratedAt) {
+        setLastRunAt(hydratedAt);
+        setRunSettingsKey(settingsKey);
+      }
+    } catch {
+      /* ignore background hydrate failures */
+    }
+  }, [settings.dataMode, settingsKey, tickers, tradingDateEt]);
+
+  useEffect(() => {
+    const profile = getActiveProfile();
+    if (!profile?.id || tickers.length === 0) return;
+
+    const attemptKey = `${profile.id}|${settingsKey}|${tickers.join("|")}|${tradingDateEt}`;
+    if (hydrateAttemptedRef.current === attemptKey) return;
+
+    const session = loadLargeCapSession(profile.id, settingsKey, tradingDateEt);
+    const sessionComplete =
+      session != null &&
+      tickers.every((t) => session.rows[t]?.status === "done" || session.rows[t]?.status === "error");
+
+    hydrateAttemptedRef.current = attemptKey;
+    if (sessionComplete) return;
+
+    void hydrateFromServerCache();
+  }, [tickers.join("|"), settingsKey, tradingDateEt, hydrateFromServerCache]);
+
+  const toggleTickerSelected = useCallback((sym: string) => {
+    setSelectedTickers((prev) => {
+      const next = new Set(prev);
+      if (next.has(sym)) next.delete(sym);
+      else next.add(sym);
+      return next;
+    });
+  }, []);
+
+  const selectAllTickers = useCallback(() => {
+    setSelectedTickers(new Set(tickers));
+  }, [tickers]);
+
+  const clearSelectedTickers = useCallback(() => {
+    setSelectedTickers(new Set());
+  }, []);
+
+  const collapsibleTickers = useMemo(
+    () => rows.filter((r) => r.status === "done" || r.status === "error").map((r) => r.ticker),
+    [rows]
+  );
+
+  const anyRowExpanded = useMemo(
+    () => collapsibleTickers.some((t) => !collapsedTickers.has(t)),
+    [collapsibleTickers, collapsedTickers]
+  );
+
+  const toggleRowCollapsed = useCallback((sym: string) => {
+    setCollapsedTickers((prev) => {
+      const next = new Set(prev);
+      if (next.has(sym)) next.delete(sym);
+      else next.add(sym);
+      return next;
+    });
+  }, []);
+
+  const collapseAllRows = useCallback(() => {
+    setCollapsedTickers(new Set(collapsibleTickers));
+  }, [collapsibleTickers]);
+
+  const expandAllRows = useCallback(() => {
+    setCollapsedTickers(new Set());
+  }, []);
+
+  const runTargets = useMemo(() => {
+    if (selectedTickers.size === 0) return tickers;
+    return tickers.filter((t) => selectedTickers.has(t));
+  }, [tickers, selectedTickers]);
+
+  const onRunAll = () => void runTickers(runTargets);
   const onRefreshRow = (sym: string) => void runTickers([sym], { forceRefresh: true });
 
   const lastRunLabel = formatAnalyzedAtEt(lastRunAt ?? undefined);
@@ -268,18 +512,33 @@ export default function LargeCapAnalysisPanel() {
 
         <button
           type="button"
-          className="pm-focus rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+          className="pm-focus rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50"
           style={{ background: "var(--ws-cyan)", color: "#0a0a0a" }}
-          disabled={running || tickers.length === 0}
+          disabled={running || runTargets.length === 0}
           onClick={onRunAll}
         >
-          {running ? "Running…" : "Run Analysis"}
+          {running
+            ? "Running…"
+            : selectedTickers.size > 0
+              ? `Run Selected (${selectedTickers.size})`
+              : "Run All"}
         </button>
 
         {lastRunLabel ? (
           <span className="pm-mono text-xs" style={{ color: "var(--text-tertiary)" }}>
             Last run {lastRunLabel} ET
           </span>
+        ) : null}
+
+        {collapsibleTickers.length > 0 ? (
+          <button
+            type="button"
+            className="pm-focus rounded border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
+            style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}
+            onClick={() => (anyRowExpanded ? collapseAllRows() : expandAllRows())}
+          >
+            {anyRowExpanded ? "Collapse all" : "Expand all"}
+          </button>
         ) : null}
       </div>
 
@@ -292,11 +551,50 @@ export default function LargeCapAnalysisPanel() {
           This list has no symbols.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {sortLargeCapRows(rows).map((row) => (
-            <LargeCapRowCard key={row.ticker} row={row} dataMode={settings.dataMode} onRefresh={() => onRefreshRow(row.ticker)} running={running} />
-          ))}
-        </ul>
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-tertiary)" }}>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="pm-focus rounded"
+                checked={tickers.length > 0 && selectedTickers.size === tickers.length}
+                ref={(el) => {
+                  if (el) {
+                    el.indeterminate =
+                      selectedTickers.size > 0 && selectedTickers.size < tickers.length;
+                  }
+                }}
+                onChange={(e) => {
+                  if (e.target.checked) selectAllTickers();
+                  else clearSelectedTickers();
+                }}
+              />
+              <span>Select all</span>
+            </label>
+            {selectedTickers.size > 0 ? (
+              <button type="button" className="pm-focus underline" onClick={clearSelectedTickers}>
+                Clear selection
+              </button>
+            ) : (
+              <span>Check symbols to run a subset, or use Run All.</span>
+            )}
+          </div>
+          <ul className="space-y-2">
+            {sortLargeCapRows(rows).map((row) => (
+              <LargeCapRowCard
+                key={row.ticker}
+                row={row}
+                dataMode={settings.dataMode}
+                selected={selectedTickers.has(row.ticker)}
+                collapsed={collapsedTickers.has(row.ticker)}
+                onToggleCollapsed={() => toggleRowCollapsed(row.ticker)}
+                onToggleSelect={() => toggleTickerSelected(row.ticker)}
+                onRefresh={() => onRefreshRow(row.ticker)}
+                running={running}
+              />
+            ))}
+          </ul>
+        </>
       )}
 
       <LargeCapArchivePanel refreshToken={archiveRefreshToken} />
@@ -304,53 +602,327 @@ export default function LargeCapAnalysisPanel() {
   );
 }
 
+function TickerPanelShell({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`shrink-0 border-b md:border-b-0 md:border-r p-3 space-y-2 box-border ${className}`.trim()}
+      style={{
+        borderColor: "var(--border-default)",
+        width: LC_TICKER_PANEL_W,
+        minWidth: LC_TICKER_PANEL_W,
+        maxWidth: LC_TICKER_PANEL_W,
+        flex: `0 0 ${LC_TICKER_PANEL_W}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function NarrativeSectionsContent({ blocks }: { blocks: NarrativeBlock[] }) {
+  if (blocks.length === 0) return null;
+
+  return (
+    <div className="space-y-2.5">
+      {blocks.map((block) => (
+        <div key={block.id}>
+          <div
+            className={`${LC_SUBSECTION_HEADER_CLASS} mb-0.5`}
+            style={{ color: LC_SECTION_HEADER_COLOR }}
+          >
+            {block.title}
+          </div>
+          {block.kind === "text" ? (
+            <p className="text-sm leading-snug" style={{ color: "var(--text-primary)" }}>
+              {block.body}
+            </p>
+          ) : block.kind === "bullets" ? (
+            <ul
+              className="list-disc space-y-1 pl-4 text-sm leading-snug"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {block.items.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <div className="space-y-1">
+              <div
+                className={`${LC_KEY_LEVELS_GRID} text-xs pm-section-label`}
+                style={{ color: "var(--text-tertiary)" }}
+              >
+                <span>Level</span>
+                <span>Source</span>
+                <span>Price</span>
+              </div>
+              {block.levels.map((lvl, i) => (
+                <div key={i} className={LC_KEY_LEVELS_GRID}>
+                  <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                    {lvl.role}
+                  </span>
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    {lvl.source}
+                  </span>
+                  <span className="pm-mono text-sm shrink-0" style={{ color: "var(--text-primary)" }}>
+                    {formatDecisionLevelPrice(lvl)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NoTradePill() {
+  return (
+    <span
+      className="inline-block w-fit text-xs px-1.5 py-0.5 rounded font-medium"
+      style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }}
+    >
+      No Trade
+    </span>
+  );
+}
+
+function RowAnalysisHeader({
+  bias,
+  isError,
+  analyzedMeta,
+  onRefresh,
+  running,
+  refreshLabel = "Refresh",
+}: {
+  bias: string;
+  isError?: boolean;
+  analyzedMeta: ReactNode;
+  onRefresh: () => void;
+  running: boolean;
+  refreshLabel?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 w-full min-w-0">
+      {isError ? (
+        <span className={LC_SUBSECTION_HEADER_CLASS} style={{ color: "#f87171" }}>
+          Error
+        </span>
+      ) : (
+        <BiasLabel bias={bias} />
+      )}
+      {analyzedMeta}
+      <button type="button" className="pm-focus ml-auto shrink-0 text-xs underline" onClick={onRefresh} disabled={running}>
+        {refreshLabel}
+      </button>
+    </div>
+  );
+}
+
+function RowCollapseButton({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="pm-focus shrink-0 leading-none p-0.5"
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? "Expand analysis row" : "Collapse analysis row"}
+      onClick={onToggle}
+    >
+      <span
+        className="inline-block text-[10px] transition-transform"
+        style={{ color: "var(--text-tertiary)", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+      >
+        ▼
+      </span>
+    </button>
+  );
+}
+
+function RowSelectCheckbox({
+  ticker,
+  selected,
+  onToggle,
+  disabled,
+}: {
+  ticker: string;
+  selected: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="pm-focus shrink-0 rounded"
+      aria-label={`Select ${ticker}`}
+      checked={selected}
+      disabled={disabled}
+      onChange={onToggle}
+    />
+  );
+}
+
 function LargeCapRowCard({
   row,
   dataMode,
+  selected,
+  collapsed,
+  onToggleCollapsed,
+  onToggleSelect,
   onRefresh,
   running,
 }: {
   row: LargeCapRow;
   dataMode: LargeCapDataMode;
+  selected: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  onToggleSelect: () => void;
   onRefresh: () => void;
   running: boolean;
 }) {
   const verdict = row.verdict;
   const digest = row.digest;
-  const identity = (digest?.identity ?? {}) as Record<string, unknown>;
   const priorDay = (digest?.recent_price_structure as Record<string, unknown> | undefined)?.prior_day as
     | Record<string, unknown>
     | undefined;
   const pm = digest?.premarket as Record<string, unknown> | null | undefined;
   const isNoTrade = verdict?.verdict === "No Trade";
   const analyzedEt = formatAnalyzedAtEt(row.analyzed_at);
+  const bias = String(verdict?.bias ?? "Neutral");
   const showPm = dataMode === "historical_premarket" && pm && pm.last_price != null;
+  const gapPct = pm?.gap_pct_vs_prior_close;
+  const gapColor =
+    typeof gapPct === "number" && gapPct > 0 ? "#4ade80" : typeof gapPct === "number" && gapPct < 0 ? "#f87171" : undefined;
+
+  const analyzedMeta = analyzedEt ? (
+    <span className="pm-mono text-xs shrink-0" style={{ color: "var(--text-tertiary)" }}>
+      Analyzed {analyzedEt} ET{row.stale ? " · stale" : ""}
+      {row.cache_hit ? " · cache" : ""}
+    </span>
+  ) : null;
+
+  if (collapsed && (row.status === "done" || row.status === "error")) {
+    return (
+      <li
+        className="rounded border overflow-hidden"
+        style={{
+          borderColor: row.status === "error" ? "var(--border-danger, #f87171)" : "var(--border-default)",
+          opacity: row.stale ? 0.85 : 1,
+        }}
+      >
+        <div className="flex flex-col md:flex-row min-w-0">
+          <TickerPanelShell>
+            <div className="flex items-center gap-2 min-w-0">
+              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
+              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
+              <span className="pm-mono text-lg font-semibold shrink-0" style={{ color: "var(--text-primary)" }}>
+                {row.ticker}
+              </span>
+            </div>
+            {isNoTrade ? <NoTradePill /> : null}
+          </TickerPanelShell>
+          <div className="flex-1 min-w-0 p-3 flex items-center">
+            <RowAnalysisHeader
+              bias={bias}
+              isError={row.status === "error"}
+              analyzedMeta={analyzedMeta}
+              onRefresh={onRefresh}
+              running={running}
+              refreshLabel={row.status === "error" ? "Retry" : "Refresh"}
+            />
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  const tickerStatsGrid = (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs pm-mono">
+      <span style={{ color: "var(--text-secondary)" }}>Prev</span>
+      <span style={{ color: "var(--text-primary)" }}>{formatPrice(priorDay?.close)}</span>
+      <span style={{ color: "var(--text-secondary)" }}>PM</span>
+      <span style={{ color: "var(--text-primary)" }}>{showPm ? formatPrice(pm?.last_price) : "—"}</span>
+      <span style={{ color: "var(--text-secondary)" }}>PM vol</span>
+      <span style={{ color: "var(--text-primary)" }}>{showPm ? formatVol(pm?.volume) : "—"}</span>
+      <span style={{ color: "var(--text-secondary)" }}>Gap</span>
+      <span style={{ color: showPm ? (gapColor ?? "var(--text-primary)") : "var(--text-primary)" }}>
+        {showPm ? formatPct(gapPct) : "—"}
+      </span>
+    </div>
+  );
 
   if (row.status === "pending") {
     return (
-      <li className="rounded border px-3 py-2 pm-mono text-sm" style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}>
-        {row.ticker} — not analyzed yet
+      <li
+        className="rounded border px-3 py-2 flex items-center gap-2 pm-mono text-sm"
+        style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", opacity: 0.65 }}
+      >
+        <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
+        <span className="font-semibold">{row.ticker}</span>
       </li>
     );
   }
 
   if (row.status === "loading") {
     return (
-      <li className="rounded border px-3 py-2 pm-mono text-sm animate-pulse" style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}>
-        {row.ticker} — analyzing…
+      <li
+        className="rounded border overflow-hidden animate-pulse"
+        style={{ borderColor: "var(--border-default)" }}
+      >
+        <div className="flex flex-col md:flex-row min-w-0">
+          <TickerPanelShell>
+            <div className="flex items-center gap-2">
+              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled />
+              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>
+                {row.ticker}
+              </span>
+            </div>
+            <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>Analyzing…</span>
+          </TickerPanelShell>
+        </div>
       </li>
     );
   }
 
   if (row.status === "error") {
     return (
-      <li className="rounded border px-3 py-2 flex items-center justify-between gap-2" style={{ borderColor: "var(--border-danger, #f87171)" }}>
-        <span className="pm-mono text-sm" style={{ color: "var(--text-primary)" }}>
-          {row.ticker} — {row.error ?? "Error"}
-        </span>
-        <button type="button" className="pm-focus text-xs underline" onClick={onRefresh} disabled={running}>
-          Retry
-        </button>
+      <li className="rounded border overflow-hidden" style={{ borderColor: "var(--border-danger, #f87171)" }}>
+        <div className="flex flex-col md:flex-row min-w-0">
+          <TickerPanelShell>
+            <div className="flex items-center gap-2">
+              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
+              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
+              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+                {row.ticker}
+              </span>
+            </div>
+            <span className="text-xs" style={{ color: "var(--text-danger, #f87171)" }}>
+              {row.error ?? "Error"}
+            </span>
+          </TickerPanelShell>
+          <div className="flex flex-1 items-center p-3">
+            <RowAnalysisHeader
+              bias={bias}
+              isError
+              analyzedMeta={analyzedMeta}
+              onRefresh={onRefresh}
+              running={running}
+              refreshLabel="Retry"
+            />
+          </div>
+        </div>
       </li>
     );
   }
@@ -358,42 +930,43 @@ function LargeCapRowCard({
   if (isNoTrade) {
     return (
       <li
-        className="rounded border px-3 py-2 flex flex-wrap items-baseline gap-2"
+        className="rounded border overflow-hidden"
         style={{
           borderColor: "var(--border-default)",
           opacity: row.stale ? 0.55 : 1,
         }}
       >
-        <span className="pm-mono font-semibold" style={{ color: "var(--text-secondary)" }}>
-          {row.ticker}
-        </span>
-        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }}>
-          No Trade
-        </span>
-        <span className="text-sm flex-1 min-w-[12rem]" style={{ color: "var(--text-tertiary)" }}>
-          {(verdict?.verdict_reason as string) || (verdict?.narrative as string) || ""}
-        </span>
-        {analyzedEt ? (
-          <span className="pm-mono text-xs" style={{ color: "var(--text-tertiary)" }}>
-            {analyzedEt} ET{row.stale ? " · stale" : ""}
-          </span>
-        ) : null}
-        <button type="button" className="pm-focus text-xs underline" onClick={onRefresh} disabled={running}>
-          Refresh
-        </button>
+        <div className="flex flex-col md:flex-row min-w-0">
+          <TickerPanelShell>
+            <div className="flex items-center gap-2">
+              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
+              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
+              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>
+                {row.ticker}
+              </span>
+            </div>
+            <NoTradePill />
+            {tickerStatsGrid}
+          </TickerPanelShell>
+          <div className="flex-1 min-w-0 p-3 space-y-2">
+            <RowAnalysisHeader
+              bias={bias}
+              analyzedMeta={analyzedMeta}
+              onRefresh={onRefresh}
+              running={running}
+            />
+            <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+              {(verdict?.verdict_reason as string) || (verdict?.narrative as string) || ""}
+            </p>
+          </div>
+        </div>
       </li>
     );
   }
 
-  const bias = String(verdict?.bias ?? "Neutral");
-  const biasColor =
-    bias === "Bullish" ? "#4ade80" : bias === "Bearish" ? "#f87171" : "var(--text-secondary)";
-  const gapPct = pm?.gap_pct_vs_prior_close;
-  const gapColor =
-    typeof gapPct === "number" && gapPct > 0 ? "#4ade80" : typeof gapPct === "number" && gapPct < 0 ? "#f87171" : undefined;
-
   const scenarios = Array.isArray(verdict?.scenarios) ? (verdict.scenarios as Record<string, unknown>[]) : [];
   const letters = ["A", "B", "C"];
+  const narrativeBlocks = buildNarrativeBlocks(verdict, dataMode, digest);
 
   return (
     <li
@@ -401,84 +974,86 @@ function LargeCapRowCard({
       style={{ borderColor: "var(--border-default)", opacity: row.stale ? 0.85 : 1 }}
     >
       <div className="flex flex-col md:flex-row min-w-0">
-        <div
-          className="shrink-0 border-b md:border-b-0 md:border-r p-3 space-y-2"
-          style={{ borderColor: "var(--border-default)", minWidth: "9rem" }}
-        >
+        <TickerPanelShell>
           <div className="flex items-center gap-2">
+            <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
+            <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
             <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
               {row.ticker}
             </span>
-            <span className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{ background: "rgba(59,191,207,0.2)", color: "var(--ws-cyan)" }}>
-              Trade
-            </span>
           </div>
-          <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-            {String(identity.company_name ?? "")}
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs pm-mono">
-            <span style={{ color: "var(--text-tertiary)" }}>Prev</span>
-            <span>{formatPrice(priorDay?.close)}</span>
-            <span style={{ color: "var(--text-tertiary)" }}>PM</span>
-            <span>{showPm ? formatPrice(pm?.last_price) : "—"}</span>
-            <span style={{ color: "var(--text-tertiary)" }}>PM vol</span>
-            <span>{showPm ? formatVol(pm?.volume) : "—"}</span>
-            <span style={{ color: "var(--text-tertiary)" }}>Gap</span>
-            <span style={{ color: showPm ? gapColor : undefined }}>{showPm ? formatPct(gapPct) : "—"}</span>
-          </div>
-        </div>
+          {tickerStatsGrid}
+        </TickerPanelShell>
 
         <div className="flex-1 min-w-0 p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span style={{ color: biasColor, fontWeight: 600 }}>
-              {bias} {bias === "Bullish" ? "↑" : bias === "Bearish" ? "↓" : "→"}
-            </span>
-            {analyzedEt ? (
-              <span className="pm-mono" style={{ color: "var(--text-tertiary)" }}>
-                Analyzed {analyzedEt} ET{row.stale ? " · stale" : ""}
-                {row.cache_hit ? " · cache" : ""}
-              </span>
-            ) : null}
-            <button type="button" className="pm-focus ml-auto underline" onClick={onRefresh} disabled={running}>
-              Refresh
-            </button>
-          </div>
+          <RowAnalysisHeader
+            bias={bias}
+            analyzedMeta={analyzedMeta}
+            onRefresh={onRefresh}
+            running={running}
+          />
 
-          <div>
-            <div className="pm-section-label text-xs mb-1" style={{ color: "var(--text-tertiary)" }}>
-              Narrative
+          <div className="flex flex-col md:flex-row gap-4 min-w-0">
+            <div className="flex-1 min-w-0">
+              <NarrativeSectionsContent blocks={narrativeBlocks} />
             </div>
-            <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-              {String(verdict?.narrative ?? "")}
-            </p>
-          </div>
 
-          {scenarios.length > 0 ? (
-            <div>
-              <div className="pm-section-label text-xs mb-1" style={{ color: "var(--text-tertiary)" }}>
-                Scenarios
+            {scenarios.length > 0 ? (
+              <div
+                className="shrink-0 min-w-0"
+                style={{ width: `min(100%, ${LC_SCENARIOS_COL_W})` }}
+              >
+                <div
+                  className={`${LC_SUBSECTION_HEADER_CLASS} mb-1`}
+                  style={{ color: LC_SECTION_HEADER_COLOR }}
+                >
+                  Scenarios
+                </div>
+                <ul className="space-y-3.5">
+                  {scenarios.slice(0, 3).map((sc, i) => {
+                    const letter = letters[i] ?? String(i + 1);
+                    const conf = confidenceStyle(String(sc.confidence ?? "Low"));
+                    const dir = directionStyle(String(sc.direction ?? "Either"));
+                    const levels = (sc.key_levels ?? {}) as Record<string, unknown>;
+                    const setup = String(sc.title ?? sc.description ?? "");
+                    return (
+                      <li key={i} className="flex gap-2">
+                        <span
+                          className="pm-mono w-4 shrink-0 text-xs font-semibold pt-0.5"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
+                          {letter}
+                        </span>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span
+                              className="px-1.5 py-0.5 rounded font-semibold tracking-wide"
+                              style={{ color: dir.color, background: dir.bg }}
+                            >
+                              {dir.label}
+                            </span>
+                            <span
+                              className="px-1.5 py-0.5 rounded font-medium"
+                              style={{ color: conf.color, background: conf.bg }}
+                            >
+                              {conf.label}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-snug" style={{ color: "var(--text-primary)" }}>
+                            {setup}
+                          </p>
+                          <p className="pm-mono text-xs leading-snug" style={{ color: "var(--text-secondary)" }}>
+                            {formatPrice(levels.trigger)} → {formatPrice(levels.target)} · Invalidated @{" "}
+                            {formatPrice(levels.invalidation)}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              <ul className="space-y-1.5">
-                {scenarios.slice(0, 3).map((sc, i) => {
-                  const conf = String(sc.confidence ?? "Med");
-                  const confShort = conf === "Medium" ? "Med" : conf;
-                  const levels = (sc.key_levels ?? {}) as Record<string, unknown>;
-                  return (
-                    <li key={i} className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                      <span className="pm-mono font-semibold mr-1">{letters[i] ?? i + 1}</span>
-                      <span className="text-xs mr-2 px-1 rounded" style={{ background: "rgba(255,255,255,0.06)" }}>
-                        {confShort}
-                      </span>
-                      {String(sc.title ?? sc.description ?? "")}
-                      <span className="pm-mono text-xs ml-1" style={{ color: "var(--text-tertiary)" }}>
-                        @ {formatPrice(levels.trigger)} → {formatPrice(levels.target)} / inv {formatPrice(levels.invalidation)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </div>
     </li>

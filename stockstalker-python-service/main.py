@@ -12,11 +12,11 @@ from typing import Any, Optional
 
 import anthropic
 import yfinance as yf
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from large_cap.cached_analysis import run_large_cap_analysis_cached
+from large_cap.cached_analysis import run_large_cap_analysis_cached, try_hydrate_cached_analysis
 from large_cap.claude_synthesis import synthesize_large_cap_verdict
 from large_cap.digest_builder import build_large_cap_digest
 from large_cap.run_orchestrator import encode_ndjson_event, iter_large_cap_run_events
@@ -41,6 +41,9 @@ def root() -> dict[str, object]:
             "POST /large-cap/analyze": "Digest + cache + Claude (Bearer INTERNAL_API_KEY, Supabase + Anthropic)",
             "POST /large-cap/run": "Batch analyze NDJSON stream (Bearer INTERNAL_API_KEY, Supabase + Anthropic)",
             "POST /large-cap/archive/list": "Trade archive rows for profile (Bearer INTERNAL_API_KEY, Supabase)",
+            "POST /large-cap/cache/hydrate": "Return cache hits for tickers without Claude (Bearer INTERNAL_API_KEY, Supabase)",
+            "POST /admin/sync-screener-db": "Pull screener.db from main app (Bearer INTERNAL_API_KEY)",
+            "GET /admin/sync-screener-db": "Python DB sync status (Bearer INTERNAL_API_KEY)",
             "GET /docs": "OpenAPI / Swagger UI",
         },
     }
@@ -101,6 +104,10 @@ class LargeCapDigestRequest(BaseModel):
         default=None,
         description="Massive snapshot fields when data_mode includes pre-market",
     )
+    db_latest_completed_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD latest EOD session from main app; fail if Python screener.db is behind",
+    )
 
 
 class LargeCapDigestResponse(BaseModel):
@@ -130,6 +137,10 @@ class LargeCapAnalyzeRequest(BaseModel):
     premarket_snapshot: Optional[PremarketSnapshotIn] = None
     force_refresh: bool = Field(default=False, description="Bypass digest hash cache check")
     model: Optional[str] = Field(default=None, description="Optional Anthropic model override")
+    db_latest_completed_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD latest EOD session from main app; fail if Python screener.db is behind",
+    )
 
 
 class LargeCapAnalyzeResponse(BaseModel):
@@ -163,6 +174,10 @@ class LargeCapRunRequest(BaseModel):
         le=8,
         description="Parallel workers (default 5, max 8)",
     )
+    db_latest_completed_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD latest EOD session from main app; fail if Python screener.db is behind",
+    )
 
 
 class LargeCapArchiveListRequest(BaseModel):
@@ -178,6 +193,24 @@ class LargeCapArchiveListRequest(BaseModel):
 
 
 class LargeCapArchiveListResponse(BaseModel):
+    ok: bool = True
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class LargeCapCacheHydrateRequest(BaseModel):
+    profile_id: str = Field(..., description="StockStalker profiles.id UUID")
+    tickers: list[str] = Field(default_factory=list)
+    data_mode: str = Field(default="historical", description="historical | historical_premarket")
+    analysis_date: Optional[str] = Field(default=None, description="YYYY-MM-DD session date (Eastern)")
+    premarket_snapshots: Optional[dict[str, PremarketSnapshotIn]] = Field(default=None)
+    db_latest_completed_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD latest EOD session from main app; fail if Python screener.db is behind",
+    )
+
+
+class LargeCapCacheHydrateResponse(BaseModel):
     ok: bool = True
     rows: list[dict[str, Any]] = Field(default_factory=list)
     error: Optional[str] = None
@@ -326,10 +359,13 @@ def post_large_cap_digest(
             mode,  # type: ignore[arg-type]
             analysis_date=req.analysis_date,
             premarket_snapshot=snap_dict,
+            expected_db_latest=req.db_latest_completed_date,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
+        if "stale" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return LargeCapDigestResponse(ok=True, digest=d, error=None)
@@ -406,12 +442,15 @@ def post_large_cap_analyze(
             premarket_snapshot=snap_dict,
             force_refresh=req.force_refresh,
             claude_model=req.model,
+            expected_db_latest=req.db_latest_completed_date,
         )
     except SupabaseCacheError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
+        if "stale" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
     except anthropic.AuthenticationError as e:
         raise HTTPException(
@@ -480,6 +519,7 @@ def post_large_cap_run(
             force_refresh=req.force_refresh,
             claude_model=req.model,
             concurrency=req.concurrency,
+            expected_db_latest=req.db_latest_completed_date,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -540,3 +580,90 @@ def post_large_cap_archive_list(
         raise HTTPException(status_code=503, detail=str(e)) from e
 
     return LargeCapArchiveListResponse(ok=True, rows=rows, error=None)
+
+
+@app.post("/large-cap/cache/hydrate", response_model=LargeCapCacheHydrateResponse)
+def post_large_cap_cache_hydrate(
+    req: LargeCapCacheHydrateRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> LargeCapCacheHydrateResponse:
+    """Return cached verdicts where digest hash matches; never calls Claude on miss."""
+    _require_internal_key(authorization)
+
+    mode = (req.data_mode or "historical").strip().lower()
+    if mode not in ("historical", "historical_premarket"):
+        raise HTTPException(
+            status_code=400,
+            detail="data_mode must be historical or historical_premarket",
+        )
+
+    snaps: dict[str, dict[str, Any]] = {}
+    if req.premarket_snapshots:
+        snaps = {
+            k.strip().upper(): v.model_dump()
+            for k, v in req.premarket_snapshots.items()
+            if k and v is not None
+        }
+
+    from large_cap.run_orchestrator import normalize_tickers
+
+    symbols = normalize_tickers(req.tickers)
+    if not symbols:
+        raise HTTPException(status_code=400, detail="At least one valid ticker is required")
+
+    rows: list[dict[str, Any]] = []
+    try:
+        for sym in symbols:
+            snap = snaps.get(sym)
+            hit = try_hydrate_cached_analysis(
+                req.profile_id,
+                sym,
+                mode,  # type: ignore[arg-type]
+                analysis_date=req.analysis_date,
+                premarket_snapshot=snap,
+                expected_db_latest=req.db_latest_completed_date,
+            )
+            if hit:
+                rows.append({"ticker": sym, **hit})
+    except SupabaseCacheError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        if "stale" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    return LargeCapCacheHydrateResponse(ok=True, rows=rows, error=None)
+
+
+@app.get("/admin/sync-screener-db")
+def get_sync_screener_db(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> dict[str, Any]:
+    """Return status of the last screener.db peer sync."""
+    _require_internal_key(authorization)
+    from large_cap.screener_db_sync import read_sync_status
+
+    return {"ok": True, "status": read_sync_status()}
+
+
+@app.post("/admin/sync-screener-db")
+def post_sync_screener_db(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    wait: bool = Query(default=False),
+) -> dict[str, Any]:
+    """
+    Download screener.db from the main Stock Scanner app and swap into place.
+    Requires STOCK_SCANNER_APP_URL + INTERNAL_API_KEY on this service.
+    """
+    _require_internal_key(authorization)
+    from large_cap.screener_db_sync import sync_screener_db_from_peer
+
+    try:
+        result = sync_screener_db_from_peer(wait=wait)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    if not result.get("ok") and result.get("status") == "failed":
+        raise HTTPException(status_code=500, detail=str(result.get("error") or "sync failed"))
+    return result

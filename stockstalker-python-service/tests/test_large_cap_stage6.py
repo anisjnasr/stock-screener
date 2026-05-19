@@ -62,6 +62,57 @@ class TestVerdictSchema(unittest.TestCase):
         out = parse_verdict_json(json.dumps(raw))
         self.assertEqual(len(out["scenarios"]), 3)
 
+    def test_structured_narrative_sections(self) -> None:
+        raw = {
+            "ticker": "NVDA",
+            "verdict": "Trade",
+            "verdict_reason": "Gap breakout.",
+            "bias": "Bullish",
+            "narrative_sections": {
+                "big_picture": "Long base.",
+                "recent_action": "Tight pause.",
+                "historical_analogues": "3 precedents followed through.",
+                "pre_market": "Gap up on volume.",
+            },
+            "decision_levels": [
+                {"role": "Trigger", "source": "Prior day high", "price": 420.0},
+                {"role": "Invalidation", "source": "Swing low", "price": 400.0},
+            ],
+            "scenarios": [
+                {
+                    "rank": 1,
+                    "confidence": "High",
+                    "title": "Breakout",
+                    "description": "Above PDH.",
+                    "key_levels": {"trigger": 420.0, "target": 430.0, "invalidation": 415.0},
+                    "expected_move_pct": 2.0,
+                    "direction": "Long",
+                },
+                {
+                    "rank": 2,
+                    "confidence": "Medium",
+                    "title": "Fail",
+                    "description": "Fade gap.",
+                    "key_levels": {"trigger": 415.0, "target": 405.0, "invalidation": 422.0},
+                    "expected_move_pct": 2.0,
+                    "direction": "Short",
+                },
+                {
+                    "rank": 3,
+                    "confidence": "Low",
+                    "title": "Chop",
+                    "description": "Range.",
+                    "key_levels": {"trigger": 418.0, "target": 422.0, "invalidation": 412.0},
+                    "expected_move_pct": 1.0,
+                    "direction": "Either",
+                },
+            ],
+        }
+        out = parse_verdict_json(json.dumps(raw))
+        self.assertIn("big_picture", out["narrative_sections"])
+        self.assertEqual(len(out["decision_levels"]), 2)
+        self.assertIn("Long base.", out["narrative"])
+
     def test_strips_code_fence(self) -> None:
         inner = '{"ticker":"X","verdict":"No Trade","verdict_reason":"r","bias":"Neutral","narrative":"n","scenarios":[]}'
         fenced = "```json\n" + inner + "\n```"

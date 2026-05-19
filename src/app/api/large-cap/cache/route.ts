@@ -3,7 +3,7 @@ import {
   fetchLargeCapPremarketQuotesForSymbols,
   type LargeCapPremarketQuotePayload,
 } from "@/lib/premarket/large-cap-premarket-snapshot";
-import { isPythonServiceConfigured, streamPythonLargeCapRun } from "@/lib/python-service";
+import { fetchPythonLargeCapCacheHydrate, isPythonServiceConfigured } from "@/lib/python-service";
 import { largeCapPythonRequestDates } from "@/lib/premarket/large-cap-analysis-date";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +11,8 @@ export const dynamic = "force-dynamic";
 type Body = {
   profile_id?: string;
   tickers?: string[];
-  ticker?: string;
   data_mode?: string;
   analysis_date?: string | null;
-  force_refresh?: boolean;
-  concurrency?: number;
 };
 
 const UUID_RE =
@@ -28,18 +25,9 @@ function normalizeTicker(raw: unknown): string | null {
   return s;
 }
 
-function normalizeTickers(body: Body): string[] {
-  const fromList = Array.isArray(body.tickers)
-    ? body.tickers.map(normalizeTicker).filter((t): t is string => Boolean(t))
-    : [];
-  const single = normalizeTicker(body.ticker);
-  const merged = single ? [...fromList, single] : fromList;
-  return [...new Set(merged)];
-}
-
 /**
- * POST JSON `{ profile_id, tickers[], data_mode, analysis_date?, force_refresh?, concurrency? }`.
- * Streams NDJSON events from Python `/large-cap/run` (blueprint stage 7).
+ * POST JSON `{ profile_id, tickers[], data_mode, analysis_date? }`.
+ * Returns Supabase cache hits only — never calls Claude on miss.
  */
 export async function POST(request: NextRequest) {
   if (!isPythonServiceConfigured()) {
@@ -61,12 +49,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid or missing profile_id (UUID)" }, { status: 400 });
   }
 
-  const tickers = normalizeTickers(body);
+  const tickers = [...new Set(
+    (Array.isArray(body.tickers) ? body.tickers : [])
+      .map(normalizeTicker)
+      .filter((t): t is string => Boolean(t))
+  )];
   if (tickers.length === 0) {
     return NextResponse.json({ ok: false, error: "Invalid or missing tickers" }, { status: 400 });
   }
   if (tickers.length > 50) {
-    return NextResponse.json({ ok: false, error: "At most 50 tickers per run" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "At most 50 tickers per hydrate" }, { status: 400 });
   }
 
   const modeRaw = typeof body.data_mode === "string" ? body.data_mode.trim().toLowerCase() : "historical";
@@ -78,12 +70,6 @@ export async function POST(request: NextRequest) {
   }
 
   const { analysisDate, dbLatestCompletedDate } = largeCapPythonRequestDates(body.analysis_date);
-
-  const forceRefresh = body.force_refresh === true;
-  const concurrency =
-    typeof body.concurrency === "number" && Number.isFinite(body.concurrency)
-      ? Math.min(8, Math.max(1, Math.round(body.concurrency)))
-      : undefined;
 
   let premarketSnapshots: Record<string, LargeCapPremarketQuotePayload> | null = null;
   if (modeRaw === "historical_premarket") {
@@ -97,33 +83,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const upstream = await streamPythonLargeCapRun({
+    const rows = await fetchPythonLargeCapCacheHydrate({
       profileId,
       tickers,
       dataMode: modeRaw,
       analysisDate,
       dbLatestCompletedDate,
       premarketSnapshots: modeRaw === "historical_premarket" ? premarketSnapshots : null,
-      forceRefresh,
-      concurrency,
       signal: request.signal,
     });
-
-    if (!upstream.ok || !upstream.body) {
-      const text = await upstream.text();
-      return NextResponse.json(
-        { ok: false, error: `Python /large-cap/run HTTP ${upstream.status}: ${text.slice(0, 400)}` },
-        { status: 503 }
-      );
-    }
-
-    return new Response(upstream.body, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/x-ndjson",
-        "Cache-Control": "no-store",
-      },
-    });
+    return NextResponse.json({ ok: true, rows });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ ok: false, error: msg }, { status: 503 });
