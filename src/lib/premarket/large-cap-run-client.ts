@@ -6,8 +6,7 @@ export type LargeCapRunEvent =
   | { type: "archive_scored"; ticker: string; trading_date: string; outcome_session: string; outcome: string }
   | { type: "archive_scoring_complete"; scored_count: number; skipped_still_pending: number; analysis_date: string }
   | { type: "archive_score_error"; ticker: string; trading_date: string; error: string }
-  | { type: "run_error"; ok: false; error: string }
-  | { type: string; [key: string]: unknown };
+  | { type: "run_error"; ok: false; error: string };
 
 export async function consumeLargeCapRunStream(
   response: Response,

@@ -5,9 +5,17 @@ import {
   getDefaultLayout,
   parseLayout,
   PREMARKET_LAYOUT_LS_KEY,
+  PREMARKET_SECTION_IDS,
   type PremarketLayoutState,
   type PremarketSectionId,
 } from "./premarket-layout-storage";
+
+function allSectionsCollapsed(collapsed: boolean): Record<PremarketSectionId, boolean> {
+  return Object.fromEntries(PREMARKET_SECTION_IDS.map((id) => [id, collapsed])) as Record<
+    PremarketSectionId,
+    boolean
+  >;
+}
 
 function persistLayout(layout: PremarketLayoutState) {
   if (typeof window === "undefined") return;
@@ -62,14 +70,7 @@ export function usePremarketLayout() {
   const collapseAll = useCallback(() => {
     const next: PremarketLayoutState = {
       version: 1,
-      collapsed_sections: {
-        context: true,
-        sip: true,
-        calendars: true,
-        earnings: true,
-        movers: true,
-        sipArchive: true,
-      },
+      collapsed_sections: allSectionsCollapsed(true),
     };
     setLayout(next);
     persistLayout(next);
@@ -78,14 +79,7 @@ export function usePremarketLayout() {
   const expandAll = useCallback(() => {
     const next: PremarketLayoutState = {
       version: 1,
-      collapsed_sections: {
-        context: false,
-        sip: false,
-        calendars: false,
-        earnings: false,
-        movers: false,
-        sipArchive: false,
-      },
+      collapsed_sections: allSectionsCollapsed(false),
     };
     setLayout(next);
     persistLayout(next);
