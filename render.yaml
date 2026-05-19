@@ -79,9 +79,12 @@ services:
       # Main Stock Scanner URL — Python pulls screener.db from /api/admin/screener-db-export after main sync.
       - key: STOCK_SCANNER_APP_URL
         sync: false
+      # Slim Large Cap export (~300–800 MB) — required on Starter (512 MB RAM).
+      - key: SCREENER_DB_EXPORT_VARIANT
+        value: large_cap
 
-    # Persistent disk for screener.db — separate volume from StockStalker; auto-synced from main app.
+    # Slim screener.db for Large Cap digest — no full 6 GB copy on Python.
     disk:
       name: screener-data-python
       mountPath: /app/data
-      sizeGB: 30
+      sizeGB: 10

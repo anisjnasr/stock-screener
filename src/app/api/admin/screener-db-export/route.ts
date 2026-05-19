@@ -1,9 +1,11 @@
 import { createReadStream, statSync } from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { getScreenerDbPath } from "@/lib/data-path";
+import { ensureLargeCapSlimExportDb } from "@/lib/screener-slim-export";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 function authorizeExport(request: NextRequest): boolean {
   const auth = request.headers.get("authorization");
@@ -15,19 +17,29 @@ function authorizeExport(request: NextRequest): boolean {
 }
 
 /**
- * Stream the live screener.db for the Python service (or operators).
- * Auth: ADMIN_SECRET or PYTHON_SERVICE_KEY (same as Python INTERNAL_API_KEY).
+ * Stream screener.db for the Python service (or operators).
+ * ?variant=large_cap — slim DB (~300–800 MB) for 512 MB Python instances; default is full export.
+ * Auth: ADMIN_SECRET or PYTHON_SERVICE_KEY.
  */
 export async function GET(request: NextRequest) {
   if (!authorizeExport(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const dbPath = getScreenerDbPath();
+  const variant = request.nextUrl.searchParams.get("variant")?.trim().toLowerCase() ?? "full";
+
+  let dbPath: string;
+  try {
+    dbPath = variant === "large_cap" ? ensureLargeCapSlimExportDb() : getScreenerDbPath();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 503 });
+  }
+
   try {
     const stat = statSync(dbPath);
     if (!stat.isFile() || stat.size <= 0) {
-      return NextResponse.json({ error: "screener.db missing or empty" }, { status: 503 });
+      return NextResponse.json({ error: "Export database missing or empty" }, { status: 503 });
     }
     const stream = createReadStream(dbPath);
     return new Response(stream as unknown as BodyInit, {
@@ -36,6 +48,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(stat.size),
         "Cache-Control": "no-store",
+        "X-Screener-Export-Variant": variant,
       },
     });
   } catch (e) {

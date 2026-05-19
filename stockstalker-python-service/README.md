@@ -162,14 +162,14 @@ curl -s http://127.0.0.1:8000/news -H "Authorization: Bearer dev-secret-32chars-
 
 ## Deploy on Render
 
-1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **30GB persistent disk** at `/app/data`.
+1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **10GB persistent disk** at `/app/data` (slim Large Cap DB only).
 2. After first deploy, set **`INTERNAL_API_KEY`**, **`ANTHROPIC_API_KEY`**, Supabase cache vars, and **`STOCK_SCANNER_APP_URL`** (main app URL) on the Python service environment (Render dashboard).
-3. **DB sync:** After each main-app DB update (daily GitHub refresh or admin import), the main app triggers this service to download `screener.db` from `GET /api/admin/screener-db-export`. No manual copy is required once `STOCK_SCANNER_APP_URL` is set. First deploy still needs a successful daily refresh (or one manual `POST /api/admin/sync-python-db` on the main app) to populate the Python disk.
+3. **DB sync:** After each main-app DB update, the main app triggers Python to download a **slim** `screener.db` from `GET /api/admin/screener-db-export?variant=large_cap` (~300–800 MB, last ~320 sessions). No 6 GB full copy is required on Python. Set `SCREENER_DB_EXPORT_VARIANT=large_cap` (default in `render.yaml`). First deploy still needs one successful sync after the main app has data.
 4. On the **Next.js** service, set:
    - `PYTHON_SERVICE_URL` — public URL of this service (no trailing slash), e.g. `https://stockstalker-python.onrender.com`
    - `PYTHON_SERVICE_KEY` — **same value** as `INTERNAL_API_KEY`
 
-**Memory / disk:** Render Starter (512MB RAM) is tight for a ~6GB `screener.db` plus concurrent Large Cap runs. If you see OOM restarts, upgrade `stockstalker-python` to **Standard** (2GB+) or keep batch concurrency low (default 3). DB sync needs ~2× DB size free on the Python disk during download; prune failed syncs via `POST /admin/sync-screener-db` (automatic cleanup runs at sync start).
+**Memory / disk:** Render Starter (512MB RAM) is supported via the slim export. Python never holds the full 6 GB DB. Keep batch concurrency low (default 2). For heavy parallel runs, upgrade to Standard (2GB+). Set `SCREENER_DB_EXPORT_VARIANT=full` only if you also resize the Python disk to 20GB+.
 
 ## Next.js integration (Phase 12B)
 

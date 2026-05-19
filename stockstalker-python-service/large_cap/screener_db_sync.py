@@ -8,6 +8,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,8 +40,13 @@ def _write_sync_status(payload: dict[str, Any]) -> None:
     _STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _prune_sync_artifacts(data_dir: Path, *, keep_backups: int = 0) -> None:
-    """Drop partial downloads and old backups so a ~6GB sync fits on the volume."""
+def _export_variant() -> str:
+    raw = (os.environ.get("SCREENER_DB_EXPORT_VARIANT") or "large_cap").strip().lower()
+    return raw if raw else "large_cap"
+
+
+def _prune_sync_artifacts(data_dir: Path) -> None:
+    """Drop partial downloads and backups — slim sync needs only one DB file on disk."""
     for staged in data_dir.glob("screener.db.staged.*"):
         try:
             staged.unlink(missing_ok=True)
@@ -49,12 +55,7 @@ def _prune_sync_artifacts(data_dir: Path, *, keep_backups: int = 0) -> None:
     backups_dir = data_dir / "backups"
     if not backups_dir.is_dir():
         return
-    backup_files = sorted(
-        backups_dir.glob("screener.db.before-sync.*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for old in backup_files[keep_backups:]:
+    for old in backups_dir.glob("screener.db.before-sync.*"):
         try:
             old.unlink(missing_ok=True)
         except OSError:
@@ -63,20 +64,17 @@ def _prune_sync_artifacts(data_dir: Path, *, keep_backups: int = 0) -> None:
 
 def _open_ro_sqlite(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-    # Keep page cache small on 512MB Render instances during multi-GB DB work.
     conn.execute("PRAGMA cache_size = -8192")
     return conn
 
 
 def _validate_sqlite_db(path: Path) -> dict[str, str]:
+    """Lightweight validation — no full/quick_check (too heavy on 512MB instances)."""
     header = path.read_bytes()[:15]
     if header != b"SQLite format 3":
         raise ValueError("Downloaded file is not a SQLite database")
     conn = _open_ro_sqlite(path)
     try:
-        qc = conn.execute("PRAGMA quick_check").fetchone()
-        if not qc or str(qc[0]).lower() != "ok":
-            raise ValueError(f"quick_check failed: {qc[0] if qc else 'empty'}")
         companies = conn.execute("SELECT COUNT(*) FROM companies").fetchone()
         latest = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()
         company_count = int(companies[0]) if companies else 0
@@ -100,10 +98,18 @@ def _peer_export_config() -> tuple[str, str]:
     return base.rstrip("/"), token
 
 
+def _export_url(base: str) -> str:
+    variant = _export_variant()
+    qs = urllib.parse.urlencode({"variant": variant})
+    return f"{base}/api/admin/screener-db-export?{qs}"
+
+
 def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
     """
-    Pull screener.db from GET {STOCK_SCANNER_APP_URL}/api/admin/screener-db-export
-    and atomically replace the local copy.
+    Pull screener.db from the main app export endpoint and replace the local copy.
+
+    Default variant ``large_cap`` downloads a slim DB (~300–800 MB) suitable for
+    Render Starter (512 MB RAM). Set SCREENER_DB_EXPORT_VARIANT=full for the 6 GB export.
     """
     if not _SYNC_LOCK.acquire(blocking=False):
         running = read_sync_status()
@@ -111,27 +117,35 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
 
     dest = screener_db_path()
     data_dir = dest.parent
-    backups = data_dir / "backups"
-    backups.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
     _prune_sync_artifacts(data_dir)
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     staged = data_dir / f"screener.db.staged.{ts}"
-    backup: Optional[Path] = None
+    variant = _export_variant()
 
     running_status: dict[str, Any] = {
         "state": "running",
         "startedAt": _now_iso(),
         "completedAt": None,
         "error": None,
+        "exportVariant": variant,
     }
     _write_sync_status(running_status)
 
     def _run() -> dict[str, Any]:
-        nonlocal backup
         try:
             base, token = _peer_export_config()
-            export_url = f"{base}/api/admin/screener-db-export"
-            logger.info("python_db_sync downloading from %s", export_url)
+            export_url = _export_url(base)
+            logger.info("python_db_sync downloading variant=%s from %s", variant, export_url)
+
+            if dest.is_file():
+                dest.unlink(missing_ok=True)
+            for suffix in ("-wal", "-shm"):
+                sidecar = Path(str(dest) + suffix)
+                if sidecar.is_file():
+                    sidecar.unlink(missing_ok=True)
+
             req = urllib.request.Request(
                 export_url,
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/octet-stream"},
@@ -145,16 +159,7 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
                 raise ValueError("Downloaded staged DB is empty")
 
             stats = _validate_sqlite_db(staged)
-            if dest.is_file():
-                backup = backups / f"screener.db.before-sync.{ts}"
-                dest.replace(backup)
             staged.replace(dest)
-            if backup and backup.is_file():
-                backup.unlink(missing_ok=True)
-            for suffix in ("-wal", "-shm"):
-                sidecar = Path(str(dest) + suffix)
-                if sidecar.is_file():
-                    sidecar.unlink()
 
             completed = {
                 **running_status,
@@ -167,9 +172,11 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
             }
             _write_sync_status(completed)
             logger.info(
-                "python_db_sync complete latest=%s companies=%s",
+                "python_db_sync complete variant=%s latest=%s companies=%s size_mb=%s",
+                variant,
                 stats.get("latest_daily_bars"),
                 stats.get("companies"),
+                completed["dbSizeMb"],
             )
             return {"ok": True, "status": "completed", **completed}
         except Exception as e:
@@ -177,8 +184,6 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
             logger.error("python_db_sync failed: %s", msg)
             if staged.is_file():
                 staged.unlink(missing_ok=True)
-            if backup and backup.is_file() and not dest.is_file():
-                backup.replace(dest)
             failed = {
                 **running_status,
                 "state": "failed",
@@ -194,4 +199,4 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
         return _run()
     thread = threading.Thread(target=_run, name="screener-db-sync", daemon=True)
     thread.start()
-    return {"ok": True, "status": "started", "startedAt": running_status["startedAt"]}
+    return {"ok": True, "status": "started", "startedAt": running_status["startedAt"], "exportVariant": variant}
