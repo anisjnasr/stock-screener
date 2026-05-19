@@ -79,12 +79,6 @@ services:
       # Main Stock Scanner URL — Python pulls screener.db from /api/admin/screener-db-export after main sync.
       - key: STOCK_SCANNER_APP_URL
         sync: false
-      # Slim Large Cap export (~300–800 MB) — required on Starter (512 MB RAM).
-      - key: SCREENER_DB_EXPORT_VARIANT
-        value: large_cap
-
-    # Slim screener.db for Large Cap digest — no full 6 GB copy on Python.
-    disk:
-      name: screener-data-python
-      mountPath: /app/data
-      sizeGB: 10
+      # Remote digest: Python fetches bar/indicator JSON from main app — no local screener.db.
+      - key: SCREENER_DB_REMOTE
+        value: "true"

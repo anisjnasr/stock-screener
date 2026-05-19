@@ -163,10 +163,12 @@ def classify_follow_through(close_anchor: float, open_next: float, close_next: f
 
 
 def compute_historical_analogues_block(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection | None,
     symbol: str,
     completed_bars: list[Any],
     digest: dict[str, Any],
+    *,
+    indicators_by_date: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Build `historical_analogues` block after the rest of `digest` is assembled (including pre-market).
@@ -195,7 +197,12 @@ def compute_historical_analogues_block(
     if len(bars) < WINDOW_SHORT + EXCLUDE_LAST_SESSIONS + 3:
         return _empty_block(reason="insufficient_history")
 
-    ind_by_date = _fetch_indicators_sparse(conn, symbol, analysis_date)
+    if indicators_by_date is not None:
+        ind_by_date = indicators_by_date
+    elif conn is not None:
+        ind_by_date = _fetch_indicators_sparse(conn, symbol, analysis_date)
+    else:
+        return _empty_block(reason="missing_indicators")
 
     prior_idx = len(bars) - 1
     max_anchor_idx = prior_idx - EXCLUDE_LAST_SESSIONS

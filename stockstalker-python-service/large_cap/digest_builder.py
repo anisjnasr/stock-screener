@@ -423,6 +423,251 @@ def premarket_block_empty() -> dict[str, Any]:
     }
 
 
+def _bar_from_dict(row: dict[str, Any]) -> Bar:
+    return Bar(
+        date=str(row["date"]),
+        open=float(row["open"]) if row.get("open") is not None else None,
+        high=float(row["high"]) if row.get("high") is not None else None,
+        low=float(row["low"]) if row.get("low") is not None else None,
+        close=float(row["close"]) if row.get("close") is not None else None,
+        volume=int(row["volume"]) if row.get("volume") is not None else None,
+    )
+
+
+def build_large_cap_digest_from_inputs(
+    inputs: dict[str, Any],
+    data_mode: DataMode,
+    *,
+    premarket_snapshot: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build digest from JSON inputs (remote DB mode — no local screener.db)."""
+    sym = str(inputs.get("company", {}).get("symbol") or "").strip().upper()
+    company_name = inputs.get("company", {}).get("name")
+    ad = str(inputs.get("analysis_date") or "").strip()
+    db_latest = str(inputs.get("db_latest_completed_session") or "").strip()
+    if not sym or not ad:
+        raise ValueError("digest inputs missing company or analysis_date")
+
+    raw_bars = inputs.get("bars")
+    if not isinstance(raw_bars, list) or len(raw_bars) < 2:
+        raise ValueError(f"Not enough history for {sym} before {ad}")
+
+    completed = [_bar_from_dict(b) for b in raw_bars if isinstance(b, dict)]
+    prior = completed[-1]
+    before_prior = completed[-2]
+
+    if prior.close is None or before_prior.close is None:
+        raise ValueError(f"Missing close prices for {sym} around prior session.")
+
+    prior_close = float(prior.close)
+    prev_prev_close = float(before_prior.close)
+    pct_day_vs_prev = ((prior_close - prev_prev_close) / prev_prev_close * 100) if prev_prev_close else None
+
+    ind = dict(inputs.get("indicators_prior") or {})
+    quote = dict(inputs.get("quote") or {})
+
+    atr_period_used = 21
+    atr_dollars = float(ind["atr_21"]) if ind.get("atr_21") is not None else None
+    atr_pct_of_price = float(ind["atr_pct_21"]) if ind.get("atr_pct_21") is not None else None
+
+    tr_dollars: Optional[float] = None
+    tr_pct: Optional[float] = None
+    tr_vs_atr_ratio: Optional[float] = None
+    if prior.high is not None and prior.low is not None:
+        tr_dollars = true_range(float(prior.high), float(prior.low), prev_prev_close)
+        tr_pct = (tr_dollars / prior_close * 100) if prior_close else None
+        if atr_dollars and atr_dollars > 0:
+            tr_vs_atr_ratio = tr_dollars / atr_dollars
+
+    def take_last(n: int) -> list[Bar]:
+        return completed[-n:] if len(completed) >= n else completed[:]
+
+    ref = prior_close
+    w_short = _window_stats(take_last(WINDOW_SHORT), WINDOW_SHORT, ref, atr_dollars)
+    w_int = _window_stats(take_last(WINDOW_INTERMEDIATE), WINDOW_INTERMEDIATE, ref, atr_dollars)
+    w_long = _window_stats(take_last(WINDOW_LONGER), WINDOW_LONGER, ref, atr_dollars)
+    w_base = _window_stats(take_last(WINDOW_LONG_BASE), WINDOW_LONG_BASE, ref, atr_dollars)
+
+    hi5 = max(b.high for b in take_last(5) if b.high is not None) if len(take_last(5)) else None
+    lo5 = min(b.low for b in take_last(5) if b.low is not None) if len(take_last(5)) else None
+    hi20 = max(b.high for b in take_last(20) if b.high is not None) if len(take_last(20)) else None
+    lo20 = min(b.low for b in take_last(20) if b.low is not None) if len(take_last(20)) else None
+
+    swing_slice = completed[-SWING_LOOKBACK_SESSIONS:] if len(completed) >= SWING_LOOKBACK_SESSIONS else completed
+    sh = max(b.high for b in swing_slice if b.high is not None) if swing_slice else None
+    sl = min(b.low for b in swing_slice if b.low is not None) if swing_slice else None
+
+    take_252 = completed[-252:] if len(completed) >= 252 else completed[:]
+    low_52w = min(b.low for b in take_252 if b.low is not None) if take_252 else None
+
+    ema20 = float(ind["ema_20"]) if ind.get("ema_20") is not None else None
+    ema50 = float(ind["ema_50"]) if ind.get("ema_50") is not None else None
+    ema100 = float(ind["ema_100"]) if ind.get("ema_100") is not None else None
+    ema200 = float(ind["ema_200"]) if ind.get("ema_200") is not None else None
+
+    trend = _trend_label(prior_close, ema20, ema50, ema200)
+    prox_threshold = PROXIMITY_TO_PDH_PDL_PCT * 100
+    pdh = float(prior.high) if prior.high is not None else None
+    pdl = float(prior.low) if prior.low is not None else None
+
+    def near_level(price: float, level: Optional[float]) -> bool:
+        if level is None or level <= 0:
+            return False
+        return abs(price - level) / level <= PROXIMITY_TO_PDH_PDL_PCT
+
+    near_high = near_level(prior_close, pdh) if pdh else False
+    near_low = near_level(prior_close, pdl) if pdl else False
+
+    digest: dict[str, Any] = {
+        "digest_schema_version": 1,
+        "identity": {
+            "ticker": sym,
+            "company_name": company_name,
+            "analysis_date": ad,
+            "data_mode": data_mode,
+            "prior_session_date": prior.date,
+            "latest_completed_session_date_in_digest": prior.date,
+            "db_latest_completed_session": db_latest,
+        },
+        "recent_price_structure": {
+            "prior_day": {
+                "date": prior.date,
+                "open": _r4(prior.open),
+                "high": _r4(prior.high),
+                "low": _r4(prior.low),
+                "close": _r4(prior.close),
+                "volume": prior.volume,
+            },
+            "prior_day_high": _r4(pdh),
+            "prior_day_low": _r4(pdl),
+            "high_last_5_sessions": _r4(hi5),
+            "low_last_5_sessions": _r4(lo5),
+            "high_last_20_sessions": _r4(hi20),
+            "low_last_20_sessions": _r4(lo20),
+            "last_close_vs_prior_session_close_pct": _r4(pct_day_vs_prev),
+        },
+        "volatility_and_range": {
+            "atr_period_used": atr_period_used,
+            "atr_dollars": _r4(atr_dollars),
+            "atr_pct_of_price": _r4(atr_pct_of_price),
+            "prior_session_true_range_dollars": _r4(tr_dollars),
+            "prior_session_true_range_pct_of_price": _r4(tr_pct),
+            "prior_session_tr_vs_atr_ratio": _r4(tr_vs_atr_ratio),
+        },
+        "multi_timescale_ranges": {
+            "short_sessions": WINDOW_SHORT,
+            "short": w_short,
+            "intermediate_sessions": WINDOW_INTERMEDIATE,
+            "intermediate": w_int,
+            "longer_sessions": WINDOW_LONGER,
+            "longer": w_long,
+            "long_base_sessions": WINDOW_LONG_BASE,
+            "long_base": w_base,
+        },
+        "trend_and_momentum": {
+            "trend_label_rule": "stacked_ema20_ema50_ema200_vs_close_else_sideways",
+            "trend_label": trend,
+            "roc_like_changes_pct": {
+                "price_change_1w_pct": _r4(
+                    float(ind["price_change_1w_pct"]) if ind.get("price_change_1w_pct") is not None else None
+                ),
+                "price_change_1m_pct": _r4(
+                    float(ind["price_change_1m_pct"]) if ind.get("price_change_1m_pct") is not None else None
+                ),
+                "price_change_3m_pct": _r4(
+                    float(ind["price_change_3m_pct"]) if ind.get("price_change_3m_pct") is not None else None
+                ),
+                "price_change_6m_pct": _r4(
+                    float(ind["price_change_6m_pct"]) if ind.get("price_change_6m_pct") is not None else None
+                ),
+                "price_change_12m_pct": _r4(
+                    float(ind["price_change_12m_pct"]) if ind.get("price_change_12m_pct") is not None else None
+                ),
+            },
+            "vs_moving_averages": {
+                "ema_20": _r4(ema20),
+                "ema_50": _r4(ema50),
+                "ema_100": _r4(ema100),
+                "ema_200": _r4(ema200),
+                "above_ema_20": bool(ind.get("above_ema_20")) if ind.get("above_ema_20") is not None else None,
+                "pct_from_ema_20": _r4(
+                    float(ind["pct_from_ema_20"]) if ind.get("pct_from_ema_20") is not None else None
+                ),
+                "above_ema_50": bool(ind.get("above_ema_50")) if ind.get("above_ema_50") is not None else None,
+                "pct_from_ema_50": _r4(
+                    float(ind["pct_from_ema_50"]) if ind.get("pct_from_ema_50") is not None else None
+                ),
+                "above_ema_100": bool(ind.get("above_ema_100")) if ind.get("above_ema_100") is not None else None,
+                "pct_from_ema_100": _r4(
+                    float(ind["pct_from_ema_100"]) if ind.get("pct_from_ema_100") is not None else None
+                ),
+                "above_ema_200": bool(ind.get("above_ema_200")) if ind.get("above_ema_200") is not None else None,
+                "pct_from_ema_200": _r4(
+                    float(ind["pct_from_ema_200"]) if ind.get("pct_from_ema_200") is not None else None
+                ),
+                "ema_20_above_ema_50": bool(ind["ema_20_above_ema_50"]) if ind.get("ema_20_above_ema_50") is not None else None,
+                "ema_50_above_ema_100": bool(ind["ema_50_above_ema_100"]) if ind.get("ema_50_above_ema_100") is not None else None,
+                "ema_50_above_ema_200": bool(ind["ema_50_above_ema_200"]) if ind.get("ema_50_above_ema_200") is not None else None,
+                "ema_100_above_ema_200": bool(ind["ema_100_above_ema_200"])
+                if ind.get("ema_100_above_ema_200") is not None
+                else None,
+            },
+        },
+        "key_levels": {
+            "prior_day_high": _r4(pdh),
+            "prior_day_low": _r4(pdl),
+            "multi_timescale_highs_lows": {
+                "short": {"high": w_short.get("high"), "low": w_short.get("low")},
+                "intermediate": {"high": w_int.get("high"), "low": w_int.get("low")},
+                "longer": {"high": w_long.get("high"), "low": w_long.get("low")},
+                "long_base": {"high": w_base.get("high"), "low": w_base.get("low")},
+            },
+            "swing_lookback_sessions": SWING_LOOKBACK_SESSIONS,
+            "recent_swing_high": _r4(sh),
+            "recent_swing_low": _r4(sl),
+            "fifty_two_week": {
+                "high_from_quote_daily": _r4(float(quote["high_52w"]) if quote.get("high_52w") is not None else None),
+                "off_high_pct_from_quote": _r4(
+                    float(quote["off_52w_high_pct"]) if quote.get("off_52w_high_pct") is not None else None
+                ),
+                "low_from_last_252_sessions": _r4(low_52w),
+            },
+            "round_numbers_near_last_close": _nearest_round_levels(prior_close),
+            "moving_average_levels": _ma_magnet_levels(prior_close, ema20, ema50, ema100, ema200),
+        },
+        "interest_signals": {
+            "proximity_threshold_pct_of_price_for_pdh_pdl": prox_threshold,
+            "price_within_threshold_of_prior_day_high": near_high,
+            "price_within_threshold_of_prior_day_low": near_low,
+            "gap_beyond_prior_day_high": None,
+            "gap_below_prior_day_low": None,
+            "premarket_required_for_gap_flags": True,
+            "prior_session_tr_vs_atr_ratio": _r4(tr_vs_atr_ratio),
+            "yesterday_was_range_expansion_vs_atr": (tr_vs_atr_ratio is not None and tr_vs_atr_ratio > 1.0),
+        },
+    }
+
+    if data_mode == "historical":
+        digest["premarket"] = None
+    else:
+        digest["premarket"] = premarket_block_empty()
+        if premarket_snapshot:
+            apply_premarket_snapshot_to_digest(digest, dict(premarket_snapshot))
+
+    from large_cap.historical_analogues import compute_historical_analogues_block
+
+    ind_sparse = inputs.get("indicators_by_date")
+    indicators_by_date = ind_sparse if isinstance(ind_sparse, dict) else None
+    digest["historical_analogues"] = compute_historical_analogues_block(
+        None,
+        sym,
+        completed,
+        digest,
+        indicators_by_date=indicators_by_date,
+    )
+    return digest
+
+
 def build_large_cap_digest(
     ticker: str,
     data_mode: DataMode,
@@ -446,6 +691,24 @@ def build_large_cap_digest(
     sym = ticker.strip().upper()
     if not sym:
         raise ValueError("ticker is required")
+
+    from large_cap.remote_digest_inputs import fetch_digest_inputs, use_remote_screener_db
+
+    if use_remote_screener_db():
+        inputs = fetch_digest_inputs(sym, analysis_date=analysis_date or as_of_ymd)
+        if expected_db_latest and expected_db_latest.strip():
+            expected = expected_db_latest.strip()
+            our = str(inputs.get("db_latest_completed_session") or "")
+            if our and our < expected:
+                raise ValueError(
+                    f"Screener DB is stale: latest session {our}, expected at least {expected}. "
+                    "Main app screener.db may need refresh."
+                )
+        return build_large_cap_digest_from_inputs(
+            inputs,
+            data_mode,
+            premarket_snapshot=premarket_snapshot,
+        )
 
     db_path = screener_db_path()
     if not db_path.is_file():

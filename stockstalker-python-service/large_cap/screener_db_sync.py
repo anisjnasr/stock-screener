@@ -108,9 +108,17 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
     """
     Pull screener.db from the main app export endpoint and replace the local copy.
 
-    Default variant ``large_cap`` downloads a slim DB (~300–800 MB) suitable for
-    Render Starter (512 MB RAM). Set SCREENER_DB_EXPORT_VARIANT=full for the 6 GB export.
+    No-op when SCREENER_DB_REMOTE=1 (Python uses main app HTTP for digest inputs).
     """
+    from large_cap.remote_digest_inputs import use_remote_screener_db
+
+    if use_remote_screener_db():
+        return {
+            "ok": True,
+            "status": "skipped",
+            "reason": "SCREENER_DB_REMOTE — no local screener.db on Python",
+        }
+
     if not _SYNC_LOCK.acquire(blocking=False):
         running = read_sync_status()
         return {"ok": False, "status": "already_running", "running": running}

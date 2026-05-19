@@ -620,6 +620,13 @@ export function resetDbConnection(): void {
   globalForDb._screenerDbLastStatCheck = undefined;
 }
 
+/** Run a read callback against the screener DB (server-only helpers). */
+export function withScreenerDb<T>(fn: (db: BetterSqlite3Database) => T): T {
+  const db = getDb();
+  if (!db) throw new Error("Screener database is not available");
+  return fn(db);
+}
+
 /** Older DBs may lack columns that newer code SELECTs; add them once (writable handle). */
 let financialsSchemaMigrationAttempted = false;
 function ensureFinancialsSchemaMigration(): void {

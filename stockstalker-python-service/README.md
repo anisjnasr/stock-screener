@@ -162,14 +162,14 @@ curl -s http://127.0.0.1:8000/news -H "Authorization: Bearer dev-secret-32chars-
 
 ## Deploy on Render
 
-1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **10GB persistent disk** at `/app/data` (slim Large Cap DB only).
+1. **Blueprint:** `stockstalker-python` runs on **Starter (512 MB)** with **`SCREENER_DB_REMOTE=true`** — no local `screener.db` or persistent disk. Digest SQL runs on the main app (2 GB); Python fetches JSON from `/api/internal/large-cap/digest-inputs`.
 2. After first deploy, set **`INTERNAL_API_KEY`**, **`ANTHROPIC_API_KEY`**, Supabase cache vars, and **`STOCK_SCANNER_APP_URL`** (main app URL) on the Python service environment (Render dashboard).
-3. **DB sync:** After each main-app DB update, the main app triggers Python to download a **slim** `screener.db` from `GET /api/admin/screener-db-export?variant=large_cap` (~300–800 MB, last ~320 sessions). No 6 GB full copy is required on Python. Set `SCREENER_DB_EXPORT_VARIANT=large_cap` (default in `render.yaml`). First deploy still needs one successful sync after the main app has data.
+3. **DB / digest:** No DB sync to Python. Set **`STOCK_SCANNER_APP_URL`** to the main app URL. Python calls `GET /api/internal/large-cap/digest-inputs` (auth: `INTERNAL_API_KEY` = main app `PYTHON_SERVICE_KEY`).
 4. On the **Next.js** service, set:
    - `PYTHON_SERVICE_URL` — public URL of this service (no trailing slash), e.g. `https://stockstalker-python.onrender.com`
    - `PYTHON_SERVICE_KEY` — **same value** as `INTERNAL_API_KEY`
 
-**Memory / disk:** Render Starter (512MB RAM) is supported via the slim export. Python never holds the full 6 GB DB. Keep batch concurrency low (default 2). For heavy parallel runs, upgrade to Standard (2GB+). Set `SCREENER_DB_EXPORT_VARIANT=full` only if you also resize the Python disk to 20GB+.
+**Memory:** Starter (512 MB) is supported — Python never opens SQLite for Large Cap. Keep batch concurrency low (default 2). Optional local DB: unset `SCREENER_DB_REMOTE` and attach a disk (legacy).
 
 ## Next.js integration (Phase 12B)
 
