@@ -5,6 +5,7 @@ import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import EconomicCalendar from "./EconomicCalendar";
 import DailyThemesPanel from "./DailyThemesPanel";
+import LargeCapAnalysisPanel from "./LargeCapAnalysisPanel";
 import PremarketGappers from "./PremarketGappers";
 import StocksInPlay from "./StocksInPlay";
 import SipArchiveSection from "./SipArchiveSection";
@@ -23,7 +24,7 @@ import type { CuratedSipAddPayload } from "@/types/stocks-in-play";
 import { loadSipDaySnapshot, saveSipDaySnapshot, buildLiveSipSnapshot, type SipPersistVariant } from "@/lib/premarket/sip-daily-persistence";
 import { getActiveProfile, syncPremarketSipBundle } from "@/lib/profile-storage";
 
-const SECTION_ORDER: PremarketSectionId[] = ["context", "sip", "movers", "calendars", "earnings", "sipArchive"];
+const SECTION_ORDER: PremarketSectionId[] = ["context", "largeCap", "sip", "movers", "calendars", "earnings", "sipArchive"];
 
 type SectionConfig = {
   id: PremarketSectionId;
@@ -34,6 +35,7 @@ type SectionConfig = {
 
 const SECTIONS: SectionConfig[] = [
   { id: "context", label: "THEMES", labelAccent: "cyan", stub: "" },
+  { id: "largeCap", label: "Large Cap Analysis", labelAccent: "cyan", stub: "" },
   { id: "sip", label: "Stocks in Play", labelAccent: "cyan", stub: "" },
   { id: "movers", label: "Gap Scanner", labelAccent: "cyan", stub: "" },
   { id: "calendars", label: "Economic & key events", labelAccent: "cyan", stub: "" },
@@ -339,6 +341,8 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               </div>
             ) : s.id === "context" ? (
               <DailyThemesPanel refreshToken={themesRefreshToken} />
+            ) : s.id === "largeCap" ? (
+              <LargeCapAnalysisPanel />
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>
             )}

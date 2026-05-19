@@ -19,6 +19,7 @@ from large_cap.supabase_cache import (
     is_supabase_cache_configured,
     upsert_cached_analysis,
 )
+from large_cap.supabase_archive import SupabaseArchiveError, maybe_write_trade_archive
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,25 @@ def run_large_cap_analysis_cached(
             data_mode=data_mode,
         )
 
+    archive_written = False
+    try:
+        archive_written = maybe_write_trade_archive(pid, sym, trading_date, verdict)
+        if archive_written:
+            logger.info(
+                "large_cap_archive WRITE profile_id=%s ticker=%s trading_date=%s",
+                pid,
+                sym,
+                trading_date,
+            )
+    except SupabaseArchiveError as e:
+        logger.warning(
+            "large_cap_archive failed profile_id=%s ticker=%s trading_date=%s error=%s",
+            pid,
+            sym,
+            trading_date,
+            e,
+        )
+
     return {
         "cache_hit": cache_hit,
         "claude_call_made": claude_call_made,
@@ -125,4 +145,5 @@ def run_large_cap_analysis_cached(
         "analyzed_at": analyzed_at,
         "digest": digest,
         "verdict": verdict,
+        "archive_written": archive_written,
     }

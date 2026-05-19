@@ -13,6 +13,10 @@ import type { Watchlist, WatchlistFolder, StockFlag, ColumnSet, ColumnId, Watchl
 import { loadWatchlists, loadWatchlistFolders, loadFavoriteWatchlistIds, loadFlags } from "./watchlist-storage";
 import type { SavedScreen, ScreenerFolder } from "./screener-storage";
 import type { ChartSettings } from "./chart-settings";
+import {
+  applyCloudLargeCapSettings,
+  LARGE_CAP_SETTINGS_CLOUD_KEY,
+} from "@/lib/premarket/large-cap-settings-storage";
 import { ymdInEt } from "@/lib/et-ymd";
 import {
   SIP_CLOUD_SETTING_KEY,
@@ -363,6 +367,9 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.sip_small_cap_filter_presets !== undefined) {
     s.setItem("stockstalker-sip-small-cap-filter-presets-v1", JSON.stringify(st.sip_small_cap_filter_presets));
   }
+  if (st[LARGE_CAP_SETTINGS_CLOUD_KEY] !== undefined) {
+    applyCloudLargeCapSettings(st[LARGE_CAP_SETTINGS_CLOUD_KEY]);
+  }
   const sipBundleRaw = st[SIP_CLOUD_SETTING_KEY];
   if (sipBundleRaw !== undefined) {
     const bundle = parseSipCloudBundle(sipBundleRaw);
@@ -441,6 +448,7 @@ export function pushLocalStorageToCloud(): void {
     ["stockstalker-sip-filter-presets-v1", "sip_mid_large_filter_presets"],
     ["stockstalker-sip-small-cap-gapper-filters-v1", "sip_small_cap_gapper_filters"],
     ["stockstalker-sip-small-cap-filter-presets-v1", "sip_small_cap_filter_presets"],
+    ["stockstalker-large-cap-settings-v1", LARGE_CAP_SETTINGS_CLOUD_KEY],
   ];
 
   for (const [lsKey, dbKey] of settingKeys) {

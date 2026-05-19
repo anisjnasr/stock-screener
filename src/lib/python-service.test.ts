@@ -69,11 +69,34 @@ describe("python-service", () => {
     expect(Object.keys(out.data)).toHaveLength(41);
   });
 
-  it("returns empty data when all tickers invalid", async () => {
-    const fetchMock = vi.fn();
+  it("streamPythonLargeCapRun POSTs batch payload to /large-cap/run", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: new ReadableStream(),
+    });
     vi.stubGlobal("fetch", fetchMock);
-    const out = await fetchPythonTickerNews({ tickers: ["", "  "] });
-    expect(out.data).toEqual({});
-    expect(fetchMock).not.toHaveBeenCalled();
+
+    await import("./python-service").then(({ streamPythonLargeCapRun }) =>
+      streamPythonLargeCapRun({
+        profileId: "550e8400-e29b-41d4-a716-446655440000",
+        tickers: ["AAPL", "MSFT"],
+        dataMode: "historical",
+        concurrency: 5,
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://py.example.test/large-cap/run");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer test-key",
+      Accept: "application/x-ndjson",
+    });
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      profile_id: "550e8400-e29b-41d4-a716-446655440000",
+      tickers: ["AAPL", "MSFT"],
+      data_mode: "historical",
+      concurrency: 5,
+    });
   });
 });

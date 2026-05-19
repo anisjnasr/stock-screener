@@ -13,11 +13,15 @@ from typing import Any, Optional
 import anthropic
 import yfinance as yf
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from large_cap.cached_analysis import run_large_cap_analysis_cached
 from large_cap.claude_synthesis import synthesize_large_cap_verdict
 from large_cap.digest_builder import build_large_cap_digest
+from large_cap.run_orchestrator import encode_ndjson_event, iter_large_cap_run_events
+from large_cap.archive_scoring import iter_score_pending_archives
+from large_cap.supabase_archive import SupabaseArchiveError, list_archive_rows
 from large_cap.supabase_cache import SupabaseCacheError
 
 app = FastAPI(title="StockStalker Python", version="0.1.0")
@@ -35,6 +39,8 @@ def root() -> dict[str, object]:
             "POST /large-cap/digest": "Large Cap digest JSON (Bearer INTERNAL_API_KEY)",
             "POST /large-cap/synthesize": "Claude verdict from digest (Bearer INTERNAL_API_KEY, ANTHROPIC_API_KEY)",
             "POST /large-cap/analyze": "Digest + cache + Claude (Bearer INTERNAL_API_KEY, Supabase + Anthropic)",
+            "POST /large-cap/run": "Batch analyze NDJSON stream (Bearer INTERNAL_API_KEY, Supabase + Anthropic)",
+            "POST /large-cap/archive/list": "Trade archive rows for profile (Bearer INTERNAL_API_KEY, Supabase)",
             "GET /docs": "OpenAPI / Swagger UI",
         },
     }
@@ -136,6 +142,44 @@ class LargeCapAnalyzeResponse(BaseModel):
     analyzed_at: Optional[str] = None
     digest: dict[str, Any] = Field(default_factory=dict)
     verdict: dict[str, Any] = Field(default_factory=dict)
+    archive_written: bool = False
+    error: Optional[str] = None
+
+
+class LargeCapRunRequest(BaseModel):
+    profile_id: str = Field(..., description="StockStalker profiles.id UUID")
+    tickers: list[str] = Field(default_factory=list, description="Watchlist symbols to analyze")
+    data_mode: str = Field(default="historical", description="historical | historical_premarket")
+    analysis_date: Optional[str] = Field(default=None, description="YYYY-MM-DD session date (Eastern)")
+    premarket_snapshots: Optional[dict[str, PremarketSnapshotIn]] = Field(
+        default=None,
+        description="Per-ticker Massive snapshot payloads when data_mode includes pre-market",
+    )
+    force_refresh: bool = Field(default=False, description="Bypass digest hash cache check")
+    model: Optional[str] = Field(default=None, description="Optional Anthropic model override")
+    concurrency: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=8,
+        description="Parallel workers (default 5, max 8)",
+    )
+
+
+class LargeCapArchiveListRequest(BaseModel):
+    profile_id: str = Field(..., description="StockStalker profiles.id UUID")
+    ticker: Optional[str] = Field(default=None, description="Filter by ticker symbol")
+    date_from: Optional[str] = Field(default=None, description="YYYY-MM-DD inclusive lower bound")
+    date_to: Optional[str] = Field(default=None, description="YYYY-MM-DD inclusive upper bound")
+    outcome: Optional[str] = Field(
+        default=None,
+        description="Pending | Scenario 1 | Scenario 2 | Scenario 3 | None | Ambiguous",
+    )
+    limit: Optional[int] = Field(default=500, ge=1, le=1000)
+
+
+class LargeCapArchiveListResponse(BaseModel):
+    ok: bool = True
+    rows: list[dict[str, Any]] = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -395,5 +439,104 @@ def post_large_cap_analyze(
         analyzed_at=result["analyzed_at"],
         digest=result["digest"],
         verdict=result["verdict"],
+        archive_written=bool(result.get("archive_written")),
         error=None,
     )
+
+
+@app.post("/large-cap/run")
+def post_large_cap_run(
+    req: LargeCapRunRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> StreamingResponse:
+    """
+    Batch analyze watchlist tickers; stream NDJSON events as each row completes.
+    Blueprint stage 7 — concurrency limit, per-row error isolation.
+    """
+    _require_internal_key(authorization)
+
+    mode = (req.data_mode or "historical").strip().lower()
+    if mode not in ("historical", "historical_premarket"):
+        raise HTTPException(
+            status_code=400,
+            detail="data_mode must be historical or historical_premarket",
+        )
+
+    snap_dict: dict[str, dict[str, Any]] | None = None
+    if req.premarket_snapshots:
+        snap_dict = {
+            k.strip().upper(): v.model_dump()
+            for k, v in req.premarket_snapshots.items()
+            if k and v is not None
+        }
+
+    try:
+        events = iter_large_cap_run_events(
+            req.profile_id,
+            req.tickers,
+            mode,  # type: ignore[arg-type]
+            analysis_date=req.analysis_date,
+            premarket_snapshots=snap_dict,
+            force_refresh=req.force_refresh,
+            claude_model=req.model,
+            concurrency=req.concurrency,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    def stream() -> Any:
+        try:
+            for event in iter_score_pending_archives(req.profile_id, analysis_date=req.analysis_date):
+                yield encode_ndjson_event(event)
+            for event in events:
+                yield encode_ndjson_event(event)
+        except SupabaseCacheError as e:
+            yield encode_ndjson_event({"type": "run_error", "ok": False, "error": str(e)})
+        except Exception as e:
+            yield encode_ndjson_event({"type": "run_error", "ok": False, "error": str(e)})
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.post("/large-cap/archive/list", response_model=LargeCapArchiveListResponse)
+def post_large_cap_archive_list(
+    req: LargeCapArchiveListRequest,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> LargeCapArchiveListResponse:
+    """List Trade archive rows for a profile (blueprint §11e)."""
+    _require_internal_key(authorization)
+
+    pid = req.profile_id.strip()
+    if not pid:
+        raise HTTPException(status_code=400, detail="profile_id is required")
+
+    ticker = None
+    if req.ticker:
+        ticker = _normalize_ticker(req.ticker)
+        if not ticker:
+            raise HTTPException(status_code=400, detail="Invalid ticker filter")
+
+    outcome = (req.outcome or "").strip() or None
+    if outcome and outcome.lower() not in (
+        "pending",
+        "scenario 1",
+        "scenario 2",
+        "scenario 3",
+        "none",
+        "ambiguous",
+    ):
+        raise HTTPException(status_code=400, detail="Invalid outcome filter")
+
+    try:
+        rows = list_archive_rows(
+            pid,
+            ticker=ticker,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            outcome=outcome,
+            limit=req.limit or 500,
+        )
+    except SupabaseArchiveError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    return LargeCapArchiveListResponse(ok=True, rows=rows, error=None)

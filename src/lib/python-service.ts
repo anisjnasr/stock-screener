@@ -92,6 +92,7 @@ export type PythonLargeCapAnalyzeResponse = {
   analyzed_at?: string | null;
   digest?: Record<string, unknown>;
   verdict?: Record<string, unknown>;
+  archive_written?: boolean;
   error?: string | null;
 };
 
@@ -223,6 +224,139 @@ export async function fetchPythonLargeCapDigest(init: {
     throw new Error(obj.error || "Python /large-cap/digest returned ok=false");
   }
   return obj;
+}
+
+export type LargeCapRunStreamInit = {
+  profileId: string;
+  tickers: string[];
+  dataMode: "historical" | "historical_premarket";
+  analysisDate?: string | null;
+  premarketSnapshots?: Record<string, LargeCapPremarketSnapshotForPython> | null;
+  forceRefresh?: boolean;
+  concurrency?: number;
+  model?: string | null;
+  signal?: AbortSignal;
+};
+
+/**
+ * POST `/large-cap/run` — NDJSON stream of batch analyze events (stage 7).
+ */
+export async function streamPythonLargeCapRun(init: LargeCapRunStreamInit): Promise<Response> {
+  const base = process.env.PYTHON_SERVICE_URL?.trim();
+  const key = process.env.PYTHON_SERVICE_KEY?.trim();
+  if (!base || !key) {
+    throw new Error("PYTHON_SERVICE_URL and PYTHON_SERVICE_KEY must be set");
+  }
+
+  const profileId = String(init.profileId).trim();
+  const tickers = [
+    ...new Set(
+      init.tickers
+        .map((t) => String(t).trim().toUpperCase())
+        .filter((t) => t.length > 0 && t.length <= 12)
+    ),
+  ];
+  if (!profileId) throw new Error("profileId is required");
+  if (tickers.length === 0) throw new Error("tickers is required");
+
+  const url = `${normalizeBaseUrl(base)}/large-cap/run`;
+  const body: Record<string, unknown> = {
+    profile_id: profileId,
+    tickers,
+    data_mode: init.dataMode,
+    analysis_date: init.analysisDate ?? null,
+    force_refresh: Boolean(init.forceRefresh),
+    model: init.model ?? null,
+  };
+  if (init.concurrency != null) {
+    body.concurrency = init.concurrency;
+  }
+  if (init.premarketSnapshots && Object.keys(init.premarketSnapshots).length > 0) {
+    body.premarket_snapshots = init.premarketSnapshots;
+  }
+
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: "application/x-ndjson",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: init.signal,
+    cache: "no-store",
+  });
+}
+
+export type PythonLargeCapArchiveRow = {
+  ticker: string;
+  trading_date: string;
+  result_json: Record<string, unknown>;
+  outcome: string | null;
+  scoring_json: Record<string, unknown> | null;
+  scored: boolean;
+  outcome_scored_at: string | null;
+  logged_at: string;
+  updated_at: string;
+};
+
+export async function fetchPythonLargeCapArchiveList(init: {
+  profileId: string;
+  ticker?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  outcome?: string | null;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<PythonLargeCapArchiveRow[]> {
+  const base = process.env.PYTHON_SERVICE_URL?.trim();
+  const key = process.env.PYTHON_SERVICE_KEY?.trim();
+  if (!base || !key) {
+    throw new Error("PYTHON_SERVICE_URL and PYTHON_SERVICE_KEY must be set");
+  }
+
+  const profileId = String(init.profileId).trim();
+  if (!profileId) throw new Error("profileId is required");
+
+  const url = `${normalizeBaseUrl(base)}/large-cap/archive/list`;
+  const body: Record<string, unknown> = {
+    profile_id: profileId,
+    ticker: init.ticker ?? null,
+    date_from: init.dateFrom ?? null,
+    date_to: init.dateTo ?? null,
+    outcome: init.outcome ?? null,
+    limit: init.limit ?? 500,
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: init.signal,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Python /large-cap/archive/list HTTP ${res.status}: ${text.slice(0, 400)}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Python /large-cap/archive/list: invalid JSON");
+  }
+
+  const rows = (parsed as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) {
+    throw new Error("Python /large-cap/archive/list: missing rows array");
+  }
+  return rows as PythonLargeCapArchiveRow[];
 }
 
 /**
