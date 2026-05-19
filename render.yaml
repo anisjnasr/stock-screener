@@ -84,4 +84,4 @@ services:
     disk:
       name: screener-data-python
       mountPath: /app/data
-      sizeGB: 20
+      sizeGB: 30

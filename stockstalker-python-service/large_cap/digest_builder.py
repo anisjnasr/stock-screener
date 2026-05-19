@@ -452,6 +452,7 @@ def build_large_cap_digest(
         raise FileNotFoundError(f"Screener database not found: {db_path}")
 
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    conn.execute("PRAGMA cache_size = -8192")
     try:
         assert_db_covers_latest(conn, expected_db_latest)
         ad = resolve_analysis_date_ymd(conn, analysis_date or as_of_ymd)

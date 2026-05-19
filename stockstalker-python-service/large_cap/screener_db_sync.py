@@ -39,15 +39,44 @@ def _write_sync_status(payload: dict[str, Any]) -> None:
     _STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _prune_sync_artifacts(data_dir: Path, *, keep_backups: int = 0) -> None:
+    """Drop partial downloads and old backups so a ~6GB sync fits on the volume."""
+    for staged in data_dir.glob("screener.db.staged.*"):
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("python_db_sync could not remove staged file %s", staged)
+    backups_dir = data_dir / "backups"
+    if not backups_dir.is_dir():
+        return
+    backup_files = sorted(
+        backups_dir.glob("screener.db.before-sync.*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old in backup_files[keep_backups:]:
+        try:
+            old.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("python_db_sync could not remove backup %s", old)
+
+
+def _open_ro_sqlite(path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    # Keep page cache small on 512MB Render instances during multi-GB DB work.
+    conn.execute("PRAGMA cache_size = -8192")
+    return conn
+
+
 def _validate_sqlite_db(path: Path) -> dict[str, str]:
     header = path.read_bytes()[:15]
     if header != b"SQLite format 3":
         raise ValueError("Downloaded file is not a SQLite database")
-    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    conn = _open_ro_sqlite(path)
     try:
-        ic = conn.execute("PRAGMA integrity_check").fetchone()
-        if not ic or str(ic[0]).lower() != "ok":
-            raise ValueError(f"integrity_check failed: {ic[0] if ic else 'empty'}")
+        qc = conn.execute("PRAGMA quick_check").fetchone()
+        if not qc or str(qc[0]).lower() != "ok":
+            raise ValueError(f"quick_check failed: {qc[0] if qc else 'empty'}")
         companies = conn.execute("SELECT COUNT(*) FROM companies").fetchone()
         latest = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()
         company_count = int(companies[0]) if companies else 0
@@ -84,6 +113,7 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
     data_dir = dest.parent
     backups = data_dir / "backups"
     backups.mkdir(parents=True, exist_ok=True)
+    _prune_sync_artifacts(data_dir)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     staged = data_dir / f"screener.db.staged.{ts}"
     backup: Optional[Path] = None
@@ -119,6 +149,8 @@ def sync_screener_db_from_peer(*, wait: bool = False) -> dict[str, Any]:
                 backup = backups / f"screener.db.before-sync.{ts}"
                 dest.replace(backup)
             staged.replace(dest)
+            if backup and backup.is_file():
+                backup.unlink(missing_ok=True)
             for suffix in ("-wal", "-shm"):
                 sidecar = Path(str(dest) + suffix)
                 if sidecar.is_file():

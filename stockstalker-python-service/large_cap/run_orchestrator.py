@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 DataMode = Literal["historical", "historical_premarket"]
 
-DEFAULT_CONCURRENCY = 5
-MAX_CONCURRENCY = 8
+DEFAULT_CONCURRENCY = 3
+MAX_CONCURRENCY = 5
 MAX_TICKERS_PER_RUN = 50
 
 _UUID_RE = re.compile(

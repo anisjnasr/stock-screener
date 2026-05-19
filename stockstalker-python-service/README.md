@@ -162,12 +162,14 @@ curl -s http://127.0.0.1:8000/news -H "Authorization: Bearer dev-secret-32chars-
 
 ## Deploy on Render
 
-1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **20GB persistent disk** at `/app/data`.
+1. **Blueprint:** This repo’s root `render.yaml` includes a second web service `stockstalker-python` with `rootDir: stockstalker-python-service` and a **30GB persistent disk** at `/app/data`.
 2. After first deploy, set **`INTERNAL_API_KEY`**, **`ANTHROPIC_API_KEY`**, Supabase cache vars, and **`STOCK_SCANNER_APP_URL`** (main app URL) on the Python service environment (Render dashboard).
 3. **DB sync:** After each main-app DB update (daily GitHub refresh or admin import), the main app triggers this service to download `screener.db` from `GET /api/admin/screener-db-export`. No manual copy is required once `STOCK_SCANNER_APP_URL` is set. First deploy still needs a successful daily refresh (or one manual `POST /api/admin/sync-python-db` on the main app) to populate the Python disk.
 4. On the **Next.js** service, set:
    - `PYTHON_SERVICE_URL` — public URL of this service (no trailing slash), e.g. `https://stockstalker-python.onrender.com`
    - `PYTHON_SERVICE_KEY` — **same value** as `INTERNAL_API_KEY`
+
+**Memory / disk:** Render Starter (512MB RAM) is tight for a ~6GB `screener.db` plus concurrent Large Cap runs. If you see OOM restarts, upgrade `stockstalker-python` to **Standard** (2GB+) or keep batch concurrency low (default 3). DB sync needs ~2× DB size free on the Python disk during download; prune failed syncs via `POST /admin/sync-screener-db` (automatic cleanup runs at sync start).
 
 ## Next.js integration (Phase 12B)
 
