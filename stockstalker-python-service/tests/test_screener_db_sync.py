@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from large_cap.screener_db_sync import _prune_sync_artifacts, _validate_sqlite_db
+from large_cap.screener_db_sync import _prune_sync_artifacts, _validate_sqlite_db, sync_screener_db_from_peer
 
 
 class TestScreenerDbSync(unittest.TestCase):
@@ -41,6 +43,12 @@ class TestScreenerDbSync(unittest.TestCase):
             self.assertFalse(staged.exists())
             remaining = list(backups.glob("screener.db.before-sync.*"))
             self.assertEqual(len(remaining), 0)
+
+    def test_sync_skipped_when_remote_db(self) -> None:
+        with patch.dict(os.environ, {"SCREENER_DB_REMOTE": "true"}, clear=False):
+            result = sync_screener_db_from_peer(wait=False)
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("status"), "skipped")
 
 
 if __name__ == "__main__":

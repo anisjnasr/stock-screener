@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as etYmd from "@/lib/et-ymd";
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/screener-db-native", () => ({
   getLatestLargeCapDbSessionDate: vi.fn(() => "2026-05-18"),
 }));
