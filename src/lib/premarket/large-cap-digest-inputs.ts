@@ -112,7 +112,10 @@ export function fetchLargeCapDigestInputs(
         ema_20, ema_50, ema_100, ema_200,
         above_ema_20, pct_from_ema_20, above_ema_50, pct_from_ema_50,
         above_ema_100, pct_from_ema_100, above_ema_200, pct_from_ema_200,
-        ema_20_above_ema_50, ema_50_above_ema_100, ema_50_above_ema_200, ema_100_above_ema_200
+        ema_20_above_50 AS ema_20_above_ema_50,
+        ema_50_above_100 AS ema_50_above_ema_100,
+        ema_50_above_200 AS ema_50_above_ema_200,
+        ema_100_above_200 AS ema_100_above_ema_200
       FROM indicators_daily
       WHERE symbol = ? AND date = ?
       `

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Optional
@@ -53,8 +54,18 @@ def fetch_digest_inputs(
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         method="GET",
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            raise ValueError(f"digest-inputs HTTP {e.code}: {body[:400]}") from e
+        if isinstance(parsed, dict) and parsed.get("error"):
+            raise ValueError(str(parsed["error"])) from e
+        raise ValueError(f"digest-inputs HTTP {e.code}: {body[:400]}") from e
     if not payload.get("ok"):
         raise ValueError(str(payload.get("error") or "digest-inputs failed"))
     inputs = payload.get("inputs")
