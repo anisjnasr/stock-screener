@@ -5,6 +5,8 @@ import {
   formatDecisionLevelPrice,
   inferDecisionLevels,
   matchPriceToDigestSource,
+  normalizeBulletField,
+  splitProseIntoBullets,
   splitNarrativeIntoSections,
   textToBulletItems,
 } from "@/lib/premarket/large-cap-narrative-display";
@@ -95,10 +97,10 @@ describe("buildNarrativeBlocks", () => {
     expect(blocks.map((b) => b.title)).toEqual([
       "Big Picture",
       "Recent Action",
-      "Historical Analogues",
-      "Key Levels",
       "Pre-Market",
+      "Key Levels",
     ]);
+    expect(blocks.some((b) => b.title === "Historical Analogues")).toBe(false);
     const keyLevels = blocks.find((b) => b.kind === "levels");
     expect(keyLevels?.kind === "levels" && keyLevels.levels).toHaveLength(3);
     if (keyLevels?.kind === "levels") {
@@ -168,6 +170,112 @@ describe("buildNarrativeBlocks", () => {
     );
 
     expect(blocks.some((b) => b.title === "Pre-Market")).toBe(false);
+  });
+
+  it("upgrades legacy cached verdicts to v2 layout with comps from digest", () => {
+    const blocks = buildNarrativeBlocks(
+      {
+        narrative_sections: {
+          big_picture: "Base structure.",
+          recent_action: "Expanded 34 points (~7.9%), roughly 1.2x ATR.",
+          historical_analogues: "329 matches with mixed follow-through.",
+          pre_market: "Gap down on light volume.",
+        },
+        decision_levels: [{ role: "Trigger", source: "Prior day high", price: 98.43 }],
+        scenarios: [{ rank: 1, key_levels: { trigger: 98.43, target: 105, invalidation: 96 } }],
+      },
+      "historical_premarket",
+      {
+        historical_analogues: {
+          match_count: 329,
+          low_sample: false,
+          summary_tendencies: {
+            follow_through_count: 155,
+            reversed_count: 157,
+            flat_or_chop_count: 17,
+            avg_next_day_true_range_pct_of_open: 2.5,
+          },
+          examples: [],
+        },
+      }
+    );
+
+    expect(blocks.map((b) => b.title)).toEqual([
+      "Big Picture",
+      "Recent Action",
+      "Pre-Market",
+      "Comps (329)",
+      "Key Levels",
+    ]);
+    expect(blocks.some((b) => b.title === "Historical Analogues")).toBe(false);
+    const recent = blocks.find((b) => b.id === "recent_action");
+    if (recent?.kind === "bullets") {
+      expect(recent.items).toEqual(["Expanded 34 points (~7.9%), roughly 1.2x ATR."]);
+    }
+    const comps = blocks.find((b) => b.kind === "comps");
+    expect(comps?.kind).toBe("comps");
+  });
+
+  it("delegates to v2 structured sections without prose splitting", () => {
+    const blocks = buildNarrativeBlocks(
+      {
+        big_picture: "Memory cycle upturn.",
+        recent_action: ["Prior day high held.", "Volume expanded."],
+        pre_market: ["Gap up on volume."],
+        key_levels: [{ role: "Trigger", source: "Prior day high", price: 98.4 }],
+        comps: {
+          total: 10,
+          follow_through: 4,
+          reversal: 5,
+          flat: 1,
+          low_sample: false,
+          recent_examples: [],
+        },
+      },
+      "historical_premarket"
+    );
+
+    expect(blocks.map((b) => b.title)).toEqual([
+      "Big Picture",
+      "Recent Action",
+      "Pre-Market",
+      "Comps (10)",
+      "Key Levels",
+    ]);
+    const recent = blocks.find((b) => b.id === "recent_action");
+    expect(recent?.kind).toBe("bullets");
+    if (recent?.kind === "bullets") {
+      expect(recent.items).toEqual(["Prior day high held.", "Volume expanded."]);
+    }
+    expect(blocks.some((b) => b.title === "Historical Analogues")).toBe(false);
+    const comps = blocks.find((b) => b.kind === "comps");
+    expect(comps?.kind).toBe("comps");
+  });
+});
+
+describe("splitProseIntoBullets", () => {
+  it("splits multi-sentence prose without breaking decimals", () => {
+    const prose =
+      "Pre-market last price is 263.945, a -0.40% gap versus the prior close of 265.01. " +
+      "Price remains inside all range windows and has not cleared any structural level.";
+    expect(splitProseIntoBullets(prose)).toHaveLength(2);
+    expect(splitProseIntoBullets("Expanded 34 points (~7.9%), roughly 1.2x ATR.")).toEqual([
+      "Expanded 34 points (~7.9%), roughly 1.2x ATR.",
+    ]);
+  });
+
+  it("splits v2 arrays that contain one long bullet string", () => {
+    const bullets = normalizeBulletField([
+      "Yesterday was a strong session (+2.19%). the prior-session true range (2.35%) was just below one ATR.",
+    ]);
+    expect(bullets).toHaveLength(2);
+    expect(bullets[1]?.startsWith("The")).toBe(true);
+  });
+
+  it("capitalizes bullets split from semicolons", () => {
+    expect(
+      normalizeBulletField(null, "First fact here. pre-market does not upgrade the read.")
+    ).toEqual(["First fact here.", "Pre-market does not upgrade the read."]);
   });
 });
 

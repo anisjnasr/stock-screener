@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect -- hydrate watchlists + settings from localStorage */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { getActiveProfile } from "@/lib/profile-storage";
 import {
   consumeLargeCapRunStream,
@@ -21,6 +21,13 @@ import {
   LC_SECTION_HEADER_COLOR,
   type NarrativeBlock,
 } from "@/lib/premarket/large-cap-narrative-display";
+import {
+  formatKeyLevelPrice,
+  scenarioLevelParts,
+  scenarioLetter,
+  type KeyLevelDisplay,
+} from "@/lib/premarket/large-cap-verdict-display";
+import CompsSection from "./CompsSection";
 import { ymdInEt } from "@/lib/et-ymd";
 import {
   loadLargeCapSession,
@@ -36,6 +43,51 @@ type RowStatus = "pending" | "loading" | "done" | "error";
 const LC_TICKER_PANEL_W = "9.5rem";
 const LC_SCENARIOS_COL_W = "26rem";
 const LC_SUBSECTION_HEADER_CLASS = "pm-section-label text-xs font-medium";
+/** Shared height for ticker + bias header bar alignment across columns. */
+const LC_ROW_HEADER_BAR_CLASS = "flex items-center min-h-7";
+/** Field labels (Gap, Trigger, Average Range, etc.) */
+const LC_FIELD_LABEL_COLOR = "#c5cdd9";
+const LC_FIELD_LABEL_MUTED_COLOR = "#a8b2c0";
+/** Numeric / price values — same brightness everywhere (comps, scenarios, key levels). */
+const LC_VALUE_COLOR = "var(--text-primary)";
+
+function FieldLabel({
+  children,
+  muted = false,
+  className = "text-xs",
+}: {
+  children: ReactNode;
+  muted?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`font-medium ${className}`.trim()}
+      style={{ color: muted ? LC_FIELD_LABEL_MUTED_COLOR : LC_FIELD_LABEL_COLOR }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function FieldValue({
+  children,
+  className = "text-xs shrink-0",
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <span
+      className={`pm-mono font-medium ${className}`.trim()}
+      style={{ color: LC_VALUE_COLOR, ...style }}
+    >
+      {children}
+    </span>
+  );
+}
 
 function confidenceStyle(conf: string): { color: string; bg: string; label: string } {
   const c = conf.trim().toLowerCase();
@@ -44,11 +96,20 @@ function confidenceStyle(conf: string): { color: string; bg: string; label: stri
   return { color: "var(--text-tertiary)", bg: "rgba(255,255,255,0.06)", label: "Low" };
 }
 
-function biasStyle(bias: string): { color: string; arrow: string } {
+function biasStyle(bias: string): { color: string } {
   const b = bias.trim();
-  if (b === "Bullish") return { color: "#4ade80", arrow: "↑" };
-  if (b === "Bearish") return { color: "#f87171", arrow: "↓" };
-  return { color: "#fbbf24", arrow: "→" };
+  if (b === "Bullish") return { color: "#4ade80" };
+  if (b === "Bearish") return { color: "#f87171" };
+  return { color: "#fbbf24" };
+}
+
+function BiasLabel({ bias }: { bias: string }) {
+  const biasUi = biasStyle(bias);
+  return (
+    <span className={`${LC_SUBSECTION_HEADER_CLASS} leading-none`} style={{ color: biasUi.color }}>
+      {bias}
+    </span>
+  );
 }
 
 function directionStyle(direction: string): { color: string; bg: string; label: string } {
@@ -56,15 +117,6 @@ function directionStyle(direction: string): { color: string; bg: string; label: 
   if (d === "long") return { color: "#4ade80", bg: "rgba(74,222,128,0.18)", label: "LONG" };
   if (d === "short") return { color: "#f87171", bg: "rgba(248,113,113,0.18)", label: "SHORT" };
   return { color: "#fbbf24", bg: "rgba(251,191,36,0.15)", label: "EITHER" };
-}
-
-function BiasLabel({ bias }: { bias: string }) {
-  const biasUi = biasStyle(bias);
-  return (
-    <span className={LC_SUBSECTION_HEADER_CLASS} style={{ color: biasUi.color }}>
-      {bias} {biasUi.arrow}
-    </span>
-  );
 }
 
 export type LargeCapRow = {
@@ -305,6 +357,11 @@ export default function LargeCapAnalysisPanel() {
         completedAt = new Date().toISOString();
         setLastRunAt(completedAt);
         setArchiveRefreshToken((t) => t + 1);
+        setSelectedTickers((prev) => {
+          const next = new Set(prev);
+          for (const sym of symbols) next.delete(sym);
+          return next;
+        });
         setRows((prev) => {
           persistSession(profile.id, settingsKey, tradingDateEt, prev, completedAt);
           return prev;
@@ -456,6 +513,31 @@ export default function LargeCapAnalysisPanel() {
     return tickers.filter((t) => selectedTickers.has(t));
   }, [tickers, selectedTickers]);
 
+  const sortedRows = useMemo(() => sortLargeCapRows(rows), [rows]);
+
+  const pillRows = useMemo(
+    () => sortedRows.filter((r) => r.status === "pending"),
+    [sortedRows]
+  );
+
+  const collapsedRows = useMemo(
+    () =>
+      sortedRows.filter(
+        (r) => (r.status === "done" || r.status === "error") && collapsedTickers.has(r.ticker)
+      ),
+    [sortedRows, collapsedTickers]
+  );
+
+  const expandedRows = useMemo(
+    () =>
+      sortedRows.filter(
+        (r) =>
+          r.status === "loading" ||
+          ((r.status === "done" || r.status === "error") && !collapsedTickers.has(r.ticker))
+      ),
+    [sortedRows, collapsedTickers]
+  );
+
   const onRunAll = () => void runTickers(runTargets);
   const onRefreshRow = (sym: string) => void runTickers([sym], { forceRefresh: true });
 
@@ -580,13 +662,36 @@ export default function LargeCapAnalysisPanel() {
             )}
           </div>
           <ul className="space-y-2">
-            {sortLargeCapRows(rows).map((row) => (
+            {pillRows.length > 0 ? (
+              <li className="list-none">
+                <CollapsedTickerPillStrip
+                  rows={pillRows}
+                  selectedTickers={selectedTickers}
+                  running={running}
+                  onToggleSelect={toggleTickerSelected}
+                />
+              </li>
+            ) : null}
+            {collapsedRows.map((row) => (
               <LargeCapRowCard
                 key={row.ticker}
                 row={row}
                 dataMode={settings.dataMode}
                 selected={selectedTickers.has(row.ticker)}
-                collapsed={collapsedTickers.has(row.ticker)}
+                collapsed
+                onToggleCollapsed={() => toggleRowCollapsed(row.ticker)}
+                onToggleSelect={() => toggleTickerSelected(row.ticker)}
+                onRefresh={() => onRefreshRow(row.ticker)}
+                running={running}
+              />
+            ))}
+            {expandedRows.map((row) => (
+              <LargeCapRowCard
+                key={row.ticker}
+                row={row}
+                dataMode={settings.dataMode}
+                selected={selectedTickers.has(row.ticker)}
+                collapsed={false}
                 onToggleCollapsed={() => toggleRowCollapsed(row.ticker)}
                 onToggleSelect={() => toggleTickerSelected(row.ticker)}
                 onRefresh={() => onRefreshRow(row.ticker)}
@@ -598,6 +703,55 @@ export default function LargeCapAnalysisPanel() {
       )}
 
       <LargeCapArchivePanel refreshToken={archiveRefreshToken} />
+    </div>
+  );
+}
+
+function CollapsedTickerPillStrip({
+  rows,
+  selectedTickers,
+  running,
+  onToggleSelect,
+}: {
+  rows: LargeCapRow[];
+  selectedTickers: Set<string>;
+  running: boolean;
+  onToggleSelect: (ticker: string) => void;
+}) {
+  return (
+    <div
+      className="rounded border px-2 py-2"
+      style={{ borderColor: "var(--border-default)", background: "var(--bg-panel)" }}
+    >
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map((row) => {
+          const selected = selectedTickers.has(row.ticker);
+          const pillClass = ["lc-ticker-pill", selected ? "lc-ticker-pill--selected" : ""]
+            .filter(Boolean)
+            .join(" ");
+
+          return (
+            <div key={row.ticker} className={pillClass}>
+              <span onClick={(e) => e.stopPropagation()}>
+                <RowSelectCheckbox
+                  ticker={row.ticker}
+                  selected={selected}
+                  onToggle={() => onToggleSelect(row.ticker)}
+                  disabled={running}
+                />
+              </span>
+              <button
+                type="button"
+                className="lc-ticker-pill-label pm-focus"
+                title={`Select ${row.ticker} for analysis`}
+                onClick={() => onToggleSelect(row.ticker)}
+              >
+                {row.ticker}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -623,6 +777,61 @@ function TickerPanelShell({
       {children}
     </div>
   );
+}
+
+function TickerRowHeader({
+  ticker,
+  selected,
+  onToggleSelect,
+  running,
+  muted = false,
+}: {
+  ticker: string;
+  selected: boolean;
+  onToggleSelect: () => void;
+  running?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className={`${LC_ROW_HEADER_BAR_CLASS} gap-2 min-w-0 w-full`}>
+      <span className="shrink-0 flex items-center self-stretch" onClick={(e) => e.stopPropagation()}>
+        <RowSelectCheckbox
+          ticker={ticker}
+          selected={selected}
+          onToggle={onToggleSelect}
+          disabled={running}
+        />
+      </span>
+      <span
+        className="pm-mono text-lg font-semibold leading-none flex items-center flex-1 min-w-0 truncate"
+        style={{ color: muted ? "var(--text-secondary)" : "var(--text-primary)" }}
+      >
+        {ticker}
+      </span>
+    </div>
+  );
+}
+
+function RowCollapseChevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <span
+      className="inline-block text-[10px] shrink-0 leading-none transition-transform duration-150"
+      style={{
+        color: "var(--text-tertiary)",
+        transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+      }}
+      aria-hidden
+    >
+      ▼
+    </span>
+  );
+}
+
+function formatLevelCell(level: KeyLevelDisplay | { role: string; source: string; price?: number; zone_low?: number; zone_high?: number }): string {
+  if ("zone_low" in level && typeof level.zone_low === "number") {
+    return formatDecisionLevelPrice(level);
+  }
+  return formatKeyLevelPrice(level as KeyLevelDisplay);
 }
 
 function NarrativeSectionsContent({ blocks }: { blocks: NarrativeBlock[] }) {
@@ -651,16 +860,10 @@ function NarrativeSectionsContent({ blocks }: { blocks: NarrativeBlock[] }) {
                 <li key={i}>{item}</li>
               ))}
             </ul>
+          ) : block.kind === "comps" ? (
+            <CompsSection comps={block.comps} />
           ) : (
             <div className="space-y-1">
-              <div
-                className={`${LC_KEY_LEVELS_GRID} text-xs pm-section-label`}
-                style={{ color: "var(--text-tertiary)" }}
-              >
-                <span>Level</span>
-                <span>Source</span>
-                <span>Price</span>
-              </div>
               {block.levels.map((lvl, i) => (
                 <div key={i} className={LC_KEY_LEVELS_GRID}>
                   <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
@@ -669,8 +872,8 @@ function NarrativeSectionsContent({ blocks }: { blocks: NarrativeBlock[] }) {
                   <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
                     {lvl.source}
                   </span>
-                  <span className="pm-mono text-sm shrink-0" style={{ color: "var(--text-primary)" }}>
-                    {formatDecisionLevelPrice(lvl)}
+                  <span className="pm-mono text-sm shrink-0" style={{ color: LC_VALUE_COLOR }}>
+                    {formatLevelCell(lvl)}
                   </span>
                 </div>
               ))}
@@ -697,6 +900,8 @@ function RowAnalysisHeader({
   bias,
   isError,
   analyzedMeta,
+  collapsed,
+  expandable = true,
   onRefresh,
   running,
   refreshLabel = "Refresh",
@@ -704,49 +909,37 @@ function RowAnalysisHeader({
   bias: string;
   isError?: boolean;
   analyzedMeta: ReactNode;
+  collapsed?: boolean;
+  expandable?: boolean;
   onRefresh: () => void;
   running: boolean;
   refreshLabel?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 w-full min-w-0">
+    <div className={`${LC_ROW_HEADER_BAR_CLASS} flex-wrap gap-2 w-full min-w-0`}>
       {isError ? (
-        <span className={LC_SUBSECTION_HEADER_CLASS} style={{ color: "#f87171" }}>
+        <span className={`${LC_SUBSECTION_HEADER_CLASS} leading-none`} style={{ color: "#f87171" }}>
           Error
         </span>
       ) : (
         <BiasLabel bias={bias} />
       )}
-      {analyzedMeta}
-      <button type="button" className="pm-focus ml-auto shrink-0 text-xs underline" onClick={onRefresh} disabled={running}>
-        {refreshLabel}
-      </button>
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        {analyzedMeta}
+        {expandable && collapsed != null ? <RowCollapseChevron collapsed={collapsed} /> : null}
+        <button
+          type="button"
+          className="pm-focus text-xs underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRefresh();
+          }}
+          disabled={running}
+        >
+          {refreshLabel}
+        </button>
+      </div>
     </div>
-  );
-}
-
-function RowCollapseButton({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="pm-focus shrink-0 leading-none p-0.5"
-      aria-expanded={!collapsed}
-      aria-label={collapsed ? "Expand analysis row" : "Collapse analysis row"}
-      onClick={onToggle}
-    >
-      <span
-        className="inline-block text-[10px] transition-transform"
-        style={{ color: "var(--text-tertiary)", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
-      >
-        ▼
-      </span>
-    </button>
   );
 }
 
@@ -764,7 +957,7 @@ function RowSelectCheckbox({
   return (
     <input
       type="checkbox"
-      className="pm-focus shrink-0 rounded"
+      className="pm-focus shrink-0 rounded size-4"
       aria-label={`Select ${ticker}`}
       checked={selected}
       disabled={disabled}
@@ -813,31 +1006,56 @@ function LargeCapRowCard({
     </span>
   ) : null;
 
+  const rowExpandable = row.status === "done" || row.status === "error";
+  const rowToggleProps = rowExpandable
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        "aria-expanded": !collapsed,
+        "aria-label": `${collapsed ? "Expand" : "Collapse"} ${row.ticker} analysis`,
+        className: "cursor-pointer",
+        onClick: onToggleCollapsed,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggleCollapsed();
+          }
+        },
+      }
+    : {};
+
   if (collapsed && (row.status === "done" || row.status === "error")) {
     return (
       <li
-        className="rounded border overflow-hidden"
+        className={`rounded border overflow-hidden ${rowToggleProps.className ?? ""}`.trim()}
         style={{
           borderColor: row.status === "error" ? "var(--border-danger, #f87171)" : "var(--border-default)",
           opacity: row.stale ? 0.85 : 1,
         }}
+        role={rowToggleProps.role}
+        tabIndex={rowToggleProps.tabIndex}
+        aria-expanded={rowToggleProps["aria-expanded"]}
+        aria-label={rowToggleProps["aria-label"]}
+        onClick={rowToggleProps.onClick}
+        onKeyDown={rowToggleProps.onKeyDown}
       >
-        <div className="flex flex-col md:flex-row min-w-0">
+        <div className="flex flex-col md:flex-row md:items-start min-w-0">
           <TickerPanelShell>
-            <div className="flex items-center gap-2 min-w-0">
-              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
-              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
-              <span className="pm-mono text-lg font-semibold shrink-0" style={{ color: "var(--text-primary)" }}>
-                {row.ticker}
-              </span>
-            </div>
+            <TickerRowHeader
+              ticker={row.ticker}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              running={running}
+              muted={isNoTrade}
+            />
             {isNoTrade ? <NoTradePill /> : null}
           </TickerPanelShell>
-          <div className="flex-1 min-w-0 p-3 flex items-center">
+          <div className="flex-1 min-w-0 p-3">
             <RowAnalysisHeader
               bias={bias}
               isError={row.status === "error"}
               analyzedMeta={analyzedMeta}
+              collapsed={collapsed}
               onRefresh={onRefresh}
               running={running}
               refreshLabel={row.status === "error" ? "Retry" : "Refresh"}
@@ -851,29 +1069,17 @@ function LargeCapRowCard({
   const tickerStatsGrid = (
     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs pm-mono">
       <span style={{ color: "var(--text-secondary)" }}>Prev</span>
-      <span style={{ color: "var(--text-primary)" }}>{formatPrice(priorDay?.close)}</span>
+      <FieldValue className="text-xs">{formatPrice(priorDay?.close)}</FieldValue>
       <span style={{ color: "var(--text-secondary)" }}>PM</span>
-      <span style={{ color: "var(--text-primary)" }}>{showPm ? formatPrice(pm?.last_price) : "—"}</span>
+      <FieldValue className="text-xs">{showPm ? formatPrice(pm?.last_price) : "—"}</FieldValue>
       <span style={{ color: "var(--text-secondary)" }}>PM vol</span>
-      <span style={{ color: "var(--text-primary)" }}>{showPm ? formatVol(pm?.volume) : "—"}</span>
+      <FieldValue className="text-xs">{showPm ? formatVol(pm?.volume) : "—"}</FieldValue>
       <span style={{ color: "var(--text-secondary)" }}>Gap</span>
-      <span style={{ color: showPm ? (gapColor ?? "var(--text-primary)") : "var(--text-primary)" }}>
+      <FieldValue className="text-xs" style={showPm && gapColor ? { color: gapColor } : undefined}>
         {showPm ? formatPct(gapPct) : "—"}
-      </span>
+      </FieldValue>
     </div>
   );
-
-  if (row.status === "pending") {
-    return (
-      <li
-        className="rounded border px-3 py-2 flex items-center gap-2 pm-mono text-sm"
-        style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)", opacity: 0.65 }}
-      >
-        <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
-        <span className="font-semibold">{row.ticker}</span>
-      </li>
-    );
-  }
 
   if (row.status === "loading") {
     return (
@@ -881,14 +1087,15 @@ function LargeCapRowCard({
         className="rounded border overflow-hidden animate-pulse"
         style={{ borderColor: "var(--border-default)" }}
       >
-        <div className="flex flex-col md:flex-row min-w-0">
+        <div className="flex flex-col md:flex-row md:items-start min-w-0">
           <TickerPanelShell>
-            <div className="flex items-center gap-2">
-              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled />
-              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>
-                {row.ticker}
-              </span>
-            </div>
+            <TickerRowHeader
+              ticker={row.ticker}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              running
+              muted
+            />
             <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>Analyzing…</span>
           </TickerPanelShell>
         </div>
@@ -898,16 +1105,24 @@ function LargeCapRowCard({
 
   if (row.status === "error") {
     return (
-      <li className="rounded border overflow-hidden" style={{ borderColor: "var(--border-danger, #f87171)" }}>
-        <div className="flex flex-col md:flex-row min-w-0">
+      <li
+        className={`rounded border overflow-hidden ${rowToggleProps.className ?? ""}`.trim()}
+        style={{ borderColor: "var(--border-danger, #f87171)" }}
+        role={rowToggleProps.role}
+        tabIndex={rowToggleProps.tabIndex}
+        aria-expanded={rowToggleProps["aria-expanded"]}
+        aria-label={rowToggleProps["aria-label"]}
+        onClick={rowToggleProps.onClick}
+        onKeyDown={rowToggleProps.onKeyDown}
+      >
+        <div className="flex flex-col md:flex-row md:items-start min-w-0">
           <TickerPanelShell>
-            <div className="flex items-center gap-2">
-              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
-              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
-              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-                {row.ticker}
-              </span>
-            </div>
+            <TickerRowHeader
+              ticker={row.ticker}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              running={running}
+            />
             <span className="text-xs" style={{ color: "var(--text-danger, #f87171)" }}>
               {row.error ?? "Error"}
             </span>
@@ -917,6 +1132,7 @@ function LargeCapRowCard({
               bias={bias}
               isError
               analyzedMeta={analyzedMeta}
+              collapsed={collapsed}
               onRefresh={onRefresh}
               running={running}
               refreshLabel="Retry"
@@ -927,24 +1143,32 @@ function LargeCapRowCard({
     );
   }
 
+  const narrativeBlocks = buildNarrativeBlocks(verdict, dataMode, digest);
+
   if (isNoTrade) {
     return (
       <li
-        className="rounded border overflow-hidden"
+        className={`rounded border overflow-hidden ${rowToggleProps.className ?? ""}`.trim()}
         style={{
           borderColor: "var(--border-default)",
           opacity: row.stale ? 0.55 : 1,
         }}
+        role={rowToggleProps.role}
+        tabIndex={rowToggleProps.tabIndex}
+        aria-expanded={rowToggleProps["aria-expanded"]}
+        aria-label={rowToggleProps["aria-label"]}
+        onClick={rowToggleProps.onClick}
+        onKeyDown={rowToggleProps.onKeyDown}
       >
-        <div className="flex flex-col md:flex-row min-w-0">
+        <div className="flex flex-col md:flex-row md:items-start min-w-0">
           <TickerPanelShell>
-            <div className="flex items-center gap-2">
-              <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
-              <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
-              <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>
-                {row.ticker}
-              </span>
-            </div>
+            <TickerRowHeader
+              ticker={row.ticker}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              running={running}
+              muted
+            />
             <NoTradePill />
             {tickerStatsGrid}
           </TickerPanelShell>
@@ -952,12 +1176,16 @@ function LargeCapRowCard({
             <RowAnalysisHeader
               bias={bias}
               analyzedMeta={analyzedMeta}
+              collapsed={collapsed}
               onRefresh={onRefresh}
               running={running}
             />
-            <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-              {(verdict?.verdict_reason as string) || (verdict?.narrative as string) || ""}
-            </p>
+            <div onClick={(e) => e.stopPropagation()}>
+              <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+                {(verdict?.verdict_reason as string) || ""}
+              </p>
+              {narrativeBlocks.length > 0 ? <NarrativeSectionsContent blocks={narrativeBlocks} /> : null}
+            </div>
           </div>
         </div>
       </li>
@@ -965,23 +1193,26 @@ function LargeCapRowCard({
   }
 
   const scenarios = Array.isArray(verdict?.scenarios) ? (verdict.scenarios as Record<string, unknown>[]) : [];
-  const letters = ["A", "B", "C"];
-  const narrativeBlocks = buildNarrativeBlocks(verdict, dataMode, digest);
 
   return (
     <li
-      className="rounded border overflow-hidden"
+      className={`rounded border overflow-hidden ${rowToggleProps.className ?? ""}`.trim()}
       style={{ borderColor: "var(--border-default)", opacity: row.stale ? 0.85 : 1 }}
+      role={rowToggleProps.role}
+      tabIndex={rowToggleProps.tabIndex}
+      aria-expanded={rowToggleProps["aria-expanded"]}
+      aria-label={rowToggleProps["aria-label"]}
+      onClick={rowToggleProps.onClick}
+      onKeyDown={rowToggleProps.onKeyDown}
     >
-      <div className="flex flex-col md:flex-row min-w-0">
+      <div className="flex flex-col md:flex-row md:items-start min-w-0">
         <TickerPanelShell>
-          <div className="flex items-center gap-2">
-            <RowSelectCheckbox ticker={row.ticker} selected={selected} onToggle={onToggleSelect} disabled={running} />
-            <RowCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} />
-            <span className="pm-mono text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-              {row.ticker}
-            </span>
-          </div>
+          <TickerRowHeader
+            ticker={row.ticker}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            running={running}
+          />
           {tickerStatsGrid}
         </TickerPanelShell>
 
@@ -989,11 +1220,12 @@ function LargeCapRowCard({
           <RowAnalysisHeader
             bias={bias}
             analyzedMeta={analyzedMeta}
+            collapsed={collapsed}
             onRefresh={onRefresh}
             running={running}
           />
 
-          <div className="flex flex-col md:flex-row gap-4 min-w-0">
+          <div className="flex flex-col md:flex-row gap-4 min-w-0" onClick={(e) => e.stopPropagation()}>
             <div className="flex-1 min-w-0">
               <NarrativeSectionsContent blocks={narrativeBlocks} />
             </div>
@@ -1011,13 +1243,12 @@ function LargeCapRowCard({
                 </div>
                 <ul className="space-y-3.5">
                   {scenarios.slice(0, 3).map((sc, i) => {
-                    const letter = letters[i] ?? String(i + 1);
+                    const letter = scenarioLetter(sc, i);
                     const conf = confidenceStyle(String(sc.confidence ?? "Low"));
                     const dir = directionStyle(String(sc.direction ?? "Either"));
-                    const levels = (sc.key_levels ?? {}) as Record<string, unknown>;
-                    const setup = String(sc.title ?? sc.description ?? "");
+                    const setup = String(sc.title ?? "");
                     return (
-                      <li key={i} className="flex gap-2">
+                      <li key={letter} className="flex gap-2">
                         <span
                           className="pm-mono w-4 shrink-0 text-xs font-semibold pt-0.5"
                           style={{ color: "var(--text-secondary)" }}
@@ -1042,9 +1273,16 @@ function LargeCapRowCard({
                           <p className="text-sm leading-snug" style={{ color: "var(--text-primary)" }}>
                             {setup}
                           </p>
-                          <p className="pm-mono text-xs leading-snug" style={{ color: "var(--text-secondary)" }}>
-                            {formatPrice(levels.trigger)} → {formatPrice(levels.target)} · Invalidated @{" "}
-                            {formatPrice(levels.invalidation)}
+                          <p className="pm-mono text-xs leading-snug">
+                            {scenarioLevelParts(sc).map((part, pi) => (
+                              <span key={part.label}>
+                                {pi > 0 ? (
+                                  <span style={{ color: "var(--text-tertiary)" }}> · </span>
+                                ) : null}
+                                <FieldLabel>{part.label} </FieldLabel>
+                                <FieldValue>{part.value}</FieldValue>
+                              </span>
+                            ))}
                           </p>
                         </div>
                       </li>

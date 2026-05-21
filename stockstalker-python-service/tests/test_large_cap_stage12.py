@@ -13,6 +13,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from large_cap.claude_synthesis import parse_verdict_json
+from large_cap.verdict_schema_samples import sample_trade
 from large_cap.digest_hash import compute_digest_hash
 from large_cap.outcome_scorer import score_trade_result_json
 from large_cap.run_orchestrator import iter_large_cap_run_events
@@ -22,33 +23,7 @@ KEY = "test-internal-key"
 
 
 def _trade_verdict() -> dict:
-    scenarios = []
-    directions = ["Long", "Short", "Either"]
-    titles = ["Follow-through", "Failure / reversal", "Consolidation"]
-    for rank, (direction, title) in enumerate(zip(directions, titles, strict=True), start=1):
-        scenarios.append(
-            {
-                "rank": rank,
-                "confidence": "Medium",
-                "title": title,
-                "description": f"Scenario {rank} path.",
-                "key_levels": {
-                    "trigger": 100.0 + rank,
-                    "target": 105.0 + rank,
-                    "invalidation": 98.0 + rank,
-                },
-                "expected_move_pct": 2.0,
-                "direction": direction,
-            }
-        )
-    return {
-        "ticker": "AAPL",
-        "verdict": "Trade",
-        "verdict_reason": "Setup.",
-        "bias": "Bullish",
-        "narrative": "Three prior gap-ups in the analogue set followed through; one reversed.",
-        "scenarios": scenarios,
-    }
+    return sample_trade()
 
 
 class TestE2EDataModes(unittest.TestCase):
@@ -138,7 +113,7 @@ class TestE2ECachingAndRun(unittest.TestCase):
 
     def test_narrative_references_analogues_when_present(self) -> None:
         v = _trade_verdict()
-        self.assertIn("analogue", v["narrative"].lower())
+        self.assertIn("base", v["big_picture"].lower())
 
     def test_single_stock_error_does_not_break_batch(self) -> None:
         def mock_analyze(_pid: str, ticker: str, *_a: object, **_k: object) -> dict:

@@ -1,4 +1,12 @@
 import type { LargeCapDataMode } from "@/lib/premarket/large-cap-settings-storage";
+import {
+  buildVerdictSections,
+  capitalizeBulletStart,
+  isV2Verdict,
+  mapHistoricalAnaloguesToComps,
+  type KeyLevelDisplay,
+  type VerdictSectionBlock,
+} from "@/lib/premarket/large-cap-verdict-display";
 
 export type NarrativeSections = {
   big_picture: string;
@@ -16,6 +24,7 @@ export type DecisionLevel = {
 };
 
 export type NarrativeBlock =
+  | VerdictSectionBlock
   | { kind: "text"; id: string; title: string; body: string }
   | { kind: "bullets"; id: string; title: string; items: string[] }
   | { kind: "levels"; id: "key_levels"; title: string; levels: DecisionLevel[] };
@@ -85,16 +94,16 @@ export function textToBulletItems(text: string): string[] {
     .split(/\n+/)
     .map((line) => line.replace(/^[\s•\-–*]+/, "").trim())
     .filter(Boolean);
-  if (lines.length > 1) return lines;
+  if (lines.length > 1) return lines.map(capitalizeBulletStart);
 
   if (trimmed.includes(";")) {
     return trimmed
       .split(";")
-      .map((part) => part.trim())
+      .map((part) => capitalizeBulletStart(part.trim()))
       .filter(Boolean);
   }
 
-  return splitSentences(trimmed);
+  return splitSentences(trimmed).map(capitalizeBulletStart);
 }
 
 function sectionsFromRaw(raw: unknown): NarrativeSections {
@@ -624,12 +633,132 @@ function parseDecisionLevels(raw: unknown): DecisionLevel[] {
   return out.slice(0, 3);
 }
 
+/** Split prose into sentence bullets without breaking decimals (e.g. 7.9%, 265.01). */
+export function splitProseIntoBullets(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const lines = trimmed
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\s•\-–*]+/, "").trim())
+    .filter(Boolean);
+  if (lines.length > 1) return lines.flatMap((line) => splitProseIntoBullets(line));
+
+  if (trimmed.includes(";")) {
+    const semi = trimmed
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (semi.length > 1) return semi.flatMap((part) => splitProseIntoBullets(part));
+  }
+
+  const sentences = trimmed
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length > 1) return sentences.map(capitalizeBulletStart);
+
+  return [capitalizeBulletStart(trimmed)];
+}
+
+const MAX_BULLET_WORDS = 22;
+
+function expandBulletText(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const words = trimmed.split(/\s+/).length;
+  const hasSentenceBreak = /(?<=[.!?])\s+/.test(trimmed);
+  if (words <= MAX_BULLET_WORDS && !hasSentenceBreak) return [trimmed];
+  return splitProseIntoBullets(trimmed);
+}
+
+/** Normalize bullet arrays: one short fact per item; split legacy long prose. */
+export function normalizeBulletField(arrayRaw: unknown, proseFallback = ""): string[] {
+  let items: string[] = [];
+  if (Array.isArray(arrayRaw) && arrayRaw.length > 0) {
+    items = arrayRaw.flatMap((item) => expandBulletText(String(item)));
+  } else if (proseFallback.trim()) {
+    items = expandBulletText(proseFallback);
+  }
+  return items.map(capitalizeBulletStart);
+}
+
+function decisionLevelToKeyLevel(level: DecisionLevel): KeyLevelDisplay {
+  if (typeof level.zone_low === "number" && typeof level.zone_high === "number") {
+    return {
+      role: level.role,
+      source: level.source,
+      range: [Math.min(level.zone_low, level.zone_high), Math.max(level.zone_low, level.zone_high)],
+    };
+  }
+  return { role: level.role, source: level.source, price: level.price };
+}
+
+/** Upgrade cached legacy verdicts to v2 display shape using digest + narrative_sections. */
+export function coerceVerdictForDisplay(
+  verdict: Record<string, unknown>,
+  digest: Record<string, unknown> | undefined,
+  dataMode: LargeCapDataMode
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...verdict };
+
+  if (isV2Verdict(verdict)) {
+    out.recent_action = normalizeBulletField(
+      verdict.recent_action,
+      typeof verdict.recent_action === "string" ? verdict.recent_action : ""
+    );
+    if (dataMode === "historical_premarket") {
+      const pm = normalizeBulletField(
+        verdict.pre_market,
+        typeof verdict.pre_market === "string" ? verdict.pre_market : ""
+      );
+      if (pm.length > 0) out.pre_market = pm;
+      else delete out.pre_market;
+    }
+    if (!verdict.comps && digest?.historical_analogues && typeof digest.historical_analogues === "object") {
+      out.comps = mapHistoricalAnaloguesToComps(digest.historical_analogues);
+    }
+    return out;
+  }
+
+  const sections = ensureNarrativeSections(verdict, digest, dataMode);
+
+  if (sections.big_picture.trim()) out.big_picture = sections.big_picture.trim();
+
+  const recent = normalizeBulletField(verdict.recent_action, sections.recent_action);
+  if (recent.length > 0) out.recent_action = recent;
+
+  if (dataMode === "historical_premarket") {
+    const pm = normalizeBulletField(verdict.pre_market, sections.pre_market);
+    if (pm.length > 0) out.pre_market = pm;
+  }
+
+  const analogues = digest?.historical_analogues;
+  if (analogues && typeof analogues === "object") {
+    out.comps = mapHistoricalAnaloguesToComps(analogues);
+  } else if (verdict.comps) {
+    out.comps = verdict.comps;
+  }
+
+  const decisionLevels = inferDecisionLevels(verdict, digest);
+  if (decisionLevels.length > 0) {
+    out.key_levels = decisionLevels.map(decisionLevelToKeyLevel);
+  }
+
+  return out;
+}
+
 export function buildNarrativeBlocks(
   verdict: Record<string, unknown> | undefined,
   dataMode: LargeCapDataMode,
   digest?: Record<string, unknown>
 ): NarrativeBlock[] {
   if (!verdict) return [];
+
+  const displayVerdict = coerceVerdictForDisplay(verdict, digest, dataMode);
+  if (isV2Verdict(displayVerdict)) {
+    return buildVerdictSections(displayVerdict, dataMode);
+  }
 
   const sections = ensureNarrativeSections(verdict, digest, dataMode);
   const decisionLevels = inferDecisionLevels(verdict, digest);

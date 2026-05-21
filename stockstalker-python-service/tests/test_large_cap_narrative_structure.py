@@ -6,6 +6,7 @@ import json
 import unittest
 
 from large_cap.claude_synthesis import parse_verdict_json
+from large_cap.verdict_schema_samples import sample_trade
 from large_cap.narrative_structure import ensure_structured_narrative, split_narrative_into_sections
 
 
@@ -90,61 +91,15 @@ class TestNarrativeStructure(unittest.TestCase):
         self.assertNotIn("Primary scenario", sources)
 
     def test_decision_level_zone_schema(self) -> None:
-        raw = {
-            "ticker": "NVDA",
-            "verdict": "Trade",
-            "verdict_reason": "Range setup.",
-            "bias": "Neutral",
-            "narrative_sections": {
-                "big_picture": "Consolidating.",
-                "recent_action": "Tight.",
-                "historical_analogues": "Few matches.",
-                "pre_market": "Quiet PM.",
-            },
-            "decision_levels": [
-                {
-                    "role": "Range",
-                    "source": "4-day consolidation area",
-                    "zone_low": 410.0,
-                    "zone_high": 425.0,
-                }
-            ],
-            "scenarios": [
-                {
-                    "rank": 1,
-                    "confidence": "Medium",
-                    "title": "Breakout",
-                    "description": "d",
-                    "key_levels": {"trigger": 425.0, "target": 430.0, "invalidation": 410.0},
-                    "expected_move_pct": 1.0,
-                    "direction": "Long",
-                },
-                {
-                    "rank": 2,
-                    "confidence": "Low",
-                    "title": "Fail",
-                    "description": "d",
-                    "key_levels": {"trigger": 410.0, "target": 405.0, "invalidation": 420.0},
-                    "expected_move_pct": 1.0,
-                    "direction": "Short",
-                },
-                {
-                    "rank": 3,
-                    "confidence": "Low",
-                    "title": "Chop",
-                    "description": "d",
-                    "key_levels": {"trigger": 418.0, "target": 422.0, "invalidation": 412.0},
-                    "expected_move_pct": 1.0,
-                    "direction": "Either",
-                },
-            ],
-        }
+        raw = sample_trade()
+        raw["key_levels"].append(
+            {"role": "Reference", "source": "4-day consolidation", "range": [410.0, 425.0]}
+        )
         out = parse_verdict_json(json.dumps(raw))
-        zone = out["decision_levels"][0]
-        self.assertEqual(zone["role"], "Range")
-        self.assertEqual(zone["source"], "4-day consolidation area")
-        self.assertEqual(zone["zone_low"], 410.0)
-        self.assertEqual(zone["zone_high"], 425.0)
+        zone = next(k for k in out["key_levels"] if k.get("range"))
+        self.assertEqual(zone["role"], "Reference")
+        self.assertEqual(zone["source"], "4-day consolidation")
+        self.assertEqual(zone["range"], [410.0, 425.0])
 
 
 if __name__ == "__main__":

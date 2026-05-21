@@ -19,7 +19,7 @@ from large_cap.supabase_cache import (
     is_supabase_cache_configured,
     upsert_cached_analysis,
 )
-from large_cap.narrative_structure import ensure_structured_narrative
+from large_cap.verdict_finalize import finalize_large_cap_verdict
 from large_cap.supabase_archive import SupabaseArchiveError, maybe_write_trade_archive
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def run_large_cap_analysis_cached(
     if cached and cached.get("digest_hash") == digest_hash:
         cache_hit = True
         claude_call_made = False
-        verdict = ensure_structured_narrative(cached["verdict_json"], digest, data_mode=data_mode)
+        verdict = finalize_large_cap_verdict(cached["verdict_json"], digest, data_mode=data_mode)
         analyzed_at = str(cached.get("analyzed_at") or "")
         logger.info(
             "large_cap_cache HIT profile_id=%s ticker=%s trading_date=%s digest_hash=%s",
@@ -110,8 +110,11 @@ def run_large_cap_analysis_cached(
             force_refresh,
             cached is not None,
         )
-        verdict = synthesize_large_cap_verdict(digest, model=claude_model)
-        verdict = ensure_structured_narrative(verdict, digest, data_mode=data_mode)
+        verdict = finalize_large_cap_verdict(
+            synthesize_large_cap_verdict(digest, model=claude_model),
+            digest,
+            data_mode=data_mode,
+        )
         analyzed_at = upsert_cached_analysis(
             pid,
             sym,
@@ -197,5 +200,5 @@ def try_hydrate_cached_analysis(
         "data_mode": data_mode,
         "analyzed_at": str(cached.get("analyzed_at") or ""),
         "digest": digest,
-        "verdict": ensure_structured_narrative(cached["verdict_json"], digest, data_mode=data_mode),
+        "verdict": finalize_large_cap_verdict(cached["verdict_json"], digest, data_mode=data_mode),
     }

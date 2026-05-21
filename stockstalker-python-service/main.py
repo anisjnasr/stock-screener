@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from large_cap.cached_analysis import run_large_cap_analysis_cached, try_hydrate_cached_analysis
 from large_cap.claude_synthesis import synthesize_large_cap_verdict
+from large_cap.verdict_finalize import finalize_large_cap_verdict
 from large_cap.digest_builder import build_large_cap_digest
 from large_cap.run_orchestrator import encode_ndjson_event, iter_large_cap_run_events
 from large_cap.archive_scoring import iter_score_pending_archives
@@ -387,7 +388,13 @@ def post_large_cap_synthesize(
         raise HTTPException(status_code=400, detail="digest must be a non-empty object")
 
     try:
-        v = synthesize_large_cap_verdict(req.digest, model=req.model)
+        data_mode_raw = str(req.digest.get("identity", {}).get("data_mode") or "historical").strip().lower()
+        data_mode = "historical_premarket" if data_mode_raw == "historical_premarket" else "historical"
+        v = finalize_large_cap_verdict(
+            synthesize_large_cap_verdict(req.digest, model=req.model),
+            req.digest,
+            data_mode=data_mode,  # type: ignore[arg-type]
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except anthropic.AuthenticationError as e:

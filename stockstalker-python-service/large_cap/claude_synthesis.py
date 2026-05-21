@@ -2,6 +2,9 @@
 Large Cap Analysis — Claude synthesis (blueprint §8a–§9).
 
 Interpretation only; all numbers live in the digest. API key never leaves the server.
+
+Claude returns structured section fields (no comps). Server merges digest.historical_analogues
+into verdict.comps for the UI (see CompsOut / merge in stage 2 pipeline).
 """
 
 from __future__ import annotations
@@ -12,7 +15,9 @@ import os
 import re
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from large_cap.verdict_bias_alignment import validate_scenario_a_bias_alignment
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +25,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_LARGE_CAP_MODEL = "claude-sonnet-4-6"
 MAX_OUTPUT_TOKENS = 8192
 
-# --- Blueprint §8b system prompt (verbatim operational instructions) ---
+KeyLevelRole = Literal["Trigger", "Target", "Stop", "Resistance", "Support", "Reference"]
+ScenarioLabel = Literal["A", "B", "C"]
+CompsOutcome = Literal["follow_through", "reversal", "flat"]
+
+# --- Blueprint §8b system prompt ---
 SYSTEM_PROMPT_LARGE_CAP_ANALYSIS = """You are a trading-desk analyst assistant for a professional day trader. You are given a structured JSON digest of pre-market and historical data for a single US large-cap stock. Your job is to assess whether the stock is likely to offer **directional, tradable volatility** in the upcoming regular session, and if so, to lay out the three most probable ways the day could unfold.
 
 Definitions:
@@ -36,150 +45,244 @@ Critical — the historical picture and the pre-market picture can disagree, and
 
 Critical — judge breakouts and breakdowns across multiple timescales:
 - The digest gives you the range high/low and tightness at several lookback windows — short (a few days), intermediate (a couple of weeks), longer (a few months), and a long base (up to 52 weeks) — plus, when pre-market data is present, a per-window flag for whether price has cleared each window's range.
-- **The timescale of a break matters.** Breaking a 6-month base is a far more significant event than breaking a 4-day pause, and should imply a larger, more reliable directional move. Let this shape both your verdict confidence and your scenario targets: a long-base break warrants larger `expected_move_pct` and more decisive scenarios; a break of only a very short range is weaker and may not even justify a Trade verdict on its own.
+- **The timescale of a break matters.** Breaking a 6-month base is a far more significant event than breaking a 4-day pause, and should imply a larger, more reliable directional move. Let this shape both your verdict confidence and your scenario targets: a long-base break warrants more decisive scenarios; a break of only a very short range is weaker and may not even justify a Trade verdict on its own.
 - Use your judgment about which timescale is in play. The digest deliberately does not pick one for you — that assessment is yours. A stock can be breaking out on one timescale while still inside its range on another; weigh the whole picture.
-- Reference the relevant timescale explicitly in your `verdict_reason` and scenario descriptions (e.g. "clears the ~3-month range high" rather than just "breaks out").
+- Reference the relevant timescale explicitly in your `verdict_reason` and scenario titles (e.g. "clears the ~3-month range high" rather than just "breaks out").
 
 Rules:
 - Base your assessment **only** on the digest provided. Do not assume data that is not present.
 - If pre-market fields are null, assess using historical structure only and say so in your reasoning.
 - Do not perform arithmetic on raw price series — the digest already contains computed metrics. Use them.
-- Be concise and concrete. Every scenario must reference specific price levels and percentage moves drawn from the digest's key levels.
+- Be concise and concrete. Every scenario must reference specific price levels drawn from the digest's key levels.
 - You are a decision-support tool, not a financial advisor. Do not give buy/sell recommendations or guarantees. Frame scenarios as probabilities, not predictions.
-- Set the trigger, target, and invalidation of each scenario at genuinely meaningful, distinct price levels. The target should be a level the move would plausibly *reach*, and the invalidation a level that would genuinely *disprove* the scenario — they should not be jammed close together. Well-spaced, meaningful levels also make each call cleanly verifiable after the fact.
 - Output **only** valid JSON matching the schema you are given. No preamble, no markdown, no code fences.
 
-Structure your output as structured narrative sections, decision key levels, and scenarios. Do not blend forward price paths into the narrative sections:
-- **narrative_sections** — short, scannable context (1–2 sentences per section max). No bullet lists. No forward scenario paths here.
-  - **big_picture**: multi-timescale structure, trend, and where the stock sits in its ranges.
-  - **recent_action**: last few sessions — range expansion, rejection, pause, or drift into key levels.
-  - **historical_analogues**: what comparable prior setups did next; cite match_count honestly; if low_sample or match_count is 0, say so plainly.
-  - **pre_market**: gap, last price vs prior close, volume vs baseline, and whether pre-market upgraded/downgraded the historical read. If pre-market data is absent, write one sentence stating historical-only assessment.
-- **decision_levels** — exactly **1–3** rows that determine today's scenarios. Each row has three parts: **role** (Trigger, Target, Invalidation, Range, etc.), **source** (the structural origin from the digest — name the exact level, e.g. Prior day high, Top of consolidation area, Recent swing low, 20-day EMA; never use vague labels like "Primary scenario"), and either a **price** or **zone_low + zone_high** for a range band. Pick prices from digest key levels; the source must explain which digest level you chose.
-- The **scenarios** are the *discrete forward paths*: concrete, distinct ways the session could resolve, each anchored to specific price levels.
+**Do not output a comps field** — analogue statistics are attached server-side from the digest. You may read the digest's `historical_analogues` block to inform Big Picture, Scenarios, and confidence tags, but do not restate analogue statistics in your output and do not emit a comps object.
 
-Use the historical analogues — this is central to the tool's value:
-- The digest contains an `historical_analogues` block: prior days when this same stock was in a similar setup, and what each did next, with summary tendencies across the set.
-- Put analogue findings in **narrative_sections.historical_analogues** — e.g. "in the last N comparable gap-ups, the stock followed through on most and reversed on one", and cite a specific dated instance or two when useful.
-- Let the analogue tendencies inform your **confidence tags** and which scenario you rank first. If the precedents lean strongly one way, the matching scenario earns higher confidence.
-- **Honesty about sample size is mandatory.** If the analogue block has a `low_sample` flag or a low `match_count`, say so plainly in **historical_analogues** ("only 2 close precedents, so treat this as weak evidence") and do not present a thin sample as a reliable pattern. If `match_count` is 0, say there are no clear precedents and rely on structure alone. Never invent or imply analogues that are not in the digest.
+Return data in the exact shape each section needs. The UI renders your fields directly — it never splits prose into bullets.
 
-For a **Trade** verdict, provide exactly 3 scenarios, ranked most-probable first, each with a confidence tag of "High", "Medium", or "Low".
-- **The scenarios must genuinely span the range of outcomes — a stock can always fail to do what is expected.** They must not be three variations of the same direction. Whenever the setup points one way (e.g. a pre-market gap up), the scenario set must still include the ways it fails: one scenario for the expected move following through, one for it failing/reversing, and one for it going nowhere (consolidating, no trend). For a gap-up that is: gap-up-and-breakout, gap-up-and-fail/reverse, gap-up-and-consolidate. Apply the mirror logic to a gap-down.
-- The three confidence tags should honestly reflect how lopsided the setup is. A clean, well-supported setup might read High / Medium / Low. A genuinely uncertain one might read Medium / Medium / Low — and that is correct; do not manufacture a High to look decisive.
-- Each scenario has a short title and a one-line description referencing its levels.
+Section rules:
 
-For a **No Trade** verdict, provide an empty scenarios list. The narrative sections still apply — explain why the stock looks rangebound or lacks an edge.
+1. **big_picture** (string, prose): 2–4 sentences. Medium-to-long timeframe only (weeks to months). Covers trend, position in major ranges, MA stack, structural context. No intraday levels, no pre-market context, no forward scenarios.
+
+2. **recent_action** (array of strings): 3–6 bullets. Each bullet is one fact, max 15–20 words. Last 1–10 sessions. Quantitative where possible. No interpretation — interpretation belongs in Big Picture or Scenarios.
+
+3. **pre_market** (array of strings, optional): 3–5 bullets when pre-market data exists. Each bullet one fact, max 15–20 words. Gap size/direction, pre-market price, pre-market volume vs baseline (e.g. "1× baseline", "2× typical"), position vs key levels.
+   - If pre-market data is unavailable (historical-only mode or no pre-market trades), **omit the pre_market key entirely** — do not return an empty array.
+
+4. **key_levels** (array of objects, Trade only): 4–8 rows referenced by your scenarios.
+   - Each: `{ "role": "Trigger"|"Target"|"Stop"|"Resistance"|"Support"|"Reference", "source": "≤6 words", "price": number }` OR `{ "role", "source", "range": [low, high] }` for range bands.
+   - Prices are numbers without $. Source names the structural origin from the digest (e.g. "Prior day high", "55-session range low").
+   - For **No Trade**, use an empty array `[]`.
+
+5. **scenarios** (array): If **Trade**, exactly 3 objects ranked most-probable first, labels **A**, **B**, **C** (each once):
+   `{ "label": "A"|"B"|"C", "direction": "Long"|"Short"|"Either", "confidence": "High"|"Medium"|"Low", "title": "≤8 words, behaviour not prices", "trigger": number|null, "target": number|null, "stop": number|null, "range": [low, high]|null }`
+   - The three scenarios must **span the outcome space**: follow-through, failure/reversal, and consolidation. Never three variants of the same direction.
+   - Trigger/target/stop must be genuinely distinct levels (not within pennies). Title must not duplicate prices in the level row.
+   - Consolidation scenarios use `range` instead of trigger/target/stop; directional scenarios use trigger/target/stop with `range` null.
+   - Confidence honestly reflects setup clarity — Medium/Medium/Low is valid for uncertain setups.
+   - **Bias alignment (mandatory):** The direction of the rank-1 scenario (label **A**) must match the overall `bias`. If bias is **Bullish**, scenario A must be **Long** (or **Either** with a bullish lean). If **Bearish**, scenario A must be **Short** (or **Either** with a bearish lean). Scenarios B and C may take any direction — they cover failure and consolidation — but A must align with bias.
+   - If the most-probable path you can describe does not align with the verdict's bias, the verdict itself is wrong: revise the bias to **Neutral** and rank the scenarios honestly. Do not produce a verdict that contradicts your top scenario.
+   - If **No Trade**, `scenarios` must be `[]`.
+
+Use the digest's `historical_analogues` block when reasoning:
+- Let analogue tendencies inform confidence tags and which scenario you rank first.
+- If `low_sample` is true or `match_count` is low, reflect weaker evidence in confidence — do not invent precedents.
+- If `match_count` is 0, rely on structure alone. Never invent analogues not in the digest.
 """
 
-USER_MESSAGE_SCHEMA_REMINDER = """Output a single JSON object with exactly these keys and types:
-- ticker: string (must match digest identity.ticker)
-- verdict: \"Trade\" or \"No Trade\"
-- verdict_reason: string, one concise sentence (short one-liner for UI)
-- bias: \"Bullish\", \"Bearish\", or \"Neutral\"
-- narrative_sections: object with keys big_picture, recent_action, historical_analogues, pre_market (each a string, 1–2 sentences; no forward price-path list)
-- decision_levels: array of 1–3 items for Trade (0–2 for No Trade). Each { role: string (Trigger|Target|Invalidation|Range|Support|Resistance), source: string naming the digest structural level (e.g. Prior day high, Top of consolidation area, Recent swing low, 55-session range high — never "Primary scenario"), price: number } OR { role, source, zone_low: number, zone_high: number } for a range band. Do not dump every digest level.
-- narrative: string, optional legacy summary — omit if narrative_sections is complete
-- scenarios: array. If verdict is Trade: exactly 3 objects ranked 1–3 with fields rank (1–3), confidence (\"High\"|\"Medium\"|\"Low\"), title, description, key_levels { trigger, target, invalidation } (numbers), expected_move_pct (number), direction (\"Long\"|\"Short\"|\"Either\"). If No Trade: empty array [].
 
+USER_MESSAGE_SCHEMA_REMINDER = """Output a single JSON object with exactly these keys and types (no comps field):
+
+Required for all verdicts:
+- ticker: string (must match digest identity.ticker)
+- verdict: "Trade" or "No Trade"
+- verdict_reason: string, one concise sentence for the UI
+- bias: "Bullish", "Bearish", or "Neutral"
+- big_picture: string (2–4 sentences, prose paragraph)
+- recent_action: array of 3–6 strings (each one bullet fact, no nested objects)
+
+Optional:
+- pre_market: array of 3–5 strings — include ONLY when digest pre-market data exists; omit the key entirely otherwise
+
+Trade verdict only:
+- key_levels: array of 4–8 objects. Each object has:
+    role: "Trigger"|"Target"|"Stop"|"Resistance"|"Support"|"Reference"
+    source: string (≤6 words, structural origin from digest)
+    price: number  OR  range: [low, high] (two numbers, low <= high)
+  Use price OR range per row, not both.
+
+- scenarios: array of exactly 3 objects (labels A, B, C each once), most probable first:
+    label: "A"|"B"|"C"
+    direction: "Long"|"Short"|"Either"
+    confidence: "High"|"Medium"|"Low"
+    title: string (≤8 words, behaviour description)
+    trigger: number|null
+    target: number|null
+    stop: number|null
+    range: [low, high]|null
+  Scenario A direction must align with bias (Bullish→Long/Either, Bearish→Short/Either). If your top scenario does not fit the bias, set bias to Neutral instead.
+
+No Trade verdict:
+- key_levels: []
+- scenarios: []
+
+Do not include: comps, narrative_sections, decision_levels, narrative, rank, description, expected_move_pct, invalidation.
 Do not wrap in markdown. No text before or after the JSON."""
 
 
-class KeyLevels(BaseModel):
+# --- §9 Claude response schema (no comps) ---
+
+
+class KeyLevelOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    trigger: float
-    target: float
-    invalidation: float
-
-
-class NarrativeSectionsOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    big_picture: str = Field(min_length=1)
-    recent_action: str = Field(min_length=1)
-    historical_analogues: str = Field(min_length=1)
-    pre_market: str = Field(min_length=1)
-
-
-class DecisionLevelOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: Optional[str] = Field(default=None, max_length=80)
-    source: Optional[str] = Field(default=None, max_length=120)
-    label: Optional[str] = Field(default=None, max_length=120)
+    role: KeyLevelRole
+    source: str = Field(min_length=1, max_length=80)
     price: Optional[float] = None
-    zone_low: Optional[float] = None
-    zone_high: Optional[float] = None
-    low_label: Optional[str] = Field(default=None, max_length=120)
-    high_label: Optional[str] = Field(default=None, max_length=120)
+    range: Optional[list[float]] = None
 
     @model_validator(mode="after")
-    def price_or_zone(self) -> DecisionLevelOut:
+    def price_or_range(self) -> KeyLevelOut:
         has_price = self.price is not None
-        has_zone = self.zone_low is not None and self.zone_high is not None
-        if has_price and has_zone:
-            raise ValueError("decision_levels item must use price OR zone bounds, not both")
-        if not has_price and not has_zone:
-            raise ValueError("decision_levels item requires price or zone_low and zone_high")
-        if not (
-            (self.role and self.role.strip() and self.source and self.source.strip())
-            or (self.label and self.label.strip())
-        ):
-            raise ValueError("decision_levels item requires role+source or legacy label")
-        if has_zone:
-            assert self.zone_low is not None and self.zone_high is not None
-            if self.zone_low > self.zone_high:
-                raise ValueError("zone_low must be <= zone_high")
+        has_range = self.range is not None and len(self.range) == 2
+        if has_price and has_range:
+            raise ValueError("key_levels item must use price OR range, not both")
+        if not has_price and not has_range:
+            raise ValueError("key_levels item requires price or range [low, high]")
+        if has_range:
+            assert self.range is not None
+            lo, hi = float(self.range[0]), float(self.range[1])
+            if lo > hi:
+                raise ValueError("range[0] must be <= range[1]")
+            self.range = [lo, hi]
         return self
 
 
 class ScenarioOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    rank: int = Field(ge=1, le=3)
-    confidence: Literal["High", "Medium", "Low"]
-    title: str = Field(min_length=1)
-    description: str = Field(min_length=1)
-    key_levels: KeyLevels
-    expected_move_pct: float
+    label: ScenarioLabel
     direction: Literal["Long", "Short", "Either"]
+    confidence: Literal["High", "Medium", "Low"]
+    title: str = Field(min_length=1, max_length=120)
+    trigger: Optional[float] = None
+    target: Optional[float] = None
+    stop: Optional[float] = None
+    range: Optional[list[float]] = None
+
+    @field_validator("range")
+    @classmethod
+    def validate_range(cls, v: Optional[list[float]]) -> Optional[list[float]]:
+        if v is None:
+            return None
+        if len(v) != 2:
+            raise ValueError("scenario range must be [low, high]")
+        lo, hi = float(v[0]), float(v[1])
+        if lo > hi:
+            raise ValueError("scenario range[0] must be <= range[1]")
+        return [lo, hi]
+
+    @model_validator(mode="after")
+    def levels_or_range(self) -> ScenarioOut:
+        has_directional = any(x is not None for x in (self.trigger, self.target, self.stop))
+        has_range = self.range is not None
+        if has_directional and has_range:
+            raise ValueError("scenario must use trigger/target/stop OR range, not both")
+        if not has_directional and not has_range:
+            raise ValueError("scenario requires trigger/target/stop or range")
+        return self
 
 
-class LargeCapVerdictJson(BaseModel):
-    """Blueprint §9 — validated app contract."""
+class ClaudeLargeCapVerdictJson(BaseModel):
+    """Blueprint §9 — fields Claude returns (comps injected server-side)."""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     ticker: str = Field(min_length=1)
     verdict: Literal["Trade", "No Trade"]
     verdict_reason: str = Field(min_length=1)
     bias: Literal["Bullish", "Bearish", "Neutral"]
-    narrative: Optional[str] = None
-    narrative_sections: Optional[NarrativeSectionsOut] = None
-    decision_levels: Optional[list[DecisionLevelOut]] = None
+    big_picture: str = Field(min_length=1)
+    recent_action: list[str] = Field(min_length=1, max_length=8)
+    pre_market: Optional[list[str]] = Field(default=None, max_length=8)
+    key_levels: list[KeyLevelOut] = Field(default_factory=list, max_length=8)
     scenarios: list[ScenarioOut]
 
+    @field_validator("recent_action", "pre_market")
+    @classmethod
+    def non_empty_bullets(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return None
+        cleaned = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+        if len(cleaned) != len(v):
+            raise ValueError("bullet arrays must be non-empty strings")
+        return cleaned
+
     @model_validator(mode="after")
-    def narrative_and_scenarios_valid(self) -> LargeCapVerdictJson:
-        if self.narrative_sections is None and not (self.narrative and self.narrative.strip()):
-            raise ValueError("Provide narrative_sections or legacy narrative string")
-        if self.decision_levels is not None:
-            if len(self.decision_levels) > 3:
-                raise ValueError("decision_levels may contain at most 3 items")
-            if self.verdict == "Trade" and len(self.decision_levels) < 1:
-                raise ValueError("Trade verdict requires 1–3 decision_levels")
+    def trade_or_no_trade_rules(self) -> ClaudeLargeCapVerdictJson:
         if self.verdict == "No Trade":
             if len(self.scenarios) != 0:
                 raise ValueError("No Trade verdict requires scenarios to be an empty array")
+            if self.key_levels:
+                raise ValueError("No Trade verdict requires key_levels to be an empty array")
         else:
             if len(self.scenarios) != 3:
                 raise ValueError("Trade verdict requires exactly 3 scenarios")
-            ranks = sorted(s.rank for s in self.scenarios)
-            if ranks != [1, 2, 3]:
-                raise ValueError("Trade scenarios must have rank 1, 2, and 3 exactly once each")
+            labels = sorted(s.label for s in self.scenarios)
+            if labels != ["A", "B", "C"]:
+                raise ValueError("Trade scenarios must have labels A, B, and C exactly once each")
+            if len(self.key_levels) < 4:
+                raise ValueError("Trade verdict requires at least 4 key_levels rows")
+        if self.pre_market is not None and len(self.pre_market) < 1:
+            raise ValueError("pre_market must be omitted or contain at least one bullet")
         return self
 
+
+# --- UI comps schema (server-injected from digest.historical_analogues) ---
+
+
+class CompsExampleOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    comp_gap_pct: float
+    outcome: CompsOutcome
+    outcome_pct: float
+
+
+class CompsOut(BaseModel):
+    """UI display shape — merged as verdict.comps after synthesis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: int = Field(ge=0)
+    follow_through: int = Field(ge=0)
+    reversal: int = Field(ge=0)
+    flat: int = Field(ge=0)
+    avg_next_day_range_pct: float
+    avg_follow_through_pct: float
+    avg_reversal_pct: float
+    recent_examples: list[CompsExampleOut] = Field(max_length=3)
+    low_sample: bool
+
+    @model_validator(mode="after")
+    def counts_sum_to_total(self) -> CompsOut:
+        if self.follow_through + self.reversal + self.flat != self.total:
+            raise ValueError("follow_through + reversal + flat must equal total")
+        return self
+
+
+class LargeCapVerdictJson(ClaudeLargeCapVerdictJson):
+    """Full UI contract — Claude fields plus server-injected comps (stage 2 merge)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    comps: CompsOut
+
+
+# Backward-compat alias for imports expecting the old name during migration.
+LargeCapVerdictJsonFromClaude = ClaudeLargeCapVerdictJson
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*", re.IGNORECASE)
 
@@ -193,6 +296,7 @@ def strip_markdown_code_fences(raw: str) -> str:
 
 
 def parse_verdict_json(text: str) -> dict[str, Any]:
+    """Validate Claude §9 JSON (without comps). Merge comps in synthesis pipeline (stage 2)."""
     cleaned = strip_markdown_code_fences(text)
     try:
         data = json.loads(cleaned)
@@ -200,15 +304,11 @@ def parse_verdict_json(text: str) -> dict[str, Any]:
         raise ValueError(f"Claude response is not valid JSON: {e}") from e
     if not isinstance(data, dict):
         raise ValueError("Claude JSON root must be an object")
-    validated = LargeCapVerdictJson.model_validate(data)
+    if "comps" in data:
+        raise ValueError("Claude must not output comps — it is injected server-side")
+    validated = ClaudeLargeCapVerdictJson.model_validate(data)
     out = validated.model_dump(exclude_none=True)
-    sections = out.get("narrative_sections")
-    if sections and not out.get("narrative"):
-        out["narrative"] = " ".join(
-            str(sections.get(k, "")).strip()
-            for k in ("big_picture", "recent_action", "historical_analogues", "pre_market")
-            if str(sections.get(k, "")).strip()
-        )
+    validate_scenario_a_bias_alignment(out)
     return out
 
 

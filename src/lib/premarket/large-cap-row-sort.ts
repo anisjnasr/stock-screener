@@ -28,9 +28,12 @@ function topScenario(verdict: Record<string, unknown> | undefined): Record<strin
   const scenarios = verdict?.scenarios;
   if (!Array.isArray(scenarios) || scenarios.length === 0) return null;
   const ranked = scenarios.find(
+    (s) => typeof s === "object" && s != null && (s as Record<string, unknown>).label === "A"
+  ) as Record<string, unknown> | undefined;
+  const byRank = scenarios.find(
     (s) => typeof s === "object" && s != null && (s as Record<string, unknown>).rank === 1
   ) as Record<string, unknown> | undefined;
-  return ranked ?? (scenarios[0] as Record<string, unknown>);
+  return ranked ?? byRank ?? (scenarios[0] as Record<string, unknown>);
 }
 
 function scenarioConfidenceRank(verdict: Record<string, unknown> | undefined): number {

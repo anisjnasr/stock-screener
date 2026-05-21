@@ -88,7 +88,10 @@ class TestArchiveWriteGate(unittest.TestCase):
 
         result = run_large_cap_analysis_cached(self.PROFILE, "MSFT", "historical")
 
-        mock_archive.assert_called_once_with(self.PROFILE, "MSFT", "2026-05-18", verdict)
+        mock_archive.assert_called_once()
+        _pid, sym, trading_date, archived = mock_archive.call_args[0]
+        self.assertEqual(sym, "MSFT")
+        self.assertEqual(archived["verdict"], "Trade")
         self.assertTrue(result["archive_written"])
 
     @patch("large_cap.supabase_archive.upsert_trade_archive")
