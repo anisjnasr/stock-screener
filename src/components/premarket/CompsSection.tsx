@@ -58,6 +58,12 @@ export default function CompsSection({ comps }: { comps: CompsDisplay }) {
   const { followPct, reversalPct, flatPct } = compsSegmentWidths(comps);
   const categories = compsCategories(comps);
 
+  const pctByKey = {
+    follow_through: followPct,
+    reversal: reversalPct,
+    flat: flatPct,
+  } as const;
+
   const barSegments = [
     { key: "follow_through" as const, pct: followPct, count: comps.follow_through },
     { key: "reversal" as const, pct: reversalPct, count: comps.reversal },
@@ -66,11 +72,18 @@ export default function CompsSection({ comps }: { comps: CompsDisplay }) {
 
   return (
     <div className="lc-comps space-y-2">
-      <div className="lc-comps-legend grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+      <div className="lc-comps-legend flex w-full text-xs">
         {categories.map(({ key, label, count }) => {
           const isZero = count === 0;
+          const pct = pctByKey[key];
           return (
-            <div key={key} className="flex items-baseline gap-1.5 min-w-0">
+            <div
+              key={key}
+              className={`flex items-baseline gap-1.5 min-w-0 ${
+                isZero ? "ml-auto shrink-0 pl-2" : "justify-center"
+              }`}
+              style={isZero ? undefined : { width: `${pct}%` }}
+            >
               <CompsFieldLabel muted={isZero}>{label}</CompsFieldLabel>
               <CompsFieldValue muted={isZero}>
                 {count}/{comps.total}

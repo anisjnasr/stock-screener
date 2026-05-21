@@ -7,8 +7,11 @@ Summary statistics reflect the whole matched set; `examples` caps display count 
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Any, Literal, Optional
+
+logger = logging.getLogger(__name__)
 
 # --- Tunable documented constants (blueprint §7b-i) ---
 EXCLUDE_LAST_SESSIONS = 10
@@ -66,6 +69,29 @@ def classify_gap_bucket(gap_pct: Optional[float]) -> Optional[str]:
     return "small_down"
 
 
+def format_gap_bucket_label(bucket: Optional[str]) -> str:
+    labels = {
+        "flat": "Flat gap",
+        "small_up": "Small gap up",
+        "moderate_up": "Moderate gap up",
+        "large_up": "Large gap up",
+        "small_down": "Small gap down",
+        "moderate_down": "Moderate gap down",
+        "large_down": "Large gap down",
+    }
+    return labels.get(bucket or "", bucket or "Unknown gap")
+
+
+def format_setup_signature(trend: str, short_tight: bool, gap_bucket: Optional[str]) -> str:
+    parts: list[str] = []
+    if gap_bucket:
+        parts.append(format_gap_bucket_label(gap_bucket))
+    parts.append("Tight base" if short_tight else "Loose base")
+    trend_labels = {"uptrend": "Uptrend", "downtrend": "Downtrend", "sideways": "Sideways"}
+    parts.append(trend_labels.get(trend, trend))
+    return " · ".join(parts)
+
+
 def position_vs_range(ref_px: float, hi: Optional[float], lo: Optional[float]) -> Optional[Position]:
     if hi is None or lo is None or hi <= 0 or lo <= 0:
         return None
@@ -121,6 +147,11 @@ def digest_signature_for_today(digest: dict[str, Any]) -> Optional[tuple[str, bo
     return (str(trend), short_tight, pos, gap_filter)
 
 
+def _filter_bars_strictly_before(bars: list[Any], before_date: str) -> list[Any]:
+    """In-memory data-layer cutoff (tests / pre-fetched inputs). Dates must be YYYY-MM-DD."""
+    return [b for b in bars if str(b.date) < before_date]
+
+
 def _fetch_indicators_sparse(conn: sqlite3.Connection, symbol: str, before_date: str) -> dict[str, dict[str, Any]]:
     """date -> indicator row subset needed for trend + ATR windows."""
     cur = conn.execute(
@@ -169,15 +200,20 @@ def compute_historical_analogues_block(
     digest: dict[str, Any],
     *,
     indicators_by_date: dict[str, dict[str, Any]] | None = None,
+    lab_mode_reference_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Build `historical_analogues` block after the rest of `digest` is assembled (including pre-market).
+
+    When `lab_mode_reference_date` is set (Comp Lab), comp search uses only OHLC and indicators
+    strictly before that date — enforced at fetch/filter time, not by post-filtering matches.
 
     Lazy-imports digest_builder window helpers so module load order stays acyclic.
     """
     from large_cap.digest_builder import (
         WINDOW_SHORT,
         Bar,
+        _fetch_bars_before,
         _trend_label,
         _window_stats,
     )
@@ -193,16 +229,37 @@ def compute_historical_analogues_block(
 
     trend_want, short_tight_want, short_pos_want, gap_filter = today_sig
 
-    bars: list[Bar] = completed_bars  # type: ignore[assignment]
+    lab_ref = lab_mode_reference_date.strip() if isinstance(lab_mode_reference_date, str) else None
+    if lab_ref == "":
+        lab_ref = None
+
+    if lab_ref is not None:
+        logger.info(
+            "comp_engine lab_mode_reference_date=%s symbol=%s analysis_date=%s",
+            lab_ref,
+            symbol,
+            analysis_date,
+        )
+        if conn is not None:
+            bars: list[Bar] = _fetch_bars_before(conn, symbol, lab_ref)  # type: ignore[assignment]
+            ind_by_date = _fetch_indicators_sparse(conn, symbol, lab_ref)
+        else:
+            bars = _filter_bars_strictly_before(completed_bars, lab_ref)  # type: ignore[assignment]
+            if indicators_by_date is not None:
+                ind_by_date = {d: row for d, row in indicators_by_date.items() if d < lab_ref}
+            else:
+                return _empty_block(reason="lab_mode_missing_indicators")
+    else:
+        bars = completed_bars  # type: ignore[assignment]
+        if indicators_by_date is not None:
+            ind_by_date = indicators_by_date
+        elif conn is not None:
+            ind_by_date = _fetch_indicators_sparse(conn, symbol, analysis_date)
+        else:
+            return _empty_block(reason="missing_indicators")
+
     if len(bars) < WINDOW_SHORT + EXCLUDE_LAST_SESSIONS + 3:
         return _empty_block(reason="insufficient_history")
-
-    if indicators_by_date is not None:
-        ind_by_date = indicators_by_date
-    elif conn is not None:
-        ind_by_date = _fetch_indicators_sparse(conn, symbol, analysis_date)
-    else:
-        return _empty_block(reason="missing_indicators")
 
     prior_idx = len(bars) - 1
     max_anchor_idx = prior_idx - EXCLUDE_LAST_SESSIONS
@@ -216,6 +273,8 @@ def compute_historical_analogues_block(
             break
         b = bars[i]
         nxt = bars[i + 1]
+        if lab_ref is not None and (b.date >= lab_ref or nxt.date >= lab_ref):
+            continue
         if b.close is None or b.high is None or b.low is None:
             continue
         if nxt.open is None or nxt.high is None or nxt.low is None or nxt.close is None:
@@ -279,6 +338,8 @@ def compute_historical_analogues_block(
                 "next_session_date": nxt.date,
                 "overnight_gap_pct_into_next_session": round(overnight_gap_pct, 4),
                 "gap_bucket_used_for_match": cand_gap_bucket,
+                "setup_signature": format_setup_signature(cand_trend, cand_short_tight, cand_gap_bucket),
+                "similarity_score": 100,
                 "next_session": {
                     "open": round(open_next, 4),
                     "high": round(high_next, 4),
@@ -318,7 +379,7 @@ def compute_historical_analogues_block(
         d = {k: v for k, v in ex.items() if k != "_sort_date"}
         examples.append(d)
 
-    return {
+    result: dict[str, Any] = {
         "engine_rule_version": ENGINE_RULE_VERSION,
         "matching_rule_summary": (
             "Require same trend_label, short-window tightness class (vs ATR), short-window range position "
@@ -352,6 +413,15 @@ def compute_historical_analogues_block(
         },
         "examples": examples,
     }
+    if lab_ref is not None:
+        result["lab_mode_reference_date"] = lab_ref
+        lab_matches = []
+        for m in sorted(matches, key=lambda x: x["_sort_date"], reverse=True):
+            lab_matches.append({k: v for k, v in m.items() if k != "_sort_date"})
+        result["matches"] = lab_matches
+        trend_want, short_tight_want, _, gap_filter = today_sig
+        result["reference_setup_signature"] = format_setup_signature(trend_want, short_tight_want, gap_filter)
+    return result
 
 
 def _empty_block(reason: str) -> dict[str, Any]:

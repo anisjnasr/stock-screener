@@ -1279,7 +1279,7 @@ function LargeCapRowCard({
                                 {pi > 0 ? (
                                   <span style={{ color: "var(--text-tertiary)" }}> · </span>
                                 ) : null}
-                                <FieldLabel>{part.label} </FieldLabel>
+                                <FieldLabel muted>{part.label} </FieldLabel>
                                 <FieldValue>{part.value}</FieldValue>
                               </span>
                             ))}

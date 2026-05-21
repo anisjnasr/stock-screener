@@ -109,6 +109,10 @@ class LargeCapDigestRequest(BaseModel):
         default=None,
         description="YYYY-MM-DD latest EOD session from main app; fail if Python screener.db is behind",
     )
+    lab_mode_reference_date: Optional[str] = Field(
+        default=None,
+        description="Comp Lab: restrict comp search to sessions strictly before this YYYY-MM-DD date",
+    )
 
 
 class LargeCapDigestResponse(BaseModel):
@@ -361,6 +365,7 @@ def post_large_cap_digest(
             analysis_date=req.analysis_date,
             premarket_snapshot=snap_dict,
             expected_db_latest=req.db_latest_completed_date,
+            lab_mode_reference_date=req.lab_mode_reference_date,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e

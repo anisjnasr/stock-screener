@@ -439,6 +439,7 @@ def build_large_cap_digest_from_inputs(
     data_mode: DataMode,
     *,
     premarket_snapshot: Optional[dict[str, Any]] = None,
+    lab_mode_reference_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build digest from JSON inputs (remote DB mode — no local screener.db)."""
     sym = str(inputs.get("company", {}).get("symbol") or "").strip().upper()
@@ -664,6 +665,7 @@ def build_large_cap_digest_from_inputs(
         completed,
         digest,
         indicators_by_date=indicators_by_date,
+        lab_mode_reference_date=lab_mode_reference_date,
     )
     return digest
 
@@ -676,6 +678,7 @@ def build_large_cap_digest(
     as_of_ymd: Optional[str] = None,
     premarket_snapshot: Optional[dict[str, Any]] = None,
     expected_db_latest: Optional[str] = None,
+    lab_mode_reference_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Build a single-stock digest for Claude.
@@ -708,6 +711,7 @@ def build_large_cap_digest(
             inputs,
             data_mode,
             premarket_snapshot=premarket_snapshot,
+            lab_mode_reference_date=lab_mode_reference_date,
         )
 
     db_path = screener_db_path()
@@ -940,7 +944,13 @@ def build_large_cap_digest(
 
         from large_cap.historical_analogues import compute_historical_analogues_block
 
-        digest["historical_analogues"] = compute_historical_analogues_block(conn, sym, completed, digest)
+        digest["historical_analogues"] = compute_historical_analogues_block(
+            conn,
+            sym,
+            completed,
+            digest,
+            lab_mode_reference_date=lab_mode_reference_date,
+        )
 
         return digest
     finally:

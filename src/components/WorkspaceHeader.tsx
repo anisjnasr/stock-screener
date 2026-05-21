@@ -613,7 +613,7 @@ function WorkspaceHeader({
 
   const primaryNavSections = WORKSPACE_SECTIONS.slice(0, 3);
   const overflowNavSections = WORKSPACE_SECTIONS.slice(3);
-  const overflowSectionActive = section === "lists" || section === "pre-market";
+  const overflowSectionActive = section === "lists" || section === "pre-market" || section === "comp-lab";
 
   return (
     <header className="shrink-0" style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)" }}>
@@ -763,7 +763,7 @@ function WorkspaceHeader({
                 onClick={() => setNavOverflowOpen((open) => !open)}
                 aria-expanded={navOverflowOpen}
                 aria-haspopup="menu"
-                aria-label="More sections: Lists, PRE-MARKET"
+                aria-label="More sections: Lists, PRE-MARKET, COMP LAB"
                 className={`inline-flex items-center gap-0.5 px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${!overflowSectionActive && !navOverflowOpen ? "hover:bg-white/5" : ""}`}
                 style={{
                   background:
@@ -835,7 +835,7 @@ function WorkspaceHeader({
       </div>
 
       {/* ===== ROW 2 — Sub-bar (omitted on Market — index cards live in the left panel) ===== */}
-      {section !== "market" && section !== "pre-market" && (
+      {section !== "market" && section !== "pre-market" && section !== "comp-lab" && (
       <div
         className="flex items-center gap-2 h-[40px]"
         style={{

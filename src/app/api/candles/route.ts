@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDailyBars, getLatestScreenerDate } from "@/lib/screener-db-native";
-import { fetchQuote, fetchHistoricalDaily } from "@/lib/massive";
-import { isUSMarketOpen } from "@/lib/market-hours";
+import { fetchHistoricalDaily } from "@/lib/massive";
+import { addCalendarDaysYmd } from "@/lib/et-ymd";
 
 type Candle = {
   date: string;
@@ -18,12 +18,32 @@ type CandleCacheEntry = {
 };
 
 const API_CANDLES_TTL_MS = 60 * 1000;
-const API_CANDLES_LIVE_TTL_MS = 15 * 1000;
 
-function getTodayET(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-  }).format(new Date());
+async function backfillDailyBarsFromMassive(
+  dailyChrono: Candle[],
+  symbol: string,
+  throughDate: string
+): Promise<Candle[]> {
+  if (!process.env.MASSIVE_API_KEY || dailyChrono.length === 0) return dailyChrono;
+
+  const lastBarDate = dailyChrono[dailyChrono.length - 1]!.date;
+  if (lastBarDate >= throughDate) return dailyChrono;
+
+  try {
+    const fromStr = addCalendarDaysYmd(lastBarDate, 1);
+    const fetched = await fetchHistoricalDaily(symbol, fromStr, throughDate);
+    if (fetched.length === 0) return dailyChrono;
+
+    const byDate = new Map(dailyChrono.map((c) => [c.date, c]));
+    for (const bar of fetched) {
+      if (bar.date > lastBarDate && bar.date <= throughDate) {
+        byDate.set(bar.date, bar);
+      }
+    }
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  } catch {
+    return dailyChrono;
+  }
 }
 
 function getApiCandlesCache(): Map<string, CandleCacheEntry> {
@@ -122,7 +142,7 @@ export async function GET(request: NextRequest) {
     if (!bars.length) {
       return NextResponse.json([] as Candle[]);
     }
-    const dailyChrono: Candle[] = bars
+    let dailyChrono: Candle[] = bars
       .slice()
       .reverse()
       .map((b) => ({
@@ -134,43 +154,22 @@ export async function GET(request: NextRequest) {
         volume: b.volume,
       }));
 
-    let hasLiveCandle = false;
-    if (process.env.MASSIVE_API_KEY && isUSMarketOpen()) {
-      const todayStr = getTodayET();
-      const lastBarDate =
-        dailyChrono.length > 0 ? dailyChrono[dailyChrono.length - 1].date : "";
-      if (lastBarDate && lastBarDate < todayStr) {
-        try {
-          const quote = await fetchQuote(symbol);
-          if (quote && quote.price > 0) {
-            dailyChrono.push({
-              date: todayStr,
-              open: quote.open || quote.price,
-              high: quote.dayHigh || quote.price,
-              low: quote.dayLow || quote.price,
-              close: quote.price,
-              volume: quote.volume || 0,
-            });
-            hasLiveCandle = true;
-          }
-        } catch {
-          // Live quote unavailable; proceed with historical data only
-        }
-      }
+    if (process.env.MASSIVE_API_KEY) {
+      dailyChrono = await backfillDailyBarsFromMassive(dailyChrono, symbol, latest);
     }
+
+    dailyChrono = dailyChrono.filter((c) => c.date <= latest);
 
     let data: Candle[] = dailyChrono;
     if (interval === "weekly" || interval === "monthly") {
       data = aggregateCandles(dailyChrono, interval as "weekly" | "monthly");
     }
-    const ttl = hasLiveCandle ? API_CANDLES_LIVE_TTL_MS : API_CANDLES_TTL_MS;
-    const maxAge = hasLiveCandle ? 15 : 60;
     cache.set(cacheKey, {
       data,
-      expiresAt: Date.now() + ttl,
+      expiresAt: Date.now() + API_CANDLES_TTL_MS,
     });
     return NextResponse.json(data, {
-      headers: { "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=300` },
+      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Candles error";

@@ -175,6 +175,7 @@ export async function fetchPythonLargeCapDigest(init: {
   dataMode: "historical" | "historical_premarket";
   analysisDate?: string | null;
   dbLatestCompletedDate?: string | null;
+  labModeReferenceDate?: string | null;
   premarketSnapshot?: LargeCapPremarketSnapshotForPython | null;
   signal?: AbortSignal;
 }): Promise<PythonLargeCapDigestResponse> {
@@ -195,6 +196,7 @@ export async function fetchPythonLargeCapDigest(init: {
     data_mode: init.dataMode,
     analysis_date: init.analysisDate ?? null,
     db_latest_completed_date: init.dbLatestCompletedDate ?? null,
+    lab_mode_reference_date: init.labModeReferenceDate ?? null,
   };
   if (init.premarketSnapshot != null) {
     body.premarket_snapshot = init.premarketSnapshot;
