@@ -7,8 +7,10 @@ import {
   CrosshairMode,
   createChart,
   LineSeries,
+  type DeepPartial,
   type IChartApi,
   type ISeriesApi,
+  type TimeChartOptions,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { DEFAULT_CHART_SETTINGS } from "@/lib/chart-settings";
@@ -37,7 +39,7 @@ const COMP_LAB_INDICATORS = [
   { key: "sma200", label: "SMA(200)", color: "#22c55e" },
 ] as const;
 
-function compLabChartOptions(el: HTMLElement, backgroundColor: string) {
+function compLabChartOptions(el: HTMLElement, backgroundColor: string): DeepPartial<TimeChartOptions> {
   return {
     layout: {
       background: { type: ColorType.Solid, color: backgroundColor },
