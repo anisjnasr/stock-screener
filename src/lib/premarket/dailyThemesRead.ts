@@ -18,14 +18,14 @@ export async function fetchDailyThemesForDate(supabase: SupabaseClient, ymd: str
   return (data ?? []) as DailyThemeRow[];
 }
 
-/** Compact text for macro prompt continuity. */
+/** Compact text for downstream prompt continuity. */
 export function summarizeThemesForMacroPrompt(rows: DailyThemeRow[]): string {
   if (!rows.length) return "";
   const macro = rows.filter((r) => r.theme_type === "macro");
   const ind = rows.filter((r) => r.theme_type === "industry");
   const lines: string[] = [];
   if (macro.length) {
-    lines.push("Macro:");
+    lines.push("Major news:");
     for (const r of macro) {
       lines.push(`  ${r.theme_rank}. ${r.theme_title} — ${r.theme_description.slice(0, 220)}${r.theme_description.length > 220 ? "…" : ""}`);
     }

@@ -15,7 +15,7 @@ type ThemesApi =
     }
   | { ok: false; error: string };
 
-const MACRO_CAP = 3;
+const MACRO_CAP = 8;
 const INDUSTRY_CAP = 5;
 const EXEMPLAR_TICKER_CAP = 4;
 
@@ -56,12 +56,15 @@ function formatThemesUpdatedAt(iso: string | null): string | null {
   }).format(d);
 }
 
-function CompactThemeRow({ t }: { t: DailyThemeRow }) {
+function CompactThemeRow({ t, variant = "theme" }: { t: DailyThemeRow; variant?: "major-news" | "theme" }) {
   const tickers = uniqueExemplarTickers(t.exemplar_tickers, EXEMPLAR_TICKER_CAP);
   const industryKey = t.industry?.trim() ?? "";
   const pillClass = industryThemePillClass(industryKey);
   const summary = firstTwoSentences(t.theme_description);
-  const showPillRow = tickers.length > 0 || Boolean(industryKey);
+  const isMajorNews = variant === "major-news";
+  const title = t.theme_title.trim();
+  const showSummary = Boolean(summary) && (!isMajorNews || summary.toLowerCase() !== title.toLowerCase());
+  const showPillRow = !isMajorNews && (tickers.length > 0 || Boolean(industryKey));
 
   return (
     <li className="border-b py-1.5 last:border-b-0" style={{ borderColor: "var(--border-default)" }}>
@@ -77,13 +80,13 @@ function CompactThemeRow({ t }: { t: DailyThemeRow }) {
           <span className="pm-site-prose min-w-0 font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
             {t.theme_title}
           </span>
-          {t.is_new ? (
+          {!isMajorNews && t.is_new ? (
             <span className="pm-site-caption shrink-0 font-semibold" style={{ color: "var(--positive)" }}>
               NEW
             </span>
           ) : null}
         </div>
-        {summary ? (
+        {showSummary ? (
           <p className="col-start-2 row-start-2 mt-0.5 m-0 pm-site-caption leading-snug" style={{ color: "var(--text-secondary)" }}>
             {summary}
           </p>
@@ -225,11 +228,11 @@ export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: 
         {macroThemes.length ? (
           <div className="min-w-0">
             <p className="pm-section-label mb-0.5" style={{ color: "var(--accent-cyan)" }}>
-              MACRO THEMES
+              MAJOR NEWS
             </p>
             <ul className="m-0 list-none p-0">
               {macroThemes.map((t) => (
-                <CompactThemeRow key={t.id} t={t} />
+                <CompactThemeRow key={t.id} t={t} variant="major-news" />
               ))}
             </ul>
           </div>

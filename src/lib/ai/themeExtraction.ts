@@ -73,25 +73,28 @@ export async function generateAndStoreDailyThemes(
   }
 
   const user = [
-    "Infer **5 macro themes** and **5 industry themes** that best explain the current US trading context.",
+    "Produce **up to 8 major macro/news bullets** and **5 industry themes** that best explain the current US trading context.",
     "",
     "Inputs:",
     "",
     "### Current newsletter archive",
     newsletterBlock,
     "",
-    "### Yesterday's themes (continuity / persistence)",
+    "### Yesterday's market context (continuity / persistence)",
     priorBlock,
     "",
     "### Pre-market gappers (sector hints)",
     gapperBlock,
     "",
     "Rules:",
-    "- theme_rank must be 1–5 within each theme_type.",
-    "- theme_title: short headline.",
-    "- theme_description: 2–4 sentences, causal, specific.",
-    "- asset_implications: how equities/sector ETFs might lean.",
-    "- key_watch: what would confirm or break the theme today.",
+    "- macro rows are major news bullets: rank 1–8 by market importance; include 3–8 only, depending on news density.",
+    "- macro theme_title: concise news headline, max 90 chars.",
+    "- macro theme_description: one concise sentence, specific, with the likely market relevance if clear.",
+    "- industry rows are tradable sector/ticker themes: rank 1–5.",
+    "- industry theme_title: short headline.",
+    "- industry theme_description: 2–4 sentences, causal, specific.",
+    "- asset_implications: how equities/sector ETFs might lean; use null if not useful for a macro news bullet.",
+    "- key_watch: what would confirm or break the item today; use null if not useful for a macro news bullet.",
     "- industry themes: set industry to a concise sector label; exemplar_tickers: 2–5 US tickers if inferable.",
     "- trigger_signals: 2–4 short phrases.",
     "- persistence_days: integer 1–5 (estimate carry vs one-off).",
@@ -99,7 +102,7 @@ export async function generateAndStoreDailyThemes(
     "",
     "Output **only** valid JSON:",
     '{"themes":[{"theme_type":"macro","theme_rank":1,"theme_title":"","theme_description":"","asset_implications":"","key_watch":"","industry":null,"exemplar_tickers":[],"trigger_signals":[],"persistence_days":1,"is_new":true}]}',
-    "Include exactly 5 macro and 5 industry objects (10 total).",
+    "Include 3–8 macro objects and exactly 5 industry objects.",
   ].join("\n");
 
   const requestThemesRaw = async (isRetry: boolean): Promise<string> => {
@@ -108,7 +111,7 @@ export async function generateAndStoreDailyThemes(
       : "";
     return streamClaudeText(anthropic, {
       system:
-        "You identify durable market themes for professional traders. Output strict JSON only — object with key \"themes\" array. No markdown.",
+        "You summarize market-moving news and identify tradable industry themes for professional traders. Output strict JSON only — object with key \"themes\" array. No markdown.",
       user: `${user}${retrySuffix}`,
       maxTokens: 3400,
     });
@@ -147,7 +150,8 @@ export async function generateAndStoreDailyThemes(
   for (const t of drafts) {
     const tt = t.theme_type === "industry" ? "industry" : "macro";
     const rank = Number(t.theme_rank);
-    if (!Number.isFinite(rank) || rank < 1 || rank > 5) continue;
+    const maxRank = tt === "macro" ? 8 : 5;
+    if (!Number.isFinite(rank) || rank < 1 || rank > maxRank) continue;
     const title = String(t.theme_title ?? "").trim();
     const desc = String(t.theme_description ?? "").trim();
     if (!title || !desc) continue;
@@ -175,8 +179,11 @@ export async function generateAndStoreDailyThemes(
     });
   }
 
-  if (normalized.length < 8) {
-    return { ok: false, error: `Too few valid themes parsed (${normalized.length})` };
+  const macroCount = normalized.filter((t) => t.theme_type === "macro").length;
+  const industryCount = normalized.filter((t) => t.theme_type === "industry").length;
+
+  if (macroCount < 3 || industryCount < 3) {
+    return { ok: false, error: `Too few valid themes parsed (${macroCount} macro, ${industryCount} industry)` };
   }
 
   const { error: delErr } = await supabase.from("daily_themes").delete().eq("theme_date", ymd);
