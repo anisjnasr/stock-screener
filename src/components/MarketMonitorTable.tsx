@@ -56,12 +56,6 @@ function isMmMetricDrilldownAllowed(metric: MarketMonitorMetricKey, rowDate: str
   return isMmIndicatorDrilldownDate(rowDate);
 }
 
-type RatioThresholds = {
-  ratio5dLow: number | null;
-  ratio5dHigh: number | null;
-  ratio10dLow: number | null;
-  ratio10dHigh: number | null;
-};
 
 function fmtInt(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "";
@@ -73,41 +67,13 @@ function fmtRatio(n: number | null | undefined): string {
   return n.toFixed(2);
 }
 
-function quantile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = (sorted.length - 1) * p;
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  const weight = idx - lo;
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * weight;
-}
 
-function computeRatioThresholds(rows: MarketMonitorRow[]): RatioThresholds {
-  const ratio5dVals = rows
-    .map((r) => r.ratio5d)
-    .filter((v): v is number => v != null && Number.isFinite(v));
-  const ratio10dVals = rows
-    .map((r) => r.ratio10d)
-    .filter((v): v is number => v != null && Number.isFinite(v));
-
-  return {
-    ratio5dLow: quantile(ratio5dVals, 0.1),
-    ratio5dHigh: quantile(ratio5dVals, 0.9),
-    ratio10dLow: quantile(ratio10dVals, 0.1),
-    ratio10dHigh: quantile(ratio10dVals, 0.9),
-  };
-}
-
-function getRatioExtremeCellClass(
-  value: number | null | undefined,
-  low: number | null,
-  high: number | null
-): string {
+function getRatioCellClass(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "";
-  if (low != null && value <= low) return "ws-mm-heat-red-very";
-  if (high != null && value >= high) return "ws-mm-heat-green-very";
+  if (value < 0.5) return "ws-mm-heat-red-very";
+  if (value < 1) return "ws-mm-heat-red-strong";
+  if (value > 2) return "ws-mm-heat-green-very";
+  if (value > 1) return "ws-mm-heat-green-strong";
   return "";
 }
 
@@ -393,12 +359,6 @@ export default function MarketMonitorTable({
   const [error, setError] = useState<string | null>(null);
   const [tableRowsToShow, setTableRowsToShow] = useState<MarketMonitorRow[]>([]);
   const [mmModal, setMmModal] = useState<{ date: string; metric: MarketMonitorMetricKey } | null>(null);
-  const [ratioThresholds, setRatioThresholds] = useState<RatioThresholds>({
-    ratio5dLow: null,
-    ratio5dHigh: null,
-    ratio10dLow: null,
-    ratio10dHigh: null,
-  });
   const [staleBanner, setStaleBanner] = useState<string | null>(null);
   const [topIndustriesExpanded, setTopIndustriesExpanded] = useState(false);
 
@@ -414,7 +374,6 @@ export default function MarketMonitorTable({
         } else {
           setError(null);
           const all = json.rows ?? [];
-          setRatioThresholds(computeRatioThresholds(all));
           if (json.stale && (json.message || json.dataAsOf)) {
             setStaleBanner(json.message ?? `Data through ${json.dataAsOf ?? "unknown"} — refresh precompute when ready.`);
           } else {
@@ -879,14 +838,14 @@ export default function MarketMonitorTable({
                 </td>
                 <td className={MM_BODY_TD}>
                   <MmNumericCellCenter
-                    className={getRatioExtremeCellClass(row.ratio5d, ratioThresholds.ratio5dLow, ratioThresholds.ratio5dHigh)}
+                    className={getRatioCellClass(row.ratio5d)}
                   >
                     <MmTabularInner widthCh={columnValueWidths.ratio5d} widthPx={colWidthsPx.b2}>{fmtRatio(row.ratio5d)}</MmTabularInner>
                   </MmNumericCellCenter>
                 </td>
                 <td className={MM_BODY_TD}>
                   <MmNumericCellCenter
-                    className={getRatioExtremeCellClass(row.ratio10d, ratioThresholds.ratio10dLow, ratioThresholds.ratio10dHigh)}
+                    className={getRatioCellClass(row.ratio10d)}
                   >
                     <MmTabularInner widthCh={columnValueWidths.ratio10d} widthPx={colWidthsPx.b3}>{fmtRatio(row.ratio10d)}</MmTabularInner>
                   </MmNumericCellCenter>
