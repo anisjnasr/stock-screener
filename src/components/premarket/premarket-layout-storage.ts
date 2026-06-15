@@ -1,6 +1,6 @@
 export const PREMARKET_LAYOUT_LS_KEY = "stockstalker-premarket-layout-v1";
 
-export const PREMARKET_SECTION_IDS = ["context", "largeCap", "sip", "calendars", "earnings", "movers", "sipArchive"] as const;
+export const PREMARKET_SECTION_IDS = ["context", "largeCap", "sip", "earnings", "movers", "sipArchive"] as const;
 export type PremarketSectionId = (typeof PREMARKET_SECTION_IDS)[number];
 
 export type PremarketLayoutState = {
@@ -13,7 +13,6 @@ function expandedDefaults(): Record<PremarketSectionId, boolean> {
     context: false,
     largeCap: false,
     sip: false,
-    calendars: false,
     earnings: false,
     movers: false,
     /** SIP archive defaults to collapsed (compact list). */

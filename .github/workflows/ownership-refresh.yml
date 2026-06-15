@@ -71,6 +71,8 @@ jobs:
           "
 
       - name: Refresh ownership (13F)
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           ARGS=()
           if [ "${{ github.event_name }}" = "schedule" ]; then
