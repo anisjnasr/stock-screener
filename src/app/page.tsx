@@ -57,7 +57,7 @@ import {
   type StockFlag,
   type Watchlist,
 } from "@/lib/watchlist-storage";
-import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deleteScreen, loadFolders, type SavedScreen, type ScreenerFolder } from "@/lib/screener-storage";
+import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deduplicateScreensByName, deleteScreen, loadFolders, type SavedScreen, type ScreenerFolder } from "@/lib/screener-storage";
 import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
@@ -367,6 +367,7 @@ export default function Home() {
   useEffect(() => {
     seedDefaultScreensIfEmpty();
     ensurePrebuiltScreensPresent();
+    deduplicateScreensByName();
     const loaded = loadScreens();
     setScreens(loaded);
     setScanFolders(loadFolders());

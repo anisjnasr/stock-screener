@@ -170,9 +170,18 @@ function mergeWatchlistFoldersForHydration(cloud: WatchlistFolder[], local: Watc
 
 function mergeScreensForHydration(cloud: SavedScreen[], local: SavedScreen[]): SavedScreen[] {
   if (cloud.length === 0 && local.length > 0) return local.map((s) => ({ ...s }));
-  const seen = new Set(cloud.map((s) => s.id));
-  const extra = local.filter((s) => !seen.has(s.id));
-  return [...cloud, ...extra];
+  const seenIds = new Set(cloud.map((s) => s.id));
+  const extra = local.filter((s) => !seenIds.has(s.id));
+  // Cloud entries take priority; deduplicate by name so a local seed and its
+  // cloud counterpart (different UUIDs, same name) don't both survive the merge.
+  const merged = [...cloud, ...extra];
+  const seenNames = new Set<string>();
+  return merged.filter((s) => {
+    const key = s.name.trim().toLowerCase();
+    if (seenNames.has(key)) return false;
+    seenNames.add(key);
+    return true;
+  });
 }
 
 function mergeScreenFoldersForHydration(cloud: ScreenerFolder[], local: ScreenerFolder[]): ScreenerFolder[] {

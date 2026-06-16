@@ -264,6 +264,25 @@ export function getDefaultPrebuiltScreens(): Omit<SavedScreen, "id" | "createdAt
   ];
 }
 
+/**
+ * Removes screens with duplicate names from localStorage, keeping the first occurrence.
+ * Should be called on app init to clean up any duplicates produced by cloud/local merge
+ * (where the same scan name exists with two different UUIDs).
+ */
+export function deduplicateScreensByName(): void {
+  const screens = loadScreens();
+  const seen = new Set<string>();
+  const deduped = screens.filter((s) => {
+    const key = s.name.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (deduped.length !== screens.length) {
+    saveScreens(deduped);
+  }
+}
+
 /** If no screens exist, add prebuilt screens and save. Call on app load. */
 export function seedDefaultScreensIfEmpty(): void {
   const current = loadScreens();
