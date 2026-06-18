@@ -78,6 +78,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
   const [themesRefreshBusy, setThemesRefreshBusy] = useState(false);
   const [themesRefreshElapsedMs, setThemesRefreshElapsedMs] = useState(0);
   const [themesRefreshStartedAtMs, setThemesRefreshStartedAtMs] = useState<number | null>(null);
+  const [themesRefreshError, setThemesRefreshError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     queueMicrotask(() => {
@@ -222,19 +223,24 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
     const startedAtMs = Date.now();
     setThemesRefreshStartedAtMs(startedAtMs);
     setThemesRefreshElapsedMs(0);
+    setThemesRefreshError(null);
     setThemesRefreshBusy(true);
     try {
       const result = await runManualPremarketRefresh();
 
       if (!result.ok) {
+        setThemesRefreshError(result.error ?? "Refresh failed");
+        // Still bump the token so the panel refetches whatever is currently in the DB.
+        setThemesRefreshToken((v) => v + 1);
         return;
       }
 
       const elapsedMs = result.elapsedMs ?? Date.now() - startedAtMs;
       setThemesRefreshElapsedMs(elapsedMs);
       setThemesRefreshToken((v) => v + 1);
-    } catch {
-      // Non-public app; errors are visible in server logs / network tab if needed.
+    } catch (e) {
+      setThemesRefreshError(e instanceof Error ? e.message : "Refresh failed");
+      setThemesRefreshToken((v) => v + 1);
     } finally {
       setThemesRefreshBusy(false);
       setThemesRefreshStartedAtMs(null);
@@ -295,6 +301,15 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
                   <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
                     {formatElapsedLabel(themesRefreshElapsedMs)}
                   </span>
+                  {themesRefreshError ? (
+                    <span
+                      className="pm-site-caption max-w-[18rem] truncate"
+                      style={{ color: "var(--warning)" }}
+                      title={themesRefreshError}
+                    >
+                      {themesRefreshError}
+                    </span>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}

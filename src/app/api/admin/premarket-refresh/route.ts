@@ -49,10 +49,12 @@ export async function POST(request: NextRequest) {
   try {
     const newsletterStartedAtMs = Date.now();
     const ingestResult = await ingestMorningNewslettersForDate(supabase, { ymd, signal: request.signal });
-    if (!ingestResult.ok) {
-      return NextResponse.json({ ok: false, stage: "newsletter", error: ingestResult.error }, { status: 500 });
-    }
     const newsletterElapsedMs = Date.now() - newsletterStartedAtMs;
+    // Newsletter ingest is best-effort: if it fails (e.g. Gmail not configured, OAuth error),
+    // we still proceed to regenerate themes from whatever is already in newsletter_archive.
+    if (!ingestResult.ok) {
+      console.warn("[admin/premarket-refresh] newsletter ingest skipped:", ingestResult.error);
+    }
 
     const themesStartedAtMs = Date.now();
     const anthropic = new Anthropic({ apiKey });
@@ -66,12 +68,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       ymd,
-      newsletter: {
-        inserted: ingestResult.inserted,
-        examined: ingestResult.examined,
-        allowlisted: ingestResult.allowlisted,
-        elapsedMs: newsletterElapsedMs,
-      },
+      newsletter: ingestResult.ok
+        ? {
+            inserted: ingestResult.inserted,
+            examined: ingestResult.examined,
+            allowlisted: ingestResult.allowlisted,
+            elapsedMs: newsletterElapsedMs,
+          }
+        : { skipped: true, error: ingestResult.error, elapsedMs: newsletterElapsedMs },
       themes: {
         themeCount: themesResult.themeCount,
         elapsedMs: themesElapsedMs,
