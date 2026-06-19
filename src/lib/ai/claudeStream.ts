@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export const PREMARKET_CLAUDE_MODEL = "claude-sonnet-4-20250514";
+export const PREMARKET_CLAUDE_MODEL = "claude-sonnet-4-5";
 
 function extractFirstJsonValue(raw: string): string | null {
   const starts: number[] = [];
