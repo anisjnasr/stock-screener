@@ -135,10 +135,17 @@ export default function DailyThemesPanel({ refreshToken = 0 }: { refreshToken?: 
     setThemesUpdatedAt(null);
     try {
       const res = await fetch("/api/premarket/daily-themes", { cache: "no-store" });
-      const json = (await res.json()) as ThemesApi;
+      let json: ThemesApi;
+      try {
+        json = JSON.parse(await res.text()) as ThemesApi;
+      } catch {
+        setThemes(null);
+        setError(`Server error (HTTP ${res.status})`);
+        return;
+      }
       if (!res.ok || !json.ok) {
         setThemes(null);
-        setError(!json.ok ? json.error : res.statusText);
+        setError(!json.ok ? json.error : `Server error (HTTP ${res.status})`);
         return;
       }
       setThemes(json.themes);

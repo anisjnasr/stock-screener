@@ -213,8 +213,16 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
       method: "POST",
       cache: "no-store",
     });
-    const json = (await res.json().catch(() => ({ ok: false, error: res.statusText }))) as ManualPremarketRefreshResponse;
-    if (!res.ok) return { ok: false, error: json.error ?? res.statusText };
+    // Use res.text() + JSON.parse so a non-JSON body (HTML timeout/error page, gateway
+    // error) always yields a clean error string instead of leaking a raw SyntaxError.
+    // Also avoids the HTTP/2 empty-statusText trap where res.statusText is "".
+    let json: ManualPremarketRefreshResponse;
+    try {
+      json = JSON.parse(await res.text()) as ManualPremarketRefreshResponse;
+    } catch {
+      return { ok: false, error: `Server error (HTTP ${res.status})` };
+    }
+    if (!res.ok) return { ok: false, error: json.error || `Server error (HTTP ${res.status})` };
     return json;
   }, []);
 
@@ -229,7 +237,7 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
       const result = await runManualPremarketRefresh();
 
       if (!result.ok) {
-        setThemesRefreshError(result.error ?? "Refresh failed");
+        setThemesRefreshError(result.error || "Refresh failed");
         // Still bump the token so the panel refetches whatever is currently in the DB.
         setThemesRefreshToken((v) => v + 1);
         return;
