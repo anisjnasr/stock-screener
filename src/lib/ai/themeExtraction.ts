@@ -121,7 +121,7 @@ export async function generateAndStoreDailyThemes(
     });
   };
 
-  let parsed: { themes?: unknown } | null = null;
+  let themesRaw: unknown[] | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     let raw: string;
     try {
@@ -130,22 +130,30 @@ export async function generateAndStoreDailyThemes(
       return { ok: false, error: e instanceof Error ? e.message : "Theme model failed" };
     }
 
+    let parsed: unknown;
     try {
-      parsed = parseModelJson<{ themes?: unknown }>(raw);
-      break;
+      parsed = parseModelJson<unknown>(raw);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "parse error";
       console.warn(`[theme-extraction] parse attempt ${attempt + 1} failed: ${msg}`);
+      continue;
     }
+
+    // Accept {"themes":[...]} wrapper or a bare array.
+    if (Array.isArray(parsed)) {
+      themesRaw = parsed;
+      break;
+    }
+    if (parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).themes)) {
+      themesRaw = (parsed as Record<string, unknown>).themes as unknown[];
+      break;
+    }
+
+    console.warn(`[theme-extraction] attempt ${attempt + 1} returned unexpected JSON shape`);
   }
 
-  if (!parsed) {
-    return { ok: false, error: "Theme model returned non-JSON" };
-  }
-
-  const themesRaw = parsed.themes;
-  if (!Array.isArray(themesRaw)) {
-    return { ok: false, error: "Invalid JSON: themes must be an array" };
+  if (!themesRaw) {
+    return { ok: false, error: "Theme model returned non-JSON or unexpected structure" };
   }
 
   const drafts = themesRaw as ThemeDraft[];
