@@ -156,21 +156,29 @@ export async function generateAndStoreDailyThemes(
     return { ok: false, error: "Theme model returned non-JSON or unexpected structure" };
   }
 
+  const MACRO_MAX_RANK = 8;
+  const INDUSTRY_MAX_RANK = 5;
+
   const drafts = themesRaw as ThemeDraft[];
-  const normalized: Omit<DailyThemeRow, "id" | "generated_at">[] = [];
+
+  // Collect valid macro and industry rows separately, sorted by the model's rank hint.
+  // We re-rank them sequentially (1, 2, 3…) before insertion so the DB rank always
+  // matches the actual position and is never out of range, regardless of what the model
+  // returned (gaps, duplicates, out-of-range values).
+  const macroRows: Omit<DailyThemeRow, "id" | "generated_at" | "theme_rank">[] = [];
+  const industryRows: Omit<DailyThemeRow, "id" | "generated_at" | "theme_rank">[] = [];
+  const macroRankHints: number[] = [];
+  const industryRankHints: number[] = [];
 
   for (const t of drafts) {
-    const tt = t.theme_type === "industry" ? "industry" : "macro";
-    const rank = Number(t.theme_rank);
-    const maxRank = tt === "macro" ? 8 : 5;
-    if (!Number.isFinite(rank) || rank < 1 || rank > maxRank) continue;
+    const tt: "macro" | "industry" = t.theme_type === "industry" ? "industry" : "macro";
     const title = String(t.theme_title ?? "").trim();
     const desc = String(t.theme_description ?? "").trim();
     if (!title || !desc) continue;
-    normalized.push({
+    const rankHint = Number.isFinite(Number(t.theme_rank)) ? Number(t.theme_rank) : 99;
+    const row = {
       theme_date: ymd,
       theme_type: tt,
-      theme_rank: rank,
       theme_title: title,
       theme_description: desc,
       asset_implications: t.asset_implications != null ? String(t.asset_implications).trim() || null : null,
@@ -188,11 +196,33 @@ export async function generateAndStoreDailyThemes(
           : 1,
       is_new: Boolean(t.is_new),
       model_used: PREMARKET_CLAUDE_MODEL,
-    });
+    };
+    if (tt === "macro") {
+      macroRows.push(row);
+      macroRankHints.push(rankHint);
+    } else {
+      industryRows.push(row);
+      industryRankHints.push(rankHint);
+    }
   }
 
-  const macroCount = normalized.filter((t) => t.theme_type === "macro").length;
-  const industryCount = normalized.filter((t) => t.theme_type === "industry").length;
+  // Sort by rank hint then re-rank sequentially, capped at the DB constraint maximum.
+  const sortedMacro = macroRows
+    .map((r, i) => ({ r, hint: macroRankHints[i] }))
+    .sort((a, b) => a.hint - b.hint)
+    .slice(0, MACRO_MAX_RANK)
+    .map((x, i) => ({ ...x.r, theme_rank: i + 1 }));
+
+  const sortedIndustry = industryRows
+    .map((r, i) => ({ r, hint: industryRankHints[i] }))
+    .sort((a, b) => a.hint - b.hint)
+    .slice(0, INDUSTRY_MAX_RANK)
+    .map((x, i) => ({ ...x.r, theme_rank: i + 1 }));
+
+  const normalized = [...sortedMacro, ...sortedIndustry];
+
+  const macroCount = sortedMacro.length;
+  const industryCount = sortedIndustry.length;
 
   if (macroCount < 3 || industryCount < 3) {
     return { ok: false, error: `Too few valid themes parsed (${macroCount} macro, ${industryCount} industry)` };
