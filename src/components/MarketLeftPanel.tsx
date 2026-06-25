@@ -2,6 +2,7 @@
 
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
+import CotPanel from "@/components/cot/CotPanel";
 import type { MarketIndexSymbol } from "@/components/MarketIndexCards";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 
@@ -29,6 +30,7 @@ export default function MarketLeftPanel({
           <MarketIndexHeaderBlock indexCardSelection={indexCardSelection} onIndexCardClick={onIndexCardClick} />
         )}
         <div className="flex min-h-0 min-w-max flex-1 flex-col overflow-y-auto">
+          <CotPanel />
           <MarketMonitorTable onSymbolSelect={onSymbolSelect} onWatchlistListCreated={onWatchlistListCreated} />
         </div>
       </div>
