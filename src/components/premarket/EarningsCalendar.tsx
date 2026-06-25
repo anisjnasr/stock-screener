@@ -379,30 +379,61 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
   const [data, setData] = useState<EarningsCalendarResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedMs, setLastUpdatedMs] = useState<number | null>(null);
   const [view, setView] = useState<EarningsRangeView>("week");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // `background` refreshes keep the current view on screen (no full-panel
+  // "Loading…" / blank-on-error), so polling and the Refresh button don't flicker.
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    const background = opts?.background ?? false;
+    if (background) setRefreshing(true);
+    else setLoading(true);
+    if (!background) setError(null);
     try {
       const res = await fetch("/api/earnings-calendar", { cache: "no-store" });
       const json = (await res.json()) as EarningsCalendarResponse & { error?: string };
       if (!res.ok) {
-        setData(null);
-        setError(json.error ?? res.statusText);
+        if (!background) {
+          setData(null);
+          setError(json.error ?? res.statusText);
+        }
         return;
       }
       setData(json);
+      setError(null);
+      setLastUpdatedMs(Date.now());
     } catch (e) {
-      setData(null);
-      setError(e instanceof Error ? e.message : "Failed to load");
+      if (!background) {
+        setData(null);
+        setError(e instanceof Error ? e.message : "Failed to load");
+      }
     } finally {
-      setLoading(false);
+      if (background) setRefreshing(false);
+      else setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Auto-refresh so beat/miss actuals (written by the afternoon/premarket cron)
+  // appear without a manual page reload: poll every 5 min and whenever the tab
+  // regains focus. Background mode avoids blanking the panel.
+  useEffect(() => {
+    const REFRESH_MS = 5 * 60 * 1000;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void load({ background: true });
+    };
+    const id = window.setInterval(refreshIfVisible, REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+    };
   }, [load]);
 
   if (loading) {
@@ -508,10 +539,16 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
         className="pm-site-caption flex flex-wrap items-center justify-end gap-2 border-t pt-2"
         style={{ borderColor: "var(--border-default)", color: "var(--text-tertiary)" }}
       >
+        {lastUpdatedMs != null ? (
+          <span className="tabular-nums" style={{ color: "var(--text-tertiary)" }}>
+            Updated {new Date(lastUpdatedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        ) : null}
         <button
           type="button"
-          onClick={() => void load()}
-          className="pm-focus rounded border px-2 py-1 font-medium"
+          onClick={() => void load({ background: true })}
+          disabled={refreshing}
+          className="pm-focus rounded border px-2 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
           style={{
             borderColor: "var(--border-default)",
             color: "var(--text-secondary)",
@@ -519,7 +556,7 @@ export default function EarningsCalendar({ onOpenTickerInLists }: EarningsCalend
             fontSize: "var(--ws-fs-label)",
           }}
         >
-          Refresh
+          {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
     </div>

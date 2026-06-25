@@ -9,10 +9,13 @@
 #
 # Schedules (UTC):
 #   1st of month 08:00  — refresh universe (~03:00 ET standard time)
-#   Mon–Fri 11:00       — full-week ingest window (~06:00 ET)
-#   Mon–Fri 21:00       — actuals refresh (~16:00–17:00 ET)
+#   Mon–Fri 11:00       — full-week ingest window (~06:00–07:00 ET)
+#   Mon–Fri 12:30       — actuals refresh, early premarket (~07:30–08:30 ET) for prior-day AMC prints
+#   Mon–Fri 14:00       — actuals refresh, late premarket (~09:00–10:00 ET) for same-day BMO prints
+#   Mon–Fri 21:00       — actuals refresh, after close (~16:00–17:00 ET) for same-day AMC prints
 #
-# workflow_dispatch runs universe → ingest → actuals in order (bootstrap or catch-up).
+# Multiple actuals runs ensure beat/miss surprises land before/during premarket instead of
+# only after the close. workflow_dispatch runs universe → ingest → actuals in order (bootstrap or catch-up).
 
 name: Earnings Calendar Crons
 
@@ -20,6 +23,8 @@ on:
   schedule:
     - cron: "0 8 1 * *"
     - cron: "0 11 * * 1-5"
+    - cron: "30 12 * * 1-5"
+    - cron: "0 14 * * 1-5"
     - cron: "0 21 * * 1-5"
   workflow_dispatch:
 
@@ -51,7 +56,11 @@ jobs:
           cron_secret: ${{ secrets.CRON_SECRET }}
           path: /api/cron/earnings/ingest
       - name: POST /api/cron/earnings/actuals
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * 1-5'
+        if: >-
+          github.event_name == 'workflow_dispatch'
+          || github.event.schedule == '30 12 * * 1-5'
+          || github.event.schedule == '0 14 * * 1-5'
+          || github.event.schedule == '0 21 * * 1-5'
         uses: ./.github/actions/post-cron-endpoint
         with:
           base_url: ${{ secrets.APP_BASE_URL }}
