@@ -105,34 +105,6 @@ export async function loadGappersScanOnly(
   }
 }
 
-/** Positive-gap scan (gap % ≥ minGapPct) for Stocks in Play candidate pool. */
-export async function loadGappersSipScan(
-  scan: TradingViewScanParams,
-  init?: { signal?: AbortSignal; rowLimit?: number }
-): Promise<{ source: "tradingview"; rows: Omit<GapperRow, "earningsRecent24h">[] }> {
-  try {
-    const guardedScan = applyEarlyPremarketVolumeFloor(scan);
-    const raw = await fetchTradingViewGappers(guardedScan, {
-      signal: init?.signal,
-      rowLimit: init?.rowLimit ?? guardedScan.rowLimit ?? TRADINGVIEW_GAP_SCAN_ROW_CAP,
-    });
-    const rows = applyVolPctFilter(
-      applyMcapFilter(
-        applyPriceBandFilter(raw, guardedScan.minPrice, guardedScan.maxPrice),
-        guardedScan.minMarketCap,
-        guardedScan.maxMarketCap
-      ),
-      guardedScan.minVolPct
-    );
-    return { source: "tradingview", rows };
-  } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    throw new Error(
-      `TradingView screener could not load (${detail}). Try again later, or set TRADINGVIEW_SESSIONID and TRADINGVIEW_SESSIONID_SIGN on the server if the feed requires a browser session.`
-    );
-  }
-}
-
 export function normalizeGappersScanBody(raw: unknown): TradingViewScanParams {
   const D = DEFAULT_TRADINGVIEW_SCAN;
   if (!raw || typeof raw !== "object") return { ...D };

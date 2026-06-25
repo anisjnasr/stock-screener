@@ -17,16 +17,6 @@ import {
   applyCloudLargeCapSettings,
   LARGE_CAP_SETTINGS_CLOUD_KEY,
 } from "@/lib/premarket/large-cap-settings-storage";
-import { ymdInEt } from "@/lib/et-ymd";
-import {
-  SIP_CLOUD_SETTING_KEY,
-  applySipCloudBundleToLocalStorage,
-  emptySipDaySnapshot,
-  loadSipDaySnapshot,
-  parseSipCloudBundle,
-  type SipCloudBundleV1,
-} from "@/lib/premarket/sip-daily-persistence";
-
 const PROFILE_KEY = "stock-research-active-profile";
 
 export type Profile = {
@@ -125,11 +115,6 @@ export const syncSetting = cloudSyncSetting;
 export const syncWatchlists = cloudSyncWatchlists;
 export const syncScreens = cloudSyncScreens;
 export const syncFlags = cloudSyncFlags;
-
-/** Push current ET session SIP snapshots to Supabase (same row as other user_settings). */
-export function syncPremarketSipBundle(bundle: SipCloudBundleV1): void {
-  cloudSyncSetting(SIP_CLOUD_SETTING_KEY, bundle);
-}
 
 // ---------------------------------------------------------------------------
 // Pull from Supabase → localStorage  (called once on login)
@@ -360,36 +345,8 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.panel_mode !== undefined) s.setItem("stock-research-watchlist-panel", st.panel_mode as string);
   if (st.panel_height !== undefined) s.setItem("stock-research-watchlist-panel-height-px", String(st.panel_height));
   if (st.sidebar_width !== undefined) s.setItem("stock-research-watchlist-sidebar-width-px", String(st.sidebar_width));
-  if (st.gapper_filters !== undefined) s.setItem("stockstalker-gapper-filters-v1", JSON.stringify(st.gapper_filters));
-  if (st.gapper_filter_presets !== undefined) {
-    s.setItem("stockstalker-gapper-filter-presets-v1", JSON.stringify(st.gapper_filter_presets));
-  }
-  if (st.sip_mid_large_gapper_filters !== undefined) {
-    s.setItem("stockstalker-sip-gapper-filters-v1", JSON.stringify(st.sip_mid_large_gapper_filters));
-  }
-  if (st.sip_mid_large_filter_presets !== undefined) {
-    s.setItem("stockstalker-sip-filter-presets-v1", JSON.stringify(st.sip_mid_large_filter_presets));
-  }
-  if (st.sip_small_cap_gapper_filters !== undefined) {
-    s.setItem("stockstalker-sip-small-cap-gapper-filters-v1", JSON.stringify(st.sip_small_cap_gapper_filters));
-  }
-  if (st.sip_small_cap_filter_presets !== undefined) {
-    s.setItem("stockstalker-sip-small-cap-filter-presets-v1", JSON.stringify(st.sip_small_cap_filter_presets));
-  }
   if (st[LARGE_CAP_SETTINGS_CLOUD_KEY] !== undefined) {
     applyCloudLargeCapSettings(st[LARGE_CAP_SETTINGS_CLOUD_KEY]);
-  }
-  const sipBundleRaw = st[SIP_CLOUD_SETTING_KEY];
-  if (sipBundleRaw !== undefined) {
-    const bundle = parseSipCloudBundle(sipBundleRaw);
-    if (bundle) {
-      applySipCloudBundleToLocalStorage(bundle);
-      try {
-        window.dispatchEvent(new CustomEvent("premarket-sip-cloud-hydrated"));
-      } catch {
-        // Ignore event dispatch errors.
-      }
-    }
   }
   if (st.layout_preferences !== undefined) {
     const lp = st.layout_preferences as Record<string, unknown>;
@@ -451,12 +408,6 @@ export function pushLocalStorageToCloud(): void {
     ["stock-research-watchlist-panel", "panel_mode"],
     ["stock-research-watchlist-panel-height-px", "panel_height"],
     ["stock-research-watchlist-sidebar-width-px", "sidebar_width"],
-    ["stockstalker-gapper-filters-v1", "gapper_filters"],
-    ["stockstalker-gapper-filter-presets-v1", "gapper_filter_presets"],
-    ["stockstalker-sip-gapper-filters-v1", "sip_mid_large_gapper_filters"],
-    ["stockstalker-sip-filter-presets-v1", "sip_mid_large_filter_presets"],
-    ["stockstalker-sip-small-cap-gapper-filters-v1", "sip_small_cap_gapper_filters"],
-    ["stockstalker-sip-small-cap-filter-presets-v1", "sip_small_cap_filter_presets"],
     ["stockstalker-large-cap-settings-v1", LARGE_CAP_SETTINGS_CLOUD_KEY],
   ];
 
@@ -469,18 +420,6 @@ export function pushLocalStorageToCloud(): void {
       }
     } catch { /* skip */ }
   }
-
-  try {
-    const ymd = ymdInEt();
-    const ml = loadSipDaySnapshot(ymd, "mid-large");
-    const sm = loadSipDaySnapshot(ymd, "small-cap");
-    syncPremarketSipBundle({
-      v: 1,
-      etYmd: ymd,
-      midLarge: ml ?? emptySipDaySnapshot(ymd),
-      smallCap: sm ?? emptySipDaySnapshot(ymd),
-    });
-  } catch { /* skip */ }
 
   try {
     const lp: Record<string, unknown> = {};
@@ -501,28 +440,6 @@ function tryParse(raw: string): unknown {
     return JSON.parse(raw);
   } catch {
     return raw;
-  }
-}
-
-/** When cloud has no SIP bundle yet, push today's local SIP so first-time multi-device setup does not lose picks. */
-export function syncMissingPremarketSipFromLocal(cloudSettings: Record<string, unknown>): void {
-  if (cloudSettings[SIP_CLOUD_SETTING_KEY] !== undefined) return;
-  if (!profileId()) return;
-  try {
-    const ymd = ymdInEt();
-    const ml = loadSipDaySnapshot(ymd, "mid-large");
-    const sm = loadSipDaySnapshot(ymd, "small-cap");
-    const mlEmpty = !ml || ml.rows.length === 0;
-    const smEmpty = !sm || sm.rows.length === 0;
-    if (mlEmpty && smEmpty) return;
-    syncPremarketSipBundle({
-      v: 1,
-      etYmd: ymd,
-      midLarge: ml ?? emptySipDaySnapshot(ymd),
-      smallCap: sm ?? emptySipDaySnapshot(ymd),
-    });
-  } catch {
-    /* skip */
   }
 }
 

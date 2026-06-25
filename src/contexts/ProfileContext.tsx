@@ -9,8 +9,6 @@ import {
   pullProfileData,
   hydrateLocalStorage,
   pushLocalStorageToCloud,
-  syncSetting,
-  syncMissingPremarketSipFromLocal,
   type Profile,
   type AuthResult,
 } from "@/lib/profile-storage";
@@ -36,37 +34,6 @@ const Ctx = createContext<ProfileCtx>({
   logout: () => {},
 });
 
-const GAP_SETTINGS_SYNC_KEYS: Array<[localStorageKey: string, cloudKey: string]> = [
-  ["stockstalker-gapper-filters-v1", "gapper_filters"],
-  ["stockstalker-gapper-filter-presets-v1", "gapper_filter_presets"],
-  ["stockstalker-sip-gapper-filters-v1", "sip_mid_large_gapper_filters"],
-  ["stockstalker-sip-filter-presets-v1", "sip_mid_large_filter_presets"],
-  ["stockstalker-sip-small-cap-gapper-filters-v1", "sip_small_cap_gapper_filters"],
-  ["stockstalker-sip-small-cap-filter-presets-v1", "sip_small_cap_filter_presets"],
-];
-
-function tryParse(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
-function syncMissingGapSettingsFromLocal(cloudSettings: Record<string, unknown>): void {
-  if (typeof window === "undefined") return;
-  for (const [lsKey, cloudKey] of GAP_SETTINGS_SYNC_KEYS) {
-    if (cloudSettings[cloudKey] !== undefined) continue;
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw == null) continue;
-      syncSetting(cloudKey, tryParse(raw));
-    } catch {
-      // Ignore localStorage parsing/access issues.
-    }
-  }
-}
-
 export function useProfile() {
   return useContext(Ctx);
 }
@@ -85,8 +52,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         .then((data) => {
           if (data) {
             hydrateLocalStorage(data);
-            syncMissingGapSettingsFromLocal(data.settings);
-            syncMissingPremarketSipFromLocal(data.settings);
             window.dispatchEvent(new CustomEvent("profile-changed"));
           }
         })
@@ -112,8 +77,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
         if (hasCloudData) {
           hydrateLocalStorage(data);
-          syncMissingGapSettingsFromLocal(data.settings);
-          syncMissingPremarketSipFromLocal(data.settings);
         } else {
           pushLocalStorageToCloud();
         }
