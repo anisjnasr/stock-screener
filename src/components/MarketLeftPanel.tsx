@@ -20,7 +20,7 @@ export default function MarketLeftPanel({
         <div className="flex min-h-0 min-w-max flex-1 flex-col overflow-y-auto">
           <CotPanel />
           <div
-            className="sticky left-0 z-10 flex shrink-0 items-center gap-2 px-3 py-2"
+            className="sticky left-0 z-10 flex shrink-0 items-center justify-center px-3 py-2"
             style={{ background: "var(--ws-bg2)", borderBottom: "1px solid var(--ws-border)", width: "min(92vw, 1600px)" }}
           >
             <span
@@ -28,9 +28,6 @@ export default function MarketLeftPanel({
               style={{ color: "var(--ws-cyan)" }}
             >
               Market Monitor
-            </span>
-            <span className="text-ws-caption hidden sm:inline" style={{ color: "var(--ws-text-dim)" }}>
-              — breadth &amp; industries
             </span>
           </div>
           <MarketMonitorTable onSymbolSelect={onSymbolSelect} onWatchlistListCreated={onWatchlistListCreated} />

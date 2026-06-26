@@ -154,7 +154,7 @@ export default function CotPanel() {
         role="button"
         tabIndex={0}
         aria-expanded={!prefs.collapsed}
-        className="flex cursor-pointer items-center gap-2 px-3 py-2 ws-focus-ring"
+        className="flex cursor-pointer flex-col items-center gap-0.5 px-3 py-2 ws-focus-ring"
         onClick={() => update({ collapsed: !prefs.collapsed })}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -163,28 +163,26 @@ export default function CotPanel() {
           }
         }}
       >
-        <span
-          className="text-ws-label font-semibold uppercase tracking-wide"
-          style={{ color: "var(--ws-cyan)" }}
-        >
-          Commitments of Traders
-        </span>
-        <span className="text-ws-caption hidden sm:inline" style={{ color: "var(--ws-text-dim)" }}>
-          — market positioning
-        </span>
-        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <span
+            className="text-ws-label font-semibold uppercase tracking-wide"
+            style={{ color: "var(--ws-cyan)" }}
+          >
+            Commitments of Traders
+          </span>
+          <svg width="11" height="7" viewBox="0 0 10 6" fill="none" style={{ color: "var(--ws-text-dim)" }}>
+            {prefs.collapsed ? (
+              <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+          </svg>
+        </div>
         {reportWeek && (
           <span className="text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
             Week of {reportWeek}
           </span>
         )}
-        <svg width="11" height="7" viewBox="0 0 10 6" fill="none" style={{ color: "var(--ws-text-dim)" }}>
-          {prefs.collapsed ? (
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          ) : (
-            <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          )}
-        </svg>
       </div>
 
       {!prefs.collapsed && (
