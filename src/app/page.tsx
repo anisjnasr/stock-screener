@@ -73,7 +73,6 @@ import { prefetchSectorsMatrix } from "@/lib/sectors-matrix-prefetch";
 import NNHPanel from "@/components/NNHPanel";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import MarketLeftPanel from "@/components/MarketLeftPanel";
-import MarketIndexHeaderBlock from "@/components/MarketIndexHeaderBlock";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
 import PreMarketShell from "@/components/PreMarketShell";
@@ -827,10 +826,7 @@ export default function Home() {
       {section === "market" ? (
         <MarketLeftPanel
           onSymbolSelect={handleMarketMonitorSymbolSelect}
-          indexCardSelection={marketIndexCardSelection}
-          onIndexCardClick={handleMarketIndexCardClick}
           onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}
-          omitIndexHeader={!chartHidden}
         />
       ) : section === "pre-market" || section === "comp-lab" ? (
         <div className="h-full min-h-0" style={{ background: "var(--ws-bg2)" }} aria-hidden />
@@ -1102,17 +1098,6 @@ export default function Home() {
         </div>
       )}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-        {section === "market" && !chartHidden && (
-          <div
-            className="shrink-0 min-w-0 overflow-x-auto border-b"
-            style={{ borderColor: "var(--ws-border)", background: "var(--ws-bg2)" }}
-          >
-            <MarketIndexHeaderBlock
-              indexCardSelection={marketIndexCardSelection}
-              onIndexCardClick={handleMarketIndexCardClick}
-            />
-          </div>
-        )}
         {section === "pre-market" ? (
           <PanelErrorBoundary name="PreMarket">
             <PreMarketShell onOpenTickerInLists={handleMarketMonitorSymbolSelect} />
