@@ -28,7 +28,7 @@ const FLAG_COLORS: Record<StockFlag, string> = {
   purple: "#A855F7",
 };
 
-export type SectorSubTab = "sectors" | "industries";
+export type SectorSubTab = "indices" | "sectors" | "industries";
 
 const FLAG_ORDER_KEY = "stock-research-flag-order";
 const DEFAULT_FLAG_ORDER: StockFlag[] = ["blue", "purple", "yellow", "red", "green"];
@@ -849,9 +849,9 @@ function WorkspaceHeader({
       >
         {section === "sectors-industries" && (
           <div className="flex items-center gap-1.5 flex-1">
-            {(["sectors", "industries"] as SectorSubTab[]).map((t) => (
+            {(["indices", "sectors", "industries"] as SectorSubTab[]).map((t) => (
               <Pill key={t} on={sectorSubTab === t} onClick={() => onSectorSubTabChange?.(t)}>
-                {t === "industries" ? "Industries" : "Sectors"}
+                {t === "industries" ? "Industries" : t === "indices" ? "Indices" : "Sectors"}
               </Pill>
             ))}
             {rowCountDisplay && (

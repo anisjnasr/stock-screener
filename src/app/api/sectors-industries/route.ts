@@ -26,7 +26,11 @@ const INDEX_ITEMS = [
   { id: "sp500", name: "S&P 500", ticker: "SPY" },
   { id: "nasdaq100", name: "Nasdaq 100", ticker: "QQQ" },
   { id: "russell2000", name: "Russell 2000", ticker: "IWM" },
+  { id: "sp500-ew", name: "S&P 500 Equal Weight", ticker: "RSP" },
+  { id: "nasdaq100-ew", name: "Nasdaq 100 Equal Weight", ticker: "QQQE" },
 ] as const;
+
+const INDEX_TICKERS = INDEX_ITEMS.map((x) => x.ticker);
 
 const SECTOR_ETF_MAP: Record<string, string> = {
   Technology: "XLK",
@@ -79,7 +83,7 @@ function setResponseCache(
 }
 
 const CACHE_PATH = join(getDataDir(), "sectors-industries-cache.json");
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 type DiskCache = {
   version: number;
   items: Record<string, unknown>;
@@ -144,6 +148,13 @@ function buildMatrixPayload(asOfDate: string | null, cache: Map<string, CachedVa
     return new Map(merged.rows.map((r) => [String(r.symbol).toUpperCase(), r.change_pct]));
   };
 
+  const indexPerfByTicker = (tf: PerformanceTimeframe): Map<string, number | null> => {
+    const merged = getOrSet(`indices:${tf}:${asOfDate ?? "na"}`, () =>
+      getTickerPerformance(INDEX_TICKERS, tf, asOfDate ?? undefined)
+    );
+    return new Map(merged.rows.map((r) => [String(r.symbol).toUpperCase(), r.change_pct]));
+  };
+
   const sectorDayCached = getPrecomputedPerformance("sector", "day", asOfDate ?? undefined);
   const sectorNamesTemplate =
     sectorDayCached && sectorDayCached.length > 0
@@ -151,6 +162,21 @@ function buildMatrixPayload(asOfDate: string | null, cache: Map<string, CachedVa
       : getOrSet(`sector:day:${asOfDate ?? "na"}`, () =>
           getWeightedCategoryPerformance("sector", "day", asOfDate ?? undefined)
         ).rows.map((r) => r.name);
+
+  const indices: MatrixRow[] = INDEX_ITEMS.map((item) => {
+    const perf = emptyPerf();
+    for (const tf of MATRIX_PERF_TF) {
+      perf[tf] = indexPerfByTicker(tf as PerformanceTimeframe).get(item.ticker.toUpperCase()) ?? null;
+    }
+    return {
+      id: item.id,
+      name: item.name,
+      ticker: item.ticker,
+      drillKind: "index",
+      drillValue: item.id,
+      perf,
+    };
+  });
 
   const sectors: MatrixRow[] = sectorNamesTemplate.map((name) => {
     const perf = emptyPerf();
@@ -189,6 +215,7 @@ function buildMatrixPayload(asOfDate: string | null, cache: Map<string, CachedVa
     matrix: true,
     version: 1,
     date: asOfDate,
+    indices,
     sectors,
     industries,
   };

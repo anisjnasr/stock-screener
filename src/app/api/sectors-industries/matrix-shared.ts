@@ -17,7 +17,7 @@ export type MatrixRow = {
   id: string;
   name: string;
   ticker: string;
-  drillKind: "sector" | "industry" | "theme";
+  drillKind: "sector" | "industry" | "theme" | "index";
   drillValue: string;
   perf: MatrixPerfMap;
 };
@@ -26,6 +26,7 @@ export type SectorsMatrixPayload = {
   matrix: true;
   version: number;
   date: string | null;
+  indices: MatrixRow[];
   sectors: MatrixRow[];
   industries: MatrixRow[];
 };

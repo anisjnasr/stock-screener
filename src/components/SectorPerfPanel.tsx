@@ -240,6 +240,7 @@ export default function SectorPerfPanel({
 
   const parentRows: MatrixRow[] = useMemo(() => {
     if (!payload) return [];
+    if (subTab === "indices") return payload.indices ?? [];
     if (subTab === "sectors") return payload.sectors ?? [];
     return (payload.industries ?? []).map((x) => ({
       ...x,
@@ -372,7 +373,7 @@ export default function SectorPerfPanel({
     <div className="h-full flex flex-col overflow-hidden min-w-0" style={{ background: "var(--ws-bg2)" }}>
       {headerActionsSlot && createPortal(
         <>
-          {selectedRow && onDrillDown && (
+          {selectedRow && onDrillDown && subTab !== "indices" && (
             <button
               type="button"
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-ws-label cursor-pointer transition-colors shrink-0"
