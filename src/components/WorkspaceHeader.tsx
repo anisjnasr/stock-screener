@@ -297,7 +297,7 @@ function WorkspaceHeader({
   onFlagFilter,
   activeFlagFilter,
   onFlagListOpen,
-  sectorSubTab = "sectors",
+  sectorSubTab = "indices",
   onSectorSubTabChange,
   scanList = [],
   screens: screensProp,

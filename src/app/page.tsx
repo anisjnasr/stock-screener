@@ -59,6 +59,7 @@ import {
 } from "@/lib/watchlist-storage";
 import { loadScreens, saveScreens, seedDefaultScreensIfEmpty, ensurePrebuiltScreensPresent, deduplicateScreensByName, deleteScreen, loadFolders, type SavedScreen, type ScreenerFolder } from "@/lib/screener-storage";
 import { DEFAULT_RAIL_WIDTH_PX } from "@/lib/layout-constants";
+import { loadPerformanceSubTab, savePerformanceSubTab } from "@/lib/performance-subtab-storage";
 import { useLayoutPreferences } from "@/hooks/useLayoutPreferences";
 import { useCandleCache, type Candle } from "@/hooks/useCandleCache";
 import { useStockData } from "@/hooks/useStockData";
@@ -137,7 +138,12 @@ export default function Home() {
   const [marketIndexCardSelection, setMarketIndexCardSelection] = useState<MarketIndexSymbol | null>(null);
 
   // Sectors contextual state
-  const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>("sectors");
+  const [sectorSubTab, setSectorSubTab] = useState<SectorSubTab>(() => loadPerformanceSubTab());
+
+  const handleSectorSubTabChange = useCallback((tab: SectorSubTab) => {
+    setSectorSubTab(tab);
+    savePerformanceSubTab(tab);
+  }, []);
 
   // Scans contextual state
   const [activeFlagFilter, setActiveFlagFilter] = useState<StockFlag | null>(null);
@@ -603,6 +609,7 @@ export default function Home() {
       setScreens(nextScreens);
       setScanFolders(nextFolders);
       setWatchlists(nextWatchlists);
+      setSectorSubTab(loadPerformanceSubTab());
       if (nextScreens.length === 0) {
         setActiveScanName("");
         return;
@@ -997,7 +1004,7 @@ export default function Home() {
           setOpenToCollectionTrigger({ kind: "index", value: flagListId, nonce: Date.now() });
         }}
         sectorSubTab={sectorSubTab}
-        onSectorSubTabChange={setSectorSubTab}
+        onSectorSubTabChange={handleSectorSubTabChange}
         scanList={screens.map((s) => s.name)}
         screens={screens}
         scanFolders={scanFolders}

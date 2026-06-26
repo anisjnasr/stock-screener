@@ -17,6 +17,11 @@ import {
   applyCloudLargeCapSettings,
   LARGE_CAP_SETTINGS_CLOUD_KEY,
 } from "@/lib/premarket/large-cap-settings-storage";
+import {
+  applyCloudPerformanceSubTab,
+  PERFORMANCE_SUBTAB_CLOUD_KEY,
+  PERFORMANCE_SUBTAB_LS_KEY,
+} from "@/lib/performance-subtab-storage";
 const PROFILE_KEY = "stock-research-active-profile";
 
 export type Profile = {
@@ -348,6 +353,9 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st[LARGE_CAP_SETTINGS_CLOUD_KEY] !== undefined) {
     applyCloudLargeCapSettings(st[LARGE_CAP_SETTINGS_CLOUD_KEY]);
   }
+  if (st[PERFORMANCE_SUBTAB_CLOUD_KEY] !== undefined) {
+    applyCloudPerformanceSubTab(st[PERFORMANCE_SUBTAB_CLOUD_KEY]);
+  }
   if (st.layout_preferences !== undefined) {
     const lp = st.layout_preferences as Record<string, unknown>;
     if (lp.chartLeftPx !== undefined) s.setItem("ws-chart-left-px", String(lp.chartLeftPx));
@@ -409,6 +417,7 @@ export function pushLocalStorageToCloud(): void {
     ["stock-research-watchlist-panel-height-px", "panel_height"],
     ["stock-research-watchlist-sidebar-width-px", "sidebar_width"],
     ["stockstalker-large-cap-settings-v1", LARGE_CAP_SETTINGS_CLOUD_KEY],
+    [PERFORMANCE_SUBTAB_LS_KEY, PERFORMANCE_SUBTAB_CLOUD_KEY],
   ];
 
   for (const [lsKey, dbKey] of settingKeys) {
