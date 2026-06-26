@@ -4,6 +4,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
+  Cell,
   Line,
   LineChart,
   XAxis,
@@ -28,9 +29,43 @@ export const COT_COLORS = {
   index: "#00e5cc", // --ws-cyan (primary line)
   danger: "#EF4468", // --ws-red (80 reference)
   info: "#5C9EF5", // --ws-blue (20 reference)
-  axis: "#71717a",
+  long: "#3DDC84", // net long position (green)
+  short: "#EF4468", // net short position (red)
+  axis: "#9aa7b8", // brighter axis labels for legibility
   grid: "rgba(255,255,255,0.06)",
 };
+
+// Net bars are coloured by direction: green when net long (≥0), red when net short (<0).
+function netFill(v: number | null | undefined): string {
+  return (v ?? 0) >= 0 ? COT_COLORS.long : COT_COLORS.short;
+}
+
+function LegendSwatch({ color, dashed }: { color: string; dashed?: boolean }) {
+  if (dashed) {
+    return <span style={{ width: 12, borderTop: `2px dashed ${color}`, display: "inline-block" }} />;
+  }
+  return <span style={{ width: 10, height: 10, background: color, borderRadius: 2, display: "inline-block" }} />;
+}
+
+// Custom legend: recharts auto-derives series labels, so a manual legend is used to convey
+// the direction-based colouring (green = net long, red = net short) instead of per-camp names.
+function PositioningLegend() {
+  const items: { color: string; label: string; dashed?: boolean }[] = [
+    { color: COT_COLORS.long, label: "Net long" },
+    { color: COT_COLORS.short, label: "Net short" },
+    { color: COT_COLORS.spread, label: "Spread", dashed: true },
+  ];
+  return (
+    <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 10, color: "var(--ws-text)" }}>
+      {items.map((it) => (
+        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <LegendSwatch color={it.color} dashed={it.dashed} />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const axisTick = { fontSize: 10, fill: COT_COLORS.axis };
 
@@ -62,7 +97,7 @@ export default function CotChart({ view, data }: { view: CotView; data: CotSerie
   if (!data.length) {
     return (
       <div className="flex h-full items-center justify-center">
-        <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+        <span className="text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
           No data in range
         </span>
       </div>
@@ -114,7 +149,7 @@ export default function CotChart({ view, data }: { view: CotView; data: CotSerie
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }} barGap={1} barCategoryGap="8%">
         <CartesianGrid stroke={COT_COLORS.grid} vertical={false} />
         <XAxis
           dataKey="date"
@@ -148,15 +183,23 @@ export default function CotChart({ view, data }: { view: CotView; data: CotSerie
           formatter={netTooltipFormatter}
           labelFormatter={(label) => formatReportDate(String(label))}
         />
-        <Legend
-          wrapperStyle={{ fontSize: 10, color: "var(--ws-text-dim)" }}
-          iconType="circle"
-          iconSize={7}
-        />
+        <Legend verticalAlign="bottom" height={22} content={<PositioningLegend />} />
         <ReferenceLine yAxisId="left" y={0} stroke="rgba(255,255,255,0.18)" />
-        <Bar yAxisId="left" name="Commercial" dataKey="comm_net" fill={COT_COLORS.commercial} maxBarSize={14} radius={[2, 2, 0, 0]} />
-        <Bar yAxisId="left" name="Large spec" dataKey="large_spec_net" fill={COT_COLORS.largeSpec} maxBarSize={14} radius={[2, 2, 0, 0]} />
-        <Bar yAxisId="left" name="Small spec" dataKey="small_spec_net" fill={COT_COLORS.smallSpec} maxBarSize={14} radius={[2, 2, 0, 0]} />
+        <Bar yAxisId="left" name="Commercial" dataKey="comm_net" maxBarSize={30} radius={[2, 2, 0, 0]}>
+          {data.map((d, i) => (
+            <Cell key={`comm-${i}`} fill={netFill(d.comm_net)} />
+          ))}
+        </Bar>
+        <Bar yAxisId="left" name="Large spec" dataKey="large_spec_net" maxBarSize={30} radius={[2, 2, 0, 0]}>
+          {data.map((d, i) => (
+            <Cell key={`lspec-${i}`} fill={netFill(d.large_spec_net)} />
+          ))}
+        </Bar>
+        <Bar yAxisId="left" name="Small spec" dataKey="small_spec_net" maxBarSize={30} radius={[2, 2, 0, 0]}>
+          {data.map((d, i) => (
+            <Cell key={`sspec-${i}`} fill={netFill(d.small_spec_net)} />
+          ))}
+        </Bar>
         <Line
           yAxisId="right"
           name="Spread"

@@ -142,12 +142,13 @@ export default function CotPanel() {
     <section
       className="sticky left-0 z-20 shrink-0"
       style={{
-        width: "min(900px, 92vw)",
+        width: "min(92vw, 1600px)",
         background: "var(--ws-bg2)",
         borderBottom: "1px solid var(--ws-border)",
       }}
       aria-label="Commitments of Traders positioning"
     >
+      <div className="mx-auto w-full" style={{ maxWidth: 960 }}>
       {/* Header — entire bar toggles collapse */}
       <div
         role="button"
@@ -162,10 +163,13 @@ export default function CotPanel() {
           }
         }}
       >
-        <span className="text-ws-label font-semibold" style={{ color: "var(--ws-text)" }}>
-          Commitments of traders
+        <span
+          className="text-ws-label font-semibold uppercase tracking-wide"
+          style={{ color: "var(--ws-cyan)" }}
+        >
+          Commitments of Traders
         </span>
-        <span className="text-ws-caption hidden sm:inline" style={{ color: "var(--ws-text-vdim)" }}>
+        <span className="text-ws-caption hidden sm:inline" style={{ color: "var(--ws-text-dim)" }}>
           — market positioning
         </span>
         <div className="flex-1" />
@@ -187,13 +191,13 @@ export default function CotPanel() {
         <div className="flex flex-col gap-3 px-3 pb-3">
           {loading ? (
             <div className="flex h-24 items-center justify-center">
-              <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+              <span className="text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
                 Loading positioning…
               </span>
             </div>
           ) : error || !data || !active ? (
             <div className="flex h-24 items-center justify-center">
-              <span className="text-ws-caption" style={{ color: "var(--ws-text-vdim)" }}>
+              <span className="text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
                 {error ? `Could not load COT data (${error})` : "No COT data available"}
               </span>
             </div>
@@ -220,7 +224,7 @@ export default function CotPanel() {
                       }
                     >
                       <span>{c.label}</span>
-                      <span style={{ color: "var(--ws-text-vdim)" }}>{c.ticker}</span>
+                      <span style={{ color: "var(--ws-text-dim)" }}>{c.ticker}</span>
                     </button>
                   );
                 })}
@@ -255,6 +259,7 @@ export default function CotPanel() {
           )}
         </div>
       )}
+      </div>
     </section>
   );
 }

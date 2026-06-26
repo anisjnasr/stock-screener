@@ -5,7 +5,7 @@ import { COT_COLORS } from "./CotChart";
 import { formatSignedCompact } from "./format";
 
 function indexSublabel(idx: number | null): { text: string; color: string } {
-  if (idx === null) return { text: "no data", color: "var(--ws-text-vdim)" };
+  if (idx === null) return { text: "no data", color: "var(--ws-text-dim)" };
   if (idx >= 80) return { text: "bullish extreme", color: COT_COLORS.danger };
   if (idx <= 20) return { text: "bearish extreme", color: COT_COLORS.info };
   return { text: "mid-range", color: "var(--ws-text-dim)" };
@@ -16,7 +16,7 @@ function spreadSublabel(
   prior: CotSeriesPoint | null
 ): { text: string; color: string } {
   if (!latest || latest.spread === null || !prior || prior.spread === null) {
-    return { text: "vs prior wk", color: "var(--ws-text-vdim)" };
+    return { text: "vs prior wk", color: "var(--ws-text-dim)" };
   }
   const wider = Math.abs(latest.spread) - Math.abs(prior.spread);
   if (Math.abs(wider) < 1) return { text: "flat vs prior wk", color: "var(--ws-text-dim)" };
@@ -47,7 +47,7 @@ function Card({
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: accent }} />
         <span
           className="text-ws-caption font-medium tracking-wide"
-          style={{ color: "var(--ws-text-vdim)" }}
+          style={{ color: "var(--ws-text-dim)" }}
         >
           {label}
         </span>
