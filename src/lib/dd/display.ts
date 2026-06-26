@@ -5,6 +5,64 @@
 
 import type { DDFlagSeverity, DDSignalLevel } from "./types";
 
+function ordinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+/** Whole numbers with thousands separators, no decimals (e.g. 1,000,000). */
+export function formatIntegerCommas(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+  return Math.round(n).toLocaleString("en-US");
+}
+
+/** ISO date (YYYY-MM-DD) → "24th June 2026". */
+export function formatDisplayDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!m) return iso;
+  const year = Number(m[1]);
+  const monthIndex = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) return iso;
+  const month = new Date(Date.UTC(year, monthIndex, 1)).toLocaleString("en-GB", {
+    month: "long",
+    timeZone: "UTC",
+  });
+  return `${day}${ordinalSuffix(day)} ${month} ${year}`;
+}
+
+/** First sentence only — for concise instrument / overhang copy. */
+export function firstSentence(text: string | null | undefined, maxLen = 160): string {
+  if (!text?.trim()) return "";
+  const trimmed = text.trim();
+  const match = trimmed.match(/^[\s\S]*?[.!?](?:\s|$)/);
+  const sentence = (match ? match[0] : trimmed).trim();
+  if (sentence.length <= maxLen) return sentence;
+  return `${sentence.slice(0, maxLen - 1).trim()}…`;
+}
+
+/** Join note strings and cap at N sentences. */
+export function limitSentences(texts: string[], maxSentences: number): string {
+  const combined = texts.filter(Boolean).join(" ").trim();
+  if (!combined) return "";
+  const sentences = combined.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [combined];
+  return sentences
+    .slice(0, maxSentences)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function formatUsd(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   const abs = Math.abs(n);

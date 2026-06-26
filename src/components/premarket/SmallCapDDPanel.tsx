@@ -91,8 +91,10 @@ export default function SmallCapDDPanel() {
           found: true,
           metrics: json.metrics,
           provisionalSignals: json.provisional_signals,
-          floatInput: json.metrics.float != null ? String(json.metrics.float) : "",
-          marketCapInput: json.metrics.market_cap != null ? String(json.metrics.market_cap) : "",
+          floatInput:
+            json.metrics.float != null ? String(Math.round(json.metrics.float)) : "",
+          marketCapInput:
+            json.metrics.market_cap != null ? String(Math.round(json.metrics.market_cap)) : "",
         });
       } catch (e) {
         if (signal.aborted) return;
@@ -245,7 +247,7 @@ export default function SmallCapDDPanel() {
           onClick={onRun}
           disabled={parseTickers(input).length === 0}
           className="pm-focus rounded px-3 py-1 text-sm font-semibold transition-colors disabled:opacity-50"
-          style={{ background: "var(--accent-cyan)", color: "#0a0a0a" }}
+          style={{ background: "var(--ws-cyan)", color: "#0a0a0a" }}
         >
           Run DD
         </button>
@@ -256,7 +258,7 @@ export default function SmallCapDDPanel() {
           Enter one or more small-cap tickers and press Run DD for a dilution-and-solvency read.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="grid w-full grid-cols-1 gap-3">
           {orderedStates.map((s) => (
             <SmallCapDDCard
               key={s.ticker}

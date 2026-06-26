@@ -13,8 +13,8 @@
   --text-secondary: #9aa3b2;
   --text-tertiary: #6b7280;
   --text-faint: #4b5563;
-  --accent-cyan: #22d3ee;
-  --accent-cyan-muted: rgba(34, 211, 238, 0.18);
+  --accent-cyan: var(--ws-cyan);
+  --accent-cyan-muted: var(--ws-cyan-dim);
   --accent-amber: #fbbf24;
   --accent-amber-muted: rgba(251, 191, 36, 0.14);
   --accent-purple: #c084fc;
@@ -121,7 +121,7 @@
 
 /* SIP / catalyst badge tokens */
 .premarket-terminal .badge-earnings {
-  background: rgba(34, 211, 238, 0.14);
+  background: rgba(0, 229, 204, 0.14);
   color: var(--accent-cyan);
 }
 .premarket-terminal .badge-guidance-pos {

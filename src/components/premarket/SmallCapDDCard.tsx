@@ -2,12 +2,16 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import {
+  firstSentence,
   floatLabel,
+  formatDisplayDate,
+  formatIntegerCommas,
   formatPct,
   formatPriceUsd,
   formatShares,
   formatSignedPct,
   formatUsd,
+  limitSentences,
   relativeTime,
   runwayColor,
   severityColor,
@@ -64,7 +68,7 @@ function Card({ label, action, children }: { label: string; action?: ReactNode; 
   return (
     <div className="rounded border px-2.5 py-2" style={CARD_STYLE}>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="pm-section-label m-0" style={{ color: "var(--accent-cyan)" }}>
+        <p className="pm-section-label m-0" style={{ color: "var(--ws-cyan)" }}>
           {label}
         </p>
         {action}
@@ -130,7 +134,7 @@ function NewsCard({ state }: { state: DDTickerState }) {
         <Loading text="Loading news…" />
       ) : state.news.length === 0 ? (
         <p className="pm-site-caption m-0" style={{ color: "var(--text-secondary)" }}>
-          No company-specific news in the window — gap not explained by fresh news.
+          No news.
         </p>
       ) : (
         <ul className="m-0 list-none space-y-1 p-0">
@@ -238,7 +242,10 @@ function KeyMetricsCard({
     value: string,
     onChange: (v: string) => void,
     source: string | null
-  ) => (
+  ) => {
+    const display =
+      value === "" ? "" : formatIntegerCommas(Number(value.replace(/\D/g, "")) || null);
+    return (
     <div className="min-w-0">
       <p className="pm-site-caption m-0" style={{ color: "var(--text-tertiary)" }}>
         {label}
@@ -252,10 +259,10 @@ function KeyMetricsCard({
       <input
         className="pm-focus pm-mono w-full rounded border bg-transparent px-1 py-0.5 tabular-nums"
         style={{ borderColor: "var(--border-default)", color: "var(--text-primary)", fontSize: "var(--ws-fs-body)" }}
-        value={value}
+        value={display}
         inputMode="numeric"
         placeholder="—"
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
         onKeyDown={(e) => {
           if (e.key === "Enter") onSaveOverride(state.ticker);
         }}
@@ -264,6 +271,7 @@ function KeyMetricsCard({
       />
     </div>
   );
+  };
 
   return (
     <Card label="Key metrics">
@@ -276,7 +284,7 @@ function KeyMetricsCard({
           <Stat
             label="Short % float"
             value={m?.short_interest_unavailable ? "unavailable" : formatPct(m?.short_pct_float)}
-            sub={m?.short_interest_date ? `FINRA ${m.short_interest_date}` : undefined}
+            sub={m?.short_interest_date ? `FINRA ${formatDisplayDate(m.short_interest_date)}` : undefined}
           />
           <Stat label="Shares out" value={formatShares(m?.shares_outstanding)} />
         </div>
@@ -307,7 +315,7 @@ function RunwayCard({ state }: { state: DDTickerState }) {
             <Stat label="Cash on hand" value={formatUsd(m?.cash_on_hand)} />
             <Stat label="TTM op. burn" value={formatUsd(m?.ttm_operating_cf)} />
             <Stat label="Monthly burn" value={formatUsd(m?.monthly_burn)} />
-            <Stat label="As of" value={m?.cash_as_of_date ?? "—"} />
+            <Stat label="As of" value={formatDisplayDate(m?.cash_as_of_date)} />
           </div>
         </div>
       )}
@@ -326,6 +334,14 @@ function FlagBadge({ inst }: { inst: DDInstrument }) {
       {inst.primary_flag}
     </span>
   );
+}
+
+function instrumentAmount(inst: DDInstrument): string {
+  if (inst.open_ended) return "Open-ended";
+  if (inst.potential_shares != null) return `${formatShares(inst.potential_shares)} sh`;
+  if (inst.remaining_usd != null) return formatUsd(inst.remaining_usd);
+  if (inst.share_count != null) return `${formatIntegerCommas(inst.share_count)} sh`;
+  return "—";
 }
 
 function InstrumentsCard({ state, onRetry }: { state: DDTickerState; onRetry: (t: string) => void }) {
@@ -364,31 +380,56 @@ function InstrumentsCard({ state, onRetry }: { state: DDTickerState; onRetry: (t
           No active dilution instruments found in recent filings.
         </p>
       ) : (
-        <div className="space-y-1.5">
-          {state.instruments.map((inst, i) => (
-            <div
-              key={`${inst.label}-${i}`}
-              className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b pb-1.5 last:border-b-0"
-              style={{ borderColor: "var(--border-default)" }}
-            >
-              <div className="min-w-0">
-                <p className="pm-site-prose m-0 font-semibold" style={{ color: "var(--text-primary)" }}>
-                  {inst.label}
-                </p>
-                <p className="pm-site-caption m-0" style={{ color: "var(--text-tertiary)" }}>
-                  {inst.key_terms ?? inst.type} · {inst.source}
-                </p>
-              </div>
-              <div className="pm-mono text-right tabular-nums" style={{ color: "var(--text-secondary)" }}>
-                {inst.remaining_usd != null ? formatUsd(inst.remaining_usd) : ""}
-                {inst.exercise_or_conversion_price != null ? ` @ ${formatPriceUsd(inst.exercise_or_conversion_price)}` : ""}
-                <span className="ml-2" style={{ color: "var(--text-primary)" }}>
-                  {inst.open_ended ? "open-ended" : `${formatShares(inst.potential_shares)} sh`}
-                </span>
-              </div>
-              <FlagBadge inst={inst} />
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[32rem] border-collapse text-left">
+            <thead>
+              <tr className="border-b" style={{ borderColor: "var(--border-default)" }}>
+                {["Instrument", "Amount", "Exercise", "Flag"].map((h) => (
+                  <th
+                    key={h}
+                    className="pb-1.5 pr-3 pm-site-caption font-semibold last:pr-0"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {state.instruments.map((inst, i) => {
+                const description = firstSentence(inst.key_terms ?? inst.type);
+                return (
+                  <tr
+                    key={`${inst.label}-${i}`}
+                    className="border-b align-top last:border-b-0"
+                    style={{ borderColor: "var(--border-default)" }}
+                  >
+                    <td className="py-1.5 pr-3 min-w-[10rem]">
+                      <p className="pm-site-prose m-0 font-semibold" style={{ color: "var(--text-primary)" }}>
+                        {inst.label}
+                      </p>
+                      {description ? (
+                        <p className="pm-site-caption m-0 mt-0.5" style={{ color: "var(--text-tertiary)" }}>
+                          {description}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 pr-3 pm-mono whitespace-nowrap tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                      {instrumentAmount(inst)}
+                    </td>
+                    <td className="py-1.5 pr-3 pm-mono whitespace-nowrap tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                      {inst.exercise_or_conversion_price != null
+                        ? formatPriceUsd(inst.exercise_or_conversion_price)
+                        : "—"}
+                    </td>
+                    <td className="py-1.5">
+                      <FlagBadge inst={inst} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </Card>
@@ -423,16 +464,14 @@ function OverhangCard({ state }: { state: DDTickerState }) {
         ? "var(--accent-amber)"
         : "var(--positive)";
 
-  const palette = ["#22d3ee", "#fbbf24", "#c084fc", "#fb923c", "#34d399", "#f87171"];
+  const palette = ["var(--ws-cyan)", "#fbbf24", "#c084fc", "#fb923c", "#34d399", "#f87171"];
+  const overhangSummary = limitSentences(state.notes, 3);
 
   return (
     <Card label="Remaining dilution overhang">
       <p className="pm-mono m-0 text-xl font-bold tabular-nums" style={{ color: headlineColor }}>
         {formatPct(o.overhang_pct)}
         {o.open_ended ? "+" : ""}
-        <span className="pm-site-caption ml-2 font-normal" style={{ color: "var(--text-tertiary)" }}>
-          potential new shares vs current
-        </span>
       </p>
       <div
         className="mt-2 flex h-4 w-full overflow-hidden rounded"
@@ -463,14 +502,10 @@ function OverhangCard({ state }: { state: DDTickerState }) {
           Fully diluted {formatShares(o.fully_diluted_shares)}
         </span>
       </div>
-      {state.notes.length > 0 ? (
-        <ul className="m-0 mt-1.5 list-none space-y-0.5 p-0">
-          {state.notes.map((note, i) => (
-            <li key={i} className="pm-site-caption" style={{ color: "var(--text-tertiary)" }}>
-              · {note}
-            </li>
-          ))}
-        </ul>
+      {overhangSummary ? (
+        <p className="pm-site-caption m-0 mt-1.5" style={{ color: "var(--text-tertiary)" }}>
+          {overhangSummary}
+        </p>
       ) : null}
     </Card>
   );
@@ -495,7 +530,7 @@ function SplitsCard({ state }: { state: DDTickerState }) {
                 {s.ratio_label}
               </span>
               <span className="pm-site-caption" style={{ color: "var(--text-tertiary)" }}>
-                {s.execution_date}
+                {formatDisplayDate(s.execution_date)}
               </span>
               {s.is_reverse ? (
                 <span
@@ -524,7 +559,7 @@ export default function SmallCapDDCard({
   const warnings = state.metrics?.warnings ?? [];
 
   return (
-    <div className="rounded border" style={{ borderColor: "var(--border-strong)", background: "var(--bg-panel)" }}>
+    <div className="w-full rounded border" style={{ borderColor: "var(--border-strong)", background: "var(--bg-panel)" }}>
       <div
         className="flex items-center justify-between gap-2 border-b px-2.5 py-1.5"
         style={{ borderColor: "var(--border-default)" }}
