@@ -5,10 +5,11 @@ import CollapsibleSection from "./CollapsibleSection";
 import EarningsCalendar from "./EarningsCalendar";
 import DailyThemesPanel from "./DailyThemesPanel";
 import LargeCapAnalysisPanel from "./LargeCapAnalysisPanel";
+import SmallCapDDPanel from "./SmallCapDDPanel";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
 
-const SECTION_ORDER: PremarketSectionId[] = ["context", "largeCap", "earnings"];
+const SECTION_ORDER: PremarketSectionId[] = ["context", "smallCapDd", "largeCap", "earnings"];
 
 type SectionConfig = {
   id: PremarketSectionId;
@@ -19,6 +20,7 @@ type SectionConfig = {
 
 const SECTIONS: SectionConfig[] = [
   { id: "context", label: "THEMES", labelAccent: "cyan", stub: "" },
+  { id: "smallCapDd", label: "Small-Cap Due Diligence", labelAccent: "cyan", stub: "" },
   { id: "largeCap", label: "Large Cap Analysis", labelAccent: "cyan", stub: "" },
   { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
 ];
@@ -176,6 +178,8 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
             ) : s.id === "context" ? (
               <DailyThemesPanel refreshToken={themesRefreshToken} />
+            ) : s.id === "smallCapDd" ? (
+              <SmallCapDDPanel />
             ) : s.id === "largeCap" ? (
               <LargeCapAnalysisPanel />
             ) : (
