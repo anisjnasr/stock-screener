@@ -513,6 +513,22 @@ async function main() {
   console.log("");
   console.log(`Fetched bars: ok=${fetchOkCount}, empty_or_failed=${fetchEmptyCount}`);
 
+  const missingRequiredEtfs = REQUIRED_ETF_SYMBOLS.filter((sym) => {
+    const row = db.prepare("SELECT COUNT(*) AS c FROM daily_bars WHERE symbol = ?").get(sym);
+    return Number(row?.c ?? 0) === 0;
+  });
+  if (missingRequiredEtfs.length > 0) {
+    console.log(
+      `Required ETFs still missing bars (${missingRequiredEtfs.join(", ")}); running targeted backfill…`
+    );
+    try {
+      runScript("scripts/backfill-gaps.mjs", ["--symbols", missingRequiredEtfs.join(",")]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: required ETF backfill failed (${msg}).`);
+    }
+  }
+
   const latestDateRow = db.prepare("SELECT MAX(date) AS d FROM daily_bars").get();
   const rawLatestDate = latestDateRow?.d;
   if (!rawLatestDate) {
