@@ -52,7 +52,7 @@ const REFRESH_SECTOR_INDUSTRY_ETF_CONSTITUENTS =
   String(process.env.DAILY_REFRESH_SECTOR_INDUSTRY_ETF_CONSTITUENTS ?? "1") !== "0";
 const REQUIRED_ETF_SYMBOLS = [
   // Major indices
-  "SPY", "QQQ", "IWM",
+  "SPY", "QQQ", "IWM", "RSP", "QQQE",
   // Sector SPDRs (11 GICS sectors)
   "XLK", "XLF", "XLV", "XLY", "XLP", "XLC", "XLI", "XLE", "XLB", "XLRE", "XLU",
   // Industry ETFs (23 -- only industries with a dedicated liquid ETF)

@@ -77,7 +77,7 @@ const PROGRESS_VERSION = 1;
 const PROGRESS_BASENAME = "backfill-gaps-progress.json";
 
 const REQUIRED_ETF_SYMBOLS = [
-  "SPY", "QQQ", "IWM", "DIA",
+  "SPY", "QQQ", "IWM", "DIA", "RSP", "QQQE",
   "XLK", "XLF", "XLV", "XLY", "XLP", "XLC", "XLI", "XLE", "XLB", "XLRE", "XLU",
   "ITA", "JETS", "CARZ", "KBE", "KRE", "PBJ", "XBI", "KCE", "XPH", "BETZ",
   "GDX", "IHF", "ITB", "KIE", "IHI", "XME", "XOP", "VNQ", "SMH", "IGV",
