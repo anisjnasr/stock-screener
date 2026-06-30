@@ -44,4 +44,5 @@ export const THEMATIC_ETFS: ThematicEtfItem[] = [
   { id: "ecommerce", category: "Consumer & Lifestyle", theme: "E-commerce", ticker: "IBUY" },
   { id: "china-internet-tech", category: "International", theme: "China internet & tech", ticker: "KWEB" },
   { id: "india", category: "International", theme: "India", ticker: "INDA" },
+  { id: "drones-uavs", category: "Mobility & Industrials", theme: "Drones & UAVs", ticker: "DRNZ" },
 ];

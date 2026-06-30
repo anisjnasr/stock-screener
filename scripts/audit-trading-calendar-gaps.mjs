@@ -34,7 +34,7 @@ const REQUIRED_ETF_SYMBOLS = [
   "BOTZ", "SKYY", "CIBR", "DTCR", "SNSR", "QTUM", "ARKX", "ARKK",
   "ICLN", "TAN", "URA", "HYDR", "PHO", "LIT", "PAVE", "GRID",
   "SIL", "COPX", "REMX", "MOO", "IBIT", "BLOK", "FINX", "OZEM",
-  "MSOS", "ESPO", "SOCL", "IBUY", "KWEB", "INDA",
+  "MSOS", "ESPO", "SOCL", "IBUY", "KWEB", "INDA", "DRNZ",
 ];
 
 function getArgValue(flag, fallback = null) {

@@ -43,3 +43,4 @@ Inside that folder, the `Thematic ETFs` list contains all ETF tickers below.
 | 36 | Consumer & Lifestyle | E-commerce | IBUY |
 | 37 | International | China internet & tech | KWEB |
 | 38 | International | India | INDA |
+| 39 | Mobility & Industrials | Drones & UAVs | DRNZ |

@@ -5,9 +5,10 @@
  *
  * When screener.db is larger than ~2GB, uses better-sqlite3 (on-disk) to avoid Node buffer limit.
  *
- * Run: node scripts/compute-indicators-from-bars.mjs [--limit N] [--years N]
+ * Run: node scripts/compute-indicators-from-bars.mjs [--limit N] [--years N] [--symbols SYM1,SYM2]
  *   --limit N   Only process first N symbols (for testing)
  *   --years N   Only process last N years of data (default: 5)
+ *   --symbols   Comma-separated tickers to process (overrides company universe)
  */
 
 import initSqlJs from "sql.js";
@@ -127,7 +128,7 @@ function episodicPivotFlag(close, volume, prevClose, ema200Prev, avgVol20Prev) {
   return 1;
 }
 
-async function runNativeCompute(LIMIT, YEARS) {
+async function runNativeCompute(LIMIT, YEARS, ONLY_SYMBOLS) {
   const Database = require("better-sqlite3");
   const db = new Database(DB_PATH);
   db.pragma("foreign_keys = OFF");
@@ -141,8 +142,11 @@ async function runNativeCompute(LIMIT, YEARS) {
   const fromStr = fromDate.toISOString().slice(0, 10);
   const toStr = toDate.toISOString().slice(0, 10);
 
-  let symbols = db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
-  if (LIMIT != null && LIMIT > 0) symbols = symbols.slice(0, LIMIT);
+  let symbols = ONLY_SYMBOLS
+    ? [...ONLY_SYMBOLS]
+    : db.prepare("SELECT symbol FROM companies ORDER BY symbol").all().map((r) => r.symbol);
+  if (LIMIT != null && LIMIT > 0 && !ONLY_SYMBOLS) symbols = symbols.slice(0, LIMIT);
+  if (ONLY_SYMBOLS) console.log("Processing", symbols.length, "symbols from --symbols");
   const spyBarsList = db
     .prepare("SELECT date, close FROM daily_bars WHERE symbol = 'SPY' AND date >= ? AND date <= ? ORDER BY date")
     .all(fromStr, toStr);
@@ -438,6 +442,16 @@ async function main() {
   const LIMIT = limitIdx >= 0 && process.argv[limitIdx + 1] ? parseInt(process.argv[limitIdx + 1], 10) : null;
   const yearsIdx = process.argv.indexOf("--years");
   const YEARS = yearsIdx >= 0 && process.argv[yearsIdx + 1] ? parseInt(process.argv[yearsIdx + 1], 10) : 5;
+  const symbolsIdx = process.argv.indexOf("--symbols");
+  const ONLY_SYMBOLS =
+    symbolsIdx >= 0 && process.argv[symbolsIdx + 1]
+      ? new Set(
+          process.argv[symbolsIdx + 1]
+            .split(",")
+            .map((s) => s.trim().toUpperCase())
+            .filter(Boolean)
+        )
+      : null;
 
   const toDate = new Date();
   const fromDate = new Date(toDate);
@@ -453,7 +467,7 @@ async function main() {
   }
   if (dbSize != null && dbSize > USE_NATIVE_IF_LARGER_BYTES) {
     console.log("DB is large (" + (dbSize / 1e9).toFixed(1) + " GB), using better-sqlite3 (on-disk)...");
-    await runNativeCompute(LIMIT, YEARS);
+    await runNativeCompute(LIMIT, YEARS, ONLY_SYMBOLS);
     return;
   }
 
@@ -484,11 +498,14 @@ async function main() {
   if (!indColNamesSqljs.has("episodic_pivot")) db.run("ALTER TABLE indicators_daily ADD COLUMN episodic_pivot INTEGER");
 
   const symbolRows = db.exec("SELECT symbol FROM companies ORDER BY symbol");
-  let symbols = symbolRows[0]?.values?.map((r) => r[0]) ?? [];
-  if (LIMIT != null && LIMIT > 0) {
+  let symbols = ONLY_SYMBOLS
+    ? [...ONLY_SYMBOLS]
+    : (symbolRows[0]?.values?.map((r) => r[0]) ?? []);
+  if (LIMIT != null && LIMIT > 0 && !ONLY_SYMBOLS) {
     symbols = symbols.slice(0, LIMIT);
     console.log("Limiting to", LIMIT, "symbols");
   }
+  if (ONLY_SYMBOLS) console.log("Processing", symbols.length, "symbols from --symbols");
 
   const spyRows = db.exec(
     "SELECT date, close FROM daily_bars WHERE symbol = 'SPY' AND date >= '" + fromStr + "' AND date <= '" + toStr + "' ORDER BY date"

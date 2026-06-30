@@ -129,7 +129,11 @@ function main() {
   db.pragma("busy_timeout = 10000");
 
   const asOfDate = String(
-    db.prepare("SELECT MAX(date) AS d FROM daily_bars WHERE date <= date('now')").get()?.d ?? ""
+    db
+      .prepare("SELECT MAX(date) AS d FROM daily_bars WHERE symbol = 'SPY' AND date <= date('now')")
+      .get()?.d ??
+      db.prepare("SELECT MAX(date) AS d FROM daily_bars WHERE date <= date('now')").get()?.d ??
+      ""
   );
   if (!asOfDate) {
     console.error("No latest trading date in daily_bars.");

@@ -59,6 +59,7 @@ const ETF_TICKERS = [
   "IBUY",
   "KWEB",
   "INDA",
+  "DRNZ",
 ];
 
 function normalizeSymbol(raw) {
@@ -90,6 +91,7 @@ function extractSymbolsFromTopHoldingsTable(html) {
 const STATIC_HOLDINGS_FALLBACK = {
   MSOS: ["TCNNF", "GTBIF", "CURLF", "CRLBF", "VRNOF", "JUSHF", "TRSSF", "TSNDF"],
   INDA: ["IBN", "HDB", "INFY", "WIT"],
+  DRNZ: ["ONDS", "AVAV", "UMAC", "RCAT", "EH", "AVEX", "GE", "PLTR", "RTX", "BA", "LMT", "HON", "HWM", "AIRO", "ZENA", "SWMR"],
 };
 
 async function fetchConstituentsForEtf(ticker) {

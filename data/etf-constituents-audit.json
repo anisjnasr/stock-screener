@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-04-04T04:47:04.623Z",
+  "generatedAt": "2026-06-30T17:19:53.513Z",
   "dbPath": "C:\\Users\\USER\\stock-tool\\data\\screener.db",
   "sections": [
     {
       "label": "thematic",
-      "etfCount": 38,
-      "totalSymbols": 569,
-      "totalInDb": 553,
+      "etfCount": 39,
+      "totalSymbols": 594,
+      "totalInDb": 585,
       "etfs": [
         {
           "etf": "MSOS",
@@ -25,69 +25,6 @@
           ]
         },
         {
-          "etf": "BOTZ",
-          "count": 12,
-          "inCompanies": 11,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
-          "etf": "CIBR",
-          "count": 24,
-          "inCompanies": 23,
-          "missingInDb": 1,
-          "missingSample": [
-            "OKTA"
-          ]
-        },
-        {
-          "etf": "ARKX",
-          "count": 21,
-          "inCompanies": 20,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
-          "etf": "ARKK",
-          "count": 24,
-          "inCompanies": 23,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
-          "etf": "URA",
-          "count": 6,
-          "inCompanies": 5,
-          "missingInDb": 1,
-          "missingSample": [
-            "OKLO"
-          ]
-        },
-        {
-          "etf": "LIT",
-          "count": 5,
-          "inCompanies": 4,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
-          "etf": "GRID",
-          "count": 12,
-          "inCompanies": 11,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
           "etf": "IBIT",
           "count": 1,
           "inCompanies": 0,
@@ -95,6 +32,13 @@
           "missingSample": [
             "IBIT"
           ]
+        },
+        {
+          "etf": "BOTZ",
+          "count": 12,
+          "inCompanies": 12,
+          "missingInDb": 0,
+          "missingSample": []
         },
         {
           "etf": "SMH",
@@ -107,6 +51,13 @@
           "etf": "SKYY",
           "count": 25,
           "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "CIBR",
+          "count": 24,
+          "inCompanies": 24,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -126,8 +77,22 @@
         },
         {
           "etf": "QTUM",
-          "count": 18,
-          "inCompanies": 18,
+          "count": 20,
+          "inCompanies": 20,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ARKX",
+          "count": 22,
+          "inCompanies": 22,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "ARKK",
+          "count": 24,
+          "inCompanies": 24,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -140,36 +105,50 @@
         },
         {
           "etf": "ICLN",
-          "count": 9,
-          "inCompanies": 9,
+          "count": 10,
+          "inCompanies": 10,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "TAN",
-          "count": 12,
-          "inCompanies": 12,
+          "count": 13,
+          "inCompanies": 13,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "URA",
+          "count": 4,
+          "inCompanies": 4,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "HYDR",
-          "count": 6,
-          "inCompanies": 6,
+          "count": 7,
+          "inCompanies": 7,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "PHO",
-          "count": 23,
-          "inCompanies": 23,
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "LIT",
+          "count": 5,
+          "inCompanies": 5,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "PAVE",
-          "count": 24,
-          "inCompanies": 24,
+          "count": 25,
+          "inCompanies": 25,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -181,16 +160,23 @@
           "missingSample": []
         },
         {
+          "etf": "GRID",
+          "count": 12,
+          "inCompanies": 12,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
           "etf": "GDX",
-          "count": 7,
-          "inCompanies": 7,
+          "count": 6,
+          "inCompanies": 6,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "SIL",
-          "count": 6,
-          "inCompanies": 6,
+          "count": 9,
+          "inCompanies": 9,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -203,22 +189,22 @@
         },
         {
           "etf": "REMX",
-          "count": 6,
-          "inCompanies": 6,
+          "count": 8,
+          "inCompanies": 8,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "MOO",
-          "count": 13,
-          "inCompanies": 13,
+          "count": 14,
+          "inCompanies": 14,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "BLOK",
-          "count": 20,
-          "inCompanies": 20,
+          "count": 24,
+          "inCompanies": 24,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -238,15 +224,15 @@
         },
         {
           "etf": "OZEM",
-          "count": 13,
-          "inCompanies": 13,
+          "count": 11,
+          "inCompanies": 11,
           "missingInDb": 0,
           "missingSample": []
         },
         {
           "etf": "BETZ",
-          "count": 12,
-          "inCompanies": 12,
+          "count": 8,
+          "inCompanies": 8,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -266,8 +252,8 @@
         },
         {
           "etf": "JETS",
-          "count": 19,
-          "inCompanies": 19,
+          "count": 18,
+          "inCompanies": 18,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -298,6 +284,13 @@
           "inCompanies": 4,
           "missingInDb": 0,
           "missingSample": []
+        },
+        {
+          "etf": "DRNZ",
+          "count": 16,
+          "inCompanies": 16,
+          "missingInDb": 0,
+          "missingSample": []
         }
       ],
       "warnings": 2
@@ -306,26 +299,8 @@
       "label": "sector",
       "etfCount": 11,
       "totalSymbols": 270,
-      "totalInDb": 268,
+      "totalInDb": 270,
       "etfs": [
-        {
-          "etf": "XLY",
-          "count": 25,
-          "inCompanies": 24,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
-        {
-          "etf": "XLE",
-          "count": 22,
-          "inCompanies": 21,
-          "missingInDb": 1,
-          "missingSample": [
-            "OKE"
-          ]
-        },
         {
           "etf": "XLK",
           "count": 25,
@@ -342,6 +317,13 @@
         },
         {
           "etf": "XLV",
+          "count": 25,
+          "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLY",
           "count": 25,
           "inCompanies": 25,
           "missingInDb": 0,
@@ -365,6 +347,13 @@
           "etf": "XLI",
           "count": 25,
           "inCompanies": 25,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "XLE",
+          "count": 22,
+          "inCompanies": 22,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -395,18 +384,9 @@
     {
       "label": "industry",
       "etfCount": 23,
-      "totalSymbols": 522,
-      "totalInDb": 521,
+      "totalSymbols": 524,
+      "totalInDb": 524,
       "etfs": [
-        {
-          "etf": "CARZ",
-          "count": 18,
-          "inCompanies": 17,
-          "missingInDb": 1,
-          "missingSample": [
-            "TSLA"
-          ]
-        },
         {
           "etf": "ITA",
           "count": 25,
@@ -416,6 +396,13 @@
         },
         {
           "etf": "JETS",
+          "count": 18,
+          "inCompanies": 18,
+          "missingInDb": 0,
+          "missingSample": []
+        },
+        {
+          "etf": "CARZ",
           "count": 18,
           "inCompanies": 18,
           "missingInDb": 0,
@@ -444,8 +431,8 @@
         },
         {
           "etf": "XBI",
-          "count": 24,
-          "inCompanies": 24,
+          "count": 25,
+          "inCompanies": 25,
           "missingInDb": 0,
           "missingSample": []
         },
@@ -507,8 +494,8 @@
         },
         {
           "etf": "XME",
-          "count": 24,
-          "inCompanies": 24,
+          "count": 25,
+          "inCompanies": 25,
           "missingInDb": 0,
           "missingSample": []
         },
