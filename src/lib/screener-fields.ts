@@ -26,56 +26,35 @@ export type FilterField =
 
 export type FilterCategory = { id: string; title: string; fields: FilterField[]; defaultCollapsed?: boolean };
 
-/** Common GICS industries for dropdown */
-const INDUSTRY_OPTIONS = [
-  { value: "", label: "Any" },
-  { value: "Aerospace & Defense", label: "Aerospace & Defense" },
-  { value: "Airlines", label: "Airlines" },
-  { value: "Aluminum", label: "Aluminum" },
-  { value: "Apparel Manufacturing", label: "Apparel Manufacturing" },
-  { value: "Asset Management", label: "Asset Management" },
-  { value: "Auto Manufacturers", label: "Auto Manufacturers" },
-  { value: "Banks", label: "Banks" },
-  { value: "Beverages", label: "Beverages" },
-  { value: "Biotechnology", label: "Biotechnology" },
-  { value: "Building Materials", label: "Building Materials" },
-  { value: "Banks - Regional", label: "Banks - Regional" },
-  { value: "Communication Equipment", label: "Communication Equipment" },
-  { value: "Computer Hardware", label: "Computer Hardware" },
-  { value: "Consumer Electronics", label: "Consumer Electronics" },
-  { value: "Diagnostics & Research", label: "Diagnostics & Research" },
-  { value: "Drug Manufacturers", label: "Drug Manufacturers" },
-  { value: "Education & Training Services", label: "Education & Training Services" },
-  { value: "Electrical Equipment", label: "Electrical Equipment" },
-  { value: "Electronic Components", label: "Electronic Components" },
-  { value: "Entertainment", label: "Entertainment" },
-  { value: "Financial Data & Stock Exchanges", label: "Financial Data & Stock Exchanges" },
-  { value: "Food Products", label: "Food Products" },
-  { value: "Gambling", label: "Gambling" },
-  { value: "Gold", label: "Gold" },
-  { value: "Healthcare Plans", label: "Healthcare Plans" },
-  { value: "Homebuilding & Construction", label: "Homebuilding & Construction" },
-  { value: "Information Technology Services", label: "Information Technology Services" },
-  { value: "Insurance", label: "Insurance" },
-  { value: "Internet Content & Information", label: "Internet Content & Information" },
-  { value: "Medical Devices", label: "Medical Devices" },
-  { value: "Oil & Gas", label: "Oil & Gas" },
-  { value: "Packaging & Containers", label: "Packaging & Containers" },
-  { value: "Pharmaceutical Retailers", label: "Pharmaceutical Retailers" },
-  { value: "Real Estate - Development", label: "Real Estate - Development" },
-  { value: "Real Estate Services", label: "Real Estate Services" },
-  { value: "REITs", label: "REITs" },
-  { value: "Scientific & Technical Instruments", label: "Scientific & Technical Instruments" },
-  { value: "Semiconductors", label: "Semiconductors" },
-  { value: "Shell Companies", label: "Shell Companies" },
-  { value: "Software", label: "Software" },
-  { value: "Specialty Retail", label: "Specialty Retail" },
-  { value: "Staffing & Employment Services", label: "Staffing & Employment Services" },
-  { value: "Steel", label: "Steel" },
-  { value: "Telecom Services", label: "Telecom Services" },
-  { value: "Travel Services", label: "Travel Services" },
-  { value: "Utilities", label: "Utilities" },
-];
+export type FilterOption = { value: string; label: string };
+
+/** Build sorted include/exclude options from Yahoo Finance industry names in screener.db. */
+export function buildIndustryGroupOptions(industries: string[]): FilterOption[] {
+  const seen = new Set<string>();
+  const options: FilterOption[] = [];
+  for (const raw of industries) {
+    const name = raw.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    options.push({ value: name, label: name });
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Inject live industry options into filter categories (loaded from /api/screener/industries). */
+export function withIndustryFilterOptions(
+  categories: FilterCategory[],
+  industryOptions: FilterOption[]
+): FilterCategory[] {
+  return categories.map((cat) => ({
+    ...cat,
+    fields: cat.fields.map((field) =>
+      field.type === "includeExcludeMulti" && field.key === "industry_filter"
+        ? { ...field, options: industryOptions }
+        : field
+    ),
+  }));
+}
 
 export const PCT_OPERATORS: { value: string; label: string }[] = [
   { value: "gte", label: "Greater than or equal to" },
@@ -100,11 +79,6 @@ const SECTOR_OPTIONS = [
   { value: "Utilities", label: "Utilities" },
 ];
 
-/** Industries for Include/Exclude multi-select (exclude "Any" option), sorted alphabetically */
-const INDUSTRY_GROUP_OPTIONS = INDUSTRY_OPTIONS.filter((o) => o.value !== "").sort((a, b) =>
-  a.label.localeCompare(b.label)
-);
-
 export const SCREENER_FILTER_CATEGORIES: FilterCategory[] = [
   {
     id: "general",
@@ -128,7 +102,7 @@ export const SCREENER_FILTER_CATEGORIES: FilterCategory[] = [
         key: "industry_filter",
         label: "Industry Group",
         type: "includeExcludeMulti",
-        options: INDUSTRY_GROUP_OPTIONS,
+        options: [],
         includeKey: "industry_include",
         excludeKey: "industry_exclude",
       },

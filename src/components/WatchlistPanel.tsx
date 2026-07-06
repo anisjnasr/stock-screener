@@ -60,7 +60,13 @@ import {
 } from "@/lib/screener-storage";
 import { formatDisplayDate } from "@/lib/date-format";
 import { normalizeIndustryDisplayName, toTitleCase } from "@/lib/text-format";
-import { SCREENER_FILTER_CATEGORIES, PCT_OPERATORS, getFilterCriteriaColumns } from "@/lib/screener-fields";
+import {
+  SCREENER_FILTER_CATEGORIES,
+  PCT_OPERATORS,
+  buildIndustryGroupOptions,
+  getFilterCriteriaColumns,
+  withIndustryFilterOptions,
+} from "@/lib/screener-fields";
 import type { FilterField } from "@/lib/screener-fields";
 import { THEMATIC_ETFS } from "@/lib/thematic-etfs";
 import { FLAG_HEX, FLAG_PICKER_ORDER } from "@/lib/stock-flags";
@@ -834,6 +840,11 @@ export default function WatchlistPanel({
   const [selectedScreenerSectionId, setSelectedScreenerSectionId] = useState<string | null>(
     SCREENER_FILTER_CATEGORIES[0]?.id ?? null
   );
+  const [industryFilterOptions, setIndustryFilterOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const screenerFilterCategories = useMemo(
+    () => withIndustryFilterOptions(SCREENER_FILTER_CATEGORIES, industryFilterOptions),
+    [industryFilterOptions]
+  );
   const [screenerResultCount, setScreenerResultCount] = useState<number | null>(null);
   const [screenerError, setScreenerError] = useState<string | null>(null);
   /** For script screeners: column keys from the script (stable API / row merge). */
@@ -972,6 +983,22 @@ export default function WatchlistPanel({
     setFolders(loadFolders());
     setColumnSets(loadColumnSets());
     setSidebarWidthPx(Math.max(240, loadSidebarWidthPx()));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/screener/industries")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { industries?: unknown }) => {
+        if (cancelled || !Array.isArray(data.industries)) return;
+        setIndustryFilterOptions(buildIndustryGroupOptions(data.industries.filter((v): v is string => typeof v === "string")));
+      })
+      .catch(() => {
+        /* keep empty options; saved screen selections still work */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -2515,7 +2542,7 @@ export default function WatchlistPanel({
 
   const selectedScreenerSectionFields = useMemo(() => {
     if (!selectedScreenerSectionId) return null;
-    const category = SCREENER_FILTER_CATEGORIES.find((c) => c.id === selectedScreenerSectionId);
+    const category = screenerFilterCategories.find((c) => c.id === selectedScreenerSectionId);
     if (!category) return null;
 
     const ordered: FilterField[] = [];
@@ -2543,7 +2570,7 @@ export default function WatchlistPanel({
     flush();
 
     return ordered;
-  }, [selectedScreenerSectionId, isFilterFieldActive]);
+  }, [selectedScreenerSectionId, isFilterFieldActive, screenerFilterCategories]);
 
   const formatNumberInput = (raw: string | number | undefined, isPct: boolean, decimalPlaces?: number): string => {
     if (raw === undefined || raw === "") return "";
@@ -4378,7 +4405,7 @@ export default function WatchlistPanel({
                   <div className="flex gap-4">
                     {/* Left column: section labels */}
                       <div className="w-48 shrink-0 flex flex-col gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid var(--ws-border)" }}>
-                      {SCREENER_FILTER_CATEGORIES.map((cat) => {
+                      {screenerFilterCategories.map((cat) => {
                         const { filled, total } = getCategoryCounts(cat);
                         const isSelected = selectedScreenerSectionId === cat.id;
                         return (
@@ -4666,6 +4693,16 @@ export default function WatchlistPanel({
                               }
                               if (field.type === "includeExcludeMulti") {
                                 const row = newScreenForm.includeExcludeRows?.[field.key] ?? { mode: "include" as const, selected: [] };
+                                const optionValues = new Set(field.options.map((opt) => opt.value));
+                                const mergedOptions =
+                                  field.key === "industry_filter"
+                                    ? [
+                                        ...field.options,
+                                        ...row.selected
+                                          .filter((value) => value && !optionValues.has(value))
+                                          .map((value) => ({ value, label: value })),
+                                      ]
+                                    : field.options;
                                 const toggleOption = (value: string) => {
                                   const next = row.selected.includes(value)
                                     ? row.selected.filter((s) => s !== value)
@@ -4698,7 +4735,10 @@ export default function WatchlistPanel({
                                       </label>
                                     </div>
                                     <div className="max-h-32 overflow-y-auto rounded border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-900 p-2 space-y-1">
-                                      {field.options.map((opt) => (
+                                      {mergedOptions.length === 0 ? (
+                                        <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">Loading industries…</span>
+                                      ) : (
+                                        mergedOptions.map((opt) => (
                                         <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                                           <input
                                             type="checkbox"
@@ -4708,7 +4748,8 @@ export default function WatchlistPanel({
                                           />
                                           <span className="text-xs font-normal text-zinc-700 dark:text-zinc-300">{opt.label}</span>
                                         </label>
-                                      ))}
+                                      ))
+                                      )}
                                     </div>
                                   </div>
                                 );
