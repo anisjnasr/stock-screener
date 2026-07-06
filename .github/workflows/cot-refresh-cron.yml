@@ -6,9 +6,11 @@
 #   CRON_SECRET  — must match the production env CRON_SECRET on your host
 #
 # CFTC publishes Friday ~3:30pm ET (positions as of the prior Tuesday). Saturday morning is safe.
+# Federal holidays can push the release to the following Monday (see CFTC release schedule).
 #
 # Schedule (UTC):
-#   Saturday 14:00 — ~9-10am ET, comfortably after the Friday release.
+#   Saturday 14:00 — ~9-10am ET, comfortably after the normal Friday release.
+#   Monday    20:00 — ~4pm ET, catches holiday-delayed Monday releases (e.g. July 4 week).
 #
 # workflow_dispatch runs the same refresh on demand (bootstrap or catch-up).
 
@@ -17,6 +19,7 @@ name: COT Refresh Cron
 on:
   schedule:
     - cron: "0 14 * * 6"
+    - cron: "0 20 * * 1"
   workflow_dispatch:
 
 concurrency:
