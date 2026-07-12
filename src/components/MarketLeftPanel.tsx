@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import MarketMonitorTable from "@/components/MarketMonitorTable";
 import type { MarketMonitorListCreatedInfo } from "@/components/MarketMonitorConstituentsModal";
 
@@ -24,6 +25,7 @@ function MarketMonitorColorInfo() {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reposition = useCallback(() => {
     const rect = btnRef.current?.getBoundingClientRect();
@@ -36,10 +38,27 @@ function MarketMonitorColorInfo() {
     setCoords({ top: rect.bottom + 6, left });
   }, []);
 
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
   const show = useCallback(() => {
+    cancelClose();
     reposition();
     setOpen(true);
-  }, [reposition]);
+  }, [cancelClose, reposition]);
+
+  // The popover is portaled to <body>, so moving the cursor from the icon into
+  // it briefly leaves the trigger; a short close delay bridges that gap.
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 120);
+  }, [cancelClose]);
+
+  useEffect(() => cancelClose, [cancelClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -72,7 +91,7 @@ function MarketMonitorColorInfo() {
     <span
       className="relative inline-flex"
       onMouseEnter={show}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={scheduleClose}
     >
       <button
         ref={btnRef}
@@ -92,11 +111,13 @@ function MarketMonitorColorInfo() {
       >
         i
       </button>
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
           role="tooltip"
           className="rounded-md p-3 text-left shadow-lg"
           style={popoverStyle}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
         >
           <p className="mb-1 text-ws-body font-bold" style={{ color: "var(--ws-cyan)" }}>
             How cell colors work
@@ -145,7 +166,8 @@ function MarketMonitorColorInfo() {
           <p className="text-ws-caption" style={{ color: "var(--ws-text-dim)" }}>
             7× ATR, EP, and Stock Universe show raw counts only.
           </p>
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );
