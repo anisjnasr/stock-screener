@@ -62,23 +62,3 @@ services:
     envVars:
       - key: INTERNAL_API_KEY
         sync: false
-      # Large Cap Analysis — Claude API (same key can be used as main app if desired)
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ANTHROPIC_LARGE_CAP_MODEL
-        value: claude-sonnet-4-6
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Large Cap digest reads local screener.db (separate disk from StockStalker — sync DB after first deploy).
-      - key: SCREENER_DB_PATH
-        value: /app/data/screener.db
-      - key: SCREENER_DATA_DIR
-        value: /app/data
-      # Main Stock Scanner URL — Python pulls screener.db from /api/admin/screener-db-export after main sync.
-      - key: STOCK_SCANNER_APP_URL
-        sync: false
-      # Remote digest: Python fetches bar/indicator JSON from main app — no local screener.db.
-      - key: SCREENER_DB_REMOTE
-        value: "true"

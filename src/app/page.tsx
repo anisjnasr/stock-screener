@@ -77,7 +77,6 @@ import MarketLeftPanel from "@/components/MarketLeftPanel";
 import RightRail from "@/components/RightRail";
 import MarketBreadthRail from "@/components/MarketBreadthRail";
 import PreMarketShell from "@/components/PreMarketShell";
-import CompLabShell from "@/components/CompLabShell";
 const StockChart = dynamic(() => import("@/components/StockChart"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[var(--ws-bg)]" />,
@@ -208,7 +207,7 @@ export default function Home() {
   const sectionLayoutKeyRef = useRef<string>("");
 
   useLayoutEffect(() => {
-    if (chartHidden || section === "pre-market" || section === "comp-lab") return;
+    if (chartHidden || section === "pre-market") return;
     const key =
       section === "market"
         ? `m:${marketIndexCardSelection ?? "none"}`
@@ -330,7 +329,7 @@ export default function Home() {
       setRightRailHidden(true);
     } else if (section === "scans" || section === "lists") {
       setRightRailHidden(false);
-    } else if (section === "pre-market" || section === "comp-lab") {
+    } else if (section === "pre-market") {
       setRightRailHidden(true);
     }
   }, [section, setRightRailHidden]);
@@ -795,7 +794,6 @@ export default function Home() {
 
   useKeyboardShortcuts(useMemo(() => [
     { key: "5", description: "Go to PRE-MARKET", category: "navigation" as const, action: () => setSection("pre-market") },
-    { key: "6", description: "Go to COMP LAB", category: "navigation" as const, action: () => setSection("comp-lab") },
     { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
       const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
       el?.focus(); el?.select();
@@ -835,7 +833,7 @@ export default function Home() {
           onSymbolSelect={handleMarketMonitorSymbolSelect}
           onWatchlistListCreated={handleWatchlistListCreatedFromMonitor}
         />
-      ) : section === "pre-market" || section === "comp-lab" ? (
+      ) : section === "pre-market" ? (
         <div className="h-full min-h-0" style={{ background: "var(--ws-bg2)" }} aria-hidden />
       ) : section === "sectors-industries" ? (
         <SectorPerfPanel
@@ -929,7 +927,7 @@ export default function Home() {
     <PanelErrorBoundary name="RightPanel">
     {section === "market" ? (
       <MarketBreadthRail selectedSymbol={symbol} />
-    ) : section === "pre-market" || section === "comp-lab" ? (
+    ) : section === "pre-market" ? (
       <div className="h-full" aria-hidden />
     ) : railSupportedSection ? (
       <RightRail
@@ -1107,11 +1105,7 @@ export default function Home() {
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {section === "pre-market" ? (
           <PanelErrorBoundary name="PreMarket">
-            <PreMarketShell onOpenTickerInLists={handleMarketMonitorSymbolSelect} />
-          </PanelErrorBoundary>
-        ) : section === "comp-lab" ? (
-          <PanelErrorBoundary name="CompLab">
-            <CompLabShell />
+            <PreMarketShell />
           </PanelErrorBoundary>
         ) : (
           <WorkspaceLayout

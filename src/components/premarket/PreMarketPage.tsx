@@ -2,14 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CollapsibleSection from "./CollapsibleSection";
-import EarningsCalendar from "./EarningsCalendar";
 import DailyThemesPanel from "./DailyThemesPanel";
-import LargeCapAnalysisPanel from "./LargeCapAnalysisPanel";
-import SmallCapDDPanel from "./SmallCapDDPanel";
 import { usePremarketLayout } from "./usePremarketLayout";
 import type { PremarketSectionId } from "./premarket-layout-storage";
 
-const SECTION_ORDER: PremarketSectionId[] = ["context", "smallCapDd", "largeCap", "earnings"];
+const SECTION_ORDER: PremarketSectionId[] = ["context"];
 
 type SectionConfig = {
   id: PremarketSectionId;
@@ -20,14 +17,7 @@ type SectionConfig = {
 
 const SECTIONS: SectionConfig[] = [
   { id: "context", label: "THEMES", labelAccent: "cyan", stub: "" },
-  { id: "smallCapDd", label: "Small-Cap Due Diligence", labelAccent: "cyan", stub: "" },
-  { id: "largeCap", label: "Large Cap Analysis", labelAccent: "cyan", stub: "" },
-  { id: "earnings", label: "Earnings", labelAccent: "cyan", stub: "" },
 ];
-
-type PreMarketPageProps = {
-  onOpenTickerInLists?: (sym: string) => void;
-};
 
 type ManualPremarketRefreshResponse = {
   ok: boolean;
@@ -49,7 +39,7 @@ function formatElapsedLabel(ms: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProps) {
+export default function PreMarketPage() {
   const { collapsed, toggle, collapseAll, expandAll } = usePremarketLayout();
 
   const [themesRefreshToken, setThemesRefreshToken] = useState(0);
@@ -174,14 +164,8 @@ export default function PreMarketPage({ onOpenTickerInLists }: PreMarketPageProp
               ) : undefined
             }
           >
-            {s.id === "earnings" ? (
-              <EarningsCalendar onOpenTickerInLists={onOpenTickerInLists} />
-            ) : s.id === "context" ? (
+            {s.id === "context" ? (
               <DailyThemesPanel refreshToken={themesRefreshToken} />
-            ) : s.id === "smallCapDd" ? (
-              <SmallCapDDPanel />
-            ) : s.id === "largeCap" ? (
-              <LargeCapAnalysisPanel />
             ) : (
               <p className="max-w-prose leading-relaxed">{s.stub}</p>
             )}

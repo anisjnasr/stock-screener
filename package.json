@@ -50,12 +50,10 @@
     "compute-market-aggregates": "node scripts/compute-market-aggregates.mjs",
     "optimize-db": "node scripts/optimize-db.mjs",
     "go-live:check": "node scripts/go-live-preflight.mjs --require-api-key --max-stale-days 5",
-    "earnings:trigger": "node scripts/trigger-earnings-crons.mjs",
     "newsletter:ingest:trigger": "node scripts/trigger-newsletter-ingest.mjs",
     "newsletter:pipeline:trigger": "node scripts/trigger-newsletter-pipeline.mjs",
     "refresh:all": "npm run refresh-companies && npm run refresh-financials && npm run refresh-ownership && npm run refresh-daily",
     "market-monitor:stats": "node scripts/market-monitor-stats.mjs",
-    "cot-backfill": "node scripts/cot-backfill.mjs",
     "download-latest-db": "node scripts/download-latest-db.mjs",
     "setup-daily-update": "powershell -ExecutionPolicy Bypass -File scripts/setup-daily-update.ps1",
     "setup-github-runner": "powershell -ExecutionPolicy Bypass -File scripts/setup-github-runner.ps1"

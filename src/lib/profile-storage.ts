@@ -14,10 +14,6 @@ import { loadWatchlists, loadWatchlistFolders, loadFavoriteWatchlistIds, loadFla
 import type { SavedScreen, ScreenerFolder } from "./screener-storage";
 import type { ChartSettings } from "./chart-settings";
 import {
-  applyCloudLargeCapSettings,
-  LARGE_CAP_SETTINGS_CLOUD_KEY,
-} from "@/lib/premarket/large-cap-settings-storage";
-import {
   applyCloudPerformanceSubTab,
   PERFORMANCE_SUBTAB_CLOUD_KEY,
   PERFORMANCE_SUBTAB_LS_KEY,
@@ -350,9 +346,6 @@ export function hydrateLocalStorage(data: ProfileData): void {
   if (st.panel_mode !== undefined) s.setItem("stock-research-watchlist-panel", st.panel_mode as string);
   if (st.panel_height !== undefined) s.setItem("stock-research-watchlist-panel-height-px", String(st.panel_height));
   if (st.sidebar_width !== undefined) s.setItem("stock-research-watchlist-sidebar-width-px", String(st.sidebar_width));
-  if (st[LARGE_CAP_SETTINGS_CLOUD_KEY] !== undefined) {
-    applyCloudLargeCapSettings(st[LARGE_CAP_SETTINGS_CLOUD_KEY]);
-  }
   if (st[PERFORMANCE_SUBTAB_CLOUD_KEY] !== undefined) {
     applyCloudPerformanceSubTab(st[PERFORMANCE_SUBTAB_CLOUD_KEY]);
   }
@@ -416,7 +409,6 @@ export function pushLocalStorageToCloud(): void {
     ["stock-research-watchlist-panel", "panel_mode"],
     ["stock-research-watchlist-panel-height-px", "panel_height"],
     ["stock-research-watchlist-sidebar-width-px", "sidebar_width"],
-    ["stockstalker-large-cap-settings-v1", LARGE_CAP_SETTINGS_CLOUD_KEY],
     [PERFORMANCE_SUBTAB_LS_KEY, PERFORMANCE_SUBTAB_CLOUD_KEY],
   ];
 
