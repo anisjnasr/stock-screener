@@ -77,7 +77,7 @@ export default function MarketMonitorConstituentsModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stocks, setStocks] = useState<MarketMonitorConstituentRow[]>([]);
-  const [grouped, setGrouped] = useState(false);
+  const [grouped, setGrouped] = useState(true);
   const [expandedIndustries, setExpandedIndustries] = useState<Set<string>>(() => new Set());
   const [rowChecked, setRowChecked] = useState<Set<string>>(() => new Set());
   const [lists, setLists] = useState<Watchlist[]>(() => (typeof window !== "undefined" ? loadWatchlists() : []));
