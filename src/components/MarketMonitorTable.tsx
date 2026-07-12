@@ -9,8 +9,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import type { MarketMonitorRow, MarketMonitorApiPayload } from "@/app/api/market-monitor/route";
+import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 import type { MarketMonitorMetricKey } from "@/lib/screener-db-native";
+import { fetchMarketMonitor } from "@/lib/market-monitor-prefetch";
 import MarketMonitorConstituentsModal, {
   type MarketMonitorListCreatedInfo,
 } from "@/components/MarketMonitorConstituentsModal";
@@ -23,8 +24,6 @@ import {
   type MmPercentileColumn,
   type MmRowPercentiles,
 } from "@/lib/market-monitor-percentiles";
-
-const MARKET_MONITOR_FETCH_VERSION = "7x-atr-v1";
 
 /** Lets `height:100%` children fill the row’s tallest cell (`td { height: 1px }` table layout trick). */
 const MM_BODY_TD = "p-0 align-middle h-px max-h-none";
@@ -401,10 +400,14 @@ export default function MarketMonitorTable({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/market-monitor?v=${MARKET_MONITOR_FETCH_VERSION}`, { cache: "no-store" })
-      .then((r) => r.json() as Promise<MarketMonitorApiPayload>)
+    fetchMarketMonitor()
       .then((json) => {
         if (cancelled) return;
+        if (!json) {
+          setError("Failed to load Market Monitor");
+          setStaleBanner(null);
+          return;
+        }
         if (json.error) {
           setError(json.error);
           setStaleBanner(null);

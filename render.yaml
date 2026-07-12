@@ -10,6 +10,10 @@ services:
     name: stock-scanner
     runtime: node
     region: oregon
+    # Staying on `starter` (512MB). The SQLite page cache / mmap window are left
+    # at the app's safe 64MB / 256MB defaults (see openDb() in
+    # src/lib/screener-db-native.ts) to avoid OOM on this instance size. To scale
+    # up later, upgrade this plan and set SCREENER_DB_CACHE_MB / SCREENER_DB_MMAP_MB.
     plan: starter
 
     buildCommand: npm ci && npm run build

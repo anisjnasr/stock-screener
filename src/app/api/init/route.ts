@@ -87,10 +87,12 @@ export async function GET(request: NextRequest) {
     const industryRankUniverse = getIndustryRankUniverseCounts(dbSnapshot.date ?? undefined).counts;
     const dbProfileMetrics = getStockProfileDbMetrics(symbol, dbSnapshot.date ?? undefined).metrics;
 
+    // These external calls gate first paint; the payload has DB fallbacks for
+    // price/name/etc., so cap them tightly rather than blocking up to 3s each.
     const [quote, profile, nextEarnings] = await Promise.all([
-      withTimeout(fetchQuote(symbol), 3000, null),
-      withTimeout(fetchProfile(symbol), 3000, null),
-      withTimeout(fetchNextEarningsDate(symbol), 2000, undefined),
+      withTimeout(fetchQuote(symbol), 1500, null),
+      withTimeout(fetchProfile(symbol), 1500, null),
+      withTimeout(fetchNextEarningsDate(symbol), 1200, undefined),
     ]);
 
     const baseQuote = quote ?? {

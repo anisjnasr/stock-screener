@@ -576,14 +576,30 @@ function dbFileChanged(): boolean {
   return false;
 }
 
+/**
+ * Read a positive integer MB value from an env var, falling back to a default.
+ * Lets the DB page cache / mmap window scale with the deployed instance size
+ * (e.g. bump these on a larger Render plan) without a code change or OOM risk
+ * on small instances where the env vars are left unset.
+ */
+function envMb(name: string, defaultMb: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return defaultMb;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : defaultMb;
+}
+
 function openDb(): BetterSqlite3Database {
   const db = new Database(DB_PATH, { readonly: true });
   // journal_mode = WAL requires write access; the VACUUM'd DB from CI arrives
   // in DELETE mode so this would throw SQLITE_READONLY on a readonly connection.
   try { db.exec("PRAGMA journal_mode = WAL"); } catch { /* readonly — keep existing mode */ }
   db.exec("PRAGMA synchronous = NORMAL");
-  db.exec("PRAGMA cache_size = -64000");
-  db.exec("PRAGMA mmap_size = 268435456");
+  // Defaults sized for a 512MB instance; override via env on larger plans.
+  const cacheMb = envMb("SCREENER_DB_CACHE_MB", 64);
+  const mmapMb = envMb("SCREENER_DB_MMAP_MB", 256);
+  db.exec(`PRAGMA cache_size = -${cacheMb * 1024}`);
+  db.exec(`PRAGMA mmap_size = ${mmapMb * 1024 * 1024}`);
   db.exec("PRAGMA temp_store = MEMORY");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA read_uncommitted = ON");

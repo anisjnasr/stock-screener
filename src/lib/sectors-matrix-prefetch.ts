@@ -7,7 +7,9 @@ let resolved: SectorsMatrixPayload | null = null;
 export function prefetchSectorsMatrix(): Promise<SectorsMatrixPayload | null> {
   if (resolved) return Promise.resolve(resolved);
   if (inflight) return inflight;
-  inflight = fetch("/api/sectors-industries?view=matrix", { cache: "no-store" })
+  // No `cache: "no-store"` — the endpoint returns `stale-while-revalidate`, so
+  // let the browser HTTP cache serve repeat loads/tab switches instantly.
+  inflight = fetch("/api/sectors-industries?view=matrix")
     .then(async (r) => {
       if (!r.ok) return null;
       const j = (await r.json()) as SectorsMatrixPayload & { error?: string };

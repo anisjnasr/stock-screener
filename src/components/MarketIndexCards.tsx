@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { MarketMonitorApiPayload, MarketMonitorRow } from "@/app/api/market-monitor/route";
+import type { MarketMonitorRow } from "@/app/api/market-monitor/route";
 import { formatUniverseBreadthPct, getUniverseBreadthFloorClass } from "@/lib/market-monitor-display";
+import { fetchMarketMonitor } from "@/lib/market-monitor-prefetch";
 
 export const MARKET_INDEX_SYMBOLS = ["SPY", "QQQ", "IWM"] as const;
 export type MarketIndexSymbol = (typeof MARKET_INDEX_SYMBOLS)[number];
@@ -81,11 +82,10 @@ export default function MarketIndexCards({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/market-monitor?v=index-breadth-v1", { cache: "no-store" })
-      .then((r) => r.json() as Promise<MarketMonitorApiPayload>)
+    fetchMarketMonitor()
       .then((data) => {
         if (cancelled) return;
-        const latest = data.rows?.[0] ?? null;
+        const latest = data?.rows?.[0] ?? null;
         setLatestUniverseBreadth(
           latest
             ? {
