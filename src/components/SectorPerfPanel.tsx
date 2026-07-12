@@ -343,13 +343,16 @@ export default function SectorPerfPanel({
             indent: true,
           });
         }
-        for (const c of childrenByEtf[row.ticker] ?? []) {
+        const children = [...(childrenByEtf[row.ticker] ?? [])].sort((a, b) =>
+          compareMatrixRows(a, b, sortKey, sortDir === "asc")
+        );
+        for (const c of children) {
           out.push({ kind: "child", row: c, parentTicker: row.ticker, indent: true });
         }
       }
     }
     return out;
-  }, [sortedParents, subTab, expandedTickers, childrenByEtf, loadingEtf]);
+  }, [sortedParents, subTab, expandedTickers, childrenByEtf, loadingEtf, sortKey, sortDir]);
 
   if (loading) {
     return (

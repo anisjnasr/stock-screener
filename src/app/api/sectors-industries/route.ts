@@ -26,6 +26,7 @@ const INDEX_ITEMS = [
   { id: "sp500", name: "S&P 500", ticker: "SPY" },
   { id: "nasdaq100", name: "Nasdaq 100", ticker: "QQQ" },
   { id: "russell2000", name: "Russell 2000", ticker: "IWM" },
+  { id: "dow30", name: "Dow Jones Industrial Average", ticker: "DIA" },
   { id: "sp500-ew", name: "S&P 500 Equal Weight", ticker: "RSP" },
   { id: "nasdaq100-ew", name: "Nasdaq 100 Equal Weight", ticker: "QQQE" },
 ] as const;

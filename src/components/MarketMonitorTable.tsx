@@ -16,6 +16,13 @@ import MarketMonitorConstituentsModal, {
 } from "@/components/MarketMonitorConstituentsModal";
 import { industryThemePillClass } from "@/lib/premarket/industry-theme-pill-class";
 import { normalizeIndustryDisplayName } from "@/lib/text-format";
+import {
+  MM_COLUMN_DIRECTION,
+  mmPercentileBandClass,
+  mmPercentileTooltip,
+  type MmPercentileColumn,
+  type MmRowPercentiles,
+} from "@/lib/market-monitor-percentiles";
 
 const MARKET_MONITOR_FETCH_VERSION = "7x-atr-v1";
 
@@ -277,8 +284,38 @@ function MmColResizeGrip({
   );
 }
 
-function MmNumericCellCenter({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`${MM_CELL_FILL} ${className}`.trim()}>{children}</div>;
+function MmNumericCellCenter({
+  children,
+  className = "",
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <div className={`${MM_CELL_FILL} ${className}`.trim()} title={title}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Percentile-driven color + hover tooltip for an indicator cell. Falls back to the legacy
+ * fixed-threshold class when history is insufficient (percentile is null, per Part 1 spec).
+ */
+function mmCellColor(
+  percentiles: MmRowPercentiles | undefined,
+  col: MmPercentileColumn,
+  valueLabel: string,
+  fallbackClass: string
+): { cls: string; title: string | undefined } {
+  const pct = percentiles?.[col];
+  if (pct == null) return { cls: fallbackClass, title: undefined };
+  return {
+    cls: mmPercentileBandClass(pct, MM_COLUMN_DIRECTION[col]),
+    title: mmPercentileTooltip(valueLabel, pct),
+  };
 }
 
 function MmDateCellLeft({ children }: { children: ReactNode }) {
@@ -774,11 +811,23 @@ export default function MarketMonitorTable({
             {tableRowsToShow.map((row) => {
               const drillable = Boolean(onSymbolSelect) && isMmIndicatorDrilldownDate(row.date);
               const drillableSignals = Boolean(onSymbolSelect);
-              const pair4 = getPairCellClassFull(row.up4pct, row.down4pct);
-              const pairQ = getPairCellClassFull(row.up25pct_qtr, row.down25pct_qtr);
-              const pairM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
-              const pair50 = getPairCellClassFull(row.up50pct_month, row.down50pct_month);
-              const pair52w = getPairCellClassFull(row.nnh52wHighs ?? 0, row.nnh52wLows ?? 0);
+              // Legacy fixed-threshold classes; used only as the < 60-day-history fallback per column pair.
+              const fb4 = getPairCellClassFull(row.up4pct, row.down4pct);
+              const fbQ = getPairCellClassFull(row.up25pct_qtr, row.down25pct_qtr);
+              const fbM = getPairCellClassFull(row.up25pct_month, row.down25pct_month);
+              const fb50 = getPairCellClassFull(row.up50pct_month, row.down50pct_month);
+              const fb52 = getPairCellClassFull(row.nnh52wHighs ?? 0, row.nnh52wLows ?? 0);
+              const pct = row.percentiles;
+              const cUp4 = mmCellColor(pct, "up4pct", fmtInt(row.up4pct), fb4);
+              const cDown4 = mmCellColor(pct, "down4pct", fmtInt(row.down4pct), fb4);
+              const cUp25q = mmCellColor(pct, "up25pct_qtr", fmtInt(row.up25pct_qtr), fbQ);
+              const cDown25q = mmCellColor(pct, "down25pct_qtr", fmtInt(row.down25pct_qtr), fbQ);
+              const cUp25m = mmCellColor(pct, "up25pct_month", fmtInt(row.up25pct_month), fbM);
+              const cDown25m = mmCellColor(pct, "down25pct_month", fmtInt(row.down25pct_month), fbM);
+              const cUp50m = mmCellColor(pct, "up50pct_month", fmtInt(row.up50pct_month), fb50);
+              const cDown50m = mmCellColor(pct, "down50pct_month", fmtInt(row.down50pct_month), fb50);
+              const cH52 = mmCellColor(pct, "nnh52wHighs", fmtInt(row.nnh52wHighs ?? 0), fb52);
+              const cL52 = mmCellColor(pct, "nnh52wLows", fmtInt(row.nnh52wLows ?? 0), fb52);
               const topIndustryVals = getTopIndustryValues(row.topUpIndustries);
               const topCells = topIndustriesExpanded ? topIndustryVals : [topIndustryVals[0]];
               return (
@@ -808,14 +857,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair4}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cUp4.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cUp4.title}
                       onClick={() => openMmModal("up4pct", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.up4pct} widthPx={colWidthsPx.b0}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair4}>
+                    <MmNumericCellCenter className={cUp4.cls} title={cUp4.title}>
                       <MmTabularInner widthCh={columnValueWidths.up4pct} widthPx={colWidthsPx.b0}>{fmtInt(row.up4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -824,14 +874,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair4}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cDown4.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cDown4.title}
                       onClick={() => openMmModal("down4pct", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.down4pct} widthPx={colWidthsPx.b1}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair4}>
+                    <MmNumericCellCenter className={cDown4.cls} title={cDown4.title}>
                       <MmTabularInner widthCh={columnValueWidths.down4pct} widthPx={colWidthsPx.b1}>{fmtInt(row.down4pct)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -854,14 +905,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairQ}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cUp25q.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cUp25q.title}
                       onClick={() => openMmModal("up25pct_qtr", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.up25pctQtr} widthPx={colWidthsPx.b4}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pairQ}>
+                    <MmNumericCellCenter className={cUp25q.cls} title={cUp25q.title}>
                       <MmTabularInner widthCh={columnValueWidths.up25pctQtr} widthPx={colWidthsPx.b4}>{fmtInt(row.up25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -870,14 +922,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairQ}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cDown25q.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cDown25q.title}
                       onClick={() => openMmModal("down25pct_qtr", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.down25pctQtr} widthPx={colWidthsPx.b5}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pairQ}>
+                    <MmNumericCellCenter className={cDown25q.cls} title={cDown25q.title}>
                       <MmTabularInner widthCh={columnValueWidths.down25pctQtr} widthPx={colWidthsPx.b5}>{fmtInt(row.down25pct_qtr)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -886,14 +939,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairM}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cUp25m.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cUp25m.title}
                       onClick={() => openMmModal("up25pct_month", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.up25pctMonth} widthPx={colWidthsPx.b6}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pairM}>
+                    <MmNumericCellCenter className={cUp25m.cls} title={cUp25m.title}>
                       <MmTabularInner widthCh={columnValueWidths.up25pctMonth} widthPx={colWidthsPx.b6}>{fmtInt(row.up25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -902,14 +956,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pairM}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cDown25m.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cDown25m.title}
                       onClick={() => openMmModal("down25pct_month", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.down25pctMonth} widthPx={colWidthsPx.b7}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pairM}>
+                    <MmNumericCellCenter className={cDown25m.cls} title={cDown25m.title}>
                       <MmTabularInner widthCh={columnValueWidths.down25pctMonth} widthPx={colWidthsPx.b7}>{fmtInt(row.down25pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -918,14 +973,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair50}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cUp50m.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cUp50m.title}
                       onClick={() => openMmModal("up50pct_month", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.up50pctMonth} widthPx={colWidthsPx.b8}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair50}>
+                    <MmNumericCellCenter className={cUp50m.cls} title={cUp50m.title}>
                       <MmTabularInner widthCh={columnValueWidths.up50pctMonth} widthPx={colWidthsPx.b8}>{fmtInt(row.up50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -934,14 +990,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair50}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cDown50m.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cDown50m.title}
                       onClick={() => openMmModal("down50pct_month", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.down50pctMonth} widthPx={colWidthsPx.b9}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair50}>
+                    <MmNumericCellCenter className={cDown50m.cls} title={cDown50m.title}>
                       <MmTabularInner widthCh={columnValueWidths.down50pctMonth} widthPx={colWidthsPx.b9}>{fmtInt(row.down50pct_month)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -950,14 +1007,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair52w}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cH52.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cH52.title}
                       onClick={() => openMmModal("nnh52w_highs", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.nnh52wHighs} widthPx={colWidthsPx.b10}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair52w}>
+                    <MmNumericCellCenter className={cH52.cls} title={cH52.title}>
                       <MmTabularInner widthCh={columnValueWidths.nnh52wHighs} widthPx={colWidthsPx.b10}>{fmtInt(row.nnh52wHighs ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}
@@ -966,14 +1024,15 @@ export default function MarketMonitorTable({
                   {drillable ? (
                     <button
                       type="button"
-                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${pair52w}`.trim()}
+                      className={`ws-mm-cell-drill ${MM_CELL_FILL} text-inherit ${cL52.cls}`.trim()}
                       style={{ font: "inherit", border: "none", cursor: "pointer" }}
+                      title={cL52.title}
                       onClick={() => openMmModal("nnh52w_lows", row.date)}
                     >
                       <MmTabularInner widthCh={columnValueWidths.nnh52wLows} widthPx={colWidthsPx.b11}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </button>
                   ) : (
-                    <MmNumericCellCenter className={pair52w}>
+                    <MmNumericCellCenter className={cL52.cls} title={cL52.title}>
                       <MmTabularInner widthCh={columnValueWidths.nnh52wLows} widthPx={colWidthsPx.b11}>{fmtInt(row.nnh52wLows ?? 0)}</MmTabularInner>
                     </MmNumericCellCenter>
                   )}

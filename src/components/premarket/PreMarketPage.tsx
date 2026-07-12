@@ -1,23 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import CollapsibleSection from "./CollapsibleSection";
+import { useCallback, useEffect, useState } from "react";
 import DailyThemesPanel from "./DailyThemesPanel";
-import { usePremarketLayout } from "./usePremarketLayout";
-import type { PremarketSectionId } from "./premarket-layout-storage";
-
-const SECTION_ORDER: PremarketSectionId[] = ["context"];
-
-type SectionConfig = {
-  id: PremarketSectionId;
-  label: string;
-  labelAccent?: "cyan" | "amber" | "default";
-  stub: string;
-};
-
-const SECTIONS: SectionConfig[] = [
-  { id: "context", label: "THEMES", labelAccent: "cyan", stub: "" },
-];
 
 type ManualPremarketRefreshResponse = {
   ok: boolean;
@@ -40,15 +24,11 @@ function formatElapsedLabel(ms: number): string {
 }
 
 export default function PreMarketPage() {
-  const { collapsed, toggle, collapseAll, expandAll } = usePremarketLayout();
-
   const [themesRefreshToken, setThemesRefreshToken] = useState(0);
   const [themesRefreshBusy, setThemesRefreshBusy] = useState(false);
   const [themesRefreshElapsedMs, setThemesRefreshElapsedMs] = useState(0);
   const [themesRefreshStartedAtMs, setThemesRefreshStartedAtMs] = useState<number | null>(null);
   const [themesRefreshError, setThemesRefreshError] = useState<string | null>(null);
-
-  const anySectionExpanded = useMemo(() => SECTION_ORDER.some((id) => !collapsed[id]), [collapsed]);
 
   useEffect(() => {
     if (!themesRefreshBusy || themesRefreshStartedAtMs == null) return;
@@ -108,69 +88,42 @@ export default function PreMarketPage() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg-base)" }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        {SECTIONS.map((s) => (
-          <CollapsibleSection
-            key={s.id}
-            id={s.id}
-            label={s.label}
-            labelAccent={s.labelAccent}
-            collapsed={collapsed[s.id]}
-            onToggle={() => toggle(s.id)}
-            actions={
-              s.id === "context" ? (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => void triggerThemesRefresh()}
-                    disabled={themesRefreshBusy}
-                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
-                    style={{
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--ws-font-sans)",
-                      fontSize: "var(--ws-fs-label)",
-                    }}
-                    aria-label="Run newsletter ingest and refresh themes"
-                  >
-                    {themesRefreshBusy ? "Running..." : "Refresh"}
-                  </button>
-                  <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
-                    {formatElapsedLabel(themesRefreshElapsedMs)}
-                  </span>
-                  {themesRefreshError ? (
-                    <span
-                      className="pm-site-caption max-w-[18rem] truncate"
-                      style={{ color: "var(--warning)" }}
-                      title={themesRefreshError}
-                    >
-                      {themesRefreshError}
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => (anySectionExpanded ? collapseAll() : expandAll())}
-                    className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)]"
-                    style={{
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--ws-font-sans)",
-                      fontSize: "var(--ws-fs-label)",
-                    }}
-                    aria-label={anySectionExpanded ? "Collapse all pre-market sections" : "Expand all pre-market sections"}
-                  >
-                    {anySectionExpanded ? "Collapse all" : "Expand all"}
-                  </button>
-                </div>
-              ) : undefined
-            }
-          >
-            {s.id === "context" ? (
-              <DailyThemesPanel refreshToken={themesRefreshToken} />
-            ) : (
-              <p className="max-w-prose leading-relaxed">{s.stub}</p>
-            )}
-          </CollapsibleSection>
-        ))}
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="pm-section-label shrink-0" style={{ color: "var(--ws-cyan)" }}>
+            THEMES
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void triggerThemesRefresh()}
+              disabled={themesRefreshBusy}
+              className="pm-focus shrink-0 cursor-pointer rounded border px-2.5 py-1 font-medium transition-colors hover:bg-[color:var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-70"
+              style={{
+                borderColor: "var(--border-default)",
+                color: "var(--text-secondary)",
+                fontFamily: "var(--ws-font-sans)",
+                fontSize: "var(--ws-fs-label)",
+              }}
+              aria-label="Run newsletter ingest and refresh themes"
+            >
+              {themesRefreshBusy ? "Running..." : "Refresh"}
+            </button>
+            <span className="pm-site-caption pm-mono tabular-nums" style={{ color: "var(--text-tertiary)" }}>
+              {formatElapsedLabel(themesRefreshElapsedMs)}
+            </span>
+            {themesRefreshError ? (
+              <span
+                className="pm-site-caption max-w-[18rem] truncate"
+                style={{ color: "var(--warning)" }}
+                title={themesRefreshError}
+              >
+                {themesRefreshError}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <DailyThemesPanel refreshToken={themesRefreshToken} />
       </div>
     </div>
   );

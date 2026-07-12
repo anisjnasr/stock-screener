@@ -10,6 +10,12 @@ import {
   type MarketMonitorTopUpIndustryRow,
 } from "@/lib/screener-db-native";
 import { recordPerf } from "@/lib/perf-monitor";
+import {
+  computeTrailingPercentiles,
+  MM_PERCENTILE_COLUMNS,
+  type MmPercentileColumn,
+  type MmRowPercentiles,
+} from "@/lib/market-monitor-percentiles";
 
 /** MM table row — values come from `market_monitor_daily` (precompute only on the request path). */
 export type MarketMonitorRow = {
@@ -35,6 +41,8 @@ export type MarketMonitorRow = {
   countEpisodicPivot?: number;
   /** Top non-biotech industry per up-metric (stacked under table cells). */
   topUpIndustries?: MarketMonitorTopUpIndustryRow;
+  /** Per-column 1Y percentile ranks (0–100) for coloring; null when < min history. */
+  percentiles?: MmRowPercentiles;
 };
 
 export type MarketMonitorApiPayload = {
@@ -114,6 +122,39 @@ function emptyTopUpIndustries(): MarketMonitorTopUpIndustryRow {
   return { up4pct: null, up25pct_qtr: null, up25pct_month: null, up50pct_month: null };
 }
 
+/** Column value extractors from a precomputed daily row (kept in sync with {@link MmPercentileColumn}). */
+const MM_PERCENTILE_VALUE: Record<MmPercentileColumn, (r: MarketMonitorDailyRow) => number | null> = {
+  up4pct: (r) => r.up4pct,
+  down4pct: (r) => r.down4pct,
+  up25pct_qtr: (r) => r.up25pct_qtr,
+  down25pct_qtr: (r) => r.down25pct_qtr,
+  up25pct_month: (r) => r.up25pct_month,
+  down25pct_month: (r) => r.down25pct_month,
+  up50pct_month: (r) => r.up50pct_month,
+  down50pct_month: (r) => r.down50pct_month,
+  nnh52wHighs: (r) => r.nnh_52w_highs ?? 0,
+  nnh52wLows: (r) => r.nnh_52w_lows ?? 0,
+};
+
+/**
+ * Per-date, per-column 1Y trailing percentiles over the full fetched window (computed once per load).
+ * `precomputed` is date-DESC; percentiles need chronological order, so we sort ascending here.
+ */
+function buildPercentilesByDate(precomputed: MarketMonitorDailyRow[]): Record<string, MmRowPercentiles> {
+  const asc = [...precomputed].sort((a, b) => a.date.localeCompare(b.date));
+  const byDate: Record<string, MmRowPercentiles> = {};
+  for (const r of asc) byDate[r.date] = {};
+  for (const col of MM_PERCENTILE_COLUMNS) {
+    const getter = MM_PERCENTILE_VALUE[col];
+    const series = asc.map(getter);
+    const ranks = computeTrailingPercentiles(series);
+    for (let i = 0; i < asc.length; i++) {
+      byDate[asc[i].date][col] = ranks[i];
+    }
+  }
+  return byDate;
+}
+
 function buildNetNewHighsFromPrecomputed(precomputed: MarketMonitorDailyRow[]) {
   const sorted = [...precomputed].sort((a, b) => a.date.localeCompare(b.date));
   return {
@@ -155,9 +196,11 @@ function buildPayloadFromPrecomputed(
 ): MarketMonitorApiPayload {
   const baseRowsDesc = precomputed.map(marketMonitorRowFromPrecomputedDaily).filter((r) => r.date >= queryStartDate);
   const topIndustriesByDate = getTopMarketMonitorUpMetricIndustries(queryStartDate, expectedTradingDay);
+  const percentilesByDate = buildPercentilesByDate(precomputed);
   const rowsDesc = baseRowsDesc.map((row) => ({
     ...row,
     topUpIndustries: topIndustriesByDate[row.date] ?? emptyTopUpIndustries(),
+    percentiles: percentilesByDate[row.date],
   }));
   const dataAsOf = rowsDesc.length > 0 ? rowsDesc[0].date : null;
   const startDate = rowsDesc.length > 0 ? rowsDesc[rowsDesc.length - 1].date : null;

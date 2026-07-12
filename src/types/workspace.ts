@@ -11,5 +11,5 @@ export const WORKSPACE_SECTIONS: { id: BaseWorkspaceSection; label: string; shor
   { id: "sectors-industries", label: "Performance", shortLabel: "Performance", key: "2" },
   { id: "scans", label: "Scans", shortLabel: "Scans", key: "3" },
   { id: "lists", label: "Lists", shortLabel: "Lists", key: "4" },
-  { id: "pre-market", label: "PRE-MARKET", shortLabel: "Pre", key: "5" },
+  { id: "pre-market", label: "Themes", shortLabel: "Themes", key: "5" },
 ];

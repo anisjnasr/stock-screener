@@ -78,7 +78,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: "nav-sectors", key: "2", description: "Go to INDUSTRIES", category: "navigation" },
   { id: "nav-scans", key: "3", description: "Go to Scans", category: "navigation" },
   { id: "nav-breadth", key: "4", description: "Go to Breadth", category: "navigation" },
-  { id: "nav-premarket", key: "5", description: "Go to PRE-MARKET", category: "navigation" },
+  { id: "nav-premarket", key: "5", description: "Go to Themes", category: "navigation" },
   { id: "scan-prev", key: "ArrowUp", description: "Previous symbol in scan list", category: "navigation" },
   { id: "scan-next", key: "ArrowDown", description: "Next symbol in scan list", category: "navigation" },
   { id: "chart-daily", key: "d", description: "Switch chart to daily", category: "chart" },

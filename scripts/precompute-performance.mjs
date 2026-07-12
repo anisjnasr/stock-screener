@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { dbPath as DB_PATH, root } from "./_db-paths.mjs";
 
-const INDEX_TICKERS = ["SPY", "QQQ", "IWM", "RSP", "QQQE"];
+const INDEX_TICKERS = ["SPY", "QQQ", "IWM", "DIA", "RSP", "QQQE"];
 
 function loadThematicEtfs() {
   const tePath = join(root, "src", "lib", "thematic-etfs.ts");

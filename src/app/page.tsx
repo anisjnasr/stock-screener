@@ -793,7 +793,7 @@ export default function Home() {
   }, [scanSymbols, symbol, handleSymbolSelect]);
 
   useKeyboardShortcuts(useMemo(() => [
-    { key: "5", description: "Go to PRE-MARKET", category: "navigation" as const, action: () => setSection("pre-market") },
+    { key: "5", description: "Go to Themes", category: "navigation" as const, action: () => setSection("pre-market") },
     { key: "/", description: "Focus search bar", category: "general" as const, action: () => {
       const el = document.querySelector<HTMLInputElement>('input[aria-label="Stock search"]');
       el?.focus(); el?.select();

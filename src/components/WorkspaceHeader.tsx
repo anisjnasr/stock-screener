@@ -763,7 +763,7 @@ function WorkspaceHeader({
                 onClick={() => setNavOverflowOpen((open) => !open)}
                 aria-expanded={navOverflowOpen}
                 aria-haspopup="menu"
-                aria-label="More sections: Lists, PRE-MARKET"
+                aria-label="More sections: Lists, Themes"
                 className={`inline-flex items-center gap-0.5 px-2 sm:px-3 py-1.5 text-ws-title font-semibold uppercase tracking-wider transition-all cursor-pointer ws-focus-ring text-xs sm:text-sm ${!overflowSectionActive && !navOverflowOpen ? "hover:bg-white/5" : ""}`}
                 style={{
                   background:

@@ -6,6 +6,7 @@ import { getSupabaseService } from "@/lib/supabase";
 import { ingestMorningNewslettersForDate } from "@/lib/sources/newsletterIngest";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 function parseYmd(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
