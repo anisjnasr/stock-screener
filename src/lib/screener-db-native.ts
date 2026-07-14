@@ -252,20 +252,32 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
     ) x
   )`;
   // Recompute quarterly EPS YoY directly from EPS series so scan values match the fundamentals panel.
+  // Prior-year comparison: nearest quarterly row within ±20 days of period_end minus one calendar year.
+  // A plain `= date(period_end,'-1 year')` join misses ~1/4 of rows because fiscal quarter-end dates
+  // drift a few days year to year (e.g. AAPL 2024-12-28 vs 2023-12-30). ±20 days is far smaller than
+  // the ~91-day quarter spacing, so at most one prior quarter falls in the window. (SQLite forbids
+  // outer-column refs in a subquery ORDER BY, so we can't sort by date distance — the tight window
+  // makes that unnecessary; ORDER BY fp.period_end DESC just deterministically breaks rare ties.)
   const latestQuarterlyEpsGrowthExpr = `(
     SELECT y.growth
     FROM (
       SELECT
         fq.period_end AS period_end,
-        CASE
-          WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
-          ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
-        END AS growth
+        (
+          SELECT CASE
+            WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
+            ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
+          END
+          FROM financials fp
+          WHERE fp.symbol = fq.symbol
+            AND fp.period_type = 'quarterly'
+            AND fp.eps IS NOT NULL
+            AND fp.period_end BETWEEN date(fq.period_end, '-1 year', '-20 days')
+                                  AND date(fq.period_end, '-1 year', '+20 days')
+          ORDER BY fp.period_end DESC
+          LIMIT 1
+        ) AS growth
       FROM financials fq
-      LEFT JOIN financials fp
-        ON fp.symbol = fq.symbol
-        AND fp.period_type = 'quarterly'
-        AND fp.period_end = date(fq.period_end, '-1 year')
       WHERE fq.symbol = c.symbol
         AND fq.period_type = 'quarterly'
     ) y
@@ -280,15 +292,21 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
       FROM (
         SELECT
           fq.period_end AS period_end,
-          CASE
-            WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
-            ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
-          END AS growth
+          (
+            SELECT CASE
+              WHEN fq.eps IS NULL OR fp.eps IS NULL OR fp.eps = 0 THEN NULL
+              ELSE ((fq.eps - fp.eps) / ABS(fp.eps)) * 100.0
+            END
+            FROM financials fp
+            WHERE fp.symbol = fq.symbol
+              AND fp.period_type = 'quarterly'
+              AND fp.eps IS NOT NULL
+              AND fp.period_end BETWEEN date(fq.period_end, '-1 year', '-20 days')
+                                    AND date(fq.period_end, '-1 year', '+20 days')
+            ORDER BY fp.period_end DESC
+            LIMIT 1
+          ) AS growth
         FROM financials fq
-        LEFT JOIN financials fp
-          ON fp.symbol = fq.symbol
-          AND fp.period_type = 'quarterly'
-          AND fp.period_end = date(fq.period_end, '-1 year')
         WHERE fq.symbol = c.symbol
           AND fq.period_type = 'quarterly'
       ) y
@@ -373,20 +391,27 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
     ) x
   )`;
   // Recompute quarterly revenue YoY directly from sales series for consistency with fundamentals panel.
+  // Same ±20-day prior-year matching as EPS above (tolerant to fiscal quarter-end date drift).
   const latestQuarterlySalesGrowthExpr = `(
     SELECT y.growth
     FROM (
       SELECT
         fq.period_end AS period_end,
-        CASE
-          WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
-          ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
-        END AS growth
+        (
+          SELECT CASE
+            WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
+            ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
+          END
+          FROM financials fp
+          WHERE fp.symbol = fq.symbol
+            AND fp.period_type = 'quarterly'
+            AND fp.sales IS NOT NULL
+            AND fp.period_end BETWEEN date(fq.period_end, '-1 year', '-20 days')
+                                  AND date(fq.period_end, '-1 year', '+20 days')
+          ORDER BY fp.period_end DESC
+          LIMIT 1
+        ) AS growth
       FROM financials fq
-      LEFT JOIN financials fp
-        ON fp.symbol = fq.symbol
-        AND fp.period_type = 'quarterly'
-        AND fp.period_end = date(fq.period_end, '-1 year')
       WHERE fq.symbol = c.symbol
         AND fq.period_type = 'quarterly'
     ) y
@@ -401,15 +426,21 @@ export function buildFilterClauses(filters: ScreenerFilters): { sql: string; par
       FROM (
         SELECT
           fq.period_end AS period_end,
-          CASE
-            WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
-            ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
-          END AS growth
+          (
+            SELECT CASE
+              WHEN fq.sales IS NULL OR fp.sales IS NULL OR fp.sales = 0 THEN NULL
+              ELSE ((fq.sales - fp.sales) / ABS(fp.sales)) * 100.0
+            END
+            FROM financials fp
+            WHERE fp.symbol = fq.symbol
+              AND fp.period_type = 'quarterly'
+              AND fp.sales IS NOT NULL
+              AND fp.period_end BETWEEN date(fq.period_end, '-1 year', '-20 days')
+                                    AND date(fq.period_end, '-1 year', '+20 days')
+            ORDER BY fp.period_end DESC
+            LIMIT 1
+          ) AS growth
         FROM financials fq
-        LEFT JOIN financials fp
-          ON fp.symbol = fq.symbol
-          AND fp.period_type = 'quarterly'
-          AND fp.period_end = date(fq.period_end, '-1 year')
         WHERE fq.symbol = c.symbol
           AND fq.period_type = 'quarterly'
       ) y

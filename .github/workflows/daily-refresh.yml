@@ -169,13 +169,28 @@ jobs:
         run: node scripts/refresh-free-float-yfinance.mjs
         timeout-minutes: 60
 
-      # Financials refresh (optional, for quarterly runs)
+      # Decide whether to refresh financials this run. Financials only change
+      # quarterly, so a full refresh (~all symbols) runs weekly on Fridays (UTC)
+      # to stay within ~1 week of earnings, plus on-demand via workflow input.
+      - name: Determine financials refresh
+        id: fin_flag
+        run: |
+          if [ "${{ github.event.inputs.run_financials }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%u)" = "5" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Financials refresh (weekly on schedule, or on-demand). Uses Polygon with a
+      # Yahoo fallback for ADRs; computes true year-on-year growth at ingest.
       - name: Refresh financials
-        if: ${{ github.event.inputs.run_financials == 'true' }}
+        if: ${{ steps.fin_flag.outputs.run == 'true' }}
         run: node scripts/refresh-financials.mjs
         env:
           MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
-        timeout-minutes: 60
+        timeout-minutes: 120
 
       # Optimize after refresh
       - name: Optimize database

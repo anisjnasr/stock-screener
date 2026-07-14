@@ -26,6 +26,7 @@
     "precompute-performance": "node scripts/precompute-performance.mjs",
     "enrich-company-reference": "node scripts/enrich-company-reference.mjs",
     "refresh-financials": "node scripts/refresh-financials.mjs",
+    "recompute-quarterly-yoy": "node scripts/recompute-quarterly-yoy.mjs",
     "refresh-ownership": "node scripts/refresh-ownership.mjs",
     "refresh-safe": "node scripts/refresh-safe.mjs",
     "check-ownership-refresh": "node scripts/check-ownership-refresh.mjs",
