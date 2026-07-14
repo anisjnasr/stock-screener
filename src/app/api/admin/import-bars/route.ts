@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import Database from "better-sqlite3";
 import { getScreenerDbPath } from "@/lib/data-path";
 import { resetDbConnection } from "@/lib/screener-db-native";
-import { triggerPythonScreenerDbSync } from "@/lib/trigger-python-db-sync";
 
 type BarPayload = {
   symbol: string;
@@ -72,7 +71,6 @@ export async function POST(request: NextRequest) {
     }
     db.close();
     resetDbConnection();
-    void triggerPythonScreenerDbSync({ reason: "import-bars" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg, inserted }, { status: 500 });

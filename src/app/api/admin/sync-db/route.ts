@@ -12,7 +12,6 @@ import { join } from "path";
 import { exec, execSync } from "child_process";
 import Database from "better-sqlite3";
 import { resetDbConnection } from "@/lib/screener-db-native";
-import { triggerPythonScreenerDbSync } from "@/lib/trigger-python-db-sync";
 import { getDataDir, getScreenerDbPath } from "@/lib/data-path";
 
 const DATA_DIR = getDataDir();
@@ -721,9 +720,6 @@ export async function POST(request: NextRequest) {
           dbSizeMb: size,
           error: null,
         });
-        void triggerPythonScreenerDbSync({ reason: "sync-db-completed-blocking" }).then((r) => {
-          if (!r.ok && !r.skipped) log(`Python DB sync trigger failed: ${r.error ?? "unknown"}`);
-        });
         return NextResponse.json({
           ok: true,
           mode,
@@ -813,9 +809,6 @@ export async function POST(request: NextRequest) {
         });
         resetDbConnection();
         log("DB connection reset — next query will open fresh connection");
-        void triggerPythonScreenerDbSync({ reason: "sync-db-completed" }).then((r) => {
-          if (!r.ok && !r.skipped) log(`Python DB sync trigger failed: ${r.error ?? "unknown"}`);
-        });
         try {
           const testDb = new Database(DB_PATH);
           // Detailed integrity check (first 20 issues)
